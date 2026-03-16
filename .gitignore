@@ -1,0 +1,11 @@
+
+## GITIGNORE.txt
+
+```txt
+__pycache__/
+*.pyc
+.DS_Store
+.streamlit/secrets.toml
+.venv/
+venv/
+env/

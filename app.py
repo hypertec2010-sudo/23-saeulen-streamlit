@@ -8,7 +8,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="23-Saeulen-Modell v5.4", page_icon="📊", layout="wide")
+st.set_page_config(page_title="23-Saeulen-Modell v5.5", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -135,7 +135,7 @@ def load_data(ticker):
 
 with st.sidebar:
     st.title("📊 23-Saeulen-Modell")
-    st.caption("v5.4 | Core + TradingBoard 1:1 Ansicht")
+    st.caption("v5.5 | Core + TradingBoard + Kurzfrist Board")
     st.divider()
 
     ticker = st.text_input(
@@ -168,10 +168,10 @@ with st.sidebar:
     st.divider()
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 23-Saeulen-Modell v5.4")
+st.title("📊 23-Saeulen-Modell v5.5")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
-    "Die Core-Saeulen bleiben unveraendert; das TradingBoard zeigt die additive Logik mit S0-S20-Zeilen nahezu 1:1 an."
+    "Die Core-Saeulen bleiben unveraendert; zusaetzlich gibt es jetzt eine separate Kurzfrist-Board-Ampel und das TradingBoard zeigt die additive Logik mit S0-S20-Zeilen nahezu 1:1 an."
 )
 
 if not go:
@@ -455,7 +455,6 @@ else:
     emp, conv = "AVOID / WAIT", "LOW"
 
 # TradingBoard 1:1 naeher am Original
-
 tb_score = 0
 tb_details = []
 
@@ -596,6 +595,56 @@ elif pd.notna(pe) and pe > 50:
     tb_details.append(f"S20: 🔴 TEUER KGV>50 ({pe:.1f}) ❌")
 
 tb_signal, tb_empf = tb_signal_label(tb_score)
+
+# Kurzfrist-Board nur aus kurzfristigen Trading-Signalen
+stb_score = 0
+stb_items = []
+
+if price > ma50:
+    stb_score += 2
+    stb_items.append("MA50 +2")
+elif price > ma200:
+    stb_score += 1
+    stb_items.append("MA200 +1")
+else:
+    stb_score -= 1
+    stb_items.append("Trend -1")
+
+if 40 < rsi < 60 or rsi < 30:
+    stb_score += 1
+    stb_items.append("RSI +1")
+
+if 20 < rsi < 80:
+    stb_score += 1
+    stb_items.append("Vola +1")
+
+if macd_hist_current > macd_hist_prev:
+    stb_score += 1
+    stb_items.append("Momentum +1")
+
+if macd_bull_cross:
+    stb_score += 1
+    stb_items.append("Bull-Cross +1")
+
+if smart_money_default:
+    stb_score += 1
+    stb_items.append("Smart Money +1")
+
+if adx > 25:
+    stb_score += 1
+    stb_items.append("ADX +1")
+
+if stoch_k_v < 20 and stoch_d_v < 20 and stoch_k_v > stoch_d_v:
+    stb_score += 1
+    stb_items.append("Stoch +1")
+
+if willr_v < -80:
+    stb_score += 1
+    stb_items.append("Williams +1")
+
+stb_signal, stb_empf = tb_signal_label(stb_score)
+stb_text = ", ".join(stb_items) if stb_items else "keine positiven Kurzfrist-Signale"
+
 tb_details_text = "\n".join(tb_details)
 
 # strukturierte Ansicht
@@ -620,22 +669,23 @@ c4.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, 
 st.divider()
 
 st.subheader("Scores")
-c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 c1.metric("Company Quality", f"{company}/100", ampel(company))
 c2.metric("Setup Quality", f"{setup}/100", ampel(setup))
-c3.metric("Investment Score", f"{investment}/100", ampel(investment))
-c4.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
-c5.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
-c6.metric("TradingBoard Signal", tb_signal, tb_empf)
+c3.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
+c4.metric("Kurzfrist Board", f"{stb_score} Pkt", stb_signal)
+c5.metric("Investment Score", f"{investment}/100", ampel(investment))
+c6.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
+c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
 
 st.caption(
-    "Links steht das strenge 23-Saeulen-Core-Modell, rechts das additive TradingBoard. "
-    "Im TradingBoard-Tab werden die S0-S20-Zeilen jetzt direkt angezeigt."
+    "Die App trennt jetzt drei Sichtweisen: Company/Core, Kurzfrist Core vs. Kurzfrist Board und das volle additive TradingBoard. "
+    "So sieht man sofort, ob ein Wert kurzfristig tradbar ist, obwohl das breite Board noch hinterherhaengt oder umgekehrt."
 )
 
 st.divider()
 
-t1, t2, t3, t4, t5 = st.tabs(["Technik", "TradingBoard", "Fundamental", "Safeguards", "Trade-Setup"])
+t1, t2, t3, t4, t5, t6 = st.tabs(["Technik", "Kurzfrist-Vergleich", "TradingBoard", "Fundamental", "Safeguards", "Trade-Setup"])
 
 with t1:
     cols = st.columns(2)
@@ -679,6 +729,30 @@ with t1:
 
 with t2:
     c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
+    c2.metric("Kurzfrist Board", f"{stb_score} Punkte", stb_signal)
+    c3.metric("Core Fokus", "Momentum/Volumen")
+    c4.metric("Board Fokus", "Diskrete Checks")
+
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Kennzahl": ["Kurzfrist Core", "Kurzfrist Board", "Board-Signal", "Board-Treiber"],
+                "Wert": [f"{short_term_score}/100", str(stb_score), stb_signal, stb_text],
+                "Kommentar": [
+                    "S4 Momentum 45%, S5 Volumen 30%, S6 Volatilitaet 20%, RS 5%",
+                    "Additive Kurzfrist-Punkte aus MA/RSI/Momentum/ADX/Stoch/Williams",
+                    stb_empf,
+                    stb_text
+                ],
+            }
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+with t3:
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("TradingBoard Score", str(tb_score), tb_signal)
     c2.metric("Signal", tb_signal, tb_empf)
     c3.metric("TB Stop", f"{tb_stop:.2f} {ccy}")
@@ -689,7 +763,7 @@ with t2:
     st.markdown("**TradingBoard Details (1:1 Stil)**")
     st.text(tb_details_text)
 
-with t3:
+with t4:
     st.markdown(
         f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}%</div>",
         unsafe_allow_html=True
@@ -720,7 +794,7 @@ with t3:
         use_container_width=True,
     )
 
-with t4:
+with t5:
     st.dataframe(
         pd.DataFrame(
             {
@@ -754,7 +828,7 @@ with t4:
         use_container_width=True,
     )
 
-with t5:
+with t6:
     c1, c2, c3 = st.columns(3)
     c1.metric("Entry", f"{price:.2f} {ccy}")
     c2.metric("ATR-Stop", f"{atr_stop:.2f} {ccy}", f"-{(price-atr_stop)/price*100:.1f}%" if atr_stop < price else "-")
@@ -782,13 +856,15 @@ for col, (lab, scv) in zip(cols, hmap.items()):
 
 st.divider()
 st.subheader("Handlungsempfehlung")
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Core Empfehlung", emp)
 c2.metric("Core Conviction", conv)
-c3.metric("TradingBoard Signal", tb_signal)
-c4.metric("TradingBoard Urteil", tb_empf)
+c3.metric("Kurzfrist Core", f"{short_term_score}/100")
+c4.metric("Kurzfrist Board", stb_signal, str(stb_score))
+c5.metric("TradingBoard Urteil", tb_empf)
 
 st.caption(
-    "Die App zeigt bewusst zwei getrennte Sichtweisen: das strenge 23-Saeulen-Core-Modell "
-    "und das additive TradingBoard mit den originalnahen S-Zeilen."
+    "Die App zeigt bewusst drei getrennte Sichtweisen: das strenge 23-Saeulen-Core-Modell, "
+    "die kurzfristige Board-Ampel und das additive TradingBoard mit den originalnahen S-Zeilen."
 )
+

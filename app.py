@@ -7,7 +7,7 @@ from datetime import datetime, timezone, date, timedelta
 import warnings
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="23-Saeulen-Modell v5.0", page_icon="📊", layout="wide")
+st.set_page_config(page_title="23-Saeulen-Modell v5.1", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -43,11 +43,13 @@ def clamp(v, lo=0, hi=100):
     return max(lo, min(hi, float(v)))
 
 
-def score_from_bands(value, bands):
-    for threshold, score in bands:
-        if value >= threshold:
-            return score
-    return bands[-1][1]
+def fmt_num(x, digits=2, suffix=""):
+    return f"{x:.{digits}f}{suffix}" if pd.notna(x) else "n/a"
+
+
+def known_ratio(values):
+    vals = [v for v in values if pd.notna(v)]
+    return len(vals) / len(values) if values else 0
 
 
 def rsi14(close):
@@ -88,7 +90,7 @@ def load_data(ticker):
 
 with st.sidebar:
     st.title("📊 23-Saeulen-Modell")
-    st.caption("v5.0 | Naeher am klassischen KI-Urteil")
+    st.caption("v5.1 | Robustere Datenlogik")
     st.divider()
     ticker = st.text_input("Ticker", value="AAPL", placeholder="AAPL, AMAT, AIXA.DE").upper().strip()
     horizon = st.selectbox(
@@ -109,8 +111,8 @@ with st.sidebar:
     strict_mode = st.checkbox("Strenges 23-Saeulen-Mapping", value=True)
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 23-Saeulen-Modell v5.0")
-st.caption("Technik + fundamentale Proxy-Saeulen + Safeguards. Fokus: aehnlichere Urteile wie das klassische KI-Modell, aber mit Yahoo-Datenbeschraenkung.")
+st.title("📊 23-Saeulen-Modell v5.1")
+st.caption("Technik + fundamentale Proxy-Saeulen + Safeguards. Fehlende Daten werden als n/a gezeigt und in der Bewertung beruecksichtigt.")
 
 if not go:
     st.info("Ticker eingeben und Analyse starten klicken.")
@@ -172,15 +174,15 @@ obv = (np.sign(close.diff()) * vol).fillna(0).cumsum()
 obv_trend = "steigend" if float(obv.iloc[-1]) > float(obv.iloc[-20]) else "fallend"
 
 if "1-7" in horizon:
-    hd, ws, wc = 7, 0.80, 0.20
+    hd, ws, wc = 7, 0.82, 0.18
 elif "1-4" in horizon:
     hd, ws, wc = 21, 0.68, 0.32
 elif "1-3" in horizon:
     hd, ws, wc = 60, 0.52, 0.48
 elif "1-2" in horizon:
-    hd, ws, wc = 365, 0.32, 0.68
+    hd, ws, wc = 365, 0.30, 0.70
 else:
-    hd, ws, wc = 730, 0.20, 0.80
+    hd, ws, wc = 730, 0.15, 0.85
 
 earnings_ts = info.get("earningsTimestamp")
 days_earn = (earnings_ts - datetime.now(timezone.utc).timestamp()) / 86400 if earnings_ts else 999
@@ -194,7 +196,7 @@ elif price < ma50 < ma150 < ma200:
 else:
     regime, reg_amp = "SIDEWAYS", "🟡"
 
-# --- Technische Saeulen ---
+# --- Technische Proxy-Saeulen ---
 s3 = 100 if price > ma20 > ma50 > ma150 else (15 if price < ma20 < ma50 < ma150 else 52)
 s3a = ampel(s3)
 s3t = "Trend-Stack sauber" if s3 >= 80 else ("Trend gemischt" if s3 >= 45 else "Trend schwach")
@@ -238,10 +240,10 @@ setup = round(clamp(setup_raw))
 
 # --- Fundamentale Proxy-Saeulen ---
 rec = info.get("recommendationKey", "hold")
-rec_mean = info.get("recommendationMean")
-analysts = info.get("numberOfAnalystOpinions", 0) or 0
-target = info.get("targetMeanPrice", price) or price
-upside = (target / price - 1) * 100 if price else 0
+rec_mean = info.get("recommendationMean", np.nan)
+analysts = info.get("numberOfAnalystOpinions", np.nan)
+target = info.get("targetMeanPrice", np.nan)
+upside = ((target / price - 1) * 100) if pd.notna(target) and price else np.nan
 pe = info.get("forwardPE", np.nan)
 peg = info.get("pegRatio", np.nan)
 ps = info.get("priceToSalesTrailing12Months", np.nan)
@@ -262,11 +264,19 @@ fcf = info.get("freeCashflow", np.nan)
 op_cf = info.get("operatingCashflow", np.nan)
 short_pct = info.get("shortPercentOfFloat", np.nan)
 
+fundamental_fields = [
+    profit_margin, oper_margin, gross_margin, roe, roa,
+    revenue_growth, earnings_growth, current_ratio, quick_ratio,
+    debt_to_equity, fcf, op_cf, pe, peg, ps, pb,
+    beta, short_pct, rec_mean, analysts, target
+]
+fund_cov = known_ratio(fundamental_fields)
+
 quality_parts = []
 quality_parts.append(90 if pd.notna(profit_margin) and profit_margin > 0.20 else (75 if pd.notna(profit_margin) and profit_margin > 0.10 else (55 if pd.notna(profit_margin) and profit_margin > 0 else 40)))
 quality_parts.append(90 if pd.notna(oper_margin) and oper_margin > 0.25 else (75 if pd.notna(oper_margin) and oper_margin > 0.15 else (55 if pd.notna(oper_margin) and oper_margin > 0.08 else 40)))
 quality_parts.append(92 if pd.notna(roe) and roe > 0.25 else (78 if pd.notna(roe) and roe > 0.15 else (58 if pd.notna(roe) and roe > 0.08 else 42)))
-quality_parts.append(85 if pd.notna(fcf) and fcf > 0 else 45)
+quality_parts.append(85 if pd.notna(fcf) and fcf > 0 else (60 if pd.notna(fcf) else 45))
 quality_score = round(np.mean(quality_parts))
 
 growth_parts = []
@@ -279,7 +289,7 @@ valuation_parts = []
 valuation_parts.append(86 if pd.notna(pe) and 0 < pe < 20 else (72 if pd.notna(pe) and pe < 28 else (58 if pd.notna(pe) and pe < 38 else 42)))
 valuation_parts.append(84 if pd.notna(peg) and 0 < peg < 1.5 else (70 if pd.notna(peg) and peg < 2.2 else (55 if pd.notna(peg) and peg < 3.0 else 42)))
 valuation_parts.append(82 if pd.notna(ps) and ps < 4 else (68 if pd.notna(ps) and ps < 8 else (55 if pd.notna(ps) and ps < 12 else 42)))
-valuation_parts.append(82 if upside > 20 else (70 if upside > 10 else (55 if upside > 0 else 40)))
+valuation_parts.append(82 if pd.notna(upside) and upside > 20 else (70 if pd.notna(upside) and upside > 10 else (55 if pd.notna(upside) and upside > 0 else 40)))
 valuation_score = round(np.mean(valuation_parts))
 
 balance_parts = []
@@ -290,7 +300,7 @@ balance_score = round(np.mean(balance_parts))
 
 sentiment_parts = []
 sentiment_parts.append(88 if rec in ["strong_buy", "buy"] else (65 if rec in ["hold"] else 40))
-sentiment_parts.append(84 if analysts >= 20 else (72 if analysts >= 10 else (58 if analysts >= 5 else 48)))
+sentiment_parts.append(84 if pd.notna(analysts) and analysts >= 20 else (72 if pd.notna(analysts) and analysts >= 10 else (58 if pd.notna(analysts) and analysts >= 5 else 48)))
 sentiment_parts.append(84 if pd.notna(rec_mean) and rec_mean <= 2.0 else (68 if pd.notna(rec_mean) and rec_mean <= 2.5 else (55 if pd.notna(rec_mean) and rec_mean <= 3.0 else 42)))
 sentiment_score = round(np.mean(sentiment_parts))
 
@@ -308,6 +318,13 @@ base_company = round(
     + sentiment_score * 0.14
     + risk_score * 0.10
 )
+
+coverage_penalty = 0
+if fund_cov < 0.35:
+    coverage_penalty = 12
+elif fund_cov < 0.55:
+    coverage_penalty = 6
+base_company = max(35, round(base_company - coverage_penalty))
 
 if hd < 30:
     company = round(base_company * 0.55 + 50 * 0.45)
@@ -333,11 +350,12 @@ risk_eur = depot * (risk_pct / 100)
 pos_size = int(risk_eur / risk_per_share) if risk_per_share > 0 else 0
 time_stop = (date.today() + timedelta(days=hd)).strftime("%d.%m.%Y")
 
-short_term_score = round(clamp(s4 * 0.42 + s5 * 0.30 + s6 * 0.18 + rs_score * 0.10))
-swing_score = round(clamp(s3 * 0.26 + s4 * 0.28 + s5 * 0.20 + s6 * 0.10 + rs_score * 0.10 + w52 * 0.06))
-mid_term_score = investment
-long_term_score = round(clamp(company * 0.65 + s3 * 0.15 + growth_score * 0.10 + valuation_score * 0.10))
-very_long_term_score = round(clamp(company * 0.72 + growth_score * 0.12 + quality_score * 0.10 + valuation_score * 0.06))
+# --- Stark getrennte Zeithorizonte ---
+short_term_score = round(clamp(s4 * 0.45 + s5 * 0.30 + s6 * 0.20 + rs_score * 0.05))
+swing_score = round(clamp(s3 * 0.28 + s4 * 0.30 + s5 * 0.18 + s6 * 0.10 + rs_score * 0.10 + w52 * 0.04))
+mid_term_score = round(clamp(setup * 0.55 + company * 0.45))
+long_term_score = round(clamp(company * 0.55 + growth_score * 0.20 + quality_score * 0.15 + valuation_score * 0.10))
+very_long_term_score = round(clamp(company * 0.45 + quality_score * 0.22 + growth_score * 0.18 + valuation_score * 0.15))
 
 hmap = {
     "Kurzfrist": short_term_score,
@@ -364,7 +382,7 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("Kurs (Adj. Close)", f"{price:.2f} {ccy}", ts)
 c2.metric("Trend-Regime", regime, reg_amp)
 c3.metric("Earnings", sg_earn_txt, sg_earn)
-c4.metric("Analysten-Target", f"{target:.2f} {ccy}", f"{upside:.1f}% Upside")
+c4.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, "%"))
 st.divider()
 
 st.subheader("Scores")
@@ -403,18 +421,19 @@ with t1:
         use_container_width=True,
     )
 with t2:
+    st.markdown(f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}%</div>", unsafe_allow_html=True)
     st.dataframe(
         pd.DataFrame(
             {
                 "Fundament-Block": ["Qualitaet", "Wachstum", "Bewertung", "Bilanz", "Sentiment", "Risiko"],
                 "Score": [quality_score, growth_score, valuation_score, balance_score, sentiment_score, risk_score],
                 "Kommentar": [
-                    f"Margen/ROE/FCF",
-                    f"Rev {0 if pd.isna(revenue_growth) else revenue_growth*100:.1f}% | EPS {0 if pd.isna(earnings_growth) else earnings_growth*100:.1f}%",
-                    f"PE {0 if pd.isna(pe) else pe:.1f} | PEG {0 if pd.isna(peg) else peg:.2f} | Upside {upside:.1f}%",
-                    f"CR {0 if pd.isna(current_ratio) else current_ratio:.2f} | QR {0 if pd.isna(quick_ratio) else quick_ratio:.2f} | D/E {0 if pd.isna(debt_to_equity) else debt_to_equity:.1f}",
-                    f"{rec} | Analysten {analysts}",
-                    f"Beta {0 if pd.isna(beta) else beta:.2f} | Short {0 if pd.isna(short_pct) else short_pct*100:.1f}%",
+                    f"PM {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | OM {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | ROE {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')} | FCF {'ok' if pd.notna(fcf) and fcf > 0 else ('neg' if pd.notna(fcf) else 'n/a')}",
+                    f"Rev {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | EPS {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')} | 6M {fmt_num(ret126,1,'%')}",
+                    f"PE {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | P/S {fmt_num(ps,2)} | Upside {fmt_num(upside,1,'%')}",
+                    f"CR {fmt_num(current_ratio,2)} | QR {fmt_num(quick_ratio,2)} | D/E {fmt_num(debt_to_equity,1)}",
+                    f"{rec} | Analysten {fmt_num(analysts,0)} | RecMean {fmt_num(rec_mean,2)}",
+                    f"Beta {fmt_num(beta,2)} | Short {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR {fmt_num(atr_pct,1,'%')}",
                 ],
             }
         ),
@@ -426,8 +445,8 @@ with t3:
         pd.DataFrame(
             {
                 "Safeguard": ["S0 Currency/Exchange", "S0 Preis-Typ-Lock", "S1 Earnings", "S2 Regime", "S3 Konfluenz-Cap", "S4 Datenabdeckung"],
-                "Status": ["🟢", "🟢", sg_earn, reg_amp, "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"), "🟢" if len(df) >= 252 else "🟡"],
-                "Kommentar": [f"{ccy} | {exch}", "auto_adjust=True Yahoo Finance", sg_earn_txt, regime, f"{kb}/4 Kernbloecke", f"{len(df)} Handelstage Historie"],
+                "Status": ["🟢", "🟢", sg_earn, reg_amp, "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"), "🟢" if fund_cov >= 0.55 else ("🟡" if fund_cov >= 0.35 else "🔴")],
+                "Kommentar": [f"{ccy} | {exch}", "auto_adjust=True Yahoo Finance", sg_earn_txt, regime, f"{kb}/4 Kernbloecke", f"Fundamental-Coverage {fund_cov*100:.0f}%"],
             }
         ),
         hide_index=True,
@@ -463,4 +482,4 @@ c1.metric("Empfehlung", emp)
 c2.metric("Conviction", conv)
 c3.metric("Zeithorizont", horizon.split("(")[0].strip())
 
-st.caption("Hinweis: Diese App ist eine datengetriebene Naeherung des 23-Saeulen-Modells. Einzelne KI-Urteile koennen abweichen, wenn qualitative Punkte wie Managementqualitaet, Produktzyklus, Guidance-Ton oder Makro-/Sektor-Story relevant sind.")
+st.caption("Hinweis: Diese App ist eine datengetriebene Naeherung des 23-Saeulen-Modells. Einzelne KI-Urteile koennen abweichen, wenn qualitative Punkte wie Managementqualitaet, Guidance-Ton, Produktzyklus, regulatorische Risiken oder Makro-/Sektor-Story relevant sind.")

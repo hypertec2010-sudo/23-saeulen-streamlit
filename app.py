@@ -7,7 +7,7 @@ from datetime import datetime, timezone, date, timedelta
 import warnings
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="23-Saeulen-Modell v5.1", page_icon="📊", layout="wide")
+st.set_page_config(page_title="23-Saeulen-Modell v5.2", page_icon="ðŸ“Š", layout="wide")
 
 st.markdown("""
 <style>
@@ -20,11 +20,11 @@ st.markdown("""
 
 
 def ampel(v, g=65, y=45):
-    return "🟢" if v >= g else ("🟡" if v >= y else "🔴")
+    return "ðŸŸ¢" if v >= g else ("ðŸŸ¡" if v >= y else "ðŸ”´")
 
 
 def ampel_crv(c):
-    return "🟢" if c >= 2.5 else ("🟡" if c >= 1.5 else "🔴")
+    return "ðŸŸ¢" if c >= 2.5 else ("ðŸŸ¡" if c >= 1.5 else "ðŸ”´")
 
 
 def card_class(score):
@@ -77,6 +77,20 @@ def true_range(high, low, close):
     return pd.concat([(high - low), (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
 
 
+def stoch14(high, low, close, k_period=14, d_period=3):
+    ll = low.rolling(k_period).min()
+    hh = high.rolling(k_period).max()
+    k = 100 * (close - ll) / (hh - ll).replace(0, np.nan)
+    d = k.rolling(d_period).mean()
+    return k, d
+
+
+def williams_r(high, low, close, period=14):
+    ll = low.rolling(period).min()
+    hh = high.rolling(period).max()
+    return -100 * (hh - close) / (hh - ll).replace(0, np.nan)
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def load_data(ticker):
     t = yf.Ticker(ticker)
@@ -89,8 +103,8 @@ def load_data(ticker):
 
 
 with st.sidebar:
-    st.title("📊 23-Saeulen-Modell")
-    st.caption("v5.1 | Robustere Datenlogik")
+    st.title("ðŸ“Š 23-Saeulen-Modell")
+    st.caption("v5.2 | Core-Saeulen + Technik-Overlay")
     st.divider()
     ticker = st.text_input("Ticker", value="AAPL", placeholder="AAPL, AMAT, AIXA.DE").upper().strip()
     horizon = st.selectbox(
@@ -111,8 +125,8 @@ with st.sidebar:
     strict_mode = st.checkbox("Strenges 23-Saeulen-Mapping", value=True)
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 23-Saeulen-Modell v5.1")
-st.caption("Technik + fundamentale Proxy-Saeulen + Safeguards. Fehlende Daten werden als n/a gezeigt und in der Bewertung beruecksichtigt.")
+st.title("ðŸ“Š 23-Saeulen-Modell v5.2")
+st.caption("Technik + fundamentale Proxy-Saeulen + Safeguards. Bestehende Saeulen bleiben unveraendert; zusaetzlich gibt es ein Technik-Overlay fuer Trading-Board-naehere Signale.")
 
 if not go:
     st.info("Ticker eingeben und Analyse starten klicken.")
@@ -172,6 +186,15 @@ low52 = safe_last(close.rolling(252).min(), float(close.min()))
 dist52 = price / high52 * 100 if high52 else 50
 obv = (np.sign(close.diff()) * vol).fillna(0).cumsum()
 obv_trend = "steigend" if float(obv.iloc[-1]) > float(obv.iloc[-20]) else "fallend"
+stoch_k, stoch_d = stoch14(high, low, close)
+stoch_k_v = safe_last(stoch_k)
+stoch_d_v = safe_last(stoch_d)
+willr_v = safe_last(williams_r(high, low, close))
+ma50_rising = ma50 > safe_last(close.rolling(50).mean().shift(10), ma50)
+ma200_rising = ma200 > safe_last(close.rolling(200).mean().shift(20), ma200)
+golden_cross = ma50 > ma200
+smart_money_ok = obv_trend == "steigend" and vol_ratio >= 0.95
+momentum_rising = macd_up and roc20 > 0
 
 if "1-7" in horizon:
     hd, ws, wc = 7, 0.82, 0.18
@@ -186,15 +209,15 @@ else:
 
 earnings_ts = info.get("earningsTimestamp")
 days_earn = (earnings_ts - datetime.now(timezone.utc).timestamp()) / 86400 if earnings_ts else 999
-sg_earn = "🟢" if days_earn > 30 else ("🟡" if days_earn > 7 else "🔴")
+sg_earn = "ðŸŸ¢" if days_earn > 30 else ("ðŸŸ¡" if days_earn > 7 else "ðŸ”´")
 sg_earn_txt = f"Earnings in ~{int(days_earn)}d" if days_earn < 999 else "kein Datum"
 
 if price > ma50 > ma150 > ma200:
-    regime, reg_amp = "UPTREND", "🟢"
+    regime, reg_amp = "UPTREND", "ðŸŸ¢"
 elif price < ma50 < ma150 < ma200:
-    regime, reg_amp = "DOWNTREND", "🔴"
+    regime, reg_amp = "DOWNTREND", "ðŸ”´"
 else:
-    regime, reg_amp = "SIDEWAYS", "🟡"
+    regime, reg_amp = "SIDEWAYS", "ðŸŸ¡"
 
 # --- Technische Proxy-Saeulen ---
 s3 = 100 if price > ma20 > ma50 > ma150 else (15 if price < ma20 < ma50 < ma150 else 52)
@@ -210,22 +233,22 @@ s4a = ampel(s4)
 s4t = f"RSI {rsi:.1f} | MACD {'up' if macd_up else 'dn'} | ADX {adx:.1f} | ROC20 {roc20:.1f}%"
 
 if ret5 > 0 and vol_ratio > 1.12 and obv_trend == "steigend":
-    s5, s5a, s5t = 100, "🟢", f"Vol {vol_ratio:.2f}x | OBV steigend"
+    s5, s5a, s5t = 100, "ðŸŸ¢", f"Vol {vol_ratio:.2f}x | OBV steigend"
 elif ret20 > 0 and obv_trend == "steigend":
-    s5, s5a, s5t = 68, "🟡", f"Vol {vol_ratio:.2f}x | Nachfrage ok"
+    s5, s5a, s5t = 68, "ðŸŸ¡", f"Vol {vol_ratio:.2f}x | Nachfrage ok"
 elif ret20 > 0:
-    s5, s5a, s5t = 52, "🟡", f"Momentum ok | OBV {obv_trend}"
+    s5, s5a, s5t = 52, "ðŸŸ¡", f"Momentum ok | OBV {obv_trend}"
 else:
-    s5, s5a, s5t = 28, "🔴", f"Momentum/Volumen schwach | OBV {obv_trend}"
+    s5, s5a, s5t = 28, "ðŸ”´", f"Momentum/Volumen schwach | OBV {obv_trend}"
 
 if atr_pct < 2.8:
-    s6, s6a, s6t = 92, "🟢", f"ATR {atr_pct:.1f}% niedrig"
+    s6, s6a, s6t = 92, "ðŸŸ¢", f"ATR {atr_pct:.1f}% niedrig"
 elif atr_pct < 5.5:
-    s6, s6a, s6t = 66, "🟡", f"ATR {atr_pct:.1f}% normal"
+    s6, s6a, s6t = 66, "ðŸŸ¡", f"ATR {atr_pct:.1f}% normal"
 elif atr_pct < 8.0:
-    s6, s6a, s6t = 44, "🟡", f"ATR {atr_pct:.1f}% erhoeht"
+    s6, s6a, s6t = 44, "ðŸŸ¡", f"ATR {atr_pct:.1f}% erhoeht"
 else:
-    s6, s6a, s6t = 20, "🔴", f"ATR {atr_pct:.1f}% hoch"
+    s6, s6a, s6t = 20, "ðŸ”´", f"ATR {atr_pct:.1f}% hoch"
 
 w52 = 100 if 80 <= dist52 <= 98 else (72 if 70 <= dist52 < 80 else (55 if 98 < dist52 <= 101 else (35 if dist52 >= 55 else 15)))
 rs_score = 100 if ret63 > 12 else (78 if ret63 > 4 else (55 if ret63 > -5 else 22))
@@ -237,6 +260,38 @@ if strict_mode:
     elif kb == 2:
         setup_raw = min(setup_raw, 58)
 setup = round(clamp(setup_raw))
+
+# --- Technisches Overlay (ohne Aenderung bestehender Saeulen) ---
+tb_ma200 = 100 if price > ma200 and ma200_rising else (78 if price > ma200 else 25)
+tb_ma50 = 100 if price > ma50 else 30
+tb_cross = 100 if golden_cross else 25
+tb_rsi_reversal = 100 if 28 <= rsi <= 40 else (72 if 40 < rsi <= 52 else (52 if 52 < rsi <= 68 else 25))
+tb_momentum = 100 if momentum_rising else (68 if macd_up or roc20 > 0 else 25)
+tb_smart_money = 100 if smart_money_ok else (65 if obv_trend == "steigend" else 25)
+tb_adx = 100 if adx > 25 else (65 if adx > 18 else 25)
+tb_stoch = 100 if pd.notna(stoch_k_v) and pd.notna(stoch_d_v) and stoch_k_v < 35 and stoch_k_v > stoch_d_v else (55 if pd.notna(stoch_k_v) and 20 <= stoch_k_v <= 80 else 25)
+tb_williams = 100 if pd.notna(willr_v) and willr_v <= -80 else (55 if pd.notna(willr_v) and -80 < willr_v < -20 else 25)
+
+overlay_items = [
+    ("TB1 Ueber MA200", tb_ma200, f"Kurs {fmt_num(price,2)} vs MA200 {fmt_num(ma200,2)}"),
+    ("TB2 Ueber MA50", tb_ma50, f"Kurs {fmt_num(price,2)} vs MA50 {fmt_num(ma50,2)}"),
+    ("TB3 Golden Cross", tb_cross, f"MA50 {fmt_num(ma50,2)} vs MA200 {fmt_num(ma200,2)}"),
+    ("TB4 RSI-Reversal", tb_rsi_reversal, f"RSI {fmt_num(rsi,1)}"),
+    ("TB7 Momentum steigt", tb_momentum, f"MACD {'up' if macd_up else 'dn'} | ROC20 {fmt_num(roc20,1,'%')}"),
+    ("TB8 Smart Money", tb_smart_money, f"OBV {obv_trend} | Vol {fmt_num(vol_ratio,2)}x"),
+    ("TB9 ADX-Trend", tb_adx, f"ADX {fmt_num(adx,1)}"),
+    ("TB10 Stochastik", tb_stoch, f"%K {fmt_num(stoch_k_v,1)} | %D {fmt_num(stoch_d_v,1)}"),
+    ("TB11 Williams %R", tb_williams, f"%R {fmt_num(willr_v,1)}"),
+]
+tech_overlay_score = round(np.mean([x[1] for x in overlay_items]))
+tech_overlay_delta = int(round((tech_overlay_score - 50) * 0.24))
+setup_plus = int(clamp(setup + tech_overlay_delta))
+if hd < 30:
+    investment_plus = int(clamp(investment + round(tech_overlay_delta * 0.85)))
+elif hd < 120:
+    investment_plus = int(clamp(investment + round(tech_overlay_delta * 0.60)))
+else:
+    investment_plus = int(clamp(investment + round(tech_overlay_delta * 0.35)))
 
 # --- Fundamentale Proxy-Saeulen ---
 rec = info.get("recommendationKey", "hold")
@@ -376,7 +431,18 @@ elif investment >= 52:
 else:
     emp, conv = "AVOID / WAIT", "LOW"
 
-st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")
+if days_earn < 7:
+    emp_plus, conv_plus = "VETO - Earnings < 7 Tage", "-"
+elif investment_plus >= 78 and (kb >= 3 or tech_overlay_score >= 72):
+    emp_plus, conv_plus = "BUY / ACCUMULATE", "HIGH"
+elif investment_plus >= 68:
+    emp_plus, conv_plus = "WATCH / kleine Position", "MEDIUM"
+elif investment_plus >= 52:
+    emp_plus, conv_plus = "HOLD / beobachten", "LOW-MEDIUM"
+else:
+    emp_plus, conv_plus = "AVOID / WAIT", "LOW"
+
+st.markdown(f"## {name} `{ticker}` â€” {exch} ({ccy})")
 st.markdown(f"<div class='small-note'>Sektor: {sector} | Industrie: {industry}</div>", unsafe_allow_html=True)
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Kurs (Adj. Close)", f"{price:.2f} {ccy}", ts)
@@ -386,14 +452,17 @@ c4.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, 
 st.divider()
 
 st.subheader("Scores")
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5, c6 = st.columns(6)
 c1.metric("Company Quality", f"{company}/100", ampel(company))
 c2.metric("Setup Quality", f"{setup}/100", ampel(setup))
-c3.metric("Investment Score", f"{investment}/100", ampel(investment))
-c4.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
+c3.metric("Tech Overlay", f"{tech_overlay_score}/100", f"Delta {tech_overlay_delta:+d}")
+c4.metric("Setup Plus", f"{setup_plus}/100", ampel(setup_plus))
+c5.metric("Investment Score", f"{investment}/100", ampel(investment))
+c6.metric("Investment Plus", f"{investment_plus}/100", ampel(investment_plus))
+st.caption(f"Konfluenz Kernmodell: {kb}/4 | Overlay nutzt zusaetzliche Trading-Board-nahe Techniksignale, ohne die bestehenden Saeulen S3-S6 zu aendern.")
 st.divider()
 
-t1, t2, t3, t4 = st.tabs(["Technik", "Fundamental", "Safeguards", "Trade-Setup"])
+t1, t2, t3, t4, t5 = st.tabs(["Technik", "Technik-Overlay", "Fundamental", "Safeguards", "Trade-Setup"])
 with t1:
     cols = st.columns(2)
     items = [
@@ -421,6 +490,25 @@ with t1:
         use_container_width=True,
     )
 with t2:
+    cols = st.columns(3)
+    for i, (lab, score, com) in enumerate(overlay_items):
+        with cols[i % 3]:
+            st.markdown(
+                f'<div class="metric-card {card_class(score)}"><b>{ampel(score)} {lab}</b><span style="float:right;font-size:1.3rem;font-weight:700">{score}</span><br><small style="color:#aaa">{com}</small></div>',
+                unsafe_allow_html=True,
+            )
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Overlay-Punkt": [x[0] for x in overlay_items],
+                "Score": [x[1] for x in overlay_items],
+                "Kommentar": [x[2] for x in overlay_items],
+            }
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+with t3:
     st.markdown(f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}%</div>", unsafe_allow_html=True)
     st.dataframe(
         pd.DataFrame(
@@ -440,19 +528,19 @@ with t2:
         hide_index=True,
         use_container_width=True,
     )
-with t3:
+with t4:
     st.dataframe(
         pd.DataFrame(
             {
                 "Safeguard": ["S0 Currency/Exchange", "S0 Preis-Typ-Lock", "S1 Earnings", "S2 Regime", "S3 Konfluenz-Cap", "S4 Datenabdeckung"],
-                "Status": ["🟢", "🟢", sg_earn, reg_amp, "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"), "🟢" if fund_cov >= 0.55 else ("🟡" if fund_cov >= 0.35 else "🔴")],
+                "Status": ["ðŸŸ¢", "ðŸŸ¢", sg_earn, reg_amp, "ðŸŸ¢" if kb >= 3 else ("ðŸŸ¡" if kb == 2 else "ðŸ”´"), "ðŸŸ¢" if fund_cov >= 0.55 else ("ðŸŸ¡" if fund_cov >= 0.35 else "ðŸ”´")],
                 "Kommentar": [f"{ccy} | {exch}", "auto_adjust=True Yahoo Finance", sg_earn_txt, regime, f"{kb}/4 Kernbloecke", f"Fundamental-Coverage {fund_cov*100:.0f}%"],
             }
         ),
         hide_index=True,
         use_container_width=True,
     )
-with t4:
+with t5:
     c1, c2, c3 = st.columns(3)
     c1.metric("Entry", f"{price:.2f} {ccy}")
     c2.metric("ATR-Stop", f"{atr_stop:.2f} {ccy}", f"-{(price-atr_stop)/price*100:.1f}%" if atr_stop < price else "-")
@@ -478,8 +566,8 @@ for col, (lab, scv) in zip(cols, hmap.items()):
 st.divider()
 st.subheader("Handlungsempfehlung")
 c1, c2, c3 = st.columns(3)
-c1.metric("Empfehlung", emp)
-c2.metric("Conviction", conv)
+c1.metric("Empfehlung Core", emp)
+c2.metric("Empfehlung Plus", emp_plus, conv_plus)
 c3.metric("Zeithorizont", horizon.split("(")[0].strip())
 
 st.caption("Hinweis: Diese App ist eine datengetriebene Naeherung des 23-Saeulen-Modells. Einzelne KI-Urteile koennen abweichen, wenn qualitative Punkte wie Managementqualitaet, Guidance-Ton, Produktzyklus, regulatorische Risiken oder Makro-/Sektor-Story relevant sind.")

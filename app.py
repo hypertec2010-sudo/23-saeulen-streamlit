@@ -8,7 +8,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="23-Saeulen-Modell v5.5", page_icon="📊", layout="wide")
+st.set_page_config(page_title="23-Saeulen-Modell v5.6", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -112,6 +112,15 @@ def williams_r(high, low, close, period=14):
     return -100 * (hh - close) / (hh - ll).replace(0, np.nan)
 
 
+def bollinger_bands(close, period=20, num_std=2):
+    mid = close.rolling(period).mean()
+    std = close.rolling(period).std()
+    upper = mid + num_std * std
+    lower = mid - num_std * std
+    width = (upper - lower) / mid.replace(0, np.nan) * 100
+    return mid, upper, lower, width
+
+
 def tb_signal_label(score):
     if score >= 9:
         return "LONG", "AKTIV HALTEN"
@@ -135,7 +144,7 @@ def load_data(ticker):
 
 with st.sidebar:
     st.title("📊 23-Saeulen-Modell")
-    st.caption("v5.5 | Core + TradingBoard + Kurzfrist Board")
+    st.caption("v5.6 | Core + TradingBoard + Kurzfrist Hilfsboard")
     st.divider()
 
     ticker = st.text_input(
@@ -168,10 +177,10 @@ with st.sidebar:
     st.divider()
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 23-Saeulen-Modell v5.5")
+st.title("📊 23-Saeulen-Modell v5.6")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
-    "Die Core-Saeulen bleiben unveraendert; zusaetzlich gibt es jetzt eine separate Kurzfrist-Board-Ampel und das TradingBoard zeigt die additive Logik mit S0-S20-Zeilen nahezu 1:1 an."
+    "Die Core-Saeulen bleiben unveraendert; zusaetzlich gibt es jetzt eine separate Kurzfrist-Hilfsboard-Ampel und das TradingBoard zeigt die additive Logik mit S0-S20-Zeilen nahezu 1:1 an."
 )
 
 if not go:
@@ -243,6 +252,15 @@ stoch_k, stoch_d = stoch14(high, low, close)
 stoch_k_v = safe_last(stoch_k, 50)
 stoch_d_v = safe_last(stoch_d, 50)
 willr_v = safe_last(williams_r(high, low, close), -50)
+
+bb_mid, bb_upper_s, bb_lower_s, bb_width_s = bollinger_bands(close)
+bb_upper = safe_last(bb_upper_s, np.nan)
+bb_lower = safe_last(bb_lower_s, np.nan)
+bb_width = safe_last(bb_width_s, np.nan)
+bb_width_thresh = safe_last(bb_width_s.rolling(60).quantile(0.2), np.nan)
+bb_squeeze = pd.notna(bb_width) and pd.notna(bb_width_thresh) and bb_width <= bb_width_thresh
+prev20_high = safe_last(close.shift(1).rolling(20).max(), np.nan)
+prev20_low = safe_last(close.shift(1).rolling(20).min(), np.nan)
 
 macd_hist_series = macd - signal
 macd_hist_current = safe_last(macd_hist_series, 0)
@@ -543,16 +561,30 @@ elif willr_v > -20:
 else:
     tb_details.append("S11: Williams%R neutral ❌")
 
-bb_upper = ma50 * 1.1 if pd.notna(ma50) else 0
-bb_lower = ma50 * 0.9 if pd.notna(ma50) else 0
-bb_squeeze = False
-if price > bb_upper > 0:
+if obv_trend == "steigend" and vol_ratio >= 1.0:
+    tb_score += 1
+    tb_details.append("S12: OBV/Volumen bestaetigt ✓")
+else:
+    tb_details.append("S12: OBV/Volumen schwach ❌")
+
+if pd.notna(prev20_high) and price > prev20_high:
+    tb_score += 1
+    tb_details.append("S13: 20D Breakout ✓")
+elif pd.notna(prev20_low) and price < prev20_low:
+    tb_details.append("S13: 20D Breakdown ❌")
+else:
+    tb_details.append("S13: Range intakt ❌")
+
+if pd.notna(bb_upper) and price > bb_upper:
+    tb_score += 1
     tb_details.append("S14: BB Breakout UP ✓")
 elif bb_squeeze:
     tb_score += 1
     tb_details.append("S14: BB Squeeze Achtung ✓")
-elif 0 < bb_lower and price < bb_lower:
+elif pd.notna(bb_lower) and price < bb_lower:
     tb_details.append("S14: BB Breakout DOWN ❌")
+else:
+    tb_details.append("S14: BB neutral ❌")
 
 if pd.notna(target) and target > 0 and price > 0:
     tb_potenzial = ((target - price) / price) * 100
@@ -570,15 +602,27 @@ if current_month in [8, 9]:
 elif current_month in [11, 12, 1]:
     tb_score += 1
     tb_details.append("S16: Seasonality stark (+1) ✓")
+else:
+    tb_details.append("S16: Seasonality neutral ❌")
+
+if crv >= 2.0:
+    tb_score += 1
+    tb_details.append("S17: CRV >= 2.0 ✓")
+elif crv < 1.5:
+    tb_details.append("S17: CRV schwach ❌")
+else:
+    tb_details.append("S17: CRV ok/neutral ❌")
 
 if earnings_warning:
     tb_score -= 3
     tb_details.insert(0, "⚠️ EARNINGS IN <7 TAGEN (Vorsicht!)")
 
-short_squeeze = False
+short_squeeze = pd.notna(short_pct) and short_pct > 0.12 and ret5 > 0 and vol_ratio > 1.2
 if short_squeeze:
     tb_score += 1
     tb_details.append("S18: 🚀 SHORT SQUEEZE POTENZIAL ✓")
+else:
+    tb_details.append("S18: kein Short-Squeeze-Signal ❌")
 
 insider_trend = "NEUTRAL"
 if insider_trend == "BUY":
@@ -587,6 +631,8 @@ if insider_trend == "BUY":
 elif insider_trend == "SELL":
     tb_score -= 1
     tb_details.append("S19: 👔 INSIDER VERKAUFEN ❌")
+else:
+    tb_details.append("S19: 👔 Insider neutral / keine Daten ❌")
 
 if pd.notna(pe) and 0 < pe < 15:
     tb_score += 1
@@ -596,7 +642,7 @@ elif pd.notna(pe) and pe > 50:
 
 tb_signal, tb_empf = tb_signal_label(tb_score)
 
-# Kurzfrist-Board nur aus kurzfristigen Trading-Signalen
+# Kurzfrist-Hilfsboard nur aus kurzfristigen Trading-Signalen
 stb_score = 0
 stb_items = []
 
@@ -673,13 +719,13 @@ c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 c1.metric("Company Quality", f"{company}/100", ampel(company))
 c2.metric("Setup Quality", f"{setup}/100", ampel(setup))
 c3.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
-c4.metric("Kurzfrist Board", f"{stb_score} Pkt", stb_signal)
+c4.metric("Kurzfrist Hilfsboard", f"{stb_score} Pkt", stb_signal)
 c5.metric("Investment Score", f"{investment}/100", ampel(investment))
 c6.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
 c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
 
 st.caption(
-    "Die App trennt jetzt drei Sichtweisen: Company/Core, Kurzfrist Core vs. Kurzfrist Board und das volle additive TradingBoard. "
+    "Die App trennt jetzt drei Sichtweisen: Company/Core, Kurzfrist Core vs. Kurzfrist Hilfsboard und das volle additive TradingBoard. "
     "So sieht man sofort, ob ein Wert kurzfristig tradbar ist, obwohl das breite Board noch hinterherhaengt oder umgekehrt."
 )
 
@@ -730,14 +776,14 @@ with t1:
 with t2:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
-    c2.metric("Kurzfrist Board", f"{stb_score} Punkte", stb_signal)
+    c2.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
     c3.metric("Core Fokus", "Momentum/Volumen")
     c4.metric("Board Fokus", "Diskrete Checks")
 
     st.dataframe(
         pd.DataFrame(
             {
-                "Kennzahl": ["Kurzfrist Core", "Kurzfrist Board", "Board-Signal", "Board-Treiber"],
+                "Kennzahl": ["Kurzfrist Core", "Kurzfrist Hilfsboard", "Board-Signal", "Board-Treiber"],
                 "Wert": [f"{short_term_score}/100", str(stb_score), stb_signal, stb_text],
                 "Kommentar": [
                     "S4 Momentum 45%, S5 Volumen 30%, S6 Volatilitaet 20%, RS 5%",
@@ -860,11 +906,10 @@ c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Core Empfehlung", emp)
 c2.metric("Core Conviction", conv)
 c3.metric("Kurzfrist Core", f"{short_term_score}/100")
-c4.metric("Kurzfrist Board", stb_signal, str(stb_score))
+c4.metric("Kurzfrist Hilfsboard", stb_signal, str(stb_score))
 c5.metric("TradingBoard Urteil", tb_empf)
 
 st.caption(
     "Die App zeigt bewusst drei getrennte Sichtweisen: das strenge 23-Saeulen-Core-Modell, "
-    "die kurzfristige Board-Ampel und das additive TradingBoard mit den originalnahen S-Zeilen."
+    "die kurzfristige Hilfsboard-Ampel und das additive TradingBoard mit den originalnahen S-Zeilen."
 )
-

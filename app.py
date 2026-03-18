@@ -8,7 +8,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="23-Saeulen-Modell v5.7", page_icon="📊", layout="wide")
+st.set_page_config(page_title="23-Saeulen-Modell v5.8", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -121,11 +121,56 @@ def bollinger_bands(close, period=20, num_std=2):
     return mid, upper, lower, width
 
 
+def infer_display_currency(ticker, info, fallback="USD"):
+    suffix = ticker.split(".")[-1].upper() if "." in ticker else ""
+    exchange = str(info.get("exchange", "") or "").upper()
+    info_ccy = str(info.get("currency", fallback) or fallback).upper()
+
+    eur_suffixes = {"DE", "PA", "AS", "BR", "MI", "MC", "HE", "VI", "LS", "F"}
+    if suffix in eur_suffixes:
+        return "EUR"
+    if suffix == "L":
+        return "GBP"
+    if suffix == "SW":
+        return "CHF"
+    if suffix == "ST":
+        return "SEK"
+    if suffix == "OL":
+        return "NOK"
+    if suffix == "CO":
+        return "DKK"
+    if suffix == "WA":
+        return "PLN"
+    if suffix == "PR":
+        return "CZK"
+
+    if exchange in {"XETRA", "GER", "PAR", "AMS", "MIL", "MAD", "HEL", "VIE", "BRU", "EURONEXT"}:
+        return "EUR"
+    if exchange in {"LSE"}:
+        return "GBP"
+    if exchange in {"SIX"}:
+        return "CHF"
+
+    return info_ccy if info_ccy else fallback
+
+
+def analyst_label(rec_key):
+    mapping = {
+        "strong_buy": "Starker Kauf",
+        "buy": "Kauf",
+        "hold": "Halten",
+        "underperform": "Unterdurchschnittlich",
+        "sell": "Verkaufen",
+        "strong_sell": "Starker Verkauf",
+    }
+    return mapping.get(str(rec_key).lower(), str(rec_key))
+
+
 def tb_signal_label(score):
     if score >= 9:
         return "LONG", "AKTIV HALTEN"
     if score >= 5:
-        return "🟡", "HALTEN"
+        return "HOLD", "HALTEN"
     if score >= 3:
         return "WAIT", "ABWARTEN"
     return "SHORT", "STOPP PRÜFEN"
@@ -144,7 +189,7 @@ def load_data(ticker):
 
 with st.sidebar:
     st.title("📊 23-Saeulen-Modell")
-    st.caption("v5.7 | Core + TradingBoard Referenzscore + Kurzfrist Hilfsboard")
+    st.caption("v5.8 | Core + TradingBoard Referenzscore + Kurzfrist Hilfsboard")
     st.divider()
 
     ticker = st.text_input(
@@ -177,7 +222,7 @@ with st.sidebar:
     st.divider()
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 23-Saeulen-Modell v5.7")
+st.title("📊 23-Saeulen-Modell v5.8")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
     "Die Core-Saeulen bleiben unveraendert; das TradingBoard ist jetzt als dashboardnaher Referenzscore modelliert, waehrend Zusatzsignale getrennt als Kontext angezeigt werden."
@@ -205,7 +250,8 @@ vol = df["Volume"]
 
 price = float(override) if override > 0 else float(close.iloc[-1])
 name = info.get("longName", ticker)
-ccy = info.get("currency", "USD")
+raw_ccy = info.get("currency", "USD")
+ccy = infer_display_currency(ticker, info, raw_ccy)
 exch = info.get("exchange", "-")
 ts = df.index[-1].strftime("%d.%m.%Y")
 sector = info.get("sector", "-")
@@ -314,6 +360,7 @@ elif price < ma50 < ma150 < ma200:
 else:
     regime, reg_amp = "SIDEWAYS", "🟡"
 
+# Core unveraendert
 s3 = 100 if price > ma20 > ma50 > ma150 else (15 if price < ma20 < ma50 < ma150 else 52)
 s3a = ampel(s3)
 s3t = "Trend-Stack sauber" if s3 >= 80 else ("Trend gemischt" if s3 >= 45 else "Trend schwach")
@@ -392,6 +439,7 @@ balance_parts.append(90 if pd.notna(debt_to_equity) and debt_to_equity < 60 else
 balance_score = round(np.mean(balance_parts))
 
 rec = info.get("recommendationKey", "hold")
+rec_label = analyst_label(rec)
 rec_mean = info.get("recommendationMean", np.nan)
 analysts = info.get("numberOfAnalystOpinions", np.nan)
 
@@ -704,7 +752,7 @@ c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 c1.metric("Company Quality", f"{company}/100", ampel(company))
 c2.metric("Setup Quality", f"{setup}/100", ampel(setup))
 c3.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
-c4.metric("Kurzfrist Hilfsboard", f"{stb_score} Pkt", stb_signal)
+c4.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
 c5.metric("Investment Score", f"{investment}/100", ampel(investment))
 c6.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
 c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
@@ -712,6 +760,17 @@ c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 
 st.caption(
     "Die App trennt jetzt drei Sichtweisen: Company/Core, Kurzfrist Core vs. Kurzfrist Hilfsboard und einen dashboardnahen TradingBoard-Referenzscore. "
     "Zusatzsignale werden separat als Kontext gefuehrt und verzerren den Board-Score nicht mehr."
+)
+
+st.markdown("### Scores verständlich erklärt")
+st.markdown(
+    "- **Company Quality** bewertet die Qualität des Unternehmens: Profitabilität, Wachstum, Bilanz, Bewertung, Analysteneinschätzung und Risiko.\n"
+    "- **Setup Quality** bewertet das technische Gesamtbild im strengen 23-Säulen-Kernmodell. Wenn Trend, Momentum, Volumen und Volatilität nicht gemeinsam tragen, wird dieser Wert bewusst gedeckelt.\n"
+    "- **Kurzfrist Core** bewertet die kurzfristige technische Lage mit Fokus auf Momentum, Volumen, Volatilität und relative Stärke.\n"
+    "- **Kurzfrist Hilfsboard** ist eine zusätzliche Kurzfrist-Ampel aus einzelnen Handelssignalen. Dieser Wert ist hilfreich, ersetzt aber nicht den eigentlichen TradingBoard-Referenzscore.\n"
+    "- **Investment Score** ist die Gesamtbewertung aus technischer Qualität und Unternehmensqualität. Die Gewichtung ändert sich mit dem gewählten Zeithorizont.\n"
+    "- **TradingBoard Score** ist der dashboardnahe Referenzscore für die Trading-Entscheidung. Genau dieser Wert soll den Blick ins separate Trading-Dashboard möglichst ersetzen.\n"
+    "- **Konfluenz** zeigt, wie viele der vier Kernbereiche Trend, Momentum, Volumen und Volatilität gleichzeitig tragfähig sind."
 )
 
 st.divider()
@@ -726,7 +785,7 @@ with t1:
         ("S5 Volumen", s5a, s5, s5t),
         ("S6 Volatilitaet", s6a, s6, s6t),
         ("52W-Lage", ampel(w52), w52, f"{dist52:.1f}% vom 52W-Hoch"),
-        ("Rel. Staerke", ampel(rs_score), rs_score, f"3M: {ret63:.1f}%"),
+        ("Relative Stärke", ampel(rs_score), rs_score, f"3 Monate: {ret63:.1f}%"),
     ]
     for i, (lab, ico, score, com) in enumerate(items):
         with cols[i % 2]:
@@ -742,9 +801,9 @@ with t1:
             {
                 "Indikator": [
                     "Kurs", "MA20", "MA50", "MA150", "MA200",
-                    "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR%",
+                    "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR in %",
                     "Stoch %K", "Stoch %D", "Williams %R", "ROC20", "ROC60",
-                    "52W-Hoch", "52W-Tief", "Dist 52W"
+                    "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch"
                 ],
                 "Wert": [
                     f"{price:.2f}", f"{ma20:.2f}", f"{ma50:.2f}", f"{ma150:.2f}", f"{ma200:.2f}",
@@ -762,8 +821,8 @@ with t2:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
     c2.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
-    c3.metric("Core Fokus", "Momentum/Volumen")
-    c4.metric("Board Fokus", "Diskrete Checks")
+    c3.metric("Core Fokus", "Momentum und Volumen")
+    c4.metric("Board Fokus", "Einzelne Handelssignale")
 
     st.dataframe(
         pd.DataFrame(
@@ -786,8 +845,8 @@ with t3:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("TradingBoard Score", str(tb_score), tb_signal)
     c2.metric("Signal", tb_signal, tb_empf)
-    c3.metric("TB Stop", f"{tb_stop:.2f} {ccy}")
-    c4.metric("TB TP2", f"{tb_tp2:.2f} {ccy}")
+    c3.metric("TradingBoard Stop-Loss", f"{tb_stop:.2f} {ccy}")
+    c4.metric("TradingBoard Kursziel 2", f"{tb_tp2:.2f} {ccy}")
 
     st.dataframe(tb_df, hide_index=True, use_container_width=True)
 
@@ -815,12 +874,12 @@ with t4:
                     balance_score, sentiment_score, risk_score
                 ],
                 "Kommentar": [
-                    f"PM {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | OM {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | ROE {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')} | FCF {'ok' if pd.notna(fcf) and fcf > 0 else ('neg' if pd.notna(fcf) else 'n/a')}",
-                    f"Rev {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | EPS {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')} | 6M {fmt_num(ret126,1,'%')}",
-                    f"PE {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | P/S {fmt_num(ps,2)} | Upside {fmt_num(upside,1,'%')}",
-                    f"CR {fmt_num(current_ratio,2)} | QR {fmt_num(quick_ratio,2)} | D/E {fmt_num(debt_to_equity,1)}",
-                    f"{rec} | Analysten {fmt_num(analysts,0)} | RecMean {fmt_num(rec_mean,2)}",
-                    f"Beta {fmt_num(beta,2)} | Short {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR {fmt_num(atr_pct,1,'%')}",
+                    f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | Eigenkapitalrendite {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')} | Freier Cashflow {'positiv' if pd.notna(fcf) and fcf > 0 else ('negativ' if pd.notna(fcf) else 'n/a')}",
+                    f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | Gewinnwachstum je Aktie {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')} | 6-Monats-Performance {fmt_num(ret126,1,'%')}",
+                    f"KGV {fmt_num(pe,1)} | PEG-Verhältnis {fmt_num(peg,2)} | Kurs-Umsatz-Verhältnis {fmt_num(ps,2)} | Analysten-Potenzial {fmt_num(upside,1,'%')}",
+                    f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | Verschuldung zu Eigenkapital {fmt_num(debt_to_equity,1)}",
+                    f"Analystenmeinung {rec_label} | Anzahl Analysten {fmt_num(analysts,0)} | Durchschnittliche Empfehlung {fmt_num(rec_mean,2)}",
+                    f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR in Prozent {fmt_num(atr_pct,1,'%')}",
                 ],
             }
         ),
@@ -864,19 +923,19 @@ with t5:
 
 with t6:
     c1, c2, c3 = st.columns(3)
-    c1.metric("Entry", f"{price:.2f} {ccy}")
-    c2.metric("ATR-Stop", f"{atr_stop:.2f} {ccy}", f"-{(price-atr_stop)/price*100:.1f}%" if atr_stop < price else "-")
-    c3.metric("Aktiver Stop", f"{stop_used:.2f} {ccy}", f"-{stop_dist:.1f}%")
+    c1.metric("Einstiegskurs", f"{price:.2f} {ccy}")
+    c2.metric("ATR-basierter Stop-Loss", f"{atr_stop:.2f} {ccy}", f"-{(price-atr_stop)/price*100:.1f}%" if atr_stop < price else "-")
+    c3.metric("Aktueller Stop-Loss", f"{stop_used:.2f} {ccy}", f"-{stop_dist:.1f}%")
 
     c4, c5, c6 = st.columns(3)
-    c4.metric("TP1 (1R)", f"{tp1:.2f} {ccy}", f"+{(tp1/price-1)*100:.1f}%")
-    c5.metric("TP2 (2R)", f"{tp2:.2f} {ccy}", f"+{(tp2/price-1)*100:.1f}%")
-    c6.metric("TP3 (3R)", f"{tp3:.2f} {ccy}", f"+{(tp3/price-1)*100:.1f}%")
+    c4.metric("Kursziel 1 (1R)", f"{tp1:.2f} {ccy}", f"+{(tp1/price-1)*100:.1f}%")
+    c5.metric("Kursziel 2 (2R)", f"{tp2:.2f} {ccy}", f"+{(tp2/price-1)*100:.1f}%")
+    c6.metric("Kursziel 3 (3R)", f"{tp3:.2f} {ccy}", f"+{(tp3/price-1)*100:.1f}%")
 
     c7, c8, c9 = st.columns(3)
-    c7.metric(f"CRV {ampel_crv(crv)}", f"{crv:.1f}:1")
+    c7.metric(f"Chance-Risiko-Verhältnis {ampel_crv(crv)}", f"{crv:.1f}:1")
     c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
-    c9.metric("Zeit-Stop", time_stop, "wenn kein Follow-through")
+    c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
 
 st.divider()
 st.subheader("5 Zeithorizont-Ampeln")
@@ -901,3 +960,4 @@ st.caption(
     "Die App zeigt bewusst drei getrennte Sichtweisen: das strenge 23-Saeulen-Core-Modell, "
     "die kurzfristige Hilfsboard-Ampel und den dashboardnahen TradingBoard-Referenzscore mit getrenntem Kontextblock."
 )
+

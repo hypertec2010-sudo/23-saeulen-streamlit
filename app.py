@@ -8,7 +8,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="23-Saeulen-Modell v5.6", page_icon="📊", layout="wide")
+st.set_page_config(page_title="23-Saeulen-Modell v5.7", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -125,7 +125,7 @@ def tb_signal_label(score):
     if score >= 9:
         return "LONG", "AKTIV HALTEN"
     if score >= 5:
-        return "HOLD", "HALTEN"
+        return "🟡", "HALTEN"
     if score >= 3:
         return "WAIT", "ABWARTEN"
     return "SHORT", "STOPP PRÜFEN"
@@ -144,7 +144,7 @@ def load_data(ticker):
 
 with st.sidebar:
     st.title("📊 23-Saeulen-Modell")
-    st.caption("v5.6 | Core + TradingBoard + Kurzfrist Hilfsboard")
+    st.caption("v5.7 | Core + TradingBoard Referenzscore + Kurzfrist Hilfsboard")
     st.divider()
 
     ticker = st.text_input(
@@ -177,10 +177,10 @@ with st.sidebar:
     st.divider()
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 23-Saeulen-Modell v5.6")
+st.title("📊 23-Saeulen-Modell v5.7")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
-    "Die Core-Saeulen bleiben unveraendert; zusaetzlich gibt es jetzt eine separate Kurzfrist-Hilfsboard-Ampel und das TradingBoard zeigt die additive Logik mit S0-S20-Zeilen nahezu 1:1 an."
+    "Die Core-Saeulen bleiben unveraendert; das TradingBoard ist jetzt als dashboardnaher Referenzscore modelliert, waehrend Zusatzsignale getrennt als Kontext angezeigt werden."
 )
 
 if not go:
@@ -314,7 +314,6 @@ elif price < ma50 < ma150 < ma200:
 else:
     regime, reg_amp = "SIDEWAYS", "🟡"
 
-# Core unveraendert
 s3 = 100 if price > ma20 > ma50 > ma150 else (15 if price < ma20 < ma50 < ma150 else 52)
 s3a = ampel(s3)
 s3t = "Trend-Stack sauber" if s3 >= 80 else ("Trend gemischt" if s3 >= 45 else "Trend schwach")
@@ -472,9 +471,10 @@ elif investment >= 52:
 else:
     emp, conv = "AVOID / WAIT", "LOW"
 
-# TradingBoard 1:1 naeher am Original
+# TradingBoard Referenzscore (dashboard-nah)
 tb_score = 0
 tb_details = []
+tb_context = []
 
 tb_buy = buy_in_override if buy_in_override > 0 else 0.0
 tb_basispreis = tb_buy if tb_buy > 0 else price
@@ -492,8 +492,8 @@ else:
     tb_details.append("S1: Unter MA200 ❌")
 
 if price > ma50:
-    tb_score += 2
-    tb_details.append("S2: Über MA50 (+2) ✓")
+    tb_score += 1
+    tb_details.append("S2: Über MA50 (+1) ✓")
 else:
     tb_score -= 1
     tb_details.append("S2: Unter MA50 (-1) ❌")
@@ -504,12 +504,9 @@ if ma50 > ma200:
 else:
     tb_details.append("S3: Trendstruktur schwach ❌")
 
-if 40 < rsi < 60:
+if 40 < rsi < 60 or rsi < 30:
     tb_score += 1
-    tb_details.append("S4: RSI ok ✓")
-elif rsi < 30:
-    tb_score += 1
-    tb_details.append("S4: RSI oversold ✓")
+    tb_details.append("S4: RSI konstruktiv ✓")
 else:
     tb_details.append("S4: RSI hoch/niedrig ❌")
 
@@ -519,126 +516,114 @@ if tb_perf > 5:
 else:
     tb_details.append(f"S5: {tb_perf:.1f}% ❌")
 
-if 20 < rsi < 80:
-    tb_score += 1
-    tb_details.append("S6: Vola ok ✓")
-
 if macd_hist_current > macd_hist_prev:
     tb_score += 1
     tb_details.append("S7: Momentum steigt ✓")
 else:
     tb_details.append("S7: Momentum fällt ❌")
 
-if macd_bull_cross:
-    tb_score += 1
-    tb_details.append("MACD Bull-Cross! 🚀")
-
-if smart_money_default:
-    tb_score += 1
-    tb_details.append("S8: Smart Money sammelt ein ✓")
-else:
-    tb_details.append("S8: Smart Money verkauft ❌")
-
-if adx > 25:
-    tb_score += 1
-    tb_details.append("S9: ADX>25 starker Trend ✓")
-else:
-    tb_details.append("S9: ADX<25 Seitwärts ❌")
-
-if stoch_k_v < 20 and stoch_d_v < 20 and stoch_k_v > stoch_d_v:
-    tb_score += 1
-    tb_details.append("S10: Stoch Oversold Cross ✓")
-elif stoch_k_v > 80:
-    tb_details.append("S10: Stoch überkauft ❌")
-else:
-    tb_details.append("S10: Stoch neutral ❌")
-
-if willr_v < -80:
-    tb_score += 1
-    tb_details.append("S11: Williams%R extrem Oversold ✓")
-elif willr_v > -20:
-    tb_details.append("S11: Williams%R überkauft ❌")
-else:
-    tb_details.append("S11: Williams%R neutral ❌")
-
-if obv_trend == "steigend" and vol_ratio >= 1.0:
-    tb_score += 1
-    tb_details.append("S12: OBV/Volumen bestaetigt ✓")
-else:
-    tb_details.append("S12: OBV/Volumen schwach ❌")
-
-if pd.notna(prev20_high) and price > prev20_high:
-    tb_score += 1
-    tb_details.append("S13: 20D Breakout ✓")
-elif pd.notna(prev20_low) and price < prev20_low:
-    tb_details.append("S13: 20D Breakdown ❌")
-else:
-    tb_details.append("S13: Range intakt ❌")
-
-if pd.notna(bb_upper) and price > bb_upper:
-    tb_score += 1
-    tb_details.append("S14: BB Breakout UP ✓")
-elif bb_squeeze:
-    tb_score += 1
-    tb_details.append("S14: BB Squeeze Achtung ✓")
-elif pd.notna(bb_lower) and price < bb_lower:
-    tb_details.append("S14: BB Breakout DOWN ❌")
-else:
-    tb_details.append("S14: BB neutral ❌")
-
-if pd.notna(target) and target > 0 and price > 0:
-    tb_potenzial = ((target - price) / price) * 100
-    if tb_potenzial > 15:
-        tb_score += 1
-        tb_details.append(f"S15: Target +{tb_potenzial:.1f}% ✓")
-    elif tb_potenzial < 0:
-        tb_score -= 1
-        tb_details.append(f"S15: Target -{abs(tb_potenzial):.1f}% ❌")
-
-current_month = datetime.now().month
-if current_month in [8, 9]:
-    tb_score -= 1
-    tb_details.append("S16: Seasonality schlecht (-1) ❌")
-elif current_month in [11, 12, 1]:
-    tb_score += 1
-    tb_details.append("S16: Seasonality stark (+1) ✓")
-else:
-    tb_details.append("S16: Seasonality neutral ❌")
-
-if crv >= 2.0:
-    tb_score += 1
-    tb_details.append("S17: CRV >= 2.0 ✓")
-elif crv < 1.5:
-    tb_details.append("S17: CRV schwach ❌")
-else:
-    tb_details.append("S17: CRV ok/neutral ❌")
-
 if earnings_warning:
     tb_score -= 3
     tb_details.insert(0, "⚠️ EARNINGS IN <7 TAGEN (Vorsicht!)")
 
+# Zusatzsignale: bewusst nicht im Referenzscore
+if 20 < rsi < 80:
+    tb_context.append("S6: Vola ok ✓")
+
+if macd_bull_cross:
+    tb_context.append("MACD Bull-Cross! 🚀")
+
+if smart_money_default:
+    tb_context.append("S8: Smart Money sammelt ein ✓")
+else:
+    tb_context.append("S8: Smart Money verkauft ❌")
+
+if adx > 25:
+    tb_context.append("S9: ADX>25 starker Trend ✓")
+else:
+    tb_context.append("S9: ADX<25 Seitwärts ❌")
+
+if stoch_k_v < 20 and stoch_d_v < 20 and stoch_k_v > stoch_d_v:
+    tb_context.append("S10: Stoch Oversold Cross ✓")
+elif stoch_k_v > 80:
+    tb_context.append("S10: Stoch überkauft ❌")
+else:
+    tb_context.append("S10: Stoch neutral ❌")
+
+if willr_v < -80:
+    tb_context.append("S11: Williams%R extrem Oversold ✓")
+elif willr_v > -20:
+    tb_context.append("S11: Williams%R überkauft ❌")
+else:
+    tb_context.append("S11: Williams%R neutral ❌")
+
+if obv_trend == "steigend" and vol_ratio >= 1.0:
+    tb_context.append("S12: OBV/Volumen bestaetigt ✓")
+else:
+    tb_context.append("S12: OBV/Volumen schwach ❌")
+
+if pd.notna(prev20_high) and price > prev20_high:
+    tb_context.append("S13: 20D Breakout ✓")
+elif pd.notna(prev20_low) and price < prev20_low:
+    tb_context.append("S13: 20D Breakdown ❌")
+else:
+    tb_context.append("S13: Range intakt ❌")
+
+if pd.notna(bb_upper) and price > bb_upper:
+    tb_context.append("S14: BB Breakout UP ✓")
+elif bb_squeeze:
+    tb_context.append("S14: BB Squeeze Achtung ✓")
+elif pd.notna(bb_lower) and price < bb_lower:
+    tb_context.append("S14: BB Breakout DOWN ❌")
+else:
+    tb_context.append("S14: BB neutral ❌")
+
+if pd.notna(target) and target > 0 and price > 0:
+    tb_potenzial = ((target - price) / price) * 100
+    if tb_potenzial > 15:
+        tb_context.append(f"S15: Target +{tb_potenzial:.1f}% ✓")
+    elif tb_potenzial < 0:
+        tb_context.append(f"S15: Target -{abs(tb_potenzial):.1f}% ❌")
+    else:
+        tb_context.append(f"S15: Target +{tb_potenzial:.1f}% neutral ❌")
+else:
+    tb_context.append("S15: Kein valides Target ❌")
+
+current_month = datetime.now().month
+if current_month in [8, 9]:
+    tb_context.append("S16: Seasonality schlecht (-1) ❌")
+elif current_month in [11, 12, 1]:
+    tb_context.append("S16: Seasonality stark (+1) ✓")
+else:
+    tb_context.append("S16: Seasonality neutral ❌")
+
+if crv >= 2.0:
+    tb_context.append("S17: CRV >= 2.0 ✓")
+elif crv < 1.5:
+    tb_context.append("S17: CRV schwach ❌")
+else:
+    tb_context.append("S17: CRV ok/neutral ❌")
+
 short_squeeze = pd.notna(short_pct) and short_pct > 0.12 and ret5 > 0 and vol_ratio > 1.2
 if short_squeeze:
-    tb_score += 1
-    tb_details.append("S18: 🚀 SHORT SQUEEZE POTENZIAL ✓")
+    tb_context.append("S18: 🚀 SHORT SQUEEZE POTENZIAL ✓")
 else:
-    tb_details.append("S18: kein Short-Squeeze-Signal ❌")
+    tb_context.append("S18: kein Short-Squeeze-Signal ❌")
 
 insider_trend = "NEUTRAL"
 if insider_trend == "BUY":
-    tb_score += 1
-    tb_details.append("S19: 👔 INSIDER KAUFEN ✓")
+    tb_context.append("S19: 👔 INSIDER KAUFEN ✓")
 elif insider_trend == "SELL":
-    tb_score -= 1
-    tb_details.append("S19: 👔 INSIDER VERKAUFEN ❌")
+    tb_context.append("S19: 👔 INSIDER VERKAUFEN ❌")
 else:
-    tb_details.append("S19: 👔 Insider neutral / keine Daten ❌")
+    tb_context.append("S19: 👔 Insider neutral / keine Daten ❌")
 
 if pd.notna(pe) and 0 < pe < 15:
-    tb_score += 1
-    tb_details.append(f"S20: 🟢 VALUE KGV ({pe:.1f}) ✓")
+    tb_context.append(f"S20: 🟢 VALUE KGV ({pe:.1f}) ✓")
 elif pd.notna(pe) and pe > 50:
-    tb_details.append(f"S20: 🔴 TEUER KGV>50 ({pe:.1f}) ❌")
+    tb_context.append(f"S20: 🔴 TEUER KGV>50 ({pe:.1f}) ❌")
+else:
+    tb_context.append(f"S20: Value neutral ({fmt_num(pe,1)}) ❌")
 
 tb_signal, tb_empf = tb_signal_label(tb_score)
 
@@ -692,8 +677,8 @@ stb_signal, stb_empf = tb_signal_label(stb_score)
 stb_text = ", ".join(stb_items) if stb_items else "keine positiven Kurzfrist-Signale"
 
 tb_details_text = "\n".join(tb_details)
+tb_context_text = "\n".join(tb_context)
 
-# strukturierte Ansicht
 rows = []
 for line in tb_details:
     if line.startswith("⚠️") or line.startswith("MACD "):
@@ -725,8 +710,8 @@ c6.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
 c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
 
 st.caption(
-    "Die App trennt jetzt drei Sichtweisen: Company/Core, Kurzfrist Core vs. Kurzfrist Hilfsboard und das volle additive TradingBoard. "
-    "So sieht man sofort, ob ein Wert kurzfristig tradbar ist, obwohl das breite Board noch hinterherhaengt oder umgekehrt."
+    "Die App trennt jetzt drei Sichtweisen: Company/Core, Kurzfrist Core vs. Kurzfrist Hilfsboard und einen dashboardnahen TradingBoard-Referenzscore. "
+    "Zusatzsignale werden separat als Kontext gefuehrt und verzerren den Board-Score nicht mehr."
 )
 
 st.divider()
@@ -806,8 +791,11 @@ with t3:
 
     st.dataframe(tb_df, hide_index=True, use_container_width=True)
 
-    st.markdown("**TradingBoard Details (1:1 Stil)**")
+    st.markdown("**TradingBoard Referenzscore**")
     st.text(tb_details_text)
+
+    st.markdown("**Board-Kontext (nicht im Score)**")
+    st.text(tb_context_text)
 
 with t4:
     st.markdown(
@@ -911,5 +899,5 @@ c5.metric("TradingBoard Urteil", tb_empf)
 
 st.caption(
     "Die App zeigt bewusst drei getrennte Sichtweisen: das strenge 23-Saeulen-Core-Modell, "
-    "die kurzfristige Hilfsboard-Ampel und das additive TradingBoard mit den originalnahen S-Zeilen."
+    "die kurzfristige Hilfsboard-Ampel und den dashboardnahen TradingBoard-Referenzscore mit getrenntem Kontextblock."
 )

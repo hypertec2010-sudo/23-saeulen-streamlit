@@ -8,7 +8,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="23-Saeulen-Modell v5.8b", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Capital-Hill-Score-Modell v5.8b", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>

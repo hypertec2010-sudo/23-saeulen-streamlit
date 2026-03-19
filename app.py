@@ -841,36 +841,44 @@ tb_tp2 = target if pd.notna(target) and target > tb_tp1 else tb_basispreis + (5.
 
 tb_details.append(f"S0: {price:.2f} {ccy}")
 
+if pd.notna(earnings_ts):
+    if days_earn < 0:
+        tb_details.append(f"S1 Earnings: vor {int(abs(days_earn))}d (Letzte Earnings am {sg_earn_txt})")
+    else:
+        tb_details.append(f"S1 Earnings: in {int(days_earn)}d ({sg_earn_txt})")
+else:
+    tb_details.append("S1 Earnings: kein Datum")
+
 if price > ma200:
     tb_score += 1
-    tb_details.append("S1: Über MA200 ✓")
+    tb_details.append("S2: Über MA200 ✓")
 else:
-    tb_details.append("S1: Unter MA200 ❌")
+    tb_details.append("S2: Unter MA200 ❌")
 
 if price > ma50:
     tb_score += 1
-    tb_details.append("S2: Über MA50 (+1) ✓")
+    tb_details.append("S3: Über MA50 (+1) ✓")
 else:
     tb_score -= 1
-    tb_details.append("S2: Unter MA50 (-1) ❌")
+    tb_details.append("S3: Unter MA50 (-1) ❌")
 
 if ma50 > ma200:
     tb_score += 1
-    tb_details.append("S3: Golden Cross ✓")
+    tb_details.append("S4: Golden Cross ✓")
 else:
-    tb_details.append("S3: Trendstruktur schwach ❌")
+    tb_details.append("S4: Trendstruktur schwach ❌")
 
 if 40 < rsi < 60 or rsi < 30:
     tb_score += 1
-    tb_details.append("S4: RSI konstruktiv ✓")
+    tb_details.append("S5: RSI konstruktiv ✓")
 else:
-    tb_details.append("S4: RSI hoch/niedrig ❌")
+    tb_details.append("S5: RSI hoch/niedrig ❌")
 
 if tb_perf > 5:
     tb_score += 1
-    tb_details.append(f"S5: +{tb_perf:.1f}% ✓")
+    tb_details.append(f"S6: +{tb_perf:.1f}% ✓")
 else:
-    tb_details.append(f"S5: {tb_perf:.1f}% ❌")
+    tb_details.append(f"S6: {tb_perf:.1f}% ❌")
 
 if macd_hist_current > macd_hist_prev:
     tb_score += 1
@@ -1045,11 +1053,15 @@ tb_df = pd.DataFrame(rows)
 st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")
 st.markdown(f"<div class='small-note'>Sektor: {sector} | Industrie: {industry}</div>", unsafe_allow_html=True)
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Kurs (Adj. Close)", f"{price:.2f} {ccy}", ts)
 c2.metric("Trend-Regime", regime, reg_amp)
-c3.metric("Earnings", sg_earn_txt, sg_earn)
-c4.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, "%"))
+c3.metric("Earnings-Datum", sg_earn_txt, sg_earn)
+if pd.notna(earnings_ts):
+    c4.metric("Earnings-Countdown", f"{int(days_earn)}d", sg_earn)
+else:
+    c4.metric("Earnings-Countdown", "kein Datum", sg_earn)
+c5.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, "%"))
 
 st.divider()
 
@@ -1276,3 +1288,4 @@ st.caption(
     "Die App zeigt bewusst drei getrennte Sichtweisen: das strenge 23-Saeulen-Core-Modell, "
     "die kurzfristige Hilfsboard-Ampel und den dashboardnahen TradingBoard-Referenzscore mit getrenntem Kontextblock."
 )
+

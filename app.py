@@ -256,31 +256,43 @@ def extract_analyst_data(ticker_obj, info):
 def extract_earnings_data(ticker_obj, info):
     info = dict(info or {})
 
+    # 1. Versuch: yfinance info dictionary
     ts = normalize_missing(info.get("earningsTimestamp"))
     if not pd.isna(ts):
         return info
 
+    # 2. Versuch: Ticker Calendar (oft zuverlässiger bei der neuen Yahoo-Struktur)
+    try:
+        cal = ticker_obj.calendar
+        if isinstance(cal, dict) and "Earnings Date" in cal:
+            dates = cal["Earnings Date"]
+            if isinstance(dates, list) and len(dates) > 0:
+                dt = pd.to_datetime(dates[0], errors="coerce", utc=True)
+                if pd.notna(dt):
+                    info["earningsTimestamp"] = int(dt.timestamp())
+                    return info
+    except Exception:
+        pass
+
+    # 3. Versuch: get_earnings_dates Fallback
     try:
         ed = ticker_obj.get_earnings_dates(limit=8)
-    except Exception:
-        ed = None
-
-    if ed is not None and not getattr(ed, "empty", True):
-        idx = ed.index
-        try:
-            idx = pd.to_datetime(idx, errors="coerce", utc=True)
-        except Exception:
+        if ed is not None and not getattr(ed, "empty", True):
+            idx = ed.index
             idx = pd.to_datetime(pd.Series(idx), errors="coerce", utc=True)
-        now_utc = pd.Timestamp.now(tz="UTC")
-        future_idx = [x for x in idx if pd.notna(x) and x >= now_utc]
-        chosen = min(future_idx) if future_idx else None
-        if chosen is None:
-            past_idx = [x for x in idx if pd.notna(x)]
-            chosen = max(past_idx) if past_idx else None
-        if chosen is not None and pd.notna(chosen):
-            info["earningsTimestamp"] = int(chosen.timestamp())
+            now_utc = pd.Timestamp.now(tz="UTC")
+            future_idx = [x for x in idx if pd.notna(x) and x >= now_utc]
+            chosen = min(future_idx) if future_idx else None
+            if chosen is None:
+                past_idx = [x for x in idx if pd.notna(x)]
+                chosen = max(past_idx) if past_idx else None
+            if chosen is not None and pd.notna(chosen):
+                info["earningsTimestamp"] = int(chosen.timestamp())
+    except Exception:
+        pass
 
     return info
+
 
 
 def tb_signal_label(score):

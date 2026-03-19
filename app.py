@@ -8,7 +8,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="23-Saeulen-Modell v5.8a", page_icon="📊", layout="wide")
+st.set_page_config(page_title="23-Saeulen-Modell v5.8b", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -164,6 +164,97 @@ def analyst_label(rec_key):
         "strong_sell": "Starker Verkauf",
     }
     return mapping.get(str(rec_key).lower(), str(rec_key))
+
+
+def extract_analyst_data(ticker_obj, info):
+    info = dict(info or {})
+
+    try:
+        recs = getattr(ticker_obj, "recommendations", None)
+    except Exception:
+        recs = None
+
+    if recs is not None and not getattr(recs, "empty", True):
+        cols = {str(c).lower(): c for c in recs.columns}
+        strong_buy_col = cols.get("strongbuy") or cols.get("strong_buy")
+        buy_col = cols.get("buy")
+        hold_col = cols.get("hold")
+        sell_col = cols.get("sell")
+        strong_sell_col = cols.get("strongsell") or cols.get("strong_sell")
+
+        if all(c is not None for c in [strong_buy_col, buy_col, hold_col, sell_col, strong_sell_col]):
+            row = recs.iloc[-1]
+            sb = pd.to_numeric(row.get(strong_buy_col), errors="coerce")
+            b = pd.to_numeric(row.get(buy_col), errors="coerce")
+            h = pd.to_numeric(row.get(hold_col), errors="coerce")
+            s = pd.to_numeric(row.get(sell_col), errors="coerce")
+            ss = pd.to_numeric(row.get(strong_sell_col), errors="coerce")
+            vals = [sb, b, h, s, ss]
+            if sum(pd.notna(v) for v in vals) >= 3:
+                sb = 0 if pd.isna(sb) else float(sb)
+                b = 0 if pd.isna(b) else float(b)
+                h = 0 if pd.isna(h) else float(h)
+                s = 0 if pd.isna(s) else float(s)
+                ss = 0 if pd.isna(ss) else float(ss)
+                total = sb + b + h + s + ss
+                if total > 0:
+                    mean = (1*sb + 2*b + 3*h + 4*s + 5*ss) / total
+                    if pd.isna(info.get("recommendationMean")):
+                        info["recommendationMean"] = mean
+                    if pd.isna(info.get("numberOfAnalystOpinions")):
+                        info["numberOfAnalystOpinions"] = int(total)
+                    if pd.isna(info.get("recommendationKey")) or str(info.get("recommendationKey","")).lower() in {"", "none", "nan"}:
+                        if mean <= 1.5:
+                            info["recommendationKey"] = "strong_buy"
+                        elif mean <= 2.5:
+                            info["recommendationKey"] = "buy"
+                        elif mean <= 3.5:
+                            info["recommendationKey"] = "hold"
+                        elif mean <= 4.5:
+                            info["recommendationKey"] = "sell"
+                        else:
+                            info["recommendationKey"] = "strong_sell"
+
+    if pd.isna(info.get("targetMeanPrice")):
+        try:
+            tinfo = ticker_obj.get_info() or {}
+            v = normalize_missing(tinfo.get("targetMeanPrice"))
+            if not pd.isna(v):
+                info["targetMeanPrice"] = v
+        except Exception:
+            pass
+
+    return info
+
+
+def extract_earnings_data(ticker_obj, info):
+    info = dict(info or {})
+
+    ts = normalize_missing(info.get("earningsTimestamp"))
+    if not pd.isna(ts):
+        return info
+
+    try:
+        ed = ticker_obj.get_earnings_dates(limit=8)
+    except Exception:
+        ed = None
+
+    if ed is not None and not getattr(ed, "empty", True):
+        idx = ed.index
+        try:
+            idx = pd.to_datetime(idx, errors="coerce", utc=True)
+        except Exception:
+            idx = pd.to_datetime(pd.Series(idx), errors="coerce", utc=True)
+        now_utc = pd.Timestamp.now(tz="UTC")
+        future_idx = [x for x in idx if pd.notna(x) and x >= now_utc]
+        chosen = min(future_idx) if future_idx else None
+        if chosen is None:
+            past_idx = [x for x in idx if pd.notna(x)]
+            chosen = max(past_idx) if past_idx else None
+        if chosen is not None and pd.notna(chosen):
+            info["earningsTimestamp"] = int(chosen.timestamp())
+
+    return info
 
 
 def tb_signal_label(score):
@@ -379,6 +470,8 @@ def load_data(ticker):
         pass
 
     info = derive_fundamentals_from_statements(t, info)
+    info = extract_analyst_data(t, info)
+    info = extract_earnings_data(t, info)
 
     try:
         info["_fund_fields_loaded"] = int(sum(pd.notna(normalize_missing(info.get(k))) for k in [
@@ -396,7 +489,7 @@ def load_data(ticker):
 
 with st.sidebar:
     st.title("📊 23-Saeulen-Modell")
-    st.caption("v5.8a | Core + TradingBoard Referenzscore + Kurzfrist Hilfsboard + Fundamental-Fallback")
+    st.caption("v5.8b | Core + TradingBoard Referenzscore + Analysten- und Earnings-Fallback")
     st.divider()
 
     ticker = st.text_input(
@@ -433,7 +526,7 @@ with st.sidebar:
 
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 23-Saeulen-Modell v5.8a")
+st.title("📊 23-Saeulen-Modell v5.8b")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
     "Die Core-Saeulen bleiben unveraendert; das TradingBoard ist jetzt als dashboardnaher Referenzscore modelliert, waehrend Zusatzsignale getrennt als Kontext angezeigt werden."
@@ -558,11 +651,15 @@ elif "1-2" in horizon:
 else:
     hd, ws, wc = 730, 0.15, 0.85
 
-earnings_ts = info.get("earningsTimestamp")
-days_earn = (earnings_ts - datetime.now(timezone.utc).timestamp()) / 86400 if earnings_ts else 999
+earnings_ts = normalize_missing(info.get("earningsTimestamp"))
+days_earn = (earnings_ts - datetime.now(timezone.utc).timestamp()) / 86400 if pd.notna(earnings_ts) else 999
 sg_earn = "🟢" if days_earn > 30 else ("🟡" if days_earn > 7 else "🔴")
-sg_earn_txt = f"Earnings in ~{int(days_earn)}d" if days_earn < 999 else "kein Datum"
-earnings_warning = days_earn <= 7
+if pd.notna(earnings_ts):
+    earnings_dt = datetime.fromtimestamp(float(earnings_ts), tz=timezone.utc)
+    sg_earn_txt = earnings_dt.strftime("%d.%m.%Y")
+else:
+    sg_earn_txt = "kein Datum"
+earnings_warning = pd.notna(earnings_ts) and days_earn <= 7
 
 if price > ma50 > ma150 > ma200:
     regime, reg_amp = "UPTREND", "🟢"
@@ -571,7 +668,6 @@ elif price < ma50 < ma150 < ma200:
 else:
     regime, reg_amp = "SIDEWAYS", "🟡"
 
-# Core unveraendert
 s3 = 100 if price > ma20 > ma50 > ma150 else (15 if price < ma20 < ma50 < ma150 else 52)
 s3a = ampel(s3)
 s3t = "Trend-Stack sauber" if s3 >= 80 else ("Trend gemischt" if s3 >= 45 else "Trend schwach")
@@ -657,9 +753,9 @@ rec_mean = info.get("recommendationMean", np.nan)
 analysts = info.get("numberOfAnalystOpinions", np.nan)
 
 sentiment_parts = []
-sentiment_parts.append(88 if rec in ["strong_buy", "buy"] else (65 if rec in ["hold"] else 40))
-sentiment_parts.append(84 if pd.notna(analysts) and analysts >= 20 else (72 if pd.notna(analysts) and analysts >= 10 else (58 if pd.notna(analysts) and analysts >= 5 else 48)))
-sentiment_parts.append(84 if pd.notna(rec_mean) and rec_mean <= 2.0 else (68 if pd.notna(rec_mean) and rec_mean <= 2.5 else (55 if pd.notna(rec_mean) and rec_mean <= 3.0 else 42)))
+sentiment_parts.append(88 if rec in ["strong_buy", "buy"] else (65 if rec in ["hold"] else 50))
+sentiment_parts.append(84 if pd.notna(analysts) and analysts >= 20 else (72 if pd.notna(analysts) and analysts >= 10 else (58 if pd.notna(analysts) and analysts >= 5 else (52 if pd.notna(target) else 48))))
+sentiment_parts.append(84 if pd.notna(rec_mean) and rec_mean <= 2.0 else (68 if pd.notna(rec_mean) and rec_mean <= 2.5 else (55 if pd.notna(rec_mean) and rec_mean <= 3.0 else (50 if pd.notna(target) else 42))))
 sentiment_score = round(np.mean(sentiment_parts))
 
 risk_parts = []
@@ -721,7 +817,7 @@ hmap = {
     "Sehr langfristig": very_long_term_score,
 }
 
-if days_earn < 7:
+if pd.notna(earnings_ts) and days_earn < 7:
     emp, conv = "VETO - Earnings < 7 Tage", "-"
 elif investment >= 78 and kb >= 3:
     emp, conv = "BUY / ACCUMULATE", "HIGH"
@@ -732,7 +828,6 @@ elif investment >= 52:
 else:
     emp, conv = "AVOID / WAIT", "LOW"
 
-# TradingBoard Referenzscore (dashboard-nah)
 tb_score = 0
 tb_details = []
 tb_context = []
@@ -787,7 +882,6 @@ if earnings_warning:
     tb_score -= 3
     tb_details.insert(0, "⚠️ EARNINGS IN <7 TAGEN (Vorsicht!)")
 
-# Zusatzsignale: bewusst nicht im Referenzscore
 if 20 < rsi < 80:
     tb_context.append("S6: Vola ok ✓")
 
@@ -888,7 +982,6 @@ else:
 
 tb_signal, tb_empf = tb_signal_label(tb_score)
 
-# Kurzfrist-Hilfsboard nur aus kurzfristigen Trading-Signalen
 stb_score = 0
 stb_items = []
 
@@ -1013,9 +1106,9 @@ with t1:
     for i, (lab, ico, score, com) in enumerate(items):
         with cols[i % 2]:
             st.markdown(
-                f'<div class=\"metric-card {card_class(score)}\"><b>{ico} {lab}</b>'
-                f'<span style=\"float:right;font-size:1.3rem;font-weight:700\">{score}</span>'
-                f'<br><small style=\"color:#aaa\">{com}</small></div>',
+                f'<div class="metric-card {card_class(score)}"><b>{ico} {lab}</b>'
+                f'<span style="float:right;font-size:1.3rem;font-weight:700">{score}</span>'
+                f'<br><small style="color:#aaa">{com}</small></div>',
                 unsafe_allow_html=True,
             )
 
@@ -1101,7 +1194,7 @@ with t4:
                     f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | Gewinnwachstum je Aktie {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')} | 6-Monats-Performance {fmt_num(ret126,1,'%')}",
                     f"KGV {fmt_num(pe,1)} | PEG-Verhältnis {fmt_num(peg,2)} | Kurs-Umsatz-Verhältnis {fmt_num(ps,2)} | Analysten-Potenzial {fmt_num(upside,1,'%')}",
                     f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | Verschuldung zu Eigenkapital {fmt_num(debt_to_equity,1)}",
-                    f"Analystenmeinung {rec_label} | Anzahl Analysten {fmt_num(analysts,0)} | Durchschnittliche Empfehlung {fmt_num(rec_mean,2)}",
+                    f"Analystenmeinung {rec_label} | Anzahl Analysten {fmt_num(analysts,0)} | Durchschnittliche Empfehlung {fmt_num(rec_mean,2)} | Kursziel {fmt_num(target,2)}",
                     f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR in Prozent {fmt_num(atr_pct,1,'%')}",
                 ],
             }

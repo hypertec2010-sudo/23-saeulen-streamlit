@@ -8,7 +8,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="23-Saeulen-Modell v5.8", page_icon="📊", layout="wide")
+st.set_page_config(page_title="23-Saeulen-Modell v5.8a", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -176,20 +176,227 @@ def tb_signal_label(score):
     return "SHORT", "STOPP PRÜFEN"
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+def normalize_missing(v):
+    if v is None:
+        return np.nan
+    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null"}:
+        return np.nan
+    try:
+        if pd.isna(v):
+            return np.nan
+    except Exception:
+        pass
+    return v
+
+
+def merge_info(base, extra):
+    base = dict(base or {})
+    for k, v in dict(extra or {}).items():
+        if k not in base or pd.isna(base.get(k)) or base.get(k) in [None, "", "N/A"]:
+            nv = normalize_missing(v)
+            if not pd.isna(nv):
+                base[k] = nv
+    return base
+
+
+def first_existing_row(df, names):
+    if df is None or getattr(df, "empty", True):
+        return None
+    for name in names:
+        if name in df.index:
+            row = df.loc[name]
+            if isinstance(row, pd.DataFrame):
+                row = row.iloc[0]
+            return pd.to_numeric(row, errors="coerce")
+    return None
+
+
+def latest_valid(series_like):
+    if series_like is None:
+        return np.nan
+    s = pd.to_numeric(pd.Series(series_like), errors="coerce").dropna()
+    return float(s.iloc[0]) if len(s) else np.nan
+
+
+def previous_valid(series_like):
+    if series_like is None:
+        return np.nan
+    s = pd.to_numeric(pd.Series(series_like), errors="coerce").dropna()
+    return float(s.iloc[1]) if len(s) > 1 else np.nan
+
+
+def derive_fundamentals_from_statements(ticker_obj, info):
+    info = dict(info or {})
+
+    try:
+        income = getattr(ticker_obj, "income_stmt", None)
+    except Exception:
+        income = None
+    try:
+        q_income = getattr(ticker_obj, "quarterly_income_stmt", None)
+    except Exception:
+        q_income = None
+    try:
+        balance = getattr(ticker_obj, "balance_sheet", None)
+    except Exception:
+        balance = None
+    try:
+        q_balance = getattr(ticker_obj, "quarterly_balance_sheet", None)
+    except Exception:
+        q_balance = None
+    try:
+        cashflow = getattr(ticker_obj, "cashflow", None)
+    except Exception:
+        cashflow = None
+    try:
+        q_cashflow = getattr(ticker_obj, "quarterly_cashflow", None)
+    except Exception:
+        q_cashflow = None
+
+    revenue_row = first_existing_row(income, ["Total Revenue", "Operating Revenue", "Revenue"])
+    op_income_row = first_existing_row(income, ["Operating Income", "EBIT", "OperatingIncome"])
+    net_income_row = first_existing_row(income, ["Net Income", "NetIncome", "Net Income Common Stockholders"])
+    gross_profit_row = first_existing_row(income, ["Gross Profit", "GrossProfit"])
+    diluted_eps_row = first_existing_row(income, ["Diluted EPS", "Basic EPS", "DilutedEPS", "BasicEPS"])
+
+    q_revenue_row = first_existing_row(q_income, ["Total Revenue", "Operating Revenue", "Revenue"])
+    q_net_income_row = first_existing_row(q_income, ["Net Income", "NetIncome", "Net Income Common Stockholders"])
+    q_diluted_eps_row = first_existing_row(q_income, ["Diluted EPS", "Basic EPS", "DilutedEPS", "BasicEPS"])
+
+    total_assets_row = first_existing_row(balance, ["Total Assets", "TotalAssets"])
+    total_equity_row = first_existing_row(balance, ["Stockholders Equity", "Total Stockholder Equity", "Common Stock Equity", "Total Equity Gross Minority Interest"])
+    current_assets_row = first_existing_row(balance, ["Current Assets", "Total Current Assets", "CurrentAssets"])
+    current_liab_row = first_existing_row(balance, ["Current Liabilities", "Total Current Liabilities", "CurrentLiabilities"])
+    inventory_row = first_existing_row(balance, ["Inventory", "Inventories"])
+    debt_row = first_existing_row(balance, ["Total Debt", "TotalDebt", "Long Term Debt And Capital Lease Obligation", "Long Term Debt"])
+
+    q_current_assets_row = first_existing_row(q_balance, ["Current Assets", "Total Current Assets", "CurrentAssets"])
+    q_current_liab_row = first_existing_row(q_balance, ["Current Liabilities", "Total Current Liabilities", "CurrentLiabilities"])
+    q_inventory_row = first_existing_row(q_balance, ["Inventory", "Inventories"])
+    q_total_equity_row = first_existing_row(q_balance, ["Stockholders Equity", "Total Stockholder Equity", "Common Stock Equity", "Total Equity Gross Minority Interest"])
+    q_total_assets_row = first_existing_row(q_balance, ["Total Assets", "TotalAssets"])
+    q_debt_row = first_existing_row(q_balance, ["Total Debt", "TotalDebt", "Long Term Debt And Capital Lease Obligation", "Long Term Debt"])
+
+    op_cf_row = first_existing_row(cashflow, ["Operating Cash Flow", "OperatingCashFlow", "Cash Flow From Continuing Operating Activities"])
+    fcf_row = first_existing_row(cashflow, ["Free Cash Flow", "FreeCashFlow"])
+
+    revenue = latest_valid(revenue_row)
+    op_income = latest_valid(op_income_row)
+    net_income = latest_valid(net_income_row)
+    gross_profit = latest_valid(gross_profit_row)
+    diluted_eps = latest_valid(diluted_eps_row)
+
+    prev_revenue = previous_valid(revenue_row)
+    prev_net_income = previous_valid(net_income_row)
+    prev_eps = previous_valid(diluted_eps_row)
+
+    q_revenue = latest_valid(q_revenue_row)
+    q_prev_revenue = previous_valid(q_revenue_row)
+    q_net_income = latest_valid(q_net_income_row)
+    q_prev_net_income = previous_valid(q_net_income_row)
+    q_eps = latest_valid(q_diluted_eps_row)
+    q_prev_eps = previous_valid(q_diluted_eps_row)
+
+    total_assets = latest_valid(total_assets_row)
+    total_equity = latest_valid(total_equity_row)
+    current_assets = latest_valid(q_current_assets_row if q_current_assets_row is not None else current_assets_row)
+    current_liab = latest_valid(q_current_liab_row if q_current_liab_row is not None else current_liab_row)
+    inventory = latest_valid(q_inventory_row if q_inventory_row is not None else inventory_row)
+    debt = latest_valid(q_debt_row if q_debt_row is not None else debt_row)
+    q_total_assets = latest_valid(q_total_assets_row)
+    q_total_equity = latest_valid(q_total_equity_row)
+
+    operating_cf = latest_valid(op_cf_row)
+    free_cf = latest_valid(fcf_row)
+
+    if pd.isna(info.get("profitMargins")) and pd.notna(net_income) and pd.notna(revenue) and revenue != 0:
+        info["profitMargins"] = net_income / revenue
+    if pd.isna(info.get("operatingMargins")) and pd.notna(op_income) and pd.notna(revenue) and revenue != 0:
+        info["operatingMargins"] = op_income / revenue
+    if pd.isna(info.get("grossMargins")) and pd.notna(gross_profit) and pd.notna(revenue) and revenue != 0:
+        info["grossMargins"] = gross_profit / revenue
+
+    eq_for_roe = q_total_equity if pd.notna(q_total_equity) else total_equity
+    assets_for_roa = q_total_assets if pd.notna(q_total_assets) else total_assets
+    if pd.isna(info.get("returnOnEquity")) and pd.notna(net_income) and pd.notna(eq_for_roe) and eq_for_roe != 0:
+        info["returnOnEquity"] = net_income / eq_for_roe
+    if pd.isna(info.get("returnOnAssets")) and pd.notna(net_income) and pd.notna(assets_for_roa) and assets_for_roa != 0:
+        info["returnOnAssets"] = net_income / assets_for_roa
+
+    rev_growth = np.nan
+    if pd.notna(q_revenue) and pd.notna(q_prev_revenue) and q_prev_revenue != 0:
+        rev_growth = q_revenue / q_prev_revenue - 1
+    elif pd.notna(revenue) and pd.notna(prev_revenue) and prev_revenue != 0:
+        rev_growth = revenue / prev_revenue - 1
+    if pd.isna(info.get("revenueGrowth")) and pd.notna(rev_growth):
+        info["revenueGrowth"] = rev_growth
+
+    earn_growth = np.nan
+    if pd.notna(q_eps) and pd.notna(q_prev_eps) and q_prev_eps != 0:
+        earn_growth = q_eps / q_prev_eps - 1
+    elif pd.notna(q_net_income) and pd.notna(q_prev_net_income) and q_prev_net_income != 0:
+        earn_growth = q_net_income / q_prev_net_income - 1
+    elif pd.notna(diluted_eps) and pd.notna(prev_eps) and prev_eps != 0:
+        earn_growth = diluted_eps / prev_eps - 1
+    elif pd.notna(net_income) and pd.notna(prev_net_income) and prev_net_income != 0:
+        earn_growth = net_income / prev_net_income - 1
+    if pd.isna(info.get("earningsGrowth")) and pd.notna(earn_growth):
+        info["earningsGrowth"] = earn_growth
+
+    if pd.isna(info.get("currentRatio")) and pd.notna(current_assets) and pd.notna(current_liab) and current_liab != 0:
+        info["currentRatio"] = current_assets / current_liab
+    if pd.isna(info.get("quickRatio")) and pd.notna(current_assets) and pd.notna(current_liab) and current_liab != 0:
+        inv = inventory if pd.notna(inventory) else 0
+        info["quickRatio"] = (current_assets - inv) / current_liab
+    if pd.isna(info.get("debtToEquity")) and pd.notna(debt) and pd.notna(eq_for_roe) and eq_for_roe != 0:
+        info["debtToEquity"] = debt / eq_for_roe * 100
+
+    if pd.isna(info.get("operatingCashflow")) and pd.notna(operating_cf):
+        info["operatingCashflow"] = operating_cf
+    if pd.isna(info.get("freeCashflow")) and pd.notna(free_cf):
+        info["freeCashflow"] = free_cf
+
+    return info
+
+
+@st.cache_data(ttl=120, show_spinner=False)
 def load_data(ticker):
     t = yf.Ticker(ticker)
     hist = t.history(period="3y", auto_adjust=True)
+
+    info = {}
     try:
-        info = t.info or {}
+        info = merge_info(info, getattr(t, "fast_info", {}) or {})
     except Exception:
-        info = {}
+        pass
+    try:
+        info = merge_info(info, t.get_info() or {})
+    except Exception:
+        pass
+    try:
+        info = merge_info(info, t.info or {})
+    except Exception:
+        pass
+
+    info = derive_fundamentals_from_statements(t, info)
+
+    try:
+        info["_fund_fields_loaded"] = int(sum(pd.notna(normalize_missing(info.get(k))) for k in [
+            "profitMargins", "operatingMargins", "grossMargins", "returnOnEquity", "returnOnAssets",
+            "revenueGrowth", "earningsGrowth", "currentRatio", "quickRatio", "debtToEquity",
+            "freeCashflow", "operatingCashflow", "forwardPE", "pegRatio", "priceToSalesTrailing12Months",
+            "priceToBook", "beta", "shortPercentOfFloat", "recommendationMean",
+            "numberOfAnalystOpinions", "targetMeanPrice"
+        ]))
+    except Exception:
+        info["_fund_fields_loaded"] = 0
+
     return hist, info
 
 
 with st.sidebar:
     st.title("📊 23-Saeulen-Modell")
-    st.caption("v5.8 | Core + TradingBoard Referenzscore + Kurzfrist Hilfsboard")
+    st.caption("v5.8a | Core + TradingBoard Referenzscore + Kurzfrist Hilfsboard + Fundamental-Fallback")
     st.divider()
 
     ticker = st.text_input(
@@ -220,9 +427,13 @@ with st.sidebar:
     strict_mode = st.checkbox("Strenges 23-Saeulen-Mapping", value=True)
 
     st.divider()
+    if st.button("Cache leeren", use_container_width=True):
+        st.cache_data.clear()
+        st.success("Cache geleert. Bitte Analyse neu starten.")
+
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 23-Saeulen-Modell v5.8")
+st.title("📊 23-Saeulen-Modell v5.8a")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
     "Die Core-Saeulen bleiben unveraendert; das TradingBoard ist jetzt als dashboardnaher Referenzscore modelliert, waehrend Zusatzsignale getrennt als Kontext angezeigt werden."
@@ -411,6 +622,8 @@ fundamental_fields = [
     info.get("numberOfAnalystOpinions", np.nan), target
 ]
 fund_cov = known_ratio(fundamental_fields)
+fund_fields_loaded = int(info.get("_fund_fields_loaded", 0) or 0)
+fund_data_warning = fund_cov < 0.35
 
 quality_parts = []
 quality_parts.append(90 if pd.notna(profit_margin) and profit_margin > 0.20 else (75 if pd.notna(profit_margin) and profit_margin > 0.10 else (55 if pd.notna(profit_margin) and profit_margin > 0 else 40)))
@@ -747,6 +960,16 @@ c4.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, 
 
 st.divider()
 
+if fund_data_warning:
+    st.warning(
+        f"Fundamentaldaten nur teilweise geladen ({fund_cov*100:.0f}% Abdeckung, {fund_fields_loaded}/21 Felder). "
+        "Der Company Quality Score kann dadurch zu niedrig ausfallen."
+    )
+elif fund_cov < 0.55:
+    st.info(
+        f"Fundamentaldaten teilweise vorhanden ({fund_cov*100:.0f}% Abdeckung, {fund_fields_loaded}/21 Felder)."
+    )
+
 st.subheader("Scores")
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 c1.metric("Company Quality", f"{company}/100", ampel(company))
@@ -758,8 +981,8 @@ c6.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
 c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
 
 st.caption(
-    "Die App trennt jetzt drei Sichtweisen: Company/Core, Kurzfrist Core vs. Kurzfrist Hilfsboard und einen dashboardnahen TradingBoard-Referenzscore. "
-    "Zusatzsignale werden separat als Kontext gefuehrt und verzerren den Board-Score nicht mehr."
+    "Die App trennt jetzt drei Sichtweisen: Company/Core, Kurzfrist Core vs. Kurzfrist Hilfsboard und das volle additive TradingBoard. "
+    "So sieht man sofort, ob ein Wert kurzfristig tradbar ist, obwohl das breite Board noch hinterherhaengt oder umgekehrt."
 )
 
 st.markdown("### Scores verständlich erklärt")
@@ -790,9 +1013,9 @@ with t1:
     for i, (lab, ico, score, com) in enumerate(items):
         with cols[i % 2]:
             st.markdown(
-                f'<div class="metric-card {card_class(score)}"><b>{ico} {lab}</b>'
-                f'<span style="float:right;font-size:1.3rem;font-weight:700">{score}</span>'
-                f'<br><small style="color:#aaa">{com}</small></div>',
+                f'<div class=\"metric-card {card_class(score)}\"><b>{ico} {lab}</b>'
+                f'<span style=\"float:right;font-size:1.3rem;font-weight:700\">{score}</span>'
+                f'<br><small style=\"color:#aaa\">{com}</small></div>',
                 unsafe_allow_html=True,
             )
 
@@ -858,7 +1081,7 @@ with t3:
 
 with t4:
     st.markdown(
-        f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}%</div>",
+        f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}% | Geladene Felder: {fund_fields_loaded}/21</div>",
         unsafe_allow_html=True
     )
 
@@ -960,4 +1183,3 @@ st.caption(
     "Die App zeigt bewusst drei getrennte Sichtweisen: das strenge 23-Saeulen-Core-Modell, "
     "die kurzfristige Hilfsboard-Ampel und den dashboardnahen TradingBoard-Referenzscore mit getrenntem Kontextblock."
 )
-

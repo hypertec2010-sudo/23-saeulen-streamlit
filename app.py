@@ -488,7 +488,7 @@ def load_data(ticker):
 
 
 with st.sidebar:
-    st.title("📊 23-Saeulen-Modell")
+    st.title("📊 Capital-Hill-Score-Modell v5.8b")
     st.caption("v5.8b | Core + TradingBoard Referenzscore + Analysten- und Earnings-Fallback")
     st.divider()
 

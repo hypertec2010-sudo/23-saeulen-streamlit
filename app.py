@@ -526,7 +526,7 @@ with st.sidebar:
 
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 23-Saeulen-Modell v5.8b")
+st.title("📊 Capital-Hill-Score-Modell v5.8b")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
     "Die Core-Saeulen bleiben unveraendert; das TradingBoard ist jetzt als dashboardnaher Referenzscore modelliert, waehrend Zusatzsignale getrennt als Kontext angezeigt werden."

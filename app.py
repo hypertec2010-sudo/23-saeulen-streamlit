@@ -321,14 +321,25 @@ def normalize_missing(v):
     except Exception:
         pass
     return v
-
+def is_missing_scalar(v):
+    if v is None:
+        return True
+    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null", "n/a"}:
+        return True
+    try:
+        if np.isscalar(v) and pd.isna(v):
+            return True
+    except Exception:
+        pass
+    return False
 
 def merge_info(base, extra):
     base = dict(base or {})
     for k, v in dict(extra or {}).items():
-        if k not in base or pd.isna(base.get(k)) or base.get(k) in [None, "", "N/A"]:
+        cur = base.get(k)
+        if k not in base or is_missing_scalar(cur):
             nv = normalize_missing(v)
-            if not pd.isna(nv):
+            if not is_missing_scalar(nv):
                 base[k] = nv
     return base
 
@@ -695,14 +706,32 @@ else:
     hd, ws, wc = 730, 0.15, 0.85
 
 earnings_ts = normalize_missing(info.get("earningsTimestamp"))
-days_earn = (earnings_ts - datetime.now(timezone.utc).timestamp()) / 86400 if pd.notna(earnings_ts) else 999
-sg_earn = "🟢" if days_earn > 30 else ("🟡" if days_earn > 7 else "🔴")
+
+if pd.notna(earnings_ts):
+    days_earn = (float(earnings_ts) - datetime.now(timezone.utc).timestamp()) / 86400
+else:
+    days_earn = np.nan
+
+has_upcoming_earnings = pd.notna(days_earn) and days_earn >= 0
+has_past_earnings = pd.notna(days_earn) and days_earn < 0
+
+if has_upcoming_earnings:
+    sg_earn = "🟢" if days_earn > 30 else ("🟡" if days_earn > 7 else "🔴")
+elif has_past_earnings:
+    sg_earn = "🟡"
+else:
+    sg_earn = "⚪"
+
 if pd.notna(earnings_ts):
     earnings_dt = datetime.fromtimestamp(float(earnings_ts), tz=timezone.utc)
-    sg_earn_txt = earnings_dt.strftime("%d.%m.%Y")
+    if has_upcoming_earnings:
+        sg_earn_txt = earnings_dt.strftime("%d.%m.%Y")
+    else:
+        sg_earn_txt = f"Letzte Earnings: {earnings_dt.strftime('%d.%m.%Y')}"
 else:
     sg_earn_txt = "kein Datum"
-earnings_warning = pd.notna(earnings_ts) and days_earn <= 7
+
+earnings_warning = has_upcoming_earnings and days_earn <= 7
 
 if price > ma50 > ma150 > ma200:
     regime, reg_amp = "UPTREND", "🟢"
@@ -860,7 +889,7 @@ hmap = {
     "Sehr langfristig": very_long_term_score,
 }
 
-if pd.notna(earnings_ts) and days_earn < 7:
+if has_upcoming_earnings and days_earn < 7:
     emp, conv = "VETO - Earnings < 7 Tage", "-"
 elif investment >= 78 and kb >= 3:
     emp, conv = "BUY / ACCUMULATE", "HIGH"
@@ -1100,8 +1129,12 @@ c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Kurs (Adj. Close)", f"{price:.2f} {ccy}", ts)
 c2.metric("Trend-Regime", regime, reg_amp)
 c3.metric("Earnings-Datum", sg_earn_txt, sg_earn)
-if pd.notna(earnings_ts):
+if has_upcoming_earnings:
     c4.metric("Earnings-Countdown", f"{int(days_earn)}d", sg_earn)
+elif has_past_earnings:
+    c4.metric("Earnings-Countdown", "vorbei", sg_earn)
+else:
+    c4.metric("Earnings-Countdown", "kein Datum", sg_earn)
 else:
     c4.metric("Earnings-Countdown", "kein Datum", sg_earn)
 c5.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, "%"))

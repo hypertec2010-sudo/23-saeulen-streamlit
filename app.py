@@ -1135,8 +1135,6 @@ elif has_past_earnings:
     c4.metric("Earnings-Countdown", "vorbei", sg_earn)
 else:
     c4.metric("Earnings-Countdown", "kein Datum", sg_earn)
-else:
-    c4.metric("Earnings-Countdown", "kein Datum", sg_earn)
 c5.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, "%"))
 
 st.divider()

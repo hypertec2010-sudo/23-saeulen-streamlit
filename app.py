@@ -1,12 +1,22 @@
 # -*- coding: utf-8 -*-
+import warnings
+from datetime import datetime, timezone, date, timedelta
+
+import numpy as np
+import pandas as pd
 import streamlit as st
 import yfinance as yf
-import pandas as pd
-import numpy as np
-from datetime import datetime, timezone, date, timedelta
-import warnings
 
-import streamlit as st
+warnings.filterwarnings("ignore")
+
+APP_VERSION = "v5.8d"
+
+st.set_page_config(
+    page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
+    page_icon="📊",
+    layout="wide"
+)
+
 
 def check_password():
     def password_entered():
@@ -25,21 +35,9 @@ def check_password():
         return False
     return True
 
+
 if not check_password():
     st.stop()
-
-# Ab hier kommt dein normaler Code (st.set_page_config etc.)
-
-
-warnings.filterwarnings("ignore")
-
-APP_VERSION = "v5.8c"
-
-st.set_page_config(
-    page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
-    page_icon="📊",
-    layout="wide"
-)
 
 st.markdown("""
 <style>
@@ -197,6 +195,43 @@ def analyst_label(rec_key):
     return mapping.get(str(rec_key).lower(), str(rec_key))
 
 
+def normalize_missing(v):
+    if v is None:
+        return np.nan
+    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null"}:
+        return np.nan
+    try:
+        if pd.isna(v):
+            return np.nan
+    except Exception:
+        pass
+    return v
+
+
+def is_missing_scalar(v):
+    if v is None:
+        return True
+    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null", "n/a"}:
+        return True
+    try:
+        if np.isscalar(v) and pd.isna(v):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def merge_info(base, extra):
+    base = dict(base or {})
+    for k, v in dict(extra or {}).items():
+        cur = base.get(k)
+        if k not in base or is_missing_scalar(cur):
+            nv = normalize_missing(v)
+            if not is_missing_scalar(nv):
+                base[k] = nv
+    return base
+
+
 def extract_analyst_data(ticker_obj, info):
     info = dict(info or {})
 
@@ -229,12 +264,12 @@ def extract_analyst_data(ticker_obj, info):
                 ss = 0 if pd.isna(ss) else float(ss)
                 total = sb + b + h + s + ss
                 if total > 0:
-                    mean = (1*sb + 2*b + 3*h + 4*s + 5*ss) / total
+                    mean = (1 * sb + 2 * b + 3 * h + 4 * s + 5 * ss) / total
                     if pd.isna(info.get("recommendationMean")):
                         info["recommendationMean"] = mean
                     if pd.isna(info.get("numberOfAnalystOpinions")):
                         info["numberOfAnalystOpinions"] = int(total)
-                    if pd.isna(info.get("recommendationKey")) or str(info.get("recommendationKey","")).lower() in {"", "none", "nan"}:
+                    if pd.isna(info.get("recommendationKey")) or str(info.get("recommendationKey", "")).lower() in {"", "none", "nan"}:
                         if mean <= 1.5:
                             info["recommendationKey"] = "strong_buy"
                         elif mean <= 2.5:
@@ -261,12 +296,10 @@ def extract_analyst_data(ticker_obj, info):
 def extract_earnings_data(ticker_obj, info):
     info = dict(info or {})
 
-    # 1. Versuch: yfinance info dictionary
     ts = normalize_missing(info.get("earningsTimestamp"))
     if not pd.isna(ts):
         return info
 
-    # 2. Versuch: Ticker Calendar (oft zuverlässiger bei der neuen Yahoo-Struktur)
     try:
         cal = ticker_obj.calendar
         if isinstance(cal, dict) and "Earnings Date" in cal:
@@ -279,7 +312,6 @@ def extract_earnings_data(ticker_obj, info):
     except Exception:
         pass
 
-    # 3. Versuch: get_earnings_dates Fallback
     try:
         ed = ticker_obj.get_earnings_dates(limit=8)
         if ed is not None and not getattr(ed, "empty", True):
@@ -299,7 +331,6 @@ def extract_earnings_data(ticker_obj, info):
     return info
 
 
-
 def tb_signal_label(score):
     if score >= 9:
         return "LONG", "AKTIV HALTEN"
@@ -308,40 +339,6 @@ def tb_signal_label(score):
     if score >= 3:
         return "WAIT", "ABWARTEN"
     return "SHORT", "STOPP PRÜFEN"
-
-
-def normalize_missing(v):
-    if v is None:
-        return np.nan
-    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null"}:
-        return np.nan
-    try:
-        if pd.isna(v):
-            return np.nan
-    except Exception:
-        pass
-    return v
-def is_missing_scalar(v):
-    if v is None:
-        return True
-    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null", "n/a"}:
-        return True
-    try:
-        if np.isscalar(v) and pd.isna(v):
-            return True
-    except Exception:
-        pass
-    return False
-
-def merge_info(base, extra):
-    base = dict(base or {})
-    for k, v in dict(extra or {}).items():
-        cur = base.get(k)
-        if k not in base or is_missing_scalar(cur):
-            nv = normalize_missing(v)
-            if not is_missing_scalar(nv):
-                base[k] = nv
-    return base
 
 
 def first_existing_row(df, names):
@@ -541,9 +538,19 @@ def load_data(ticker):
     return hist, info
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def load_benchmark_data(symbol="SPY"):
+    try:
+        t = yf.Ticker(symbol)
+        hist = t.history(period="1y", auto_adjust=True)
+        return hist
+    except Exception:
+        return pd.DataFrame()
+
+
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Core + TradingBoard Referenzscore + Analysten- und Earnings-Fallback")
+    st.caption(f"{APP_VERSION} | Core + TradingBoard + bessere Bewertungslogik")
     st.divider()
 
     ticker = st.text_input(
@@ -583,7 +590,7 @@ with st.sidebar:
 st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
-    "Die Core-Saeulen bleiben unveraendert; das TradingBoard ist jetzt als dashboardnaher Referenzscore modelliert, waehrend Zusatzsignale getrennt als Kontext angezeigt werden."
+    "Zusätzlich ist die Bewertungslogik für Unternehmensqualität, Wachstum und Red Flags verbessert."
 )
 
 if not go:
@@ -593,6 +600,7 @@ if not go:
 with st.spinner(f"Lade {ticker}..."):
     try:
         df, info = load_data(ticker)
+        benchmark_df = load_benchmark_data("SPY")
     except Exception as e:
         st.error(str(e))
         st.stop()
@@ -694,6 +702,29 @@ fcf = info.get("freeCashflow", np.nan)
 op_cf = info.get("operatingCashflow", np.nan)
 short_pct = info.get("shortPercentOfFloat", np.nan)
 
+benchmark_ret63 = np.nan
+benchmark_ret126 = np.nan
+if benchmark_df is not None and not benchmark_df.empty and "Close" in benchmark_df.columns:
+    bclose = benchmark_df["Close"]
+    benchmark_ret63 = safe_last(bclose.pct_change(63) * 100, np.nan)
+    benchmark_ret126 = safe_last(bclose.pct_change(126) * 100, np.nan)
+
+rs_vs_benchmark_63 = ret63 - benchmark_ret63 if pd.notna(benchmark_ret63) else np.nan
+rs_vs_benchmark_126 = ret126 - benchmark_ret126 if pd.notna(benchmark_ret126) else np.nan
+
+if pd.notna(revenue_growth) and revenue_growth > 0.15 and pd.notna(pe) and pe > 25:
+    stock_style = "Growth"
+elif pd.notna(roe) and roe > 0.18 and pd.notna(profit_margin) and profit_margin > 0.15:
+    stock_style = "Quality"
+elif pd.notna(pe) and pe < 15 and pd.notna(pb) and pb < 2:
+    stock_style = "Value"
+elif pd.notna(beta) and beta > 1.5:
+    stock_style = "Cyclical"
+elif pd.notna(earnings_growth) and earnings_growth < 0 and pd.notna(debt_to_equity) and debt_to_equity > 150:
+    stock_style = "Turnaround / Risk"
+else:
+    stock_style = "Neutral"
+
 if "1-7" in horizon:
     hd, ws, wc = 7, 0.82, 0.18
 elif "1-4" in horizon:
@@ -771,7 +802,19 @@ else:
     s6, s6a, s6t = 20, "🔴", f"ATR {atr_pct:.1f}% hoch"
 
 w52 = 100 if 80 <= dist52 <= 98 else (72 if 70 <= dist52 < 80 else (55 if 98 < dist52 <= 101 else (35 if dist52 >= 55 else 15)))
-rs_score = 100 if ret63 > 12 else (78 if ret63 > 4 else (55 if ret63 > -5 else 22))
+
+if pd.notna(rs_vs_benchmark_63):
+    if rs_vs_benchmark_63 > 8:
+        rs_score = 100
+    elif rs_vs_benchmark_63 > 3:
+        rs_score = 78
+    elif rs_vs_benchmark_63 > -3:
+        rs_score = 55
+    else:
+        rs_score = 22
+else:
+    rs_score = 100 if ret63 > 12 else (78 if ret63 > 4 else (55 if ret63 > -5 else 22))
+
 kb = sum([s3 >= 65, s4 >= 65, s5 >= 65, s6 >= 65])
 
 setup_raw = s3 * 0.24 + s4 * 0.24 + s5 * 0.18 + s6 * 0.12 + rs_score * 0.14 + w52 * 0.08
@@ -806,12 +849,33 @@ growth_parts.append(92 if pd.notna(earnings_growth) and earnings_growth > 0.20 e
 growth_parts.append(88 if ret126 > 20 else (72 if ret126 > 5 else (55 if ret126 > -8 else 35)))
 growth_score = round(np.mean(growth_parts))
 
+growth_quality = 50
+if pd.notna(revenue_growth) and revenue_growth > 0.08:
+    growth_quality += 10
+if pd.notna(earnings_growth) and pd.notna(revenue_growth) and earnings_growth > revenue_growth:
+    growth_quality += 10
+if pd.notna(fcf) and fcf > 0:
+    growth_quality += 10
+if pd.notna(profit_margin) and profit_margin > 0.10:
+    growth_quality += 10
+if pd.notna(oper_margin) and oper_margin > 0.12:
+    growth_quality += 10
+growth_quality = round(clamp(growth_quality))
+
 valuation_parts = []
-valuation_parts.append(86 if pd.notna(pe) and 0 < pe < 20 else (72 if pd.notna(pe) and pe < 28 else (58 if pd.notna(pe) and pe < 38 else 42)))
-valuation_parts.append(84 if pd.notna(peg) and 0 < peg < 1.5 else (70 if pd.notna(peg) and peg < 2.2 else (55 if pd.notna(peg) and peg < 3.0 else 42)))
-valuation_parts.append(82 if pd.notna(ps) and ps < 4 else (68 if pd.notna(ps) and ps < 8 else (55 if pd.notna(ps) and ps < 12 else 42)))
+if pd.notna(pe):
+    valuation_parts.append(86 if 0 < pe < 20 else (72 if pe < 28 else (58 if pe < 38 else 42)))
+if pd.notna(peg):
+    valuation_parts.append(84 if 0 < peg < 1.5 else (70 if peg < 2.2 else (55 if peg < 3.0 else 42)))
+if pd.notna(ps):
+    if pd.notna(revenue_growth) and revenue_growth > 0.15:
+        valuation_parts.append(78 if ps < 8 else (62 if ps < 12 else 45))
+    else:
+        valuation_parts.append(82 if ps < 4 else (68 if ps < 8 else 42))
+if pd.notna(pb):
+    valuation_parts.append(80 if pb < 3 else (65 if pb < 6 else 45))
 valuation_parts.append(82 if pd.notna(upside) and upside > 20 else (70 if pd.notna(upside) and upside > 10 else (55 if pd.notna(upside) and upside > 0 else 40)))
-valuation_score = round(np.mean(valuation_parts))
+valuation_score = round(np.mean(valuation_parts)) if valuation_parts else 50
 
 balance_parts = []
 balance_parts.append(88 if pd.notna(current_ratio) and current_ratio >= 1.5 else (72 if pd.notna(current_ratio) and current_ratio >= 1.1 else 48))
@@ -838,12 +902,35 @@ risk_score = round(np.mean(risk_parts))
 
 base_company = round(
     quality_score * 0.24
-    + growth_score * 0.20
+    + growth_score * 0.18
+    + growth_quality * 0.12
     + valuation_score * 0.18
-    + balance_score * 0.14
-    + sentiment_score * 0.14
-    + risk_score * 0.10
+    + balance_score * 0.16
+    + sentiment_score * 0.06
+    + risk_score * 0.06
 )
+
+red_flag_penalty = 0
+red_flag_notes = []
+
+if pd.notna(earnings_growth) and earnings_growth < -0.15:
+    red_flag_penalty += 8
+    red_flag_notes.append("Gewinnwachstum stark negativ")
+if pd.notna(revenue_growth) and revenue_growth < -0.10:
+    red_flag_penalty += 6
+    red_flag_notes.append("Umsatzwachstum negativ")
+if pd.notna(fcf) and fcf < 0:
+    red_flag_penalty += 6
+    red_flag_notes.append("Freier Cashflow negativ")
+if pd.notna(debt_to_equity) and debt_to_equity > 180:
+    red_flag_penalty += 8
+    red_flag_notes.append("Verschuldung sehr hoch")
+if pd.notna(current_ratio) and current_ratio < 1.0:
+    red_flag_penalty += 5
+    red_flag_notes.append("Liquidität schwach")
+if pd.notna(profit_margin) and profit_margin < 0:
+    red_flag_penalty += 8
+    red_flag_notes.append("Gewinnmarge negativ")
 
 coverage_penalty = 0
 if fund_cov < 0.35:
@@ -851,7 +938,8 @@ if fund_cov < 0.35:
 elif fund_cov < 0.55:
     coverage_penalty = 6
 
-base_company = max(35, round(base_company - coverage_penalty))
+base_company = max(25, round(base_company - red_flag_penalty - coverage_penalty))
+
 if hd < 30:
     company = round(base_company * 0.55 + 50 * 0.45)
 else:
@@ -878,8 +966,8 @@ time_stop = (date.today() + timedelta(days=hd)).strftime("%d.%m.%Y")
 short_term_score = round(clamp(s4 * 0.45 + s5 * 0.30 + s6 * 0.20 + rs_score * 0.05))
 swing_score = round(clamp(s3 * 0.28 + s4 * 0.30 + s5 * 0.18 + s6 * 0.10 + rs_score * 0.10 + w52 * 0.04))
 mid_term_score = round(clamp(setup * 0.55 + company * 0.45))
-long_term_score = round(clamp(company * 0.55 + growth_score * 0.20 + quality_score * 0.15 + valuation_score * 0.10))
-very_long_term_score = round(clamp(company * 0.45 + quality_score * 0.22 + growth_score * 0.18 + valuation_score * 0.15))
+long_term_score = round(clamp(company * 0.50 + growth_score * 0.15 + growth_quality * 0.10 + quality_score * 0.15 + valuation_score * 0.10))
+very_long_term_score = round(clamp(company * 0.40 + quality_score * 0.20 + growth_score * 0.15 + growth_quality * 0.10 + valuation_score * 0.15))
 
 hmap = {
     "Kurzfrist": short_term_score,
@@ -914,8 +1002,8 @@ tb_tp2 = target if pd.notna(target) and target > tb_tp1 else tb_basispreis + (5.
 tb_details.append(f"S0: {price:.2f} {ccy}")
 
 if pd.notna(earnings_ts):
-    if days_earn < 0:
-        tb_details.append(f"S1 Earnings: vor {int(abs(days_earn))}d (Letzte Earnings am {sg_earn_txt})")
+    if has_past_earnings:
+        tb_details.append(f"S1 Earnings: letzte Earnings am {earnings_dt.strftime('%d.%m.%Y')}")
     else:
         tb_details.append(f"S1 Earnings: in {int(days_earn)}d ({sg_earn_txt})")
 else:
@@ -946,11 +1034,14 @@ if 40 < rsi < 60 or rsi < 30:
 else:
     tb_details.append("S5: RSI hoch/niedrig ❌")
 
-if tb_perf > 5:
-    tb_score += 1
-    tb_details.append(f"S6: +{tb_perf:.1f}% ✓")
+if tb_buy > 0:
+    if tb_perf > 5:
+        tb_score += 1
+        tb_details.append(f"S6: +{tb_perf:.1f}% ✓")
+    else:
+        tb_details.append(f"S6: {tb_perf:.1f}% ❌")
 else:
-    tb_details.append(f"S6: {tb_perf:.1f}% ❌")
+    tb_details.append("S6: Watchlist-Modus (kein Buy-in)")
 
 if macd_hist_current > macd_hist_prev:
     tb_score += 1
@@ -963,102 +1054,110 @@ if earnings_warning:
     tb_details.insert(0, "⚠️ EARNINGS IN <7 TAGEN (Vorsicht!)")
 
 if 20 < rsi < 80:
-    tb_context.append("S6: Vola ok ✓")
+    tb_context.append("S8: Vola ok ✓")
 
 if macd_bull_cross:
-    tb_context.append("MACD Bull-Cross! 🚀")
+    tb_context.append("S9: MACD Bull-Cross! 🚀")
 
 if smart_money_default:
-    tb_context.append("S8: Smart Money sammelt ein ✓")
+    tb_context.append("S10: Smart Money sammelt ein ✓")
 else:
-    tb_context.append("S8: Smart Money verkauft ❌")
+    tb_context.append("S10: Smart Money verkauft ❌")
 
 if adx > 25:
-    tb_context.append("S9: ADX>25 starker Trend ✓")
+    tb_context.append("S11: ADX>25 starker Trend ✓")
 else:
-    tb_context.append("S9: ADX<25 Seitwärts ❌")
+    tb_context.append("S11: ADX<25 Seitwärts ❌")
 
 if stoch_k_v < 20 and stoch_d_v < 20 and stoch_k_v > stoch_d_v:
-    tb_context.append("S10: Stoch Oversold Cross ✓")
+    tb_context.append("S12: Stoch Oversold Cross ✓")
 elif stoch_k_v > 80:
-    tb_context.append("S10: Stoch überkauft ❌")
+    tb_context.append("S12: Stoch überkauft ❌")
 else:
-    tb_context.append("S10: Stoch neutral ❌")
+    tb_context.append("S12: Stoch neutral ❌")
 
 if willr_v < -80:
-    tb_context.append("S11: Williams%R extrem Oversold ✓")
+    tb_context.append("S13: Williams%R extrem Oversold ✓")
 elif willr_v > -20:
-    tb_context.append("S11: Williams%R überkauft ❌")
+    tb_context.append("S13: Williams%R überkauft ❌")
 else:
-    tb_context.append("S11: Williams%R neutral ❌")
+    tb_context.append("S13: Williams%R neutral ❌")
 
 if obv_trend == "steigend" and vol_ratio >= 1.0:
-    tb_context.append("S12: OBV/Volumen bestaetigt ✓")
+    tb_context.append("S14: OBV/Volumen bestätigt ✓")
 else:
-    tb_context.append("S12: OBV/Volumen schwach ❌")
+    tb_context.append("S14: OBV/Volumen schwach ❌")
 
 if pd.notna(prev20_high) and price > prev20_high:
-    tb_context.append("S13: 20D Breakout ✓")
+    tb_context.append("S15: 20D Breakout ✓")
 elif pd.notna(prev20_low) and price < prev20_low:
-    tb_context.append("S13: 20D Breakdown ❌")
+    tb_context.append("S15: 20D Breakdown ❌")
 else:
-    tb_context.append("S13: Range intakt ❌")
+    tb_context.append("S15: Range intakt ❌")
 
 if pd.notna(bb_upper) and price > bb_upper:
-    tb_context.append("S14: BB Breakout UP ✓")
+    tb_context.append("S16: BB Breakout UP ✓")
 elif bb_squeeze:
-    tb_context.append("S14: BB Squeeze Achtung ✓")
+    tb_context.append("S16: BB Squeeze Achtung ✓")
 elif pd.notna(bb_lower) and price < bb_lower:
-    tb_context.append("S14: BB Breakout DOWN ❌")
+    tb_context.append("S16: BB Breakout DOWN ❌")
 else:
-    tb_context.append("S14: BB neutral ❌")
+    tb_context.append("S16: BB neutral ❌")
 
 if pd.notna(target) and target > 0 and price > 0:
     tb_potenzial = ((target - price) / price) * 100
     if tb_potenzial > 15:
-        tb_context.append(f"S15: Target +{tb_potenzial:.1f}% ✓")
+        tb_context.append(f"S17: Target +{tb_potenzial:.1f}% ✓")
     elif tb_potenzial < 0:
-        tb_context.append(f"S15: Target -{abs(tb_potenzial):.1f}% ❌")
+        tb_context.append(f"S17: Target -{abs(tb_potenzial):.1f}% ❌")
     else:
-        tb_context.append(f"S15: Target +{tb_potenzial:.1f}% neutral ❌")
+        tb_context.append(f"S17: Target +{tb_potenzial:.1f}% neutral ❌")
 else:
-    tb_context.append("S15: Kein valides Target ❌")
+    tb_context.append("S17: Kein valides Target ❌")
 
 current_month = datetime.now().month
 if current_month in [8, 9]:
-    tb_context.append("S16: Seasonality schlecht (-1) ❌")
+    tb_context.append("S18: Seasonality schlecht (-1) ❌")
 elif current_month in [11, 12, 1]:
-    tb_context.append("S16: Seasonality stark (+1) ✓")
+    tb_context.append("S18: Seasonality stark (+1) ✓")
 else:
-    tb_context.append("S16: Seasonality neutral ❌")
+    tb_context.append("S18: Seasonality neutral ❌")
 
 if crv >= 2.0:
-    tb_context.append("S17: CRV >= 2.0 ✓")
+    tb_context.append("S19: CRV >= 2.0 ✓")
 elif crv < 1.5:
-    tb_context.append("S17: CRV schwach ❌")
+    tb_context.append("S19: CRV schwach ❌")
 else:
-    tb_context.append("S17: CRV ok/neutral ❌")
+    tb_context.append("S19: CRV ok/neutral ❌")
 
 short_squeeze = pd.notna(short_pct) and short_pct > 0.12 and ret5 > 0 and vol_ratio > 1.2
 if short_squeeze:
-    tb_context.append("S18: 🚀 SHORT SQUEEZE POTENZIAL ✓")
+    tb_context.append("S20: 🚀 SHORT SQUEEZE POTENZIAL ✓")
 else:
-    tb_context.append("S18: kein Short-Squeeze-Signal ❌")
+    tb_context.append("S20: kein Short-Squeeze-Signal ❌")
 
 insider_trend = "NEUTRAL"
 if insider_trend == "BUY":
-    tb_context.append("S19: 👔 INSIDER KAUFEN ✓")
+    tb_context.append("S21: 👔 INSIDER KAUFEN ✓")
 elif insider_trend == "SELL":
-    tb_context.append("S19: 👔 INSIDER VERKAUFEN ❌")
+    tb_context.append("S21: 👔 INSIDER VERKAUFEN ❌")
 else:
-    tb_context.append("S19: 👔 Insider neutral / keine Daten ❌")
+    tb_context.append("S21: 👔 Insider neutral / keine Daten ❌")
 
 if pd.notna(pe) and 0 < pe < 15:
-    tb_context.append(f"S20: 🟢 VALUE KGV ({pe:.1f}) ✓")
+    tb_context.append(f"S22: 🟢 VALUE KGV ({pe:.1f}) ✓")
 elif pd.notna(pe) and pe > 50:
-    tb_context.append(f"S20: 🔴 TEUER KGV>50 ({pe:.1f}) ❌")
+    tb_context.append(f"S22: 🔴 TEUER KGV>50 ({pe:.1f}) ❌")
 else:
-    tb_context.append(f"S20: Value neutral ({fmt_num(pe,1)}) ❌")
+    tb_context.append(f"S22: Value neutral ({fmt_num(pe,1)}) ❌")
+
+if pd.notna(rs_vs_benchmark_63):
+    if rs_vs_benchmark_63 > 0:
+        tb_context.append(f"S23: Outperformance vs SPY +{rs_vs_benchmark_63:.1f}% ✓")
+    else:
+        tb_context.append(f"S23: Underperformance vs SPY {rs_vs_benchmark_63:.1f}% ❌")
+else:
+    tb_context.append("S23: Benchmark-Vergleich n/a ❌")
 
 tb_signal, tb_empf = tb_signal_label(tb_score)
 
@@ -1110,31 +1209,36 @@ if willr_v < -80:
 stb_signal, stb_empf = tb_signal_label(stb_score)
 stb_text = ", ".join(stb_items) if stb_items else "keine positiven Kurzfrist-Signale"
 
-tb_details_text = "\n".join(tb_details)
-tb_context_text = "\n".join(tb_context)
-
 rows = []
 for line in tb_details:
     if line.startswith("⚠️") or line.startswith("MACD "):
         rows.append({"Punkt": "Info", "Detail": line})
     else:
-        k, v = line.split(": ", 1)
-        rows.append({"Punkt": k, "Detail": v})
+        if ": " in line:
+            k, v = line.split(": ", 1)
+            rows.append({"Punkt": k, "Detail": v})
+        else:
+            rows.append({"Punkt": "Info", "Detail": line})
 tb_df = pd.DataFrame(rows)
 
 st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")
-st.markdown(f"<div class='small-note'>Sektor: {sector} | Industrie: {industry}</div>", unsafe_allow_html=True)
+st.markdown(
+    f"<div class='small-note'>Sektor: {sector} | Industrie: {industry} | Stil: {stock_style}</div>",
+    unsafe_allow_html=True
+)
 
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Kurs (Adj. Close)", f"{price:.2f} {ccy}", ts)
 c2.metric("Trend-Regime", regime, reg_amp)
 c3.metric("Earnings-Datum", sg_earn_txt, sg_earn)
+
 if has_upcoming_earnings:
     c4.metric("Earnings-Countdown", f"{int(days_earn)}d", sg_earn)
 elif has_past_earnings:
     c4.metric("Earnings-Countdown", "vorbei", sg_earn)
 else:
     c4.metric("Earnings-Countdown", "kein Datum", sg_earn)
+
 c5.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, "%"))
 
 st.divider()
@@ -1149,6 +1253,9 @@ elif fund_cov < 0.55:
         f"Fundamentaldaten teilweise vorhanden ({fund_cov*100:.0f}% Abdeckung, {fund_fields_loaded}/21 Felder)."
     )
 
+if red_flag_notes:
+    st.warning("Red Flags erkannt: " + " | ".join(red_flag_notes))
+
 st.subheader("Scores")
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 c1.metric("Company Quality", f"{company}/100", ampel(company))
@@ -1160,18 +1267,18 @@ c6.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
 c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
 
 st.caption(
-    "Die App trennt jetzt drei Sichtweisen: Company/Core, Kurzfrist Core vs. Kurzfrist Hilfsboard und das volle additive TradingBoard. "
-    "So sieht man sofort, ob ein Wert kurzfristig tradbar ist, obwohl das breite Board noch hinterherhaengt oder umgekehrt."
+    "Zusätzlich zur bisherigen Logik berücksichtigt diese Version nun Growth Quality, "
+    "Red Flags und relative Stärke vs. Benchmark."
 )
 
 st.markdown("### Scores verständlich erklärt")
 st.markdown(
-    "- **Company Quality** bewertet die Qualität des Unternehmens: Profitabilität, Wachstum, Bilanz, Bewertung, Analysteneinschätzung und Risiko.\n"
+    "- **Company Quality** bewertet die Qualität des Unternehmens: Profitabilität, Wachstum, Wachstumsqualität, Bilanz, Bewertung, Analysteneinschätzung und Risiko.\n"
     "- **Setup Quality** bewertet das technische Gesamtbild im strengen 23-Säulen-Kernmodell. Wenn Trend, Momentum, Volumen und Volatilität nicht gemeinsam tragen, wird dieser Wert bewusst gedeckelt.\n"
-    "- **Kurzfrist Core** bewertet die kurzfristige technische Lage mit Fokus auf Momentum, Volumen, Volatilität und relative Stärke.\n"
-    "- **Kurzfrist Hilfsboard** ist eine zusätzliche Kurzfrist-Ampel aus einzelnen Handelssignalen. Dieser Wert ist hilfreich, ersetzt aber nicht den eigentlichen TradingBoard-Referenzscore.\n"
-    "- **Investment Score** ist die Gesamtbewertung aus technischer Qualität und Unternehmensqualität. Die Gewichtung ändert sich mit dem gewählten Zeithorizont.\n"
-    "- **TradingBoard Score** ist der dashboardnahe Referenzscore für die Trading-Entscheidung. Genau dieser Wert soll den Blick ins separate Trading-Dashboard möglichst ersetzen.\n"
+    "- **Kurzfrist Core** bewertet die kurzfristige technische Lage mit Fokus auf Momentum, Volumen, Volatilität und relativer Stärke.\n"
+    "- **Kurzfrist Hilfsboard** ist eine zusätzliche Kurzfrist-Ampel aus einzelnen Handelssignalen.\n"
+    "- **Investment Score** ist die Gesamtbewertung aus technischer Qualität und Unternehmensqualität.\n"
+    "- **TradingBoard Score** ist der dashboardnahe Referenzscore für die Trading-Entscheidung.\n"
     "- **Konfluenz** zeigt, wie viele der vier Kernbereiche Trend, Momentum, Volumen und Volatilität gleichzeitig tragfähig sind."
 )
 
@@ -1187,7 +1294,7 @@ with t1:
         ("S5 Volumen", s5a, s5, s5t),
         ("S6 Volatilitaet", s6a, s6, s6t),
         ("52W-Lage", ampel(w52), w52, f"{dist52:.1f}% vom 52W-Hoch"),
-        ("Relative Stärke", ampel(rs_score), rs_score, f"3 Monate: {ret63:.1f}%"),
+        ("Relative Stärke", ampel(rs_score), rs_score, f"vs SPY 3M: {fmt_num(rs_vs_benchmark_63,1,'%')}"),
     ]
     for i, (lab, ico, score, com) in enumerate(items):
         with cols[i % 2]:
@@ -1205,13 +1312,15 @@ with t1:
                     "Kurs", "MA20", "MA50", "MA150", "MA200",
                     "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR in %",
                     "Stoch %K", "Stoch %D", "Williams %R", "ROC20", "ROC60",
-                    "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch"
+                    "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch",
+                    "3M Performance", "3M Benchmark SPY", "3M Outperformance vs SPY"
                 ],
                 "Wert": [
                     f"{price:.2f}", f"{ma20:.2f}", f"{ma50:.2f}", f"{ma150:.2f}", f"{ma200:.2f}",
                     f"{rsi:.1f}", f"{macd_v:.3f}", f"{signal_v:.3f}", f"{macd_hist_current:.3f}", f"{adx:.1f}",
                     f"{atr:.3f}", f"{atr_pct:.1f}%", f"{stoch_k_v:.1f}", f"{stoch_d_v:.1f}", f"{willr_v:.1f}",
-                    f"{roc20:.1f}%", f"{roc60:.1f}%", f"{high52:.2f}", f"{low52:.2f}", f"{dist52:.1f}%"
+                    f"{roc20:.1f}%", f"{roc60:.1f}%", f"{high52:.2f}", f"{low52:.2f}", f"{dist52:.1f}%",
+                    f"{ret63:.1f}%", fmt_num(benchmark_ret63, 1, "%"), fmt_num(rs_vs_benchmark_63, 1, "%")
                 ],
             }
         ),
@@ -1253,10 +1362,10 @@ with t3:
     st.dataframe(tb_df, hide_index=True, use_container_width=True)
 
     st.markdown("**TradingBoard Referenzscore**")
-    st.text(tb_details_text)
+    st.text("\n".join(tb_details))
 
     st.markdown("**Board-Kontext (nicht im Score)**")
-    st.text(tb_context_text)
+    st.text("\n".join(tb_context))
 
 with t4:
     st.markdown(
@@ -1268,17 +1377,18 @@ with t4:
         pd.DataFrame(
             {
                 "Fundament-Block": [
-                    "Qualitaet", "Wachstum", "Bewertung",
+                    "Qualitaet", "Wachstum", "Growth Quality", "Bewertung",
                     "Bilanz", "Sentiment", "Risiko"
                 ],
                 "Score": [
-                    quality_score, growth_score, valuation_score,
+                    quality_score, growth_score, growth_quality, valuation_score,
                     balance_score, sentiment_score, risk_score
                 ],
                 "Kommentar": [
                     f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | Eigenkapitalrendite {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')} | Freier Cashflow {'positiv' if pd.notna(fcf) and fcf > 0 else ('negativ' if pd.notna(fcf) else 'n/a')}",
                     f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | Gewinnwachstum je Aktie {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')} | 6-Monats-Performance {fmt_num(ret126,1,'%')}",
-                    f"KGV {fmt_num(pe,1)} | PEG-Verhältnis {fmt_num(peg,2)} | Kurs-Umsatz-Verhältnis {fmt_num(ps,2)} | Analysten-Potenzial {fmt_num(upside,1,'%')}",
+                    f"Wachstum+Cashflow+Margen-Qualität | Stil: {stock_style}",
+                    f"KGV {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | KUV {fmt_num(ps,2)} | KBV {fmt_num(pb,2)} | Analysten-Potenzial {fmt_num(upside,1,'%')}",
                     f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | Verschuldung zu Eigenkapital {fmt_num(debt_to_equity,1)}",
                     f"Analystenmeinung {rec_label} | Anzahl Analysten {fmt_num(analysts,0)} | Durchschnittliche Empfehlung {fmt_num(rec_mean,2)} | Kursziel {fmt_num(target,2)}",
                     f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR in Prozent {fmt_num(atr_pct,1,'%')}",
@@ -1299,7 +1409,8 @@ with t5:
                     "S1 Earnings",
                     "S2 Regime",
                     "S3 Konfluenz-Cap",
-                    "S4 Datenabdeckung"
+                    "S4 Datenabdeckung",
+                    "S5 Red Flags"
                 ],
                 "Status": [
                     "🟢",
@@ -1308,6 +1419,7 @@ with t5:
                     reg_amp,
                     "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"),
                     "🟢" if fund_cov >= 0.55 else ("🟡" if fund_cov >= 0.35 else "🔴"),
+                    "🟢" if red_flag_penalty == 0 else ("🟡" if red_flag_penalty <= 8 else "🔴"),
                 ],
                 "Kommentar": [
                     f"{ccy} | {exch}",
@@ -1315,7 +1427,8 @@ with t5:
                     sg_earn_txt,
                     regime,
                     f"{kb}/4 Kernbloecke",
-                    f"Fundamental-Coverage {fund_cov*100:.0f}%"
+                    f"Fundamental-Coverage {fund_cov*100:.0f}%",
+                    f"Penalty {red_flag_penalty} | {'keine' if not red_flag_notes else ' | '.join(red_flag_notes)}"
                 ],
             }
         ),
@@ -1362,4 +1475,3 @@ st.caption(
     "Die App zeigt bewusst drei getrennte Sichtweisen: das strenge 23-Saeulen-Core-Modell, "
     "die kurzfristige Hilfsboard-Ampel und den dashboardnahen TradingBoard-Referenzscore mit getrenntem Kontextblock."
 )
-

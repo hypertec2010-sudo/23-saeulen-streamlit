@@ -31,10 +31,15 @@ if not check_password():
 # Ab hier kommt dein normaler Code (st.set_page_config etc.)
 
 
-
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="Capital-Hill-Score-Modell v5.8b", page_icon="📊", layout="wide")
+APP_VERSION = "v5.8c"
+
+st.set_page_config(
+    page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
+    page_icon="📊",
+    layout="wide"
+)
 
 st.markdown("""
 <style>
@@ -526,8 +531,8 @@ def load_data(ticker):
 
 
 with st.sidebar:
-    st.title("📊 Capital-Hill-Score-Modell v5.8b")
-    st.caption("v5.8b | Core + TradingBoard Referenzscore + Analysten- und Earnings-Fallback")
+    st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
+    st.caption(f"{APP_VERSION} | Core + TradingBoard Referenzscore + Analysten- und Earnings-Fallback")
     st.divider()
 
     ticker = st.text_input(
@@ -564,7 +569,7 @@ with st.sidebar:
 
     go = st.button("Analyse starten", use_container_width=True, type="primary")
 
-st.title("📊 Capital-Hill-Score-Modell v5.8b")
+st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
     "Die Core-Saeulen bleiben unveraendert; das TradingBoard ist jetzt als dashboardnaher Referenzscore modelliert, waehrend Zusatzsignale getrennt als Kontext angezeigt werden."

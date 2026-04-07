@@ -4,12 +4,13 @@ from datetime import datetime, timezone, date, timedelta
 
 import numpy as np
 import pandas as pd
+import requests
 import streamlit as st
 import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v5.8d"
+APP_VERSION = "v5.8e"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -548,16 +549,98 @@ def load_benchmark_data(symbol="SPY"):
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def search_tickers(query, max_results=8):
+    query = str(query or "").strip()
+    if not query:
+        return []
+
+    url = "https://query2.finance.yahoo.com/v1/finance/search"
+    params = {
+        "q": query,
+        "quotesCount": max_results,
+        "newsCount": 0,
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+    except Exception:
+        return []
+
+    results = []
+    for item in data.get("quotes", []):
+        symbol = item.get("symbol")
+        name = item.get("shortname") or item.get("longname") or "-"
+        exchange = item.get("exchange") or "-"
+        quote_type = item.get("quoteType") or "-"
+        exch_disp = item.get("exchDisp") or exchange
+
+        if not symbol:
+            continue
+
+        if quote_type not in {"EQUITY", "ETF"}:
+            continue
+
+        results.append({
+            "symbol": symbol,
+            "name": name,
+            "exchange": exch_disp,
+            "type": quote_type,
+            "label": f"{name} ({symbol}) - {exch_disp}"
+        })
+
+    seen = set()
+    clean = []
+    for r in results:
+        if r["symbol"] not in seen:
+            clean.append(r)
+            seen.add(r["symbol"])
+
+    return clean
+
+
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Core + TradingBoard + bessere Bewertungslogik")
+    st.caption(f"{APP_VERSION} | Core + TradingBoard + Namenssuche + bessere Bewertungslogik")
     st.divider()
 
-    ticker = st.text_input(
-        "Ticker",
+    search_input = st.text_input(
+        "Aktie oder Ticker",
         value="AAPL",
-        placeholder="AAPL, AMAT, BNP.PA, AIXA.DE"
-    ).upper().strip()
+        placeholder="z. B. AAPL, BASF, Siemens, BAS.DE"
+    ).strip()
+
+    st.caption("Du kannst einen Ticker oder einfach einen Firmennamen eingeben.")
+
+    ticker = search_input.upper()
+    search_results = []
+
+    if search_input:
+        looks_like_ticker = (
+            (search_input.upper() == search_input and " " not in search_input and len(search_input) <= 12)
+            or ("." in search_input)
+        )
+
+        if not looks_like_ticker:
+            search_results = search_tickers(search_input)
+
+            if len(search_results) == 1:
+                ticker = search_results[0]["symbol"]
+                st.caption(f"Automatisch gefunden: {search_results[0]['label']}")
+            elif len(search_results) > 1:
+                selected_label = st.selectbox(
+                    "Passenden Treffer auswählen",
+                    options=[r["label"] for r in search_results],
+                    index=0
+                )
+                ticker = next(r["symbol"] for r in search_results if r["label"] == selected_label)
+            else:
+                st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
 
     horizon = st.selectbox(
         "Zeithorizont",
@@ -590,11 +673,15 @@ with st.sidebar:
 st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
-    "Zusätzlich ist die Bewertungslogik für Unternehmensqualität, Wachstum und Red Flags verbessert."
+    "Zusätzlich sind Namenssuche, Bewertungslogik, Wachstumsscore und Red-Flags verbessert."
 )
 
 if not go:
-    st.info("Ticker eingeben und Analyse starten klicken.")
+    st.info("Aktie oder Ticker eingeben und Analyse starten klicken.")
+    st.stop()
+
+if not ticker:
+    st.error("Bitte einen Ticker oder Firmennamen eingeben.")
     st.stop()
 
 with st.spinner(f"Lade {ticker}..."):
@@ -606,7 +693,7 @@ with st.spinner(f"Lade {ticker}..."):
         st.stop()
 
 if df.empty or len(df) < 220:
-    st.error("Nicht genug Kursdaten fuer belastbare Analyse.")
+    st.error("Nicht genug Kursdaten fuer belastbare Analyse. Prüfe den ausgewählten Ticker.")
     st.stop()
 
 close = df["Close"]
@@ -1268,7 +1355,7 @@ c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 
 
 st.caption(
     "Zusätzlich zur bisherigen Logik berücksichtigt diese Version nun Growth Quality, "
-    "Red Flags und relative Stärke vs. Benchmark."
+    "Red Flags, relative Stärke vs. Benchmark und Namenssuche für Aktien."
 )
 
 st.markdown("### Scores verständlich erklärt")

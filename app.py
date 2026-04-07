@@ -10,7 +10,7 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v5.8e"
+APP_VERSION = "v6.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -606,7 +606,7 @@ def search_tickers(query, max_results=8):
 
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Core + TradingBoard + Namenssuche + bessere Bewertungslogik")
+    st.caption(f"{APP_VERSION} | Core + TradingBoard + Profil & Chart")
     st.divider()
 
     search_input = st.text_input(
@@ -673,7 +673,7 @@ with st.sidebar:
 st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
-    "Zusätzlich sind Namenssuche, Bewertungslogik, Wachstumsscore und Red-Flags verbessert."
+    "Zusätzlich sind Profil, Kurzbeschreibung und Chartverlauf integriert."
 )
 
 if not go:
@@ -709,6 +709,10 @@ exch = info.get("exchange", "-")
 ts = df.index[-1].strftime("%d.%m.%Y")
 sector = info.get("sector", "-")
 industry = info.get("industry", "-")
+
+company_summary = info.get("longBusinessSummary", "")
+if not company_summary:
+    company_summary = "Keine Unternehmensbeschreibung verfügbar."
 
 ma20 = safe_last(close.rolling(20).mean())
 ma50 = safe_last(close.rolling(50).mean())
@@ -1355,7 +1359,7 @@ c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 
 
 st.caption(
     "Zusätzlich zur bisherigen Logik berücksichtigt diese Version nun Growth Quality, "
-    "Red Flags, relative Stärke vs. Benchmark und Namenssuche für Aktien."
+    "Red Flags, relative Stärke vs. Benchmark sowie Profil und Chartverlauf."
 )
 
 st.markdown("### Scores verständlich erklärt")
@@ -1371,7 +1375,59 @@ st.markdown(
 
 st.divider()
 
-t1, t2, t3, t4, t5, t6 = st.tabs(["Technik", "Kurzfrist-Vergleich", "TradingBoard", "Fundamental", "Safeguards", "Trade-Setup"])
+t0, t1, t2, t3, t4, t5, t6 = st.tabs([
+    "Profil & Chart",
+    "Technik",
+    "Kurzfrist-Vergleich",
+    "TradingBoard",
+    "Fundamental",
+    "Safeguards",
+    "Trade-Setup"
+])
+
+with t0:
+    st.subheader("Unternehmensprofil")
+
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Unternehmen", name)
+    p2.metric("Sektor", sector if sector else "-")
+    p3.metric("Industrie", industry if industry else "-")
+
+    st.markdown("**Kurzbeschreibung**")
+    summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
+    st.write(summary_short)
+
+    st.markdown("**Chartverlauf**")
+
+    chart_range = st.selectbox(
+        "Zeitraum",
+        ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
+        index=2,
+        key="chart_range"
+    )
+
+    if chart_range == "3 Monate":
+        chart_df = df.tail(63).copy()
+    elif chart_range == "6 Monate":
+        chart_df = df.tail(126).copy()
+    elif chart_range == "1 Jahr":
+        chart_df = df.tail(252).copy()
+    else:
+        chart_df = df.copy()
+
+    chart_data = chart_df[["Close"]].copy()
+    chart_data = chart_data.rename(columns={"Close": f"{ticker} Kurs"})
+
+    st.line_chart(chart_data, use_container_width=True)
+
+    perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
+    perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
+    perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
+
+    p4, p5, p6 = st.columns(3)
+    p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
+    p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
+    p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
 
 with t1:
     cols = st.columns(2)

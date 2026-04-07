@@ -10,7 +10,7 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v6.0"
+APP_VERSION = "v6.0.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -39,6 +39,22 @@ def check_password():
 
 if not check_password():
     st.stop()
+
+# --- Stabiler Session State ---
+if "selected_ticker" not in st.session_state:
+    st.session_state.selected_ticker = "AAPL"
+
+if "search_input" not in st.session_state:
+    st.session_state.search_input = "AAPL"
+
+if "selected_search_label" not in st.session_state:
+    st.session_state.selected_search_label = None
+
+if "analysis_ticker" not in st.session_state:
+    st.session_state.analysis_ticker = "AAPL"
+
+if "analysis_requested" not in st.session_state:
+    st.session_state.analysis_requested = False
 
 st.markdown("""
 <style>
@@ -611,36 +627,58 @@ with st.sidebar:
 
     search_input = st.text_input(
         "Aktie oder Ticker",
-        value="AAPL",
-        placeholder="z. B. AAPL, BASF, Siemens, BAS.DE"
+        value=st.session_state.search_input,
+        placeholder="z. B. AAPL, BASF, Siemens, BAS.DE",
+        key="search_input_widget"
     ).strip()
+
+    st.session_state.search_input = search_input
 
     st.caption("Du kannst einen Ticker oder einfach einen Firmennamen eingeben.")
 
-    ticker = search_input.upper()
     search_results = []
+    ticker = st.session_state.selected_ticker
 
     if search_input:
         looks_like_ticker = (
-            (search_input.upper() == search_input and " " not in search_input and len(search_input) <= 12)
-            or ("." in search_input)
+            (" " not in search_input and len(search_input) <= 12 and search_input.replace(".", "").replace("-", "").isalnum())
         )
 
-        if not looks_like_ticker:
+        if looks_like_ticker:
+            ticker = search_input.upper()
+            st.session_state.selected_ticker = ticker
+            st.session_state.selected_search_label = None
+        else:
             search_results = search_tickers(search_input)
 
             if len(search_results) == 1:
                 ticker = search_results[0]["symbol"]
+                st.session_state.selected_ticker = ticker
+                st.session_state.selected_search_label = search_results[0]["label"]
                 st.caption(f"Automatisch gefunden: {search_results[0]['label']}")
             elif len(search_results) > 1:
+                labels = [r["label"] for r in search_results]
+
+                if st.session_state.selected_search_label not in labels:
+                    st.session_state.selected_search_label = labels[0]
+
                 selected_label = st.selectbox(
                     "Passenden Treffer auswählen",
-                    options=[r["label"] for r in search_results],
-                    index=0
+                    options=labels,
+                    index=labels.index(st.session_state.selected_search_label),
+                    key="search_result_select"
                 )
+
+                st.session_state.selected_search_label = selected_label
                 ticker = next(r["symbol"] for r in search_results if r["label"] == selected_label)
+                st.session_state.selected_ticker = ticker
             else:
                 st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
+                ticker = st.session_state.selected_ticker
+    else:
+        ticker = st.session_state.selected_ticker
+
+    st.caption(f"Aktueller Ticker: {st.session_state.selected_ticker}")
 
     horizon = st.selectbox(
         "Zeithorizont",
@@ -669,6 +707,9 @@ with st.sidebar:
         st.success("Cache geleert. Bitte Analyse neu starten.")
 
     go = st.button("Analyse starten", use_container_width=True, type="primary")
+    if go:
+        st.session_state.analysis_ticker = st.session_state.selected_ticker
+        st.session_state.analysis_requested = True
 
 st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
 st.caption(
@@ -676,9 +717,11 @@ st.caption(
     "Zusätzlich sind Profil, Kurzbeschreibung und Chartverlauf integriert."
 )
 
-if not go:
+if not st.session_state.analysis_requested:
     st.info("Aktie oder Ticker eingeben und Analyse starten klicken.")
     st.stop()
+
+ticker = st.session_state.analysis_ticker
 
 if not ticker:
     st.error("Bitte einen Ticker oder Firmennamen eingeben.")

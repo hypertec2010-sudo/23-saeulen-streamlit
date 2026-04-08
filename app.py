@@ -12,7 +12,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v6.2A"
+APP_VERSION = "v6.2A.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -506,7 +506,7 @@ def infer_data_source_flags(info):
     ]
     loaded = int(info.get("_fund_fields_loaded", 0) or 0)
     total = len(direct_fields)
-    derived = max(0, loaded - min(loaded, total))
+    derived = 0
     coverage = loaded / total if total else 0
     if coverage >= 0.75:
         confidence = "Hoch"
@@ -529,7 +529,8 @@ def infer_data_source_flags(info):
 
 def build_candlestick_chart(chart_df, ticker, ccy):
     fig = make_subplots(
-        rows=2, cols=1,
+        rows=2,
+        cols=1,
         shared_xaxes=True,
         vertical_spacing=0.03,
         row_heights=[0.75, 0.25]
@@ -542,17 +543,30 @@ def build_candlestick_chart(chart_df, ticker, ccy):
             high=chart_df["High"],
             low=chart_df["Low"],
             close=chart_df["Close"],
-            name=f"{ticker}"
+            name=ticker
         ),
-        row=1, col=1
+        row=1,
+        col=1
     )
 
     if "MA20" in chart_df.columns:
-        fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df["MA20"], mode="lines", name="MA20"), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(x=chart_df.index, y=chart_df["MA20"], mode="lines", name="MA20"),
+            row=1,
+            col=1
+        )
     if "MA50" in chart_df.columns:
-        fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df["MA50"], mode="lines", name="MA50"), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(x=chart_df.index, y=chart_df["MA50"], mode="lines", name="MA50"),
+            row=1,
+            col=1
+        )
     if "MA200" in chart_df.columns:
-        fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df["MA200"], mode="lines", name="MA200"), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(x=chart_df.index, y=chart_df["MA200"], mode="lines", name="MA200"),
+            row=1,
+            col=1
+        )
 
     fig.add_trace(
         go.Bar(
@@ -560,7 +574,8 @@ def build_candlestick_chart(chart_df, ticker, ccy):
             y=chart_df["Volume"],
             name="Volumen"
         ),
-        row=2, col=1
+        row=2,
+        col=1
     )
 
     fig.update_layout(
@@ -995,8 +1010,8 @@ with st.sidebar:
         st.cache_data.clear()
         st.success("Cache geleert. Bitte Analyse neu starten.")
 
-    go = st.button("Analyse starten", use_container_width=True, type="primary")
-    if go:
+    run_analysis = st.button("Analyse starten", use_container_width=True, type="primary")
+    if run_analysis:
         st.session_state.analysis_ticker = st.session_state.selected_ticker
         st.session_state.analysis_requested = True
 

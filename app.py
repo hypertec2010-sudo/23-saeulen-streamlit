@@ -1619,10 +1619,29 @@ def analyze_stock(
     if stop_used <= 0 or stop_used >= price:
         stop_used = round(price - max(price * 0.08, atr * 1.8), 2)
         stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
+
     risk_per_share = price - stop_used
+
     tp1 = round(price + 1 * risk_per_share, 2)
-    tp2 = round(price + 2 * risk_per_share, 2)
-    tp3 = round(price + 3 * risk_per_share, 2)
+
+    # Dynamisches Hauptziel:
+    # 1) Analysten-Target, wenn sinnvoll über dem aktuellen Kurs
+    # 2) sonst 52W-Hoch, wenn sinnvoll
+    # 3) sonst klassischer 2R-Fallback
+    if pd.notna(target) and target > price:
+        tp2 = round(target, 2)
+    elif pd.notna(high52) and high52 > price:
+        tp2 = round(high52, 2)
+    else:
+        tp2 = round(price + 2 * risk_per_share, 2)
+
+    # TP3 als erweitertes Ziel:
+    # bevorzugt 52W-Hoch oberhalb von TP2, sonst 3R / TP2+1R
+    if pd.notna(high52) and high52 > tp2:
+        tp3 = round(high52, 2)
+    else:
+        tp3 = round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
+
     crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
     risk_eur = depot * (risk_pct / 100)
     pos_size = int(risk_eur / risk_per_share) if risk_per_share > 0 else 0
@@ -2607,7 +2626,7 @@ with t3:
     c1.metric("TradingBoard Score", str(tb_score), tb_signal)
     c2.metric("Signal", tb_signal, tb_empf)
     c3.metric("TradingBoard Stop-Loss", f"{price - (2.5 * atr):.2f} {ccy}")
-    c4.metric("TradingBoard Kursziel 2", f"{(target if pd.notna(target) and target > (price + 2.5 * atr) else price + 5.0 * atr):.2f} {ccy}")
+    c4.metric("TradingBoard Kursziel 2", f"{tp2:.2f} {ccy}")
 
     st.dataframe(tb_df, hide_index=True, use_container_width=True)
 
@@ -2702,7 +2721,7 @@ with t6:
 
     c4, c5, c6 = st.columns(3)
     c4.metric("Kursziel 1 (1R)", f"{tp1:.2f} {ccy}", f"+{(tp1/price-1)*100:.1f}%")
-    c5.metric("Kursziel 2 (2R)", f"{tp2:.2f} {ccy}", f"+{(tp2/price-1)*100:.1f}%")
+    c5.metric("Kursziel 2 (Hauptziel)", f"{tp2:.2f} {ccy}", f"+{(tp2/price-1)*100:.1f}%")
     c6.metric("Kursziel 3 (3R)", f"{tp3:.2f} {ccy}", f"+{(tp3/price-1)*100:.1f}%")
 
     c7, c8, c9 = st.columns(3)

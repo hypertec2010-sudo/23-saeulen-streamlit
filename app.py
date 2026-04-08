@@ -10,7 +10,7 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v6.0.1"
+APP_VERSION = "v6.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -40,7 +40,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- Stabiler Session State ---
+# ---------- Session State ----------
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "AAPL"
 
@@ -56,6 +56,7 @@ if "analysis_ticker" not in st.session_state:
 if "analysis_requested" not in st.session_state:
     st.session_state.analysis_requested = False
 
+# ---------- CSS ----------
 st.markdown("""
 <style>
 .metric-card{
@@ -73,6 +74,7 @@ pre{white-space:pre-wrap !important;}
 """, unsafe_allow_html=True)
 
 
+# ---------- Helpers ----------
 def ampel(v, g=65, y=45):
     return "🟢" if v >= g else ("🟡" if v >= y else "🔴")
 
@@ -116,6 +118,44 @@ def known_ratio(values):
     return len(vals) / len(values) if values else 0
 
 
+def normalize_missing(v):
+    if v is None:
+        return np.nan
+    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null"}:
+        return np.nan
+    try:
+        if pd.isna(v):
+            return np.nan
+    except Exception:
+        pass
+    return v
+
+
+def is_missing_scalar(v):
+    if v is None:
+        return True
+    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null", "n/a"}:
+        return True
+    try:
+        if np.isscalar(v) and pd.isna(v):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def merge_info(base, extra):
+    base = dict(base or {})
+    for k, v in dict(extra or {}).items():
+        cur = base.get(k)
+        if k not in base or is_missing_scalar(cur):
+            nv = normalize_missing(v)
+            if not is_missing_scalar(nv):
+                base[k] = nv
+    return base
+
+
+# ---------- Indicators ----------
 def rsi14(close):
     d = close.diff()
     g = d.where(d > 0, 0.0).rolling(14).mean()
@@ -167,6 +207,7 @@ def bollinger_bands(close, period=20, num_std=2):
     return mid, upper, lower, width
 
 
+# ---------- Domain Helpers ----------
 def infer_display_currency(ticker, info, fallback="USD"):
     suffix = ticker.split(".")[-1].upper() if "." in ticker else ""
     exchange = str(info.get("exchange", "") or "").upper()
@@ -212,43 +253,257 @@ def analyst_label(rec_key):
     return mapping.get(str(rec_key).lower(), str(rec_key))
 
 
-def normalize_missing(v):
-    if v is None:
+def tb_signal_label(score):
+    if score >= 9:
+        return "LONG", "AKTIV HALTEN"
+    if score >= 5:
+        return "HOLD", "HALTEN"
+    if score >= 3:
+        return "WAIT", "ABWARTEN"
+    return "SHORT", "STOPP PRÜFEN"
+
+
+def first_existing_row(df, names):
+    if df is None or getattr(df, "empty", True):
+        return None
+    for name in names:
+        if name in df.index:
+            row = df.loc[name]
+            if isinstance(row, pd.DataFrame):
+                row = row.iloc[0]
+            return pd.to_numeric(row, errors="coerce")
+    return None
+
+
+def latest_valid(series_like):
+    if series_like is None:
         return np.nan
-    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null"}:
+    s = pd.to_numeric(pd.Series(series_like), errors="coerce").dropna()
+    return float(s.iloc[0]) if len(s) else np.nan
+
+
+def previous_valid(series_like):
+    if series_like is None:
         return np.nan
-    try:
-        if pd.isna(v):
-            return np.nan
-    except Exception:
-        pass
-    return v
+    s = pd.to_numeric(pd.Series(series_like), errors="coerce").dropna()
+    return float(s.iloc[1]) if len(s) > 1 else np.nan
 
 
-def is_missing_scalar(v):
-    if v is None:
-        return True
-    if isinstance(v, str) and v.strip().lower() in {"", "none", "nan", "null", "n/a"}:
-        return True
-    try:
-        if np.isscalar(v) and pd.isna(v):
-            return True
-    except Exception:
-        pass
-    return False
+def select_benchmark(ticker, info=None):
+    suffix = ticker.split(".")[-1].upper() if "." in ticker else ""
+    exchange = str((info or {}).get("exchange", "") or "").upper()
+
+    german_suffixes = {"DE", "F", "HM", "BE", "DU", "MU", "SG"}
+    europe_suffixes = {"PA", "AS", "BR", "MI", "MC", "HE", "VI", "LS"}
+    swiss_suffixes = {"SW"}
+    uk_suffixes = {"L"}
+    nordic_suffixes = {"ST", "OL", "CO"}
+
+    if suffix in german_suffixes or exchange in {"XETRA", "GER"}:
+        return "^GDAXI", "DAX"
+    if suffix in europe_suffixes or exchange in {"PAR", "AMS", "MIL", "MAD", "HEL", "VIE", "BRU", "EURONEXT"}:
+        return "^STOXX50E", "STOXX 50"
+    if suffix in swiss_suffixes or exchange in {"SIX"}:
+        return "^SSMI", "SMI"
+    if suffix in uk_suffixes or exchange in {"LSE"}:
+        return "^FTSE", "FTSE 100"
+    if suffix in nordic_suffixes:
+        return "^STOXX50E", "STOXX 50"
+
+    return "SPY", "S&P 500"
 
 
-def merge_info(base, extra):
-    base = dict(base or {})
-    for k, v in dict(extra or {}).items():
-        cur = base.get(k)
-        if k not in base or is_missing_scalar(cur):
-            nv = normalize_missing(v)
-            if not is_missing_scalar(nv):
-                base[k] = nv
-    return base
+def calc_return_metrics(close_series):
+    return {
+        "ret21": safe_last(close_series.pct_change(21) * 100, np.nan),
+        "ret63": safe_last(close_series.pct_change(63) * 100, np.nan),
+        "ret126": safe_last(close_series.pct_change(126) * 100, np.nan),
+    }
 
 
+def evaluate_market_filter(benchmark_df):
+    if benchmark_df is None or benchmark_df.empty or "Close" not in benchmark_df.columns:
+        return {
+            "price": np.nan,
+            "ma50": np.nan,
+            "ma200": np.nan,
+            "ret21": np.nan,
+            "ret63": np.nan,
+            "ret126": np.nan,
+            "regime": "UNBEKANNT",
+            "ampel": "⚪",
+            "score": 50
+        }
+
+    close = benchmark_df["Close"]
+    price = safe_last(close, np.nan)
+    ma50 = safe_last(close.rolling(50).mean(), np.nan)
+    ma200 = safe_last(close.rolling(200).mean(), np.nan)
+
+    rets = calc_return_metrics(close)
+
+    if pd.notna(price) and pd.notna(ma50) and pd.notna(ma200):
+        if price > ma50 and price > ma200 and ma50 > ma200:
+            regime, ampel_icon, score = "POSITIV", "🟢", 100
+        elif price < ma50 and price < ma200 and ma50 < ma200:
+            regime, ampel_icon, score = "NEGATIV", "🔴", 30
+        else:
+            regime, ampel_icon, score = "NEUTRAL", "🟡", 60
+    else:
+        regime, ampel_icon, score = "UNBEKANNT", "⚪", 50
+
+    return {
+        "price": price,
+        "ma50": ma50,
+        "ma200": ma200,
+        "ret21": rets["ret21"],
+        "ret63": rets["ret63"],
+        "ret126": rets["ret126"],
+        "regime": regime,
+        "ampel": ampel_icon,
+        "score": score
+    }
+
+
+def build_red_flags(
+    revenue_growth,
+    earnings_growth,
+    profit_margin,
+    fcf,
+    op_cf,
+    debt_to_equity,
+    current_ratio,
+    quick_ratio,
+    has_upcoming_earnings,
+    days_earn
+):
+    items = []
+
+    def add_item(category, detail, penalty):
+        items.append({
+            "Kategorie": category,
+            "Status": "🔴" if penalty >= 6 else "🟡",
+            "Detail": detail,
+            "Penalty": penalty
+        })
+
+    # Ertrags-Risiko
+    if pd.notna(earnings_growth) and earnings_growth < -0.15:
+        add_item("Ertrags-Risiko", "Gewinnwachstum stark negativ", 8)
+    if pd.notna(profit_margin) and profit_margin < 0:
+        add_item("Ertrags-Risiko", "Gewinnmarge negativ", 8)
+
+    # Umsatz-/Geschäfts-Risiko
+    if pd.notna(revenue_growth) and revenue_growth < -0.10:
+        add_item("Umsatz-/Geschäfts-Risiko", "Umsatzwachstum negativ", 6)
+
+    # Cashflow-Risiko
+    if pd.notna(fcf) and fcf < 0:
+        add_item("Cashflow-Risiko", "Freier Cashflow negativ", 6)
+    if pd.notna(op_cf) and op_cf < 0:
+        add_item("Cashflow-Risiko", "Operativer Cashflow negativ", 5)
+
+    # Bilanz-Risiko
+    if pd.notna(debt_to_equity) and debt_to_equity > 180:
+        add_item("Bilanz-Risiko", "Verschuldung sehr hoch", 8)
+    if pd.notna(current_ratio) and current_ratio < 1.0:
+        add_item("Bilanz-Risiko", "Liquidität schwach (Current Ratio < 1.0)", 5)
+    if pd.notna(quick_ratio) and quick_ratio < 0.8:
+        add_item("Bilanz-Risiko", "Quick Ratio schwach (< 0.8)", 4)
+
+    # Event-Risiko
+    if has_upcoming_earnings and pd.notna(days_earn) and days_earn <= 7:
+        add_item("Event-Risiko", f"Earnings in {int(days_earn)} Tagen", 6)
+
+    total_penalty = sum(x["Penalty"] for x in items)
+    return items, total_penalty
+
+
+def build_decision_explanation(
+    setup,
+    company,
+    investment,
+    market_regime,
+    rs_vs_benchmark_63,
+    quality_score,
+    growth_score,
+    valuation_score,
+    balance_score,
+    red_flag_items,
+    earnings_warning,
+    kb,
+    position_mode
+):
+    strengths = []
+    weaknesses = []
+
+    if setup >= 75:
+        strengths.append("Technisches Setup ist stark.")
+    elif setup < 50:
+        weaknesses.append("Technisches Setup ist derzeit schwach.")
+
+    if company >= 70:
+        strengths.append("Unternehmensqualität ist solide bis stark.")
+    elif company < 50:
+        weaknesses.append("Unternehmensqualität ist eher schwach.")
+
+    if pd.notna(rs_vs_benchmark_63) and rs_vs_benchmark_63 > 5:
+        strengths.append("Die Aktie zeigt klare Outperformance gegenüber dem Benchmark.")
+    elif pd.notna(rs_vs_benchmark_63) and rs_vs_benchmark_63 < -5:
+        weaknesses.append("Die Aktie underperformt ihren Benchmark spürbar.")
+
+    if quality_score >= 75:
+        strengths.append("Profitabilität und Kapitalrendite sind überzeugend.")
+    if growth_score >= 75:
+        strengths.append("Wachstum ist aktuell stark.")
+    if valuation_score >= 72:
+        strengths.append("Bewertung wirkt noch akzeptabel bis attraktiv.")
+    elif valuation_score < 50:
+        weaknesses.append("Bewertung wirkt anspruchsvoll.")
+
+    if balance_score >= 72:
+        strengths.append("Bilanzqualität ist ordentlich.")
+    elif balance_score < 50:
+        weaknesses.append("Bilanzqualität ist belastet.")
+
+    if market_regime == "POSITIV":
+        strengths.append("Das Marktumfeld unterstützt Long-Setups.")
+    elif market_regime == "NEGATIV":
+        weaknesses.append("Das Marktumfeld ist aktuell klar negativ.")
+
+    if kb >= 3:
+        strengths.append("Hohe Konfluenz der Kernblöcke.")
+    elif kb <= 1:
+        weaknesses.append("Zu wenig Konfluenz der Kernblöcke.")
+
+    if earnings_warning:
+        weaknesses.append("Kurzfristiges Earnings-Risiko erhöht die Unsicherheit.")
+
+    for item in red_flag_items[:3]:
+        weaknesses.append(f"{item['Kategorie']}: {item['Detail']}")
+
+    strengths = strengths[:5]
+    weaknesses = weaknesses[:5]
+
+    if position_mode:
+        if investment >= 75 and market_regime != "NEGATIV":
+            summary = "Bestehende Position wirkt insgesamt stark. Halten oder selektiv ausbauen ist plausibel."
+        elif investment >= 60:
+            summary = "Bestehende Position ist grundsätzlich okay, aber nicht frei von Risiken. Eng beobachten."
+        else:
+            summary = "Bestehende Position wirkt anfällig. Risiko-Management und Stopps prüfen."
+    else:
+        if investment >= 75 and market_regime == "POSITIV":
+            summary = "Guter Watchlist-Kandidat mit unterstützendem Marktumfeld."
+        elif investment >= 60:
+            summary = "Interessanter Kandidat, aber Timing oder Teilbereiche sind noch nicht ideal."
+        else:
+            summary = "Aktuell eher Beobachtung statt Einstieg."
+
+    return strengths, weaknesses, summary
+
+
+# ---------- Data Enrichment ----------
 def extract_analyst_data(ticker_obj, info):
     info = dict(info or {})
 
@@ -346,42 +601,6 @@ def extract_earnings_data(ticker_obj, info):
         pass
 
     return info
-
-
-def tb_signal_label(score):
-    if score >= 9:
-        return "LONG", "AKTIV HALTEN"
-    if score >= 5:
-        return "HOLD", "HALTEN"
-    if score >= 3:
-        return "WAIT", "ABWARTEN"
-    return "SHORT", "STOPP PRÜFEN"
-
-
-def first_existing_row(df, names):
-    if df is None or getattr(df, "empty", True):
-        return None
-    for name in names:
-        if name in df.index:
-            row = df.loc[name]
-            if isinstance(row, pd.DataFrame):
-                row = row.iloc[0]
-            return pd.to_numeric(row, errors="coerce")
-    return None
-
-
-def latest_valid(series_like):
-    if series_like is None:
-        return np.nan
-    s = pd.to_numeric(pd.Series(series_like), errors="coerce").dropna()
-    return float(s.iloc[0]) if len(s) else np.nan
-
-
-def previous_valid(series_like):
-    if series_like is None:
-        return np.nan
-    s = pd.to_numeric(pd.Series(series_like), errors="coerce").dropna()
-    return float(s.iloc[1]) if len(s) > 1 else np.nan
 
 
 def derive_fundamentals_from_statements(ticker_obj, info):
@@ -518,6 +737,7 @@ def derive_fundamentals_from_statements(ticker_obj, info):
     return info
 
 
+# ---------- IO ----------
 @st.cache_data(ttl=120, show_spinner=False)
 def load_data(ticker):
     t = yf.Ticker(ticker)
@@ -556,7 +776,7 @@ def load_data(ticker):
 
 
 @st.cache_data(ttl=120, show_spinner=False)
-def load_benchmark_data(symbol="SPY"):
+def load_benchmark_data(symbol):
     try:
         t = yf.Ticker(symbol)
         hist = t.history(period="1y", auto_adjust=True)
@@ -572,14 +792,8 @@ def search_tickers(query, max_results=8):
         return []
 
     url = "https://query2.finance.yahoo.com/v1/finance/search"
-    params = {
-        "q": query,
-        "quotesCount": max_results,
-        "newsCount": 0,
-    }
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    params = {"q": query, "quotesCount": max_results, "newsCount": 0}
+    headers = {"User-Agent": "Mozilla/5.0"}
 
     try:
         r = requests.get(url, params=params, headers=headers, timeout=10)
@@ -598,7 +812,6 @@ def search_tickers(query, max_results=8):
 
         if not symbol:
             continue
-
         if quote_type not in {"EQUITY", "ETF"}:
             continue
 
@@ -616,13 +829,13 @@ def search_tickers(query, max_results=8):
         if r["symbol"] not in seen:
             clean.append(r)
             seen.add(r["symbol"])
-
     return clean
 
 
+# ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Core + TradingBoard + Profil & Chart")
+    st.caption(f"{APP_VERSION} | Core + TradingBoard + Marktfilter + Erklärung")
     st.divider()
 
     search_input = st.text_input(
@@ -631,7 +844,6 @@ with st.sidebar:
         placeholder="z. B. AAPL, BASF, Siemens, BAS.DE",
         key="search_input_widget"
     ).strip()
-
     st.session_state.search_input = search_input
 
     st.caption("Du kannst einen Ticker oder einfach einen Firmennamen eingeben.")
@@ -641,7 +853,8 @@ with st.sidebar:
 
     if search_input:
         looks_like_ticker = (
-            (" " not in search_input and len(search_input) <= 12 and search_input.replace(".", "").replace("-", "").isalnum())
+            " " not in search_input and len(search_input) <= 12
+            and search_input.replace(".", "").replace("-", "").isalnum()
         )
 
         if looks_like_ticker:
@@ -678,8 +891,6 @@ with st.sidebar:
     else:
         ticker = st.session_state.selected_ticker
 
-    st.caption(f"Aktueller Ticker: {st.session_state.selected_ticker}")
-
     horizon = st.selectbox(
         "Zeithorizont",
         [
@@ -701,6 +912,11 @@ with st.sidebar:
     smart_money_default = st.checkbox("TradingBoard: Smart Money = True", value=True)
     strict_mode = st.checkbox("Strenges 23-Saeulen-Mapping", value=True)
 
+    position_mode = buy_in_override > 0
+    mode_label = "Position" if position_mode else "Watchlist"
+    st.caption(f"Modus: {mode_label}")
+    st.caption(f"Aktueller Ticker: {st.session_state.selected_ticker}")
+
     st.divider()
     if st.button("Cache leeren", use_container_width=True):
         st.cache_data.clear()
@@ -711,10 +927,12 @@ with st.sidebar:
         st.session_state.analysis_ticker = st.session_state.selected_ticker
         st.session_state.analysis_requested = True
 
+
+# ---------- Main ----------
 st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
-    "Zusätzlich sind Profil, Kurzbeschreibung und Chartverlauf integriert."
+    "Zusätzlich sind Watchlist-/Positionsmodus, Marktfilter, strukturierte Red Flags und ein Warum?-Block integriert."
 )
 
 if not st.session_state.analysis_requested:
@@ -730,7 +948,6 @@ if not ticker:
 with st.spinner(f"Lade {ticker}..."):
     try:
         df, info = load_data(ticker)
-        benchmark_df = load_benchmark_data("SPY")
     except Exception as e:
         st.error(str(e))
         st.stop()
@@ -738,6 +955,10 @@ with st.spinner(f"Lade {ticker}..."):
 if df.empty or len(df) < 220:
     st.error("Nicht genug Kursdaten fuer belastbare Analyse. Prüfe den ausgewählten Ticker.")
     st.stop()
+
+benchmark_symbol, benchmark_label = select_benchmark(ticker, info)
+benchmark_df = load_benchmark_data(benchmark_symbol)
+market_info = evaluate_market_filter(benchmark_df)
 
 close = df["Close"]
 high = df["High"]
@@ -757,6 +978,7 @@ company_summary = info.get("longBusinessSummary", "")
 if not company_summary:
     company_summary = "Keine Unternehmensbeschreibung verfügbar."
 
+# ---------- Technicals ----------
 ma20 = safe_last(close.rolling(20).mean())
 ma50 = safe_last(close.rolling(50).mean())
 ma150 = safe_last(close.rolling(150).mean())
@@ -776,12 +998,14 @@ tr = true_range(high, low, close)
 atr = safe_last(tr.rolling(14).mean())
 atr_pct = atr / price * 100 if price else 0
 
+ret_metrics = calc_return_metrics(close)
+ret21 = ret_metrics["ret21"]
+ret63 = ret_metrics["ret63"]
+ret126 = ret_metrics["ret126"]
 roc20 = safe_last(close.pct_change(20) * 100)
 roc60 = safe_last(close.pct_change(60) * 100)
 ret5 = safe_last(close.pct_change(5) * 100, 0)
 ret20 = safe_last(close.pct_change(20) * 100, 0)
-ret63 = safe_last(close.pct_change(63) * 100, 0)
-ret126 = safe_last(close.pct_change(126) * 100, 0)
 
 vol20 = safe_last(vol.rolling(20).mean(), 1)
 vol5 = safe_last(vol.rolling(5).mean(), 1)
@@ -813,6 +1037,7 @@ macd_hist_current = safe_last(macd_hist_series, 0)
 macd_hist_prev = safe_last(macd_hist_series.shift(1), 0)
 macd_bull_cross = macd_v > signal_v and macd_hist_current > 0 and macd_hist_prev < 0
 
+# ---------- Fundamentals ----------
 target = info.get("targetMeanPrice", np.nan)
 upside = ((target / price - 1) * 100) if pd.notna(target) and price else np.nan
 pe = info.get("forwardPE", np.nan)
@@ -836,16 +1061,25 @@ fcf = info.get("freeCashflow", np.nan)
 op_cf = info.get("operatingCashflow", np.nan)
 short_pct = info.get("shortPercentOfFloat", np.nan)
 
-benchmark_ret63 = np.nan
-benchmark_ret126 = np.nan
-if benchmark_df is not None and not benchmark_df.empty and "Close" in benchmark_df.columns:
-    bclose = benchmark_df["Close"]
-    benchmark_ret63 = safe_last(bclose.pct_change(63) * 100, np.nan)
-    benchmark_ret126 = safe_last(bclose.pct_change(126) * 100, np.nan)
+# ---------- Benchmark / Market ----------
+bench_ret21 = market_info["ret21"]
+bench_ret63 = market_info["ret63"]
+bench_ret126 = market_info["ret126"]
 
-rs_vs_benchmark_63 = ret63 - benchmark_ret63 if pd.notna(benchmark_ret63) else np.nan
-rs_vs_benchmark_126 = ret126 - benchmark_ret126 if pd.notna(benchmark_ret126) else np.nan
+rs_vs_benchmark_21 = ret21 - bench_ret21 if pd.notna(bench_ret21) else np.nan
+rs_vs_benchmark_63 = ret63 - bench_ret63 if pd.notna(bench_ret63) else np.nan
+rs_vs_benchmark_126 = ret126 - bench_ret126 if pd.notna(bench_ret126) else np.nan
 
+rs_terms = []
+if pd.notna(rs_vs_benchmark_21):
+    rs_terms.append(rs_vs_benchmark_21 * 0.25)
+if pd.notna(rs_vs_benchmark_63):
+    rs_terms.append(rs_vs_benchmark_63 * 0.45)
+if pd.notna(rs_vs_benchmark_126):
+    rs_terms.append(rs_vs_benchmark_126 * 0.30)
+rs_composite = sum(rs_terms) if rs_terms else np.nan
+
+# ---------- Stock Style ----------
 if pd.notna(revenue_growth) and revenue_growth > 0.15 and pd.notna(pe) and pe > 25:
     stock_style = "Growth"
 elif pd.notna(roe) and roe > 0.18 and pd.notna(profit_margin) and profit_margin > 0.15:
@@ -859,6 +1093,7 @@ elif pd.notna(earnings_growth) and earnings_growth < 0 and pd.notna(debt_to_equi
 else:
     stock_style = "Neutral"
 
+# ---------- Horizon ----------
 if "1-7" in horizon:
     hd, ws, wc = 7, 0.82, 0.18
 elif "1-4" in horizon:
@@ -870,8 +1105,8 @@ elif "1-2" in horizon:
 else:
     hd, ws, wc = 730, 0.15, 0.85
 
+# ---------- Earnings ----------
 earnings_ts = normalize_missing(info.get("earningsTimestamp"))
-
 if pd.notna(earnings_ts):
     days_earn = (float(earnings_ts) - datetime.now(timezone.utc).timestamp()) / 86400
 else:
@@ -898,6 +1133,7 @@ else:
 
 earnings_warning = has_upcoming_earnings and days_earn <= 7
 
+# ---------- Technical Scores ----------
 if price > ma50 > ma150 > ma200:
     regime, reg_amp = "UPTREND", "🟢"
 elif price < ma50 < ma150 < ma200:
@@ -937,12 +1173,12 @@ else:
 
 w52 = 100 if 80 <= dist52 <= 98 else (72 if 70 <= dist52 < 80 else (55 if 98 < dist52 <= 101 else (35 if dist52 >= 55 else 15)))
 
-if pd.notna(rs_vs_benchmark_63):
-    if rs_vs_benchmark_63 > 8:
+if pd.notna(rs_composite):
+    if rs_composite > 8:
         rs_score = 100
-    elif rs_vs_benchmark_63 > 3:
+    elif rs_composite > 3:
         rs_score = 78
-    elif rs_vs_benchmark_63 > -3:
+    elif rs_composite > -3:
         rs_score = 55
     else:
         rs_score = 22
@@ -951,7 +1187,7 @@ else:
 
 kb = sum([s3 >= 65, s4 >= 65, s5 >= 65, s6 >= 65])
 
-setup_raw = s3 * 0.24 + s4 * 0.24 + s5 * 0.18 + s6 * 0.12 + rs_score * 0.14 + w52 * 0.08
+setup_raw = s3 * 0.22 + s4 * 0.24 + s5 * 0.18 + s6 * 0.10 + rs_score * 0.16 + w52 * 0.10
 if strict_mode:
     if kb < 2:
         setup_raw = min(setup_raw, 44)
@@ -959,6 +1195,9 @@ if strict_mode:
         setup_raw = min(setup_raw, 58)
 setup = round(clamp(setup_raw))
 
+setup_adj = round(clamp(setup * 0.88 + market_info["score"] * 0.12))
+
+# ---------- Fundamental Scores ----------
 fundamental_fields = [
     profit_margin, oper_margin, gross_margin, roe, roa,
     revenue_growth, earnings_growth, current_ratio, quick_ratio,
@@ -1044,27 +1283,19 @@ base_company = round(
     + risk_score * 0.06
 )
 
-red_flag_penalty = 0
-red_flag_notes = []
-
-if pd.notna(earnings_growth) and earnings_growth < -0.15:
-    red_flag_penalty += 8
-    red_flag_notes.append("Gewinnwachstum stark negativ")
-if pd.notna(revenue_growth) and revenue_growth < -0.10:
-    red_flag_penalty += 6
-    red_flag_notes.append("Umsatzwachstum negativ")
-if pd.notna(fcf) and fcf < 0:
-    red_flag_penalty += 6
-    red_flag_notes.append("Freier Cashflow negativ")
-if pd.notna(debt_to_equity) and debt_to_equity > 180:
-    red_flag_penalty += 8
-    red_flag_notes.append("Verschuldung sehr hoch")
-if pd.notna(current_ratio) and current_ratio < 1.0:
-    red_flag_penalty += 5
-    red_flag_notes.append("Liquidität schwach")
-if pd.notna(profit_margin) and profit_margin < 0:
-    red_flag_penalty += 8
-    red_flag_notes.append("Gewinnmarge negativ")
+red_flag_items, red_flag_penalty_total = build_red_flags(
+    revenue_growth=revenue_growth,
+    earnings_growth=earnings_growth,
+    profit_margin=profit_margin,
+    fcf=fcf,
+    op_cf=op_cf,
+    debt_to_equity=debt_to_equity,
+    current_ratio=current_ratio,
+    quick_ratio=quick_ratio,
+    has_upcoming_earnings=has_upcoming_earnings,
+    days_earn=days_earn
+)
+red_flag_notes = [f"{x['Kategorie']}: {x['Detail']}" for x in red_flag_items]
 
 coverage_penalty = 0
 if fund_cov < 0.35:
@@ -1072,15 +1303,18 @@ if fund_cov < 0.35:
 elif fund_cov < 0.55:
     coverage_penalty = 6
 
-base_company = max(25, round(base_company - red_flag_penalty - coverage_penalty))
+base_company = max(25, round(base_company - red_flag_penalty_total - coverage_penalty))
 
 if hd < 30:
     company = round(base_company * 0.55 + 50 * 0.45)
 else:
     company = base_company
 company = int(clamp(company))
-investment = round(clamp(setup * ws + company * wc))
 
+# Investment score now uses adjusted setup
+investment = round(clamp(setup_adj * ws + company * wc))
+
+# ---------- Trade Setup ----------
 atr_stop = round(price - 1.8 * atr, 2)
 struct_stop = round(ma50 * 0.965, 2)
 stop_used = min(atr_stop, struct_stop)
@@ -1097,9 +1331,9 @@ risk_eur = depot * (risk_pct / 100)
 pos_size = int(risk_eur / risk_per_share) if risk_per_share > 0 else 0
 time_stop = (date.today() + timedelta(days=hd)).strftime("%d.%m.%Y")
 
-short_term_score = round(clamp(s4 * 0.45 + s5 * 0.30 + s6 * 0.20 + rs_score * 0.05))
-swing_score = round(clamp(s3 * 0.28 + s4 * 0.30 + s5 * 0.18 + s6 * 0.10 + rs_score * 0.10 + w52 * 0.04))
-mid_term_score = round(clamp(setup * 0.55 + company * 0.45))
+short_term_score = round(clamp(s4 * 0.45 + s5 * 0.28 + s6 * 0.17 + rs_score * 0.10))
+swing_score = round(clamp(s3 * 0.26 + s4 * 0.28 + s5 * 0.16 + s6 * 0.10 + rs_score * 0.12 + w52 * 0.08))
+mid_term_score = round(clamp(setup_adj * 0.55 + company * 0.45))
 long_term_score = round(clamp(company * 0.50 + growth_score * 0.15 + growth_quality * 0.10 + quality_score * 0.15 + valuation_score * 0.10))
 very_long_term_score = round(clamp(company * 0.40 + quality_score * 0.20 + growth_score * 0.15 + growth_quality * 0.10 + valuation_score * 0.15))
 
@@ -1111,17 +1345,29 @@ hmap = {
     "Sehr langfristig": very_long_term_score,
 }
 
+# ---------- Recommendations ----------
 if has_upcoming_earnings and days_earn < 7:
-    emp, conv = "VETO - Earnings < 7 Tage", "-"
-elif investment >= 78 and kb >= 3:
-    emp, conv = "BUY / ACCUMULATE", "HIGH"
-elif investment >= 68:
-    emp, conv = "WATCH / kleine Position", "MEDIUM"
-elif investment >= 52:
-    emp, conv = "HOLD / beobachten", "LOW-MEDIUM"
+    emp, conv = ("VETO - Earnings < 7 Tage", "-")
+elif position_mode:
+    if investment >= 78 and kb >= 3 and market_info["regime"] != "NEGATIV":
+        emp, conv = ("HALTEN / AUSBAUEN", "HIGH")
+    elif investment >= 65:
+        emp, conv = ("HALTEN / ENGE BEOBACHTUNG", "MEDIUM")
+    elif investment >= 52:
+        emp, conv = ("HALTEN / RISIKO PRÜFEN", "LOW-MEDIUM")
+    else:
+        emp, conv = ("RISIKO REDUZIEREN / STOPP PRÜFEN", "LOW")
 else:
-    emp, conv = "AVOID / WAIT", "LOW"
+    if investment >= 78 and kb >= 3 and market_info["regime"] == "POSITIV":
+        emp, conv = ("BUY / ACCUMULATE", "HIGH")
+    elif investment >= 68:
+        emp, conv = ("WATCH / EINSTIEG PRÜFEN", "MEDIUM")
+    elif investment >= 52:
+        emp, conv = ("BEOBACHTEN", "LOW-MEDIUM")
+    else:
+        emp, conv = ("AVOID / WAIT", "LOW")
 
+# ---------- Trading Board ----------
 tb_score = 0
 tb_details = []
 tb_context = []
@@ -1168,14 +1414,14 @@ if 40 < rsi < 60 or rsi < 30:
 else:
     tb_details.append("S5: RSI hoch/niedrig ❌")
 
-if tb_buy > 0:
+if position_mode:
     if tb_perf > 5:
         tb_score += 1
-        tb_details.append(f"S6: +{tb_perf:.1f}% ✓")
+        tb_details.append(f"S6: +{tb_perf:.1f}% seit Einstieg ✓")
     else:
-        tb_details.append(f"S6: {tb_perf:.1f}% ❌")
+        tb_details.append(f"S6: {tb_perf:.1f}% seit Einstieg ❌")
 else:
-    tb_details.append("S6: Watchlist-Modus (kein Buy-in)")
+    tb_details.append("S6: Watchlist-Modus (neutral)")
 
 if macd_hist_current > macd_hist_prev:
     tb_score += 1
@@ -1270,31 +1516,31 @@ if short_squeeze:
 else:
     tb_context.append("S20: kein Short-Squeeze-Signal ❌")
 
-insider_trend = "NEUTRAL"
-if insider_trend == "BUY":
-    tb_context.append("S21: 👔 INSIDER KAUFEN ✓")
-elif insider_trend == "SELL":
-    tb_context.append("S21: 👔 INSIDER VERKAUFEN ❌")
-else:
-    tb_context.append("S21: 👔 Insider neutral / keine Daten ❌")
-
 if pd.notna(pe) and 0 < pe < 15:
-    tb_context.append(f"S22: 🟢 VALUE KGV ({pe:.1f}) ✓")
+    tb_context.append(f"S21: 🟢 VALUE KGV ({pe:.1f}) ✓")
 elif pd.notna(pe) and pe > 50:
-    tb_context.append(f"S22: 🔴 TEUER KGV>50 ({pe:.1f}) ❌")
+    tb_context.append(f"S21: 🔴 TEUER KGV>50 ({pe:.1f}) ❌")
 else:
-    tb_context.append(f"S22: Value neutral ({fmt_num(pe,1)}) ❌")
+    tb_context.append(f"S21: Value neutral ({fmt_num(pe,1)}) ❌")
+
+if market_info["regime"] == "POSITIV":
+    tb_context.append(f"S22: Marktfilter positiv ({benchmark_label}) ✓")
+elif market_info["regime"] == "NEGATIV":
+    tb_context.append(f"S22: Marktfilter negativ ({benchmark_label}) ❌")
+else:
+    tb_context.append(f"S22: Marktfilter neutral ({benchmark_label}) ❌")
 
 if pd.notna(rs_vs_benchmark_63):
     if rs_vs_benchmark_63 > 0:
-        tb_context.append(f"S23: Outperformance vs SPY +{rs_vs_benchmark_63:.1f}% ✓")
+        tb_context.append(f"S23: Outperformance vs {benchmark_label} +{rs_vs_benchmark_63:.1f}% ✓")
     else:
-        tb_context.append(f"S23: Underperformance vs SPY {rs_vs_benchmark_63:.1f}% ❌")
+        tb_context.append(f"S23: Underperformance vs {benchmark_label} {rs_vs_benchmark_63:.1f}% ❌")
 else:
     tb_context.append("S23: Benchmark-Vergleich n/a ❌")
 
 tb_signal, tb_empf = tb_signal_label(tb_score)
 
+# ---------- Short-term helper board ----------
 stb_score = 0
 stb_items = []
 
@@ -1343,21 +1589,42 @@ if willr_v < -80:
 stb_signal, stb_empf = tb_signal_label(stb_score)
 stb_text = ", ".join(stb_items) if stb_items else "keine positiven Kurzfrist-Signale"
 
+# ---------- Explanations ----------
+strengths, weaknesses, decision_summary = build_decision_explanation(
+    setup=setup_adj,
+    company=company,
+    investment=investment,
+    market_regime=market_info["regime"],
+    rs_vs_benchmark_63=rs_vs_benchmark_63,
+    quality_score=quality_score,
+    growth_score=growth_score,
+    valuation_score=valuation_score,
+    balance_score=balance_score,
+    red_flag_items=red_flag_items,
+    earnings_warning=earnings_warning,
+    kb=kb,
+    position_mode=position_mode
+)
+
+# ---------- DataFrames ----------
 rows = []
 for line in tb_details:
-    if line.startswith("⚠️") or line.startswith("MACD "):
-        rows.append({"Punkt": "Info", "Detail": line})
+    if ": " in line:
+        k, v = line.split(": ", 1)
+        rows.append({"Punkt": k, "Detail": v})
     else:
-        if ": " in line:
-            k, v = line.split(": ", 1)
-            rows.append({"Punkt": k, "Detail": v})
-        else:
-            rows.append({"Punkt": "Info", "Detail": line})
+        rows.append({"Punkt": "Info", "Detail": line})
 tb_df = pd.DataFrame(rows)
 
+red_flags_df = pd.DataFrame(red_flag_items) if red_flag_items else pd.DataFrame(
+    [{"Kategorie": "-", "Status": "🟢", "Detail": "Keine relevanten Red Flags erkannt", "Penalty": 0}]
+)
+
+# ---------- Header ----------
 st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")
 st.markdown(
-    f"<div class='small-note'>Sektor: {sector} | Industrie: {industry} | Stil: {stock_style}</div>",
+    f"<div class='small-note'>Sektor: {sector} | Industrie: {industry} | Stil: {stock_style} | "
+    f"Modus: {mode_label} | Benchmark: {benchmark_label} | Marktregime: {market_info['regime']}</div>",
     unsafe_allow_html=True
 )
 
@@ -1387,13 +1654,14 @@ elif fund_cov < 0.55:
         f"Fundamentaldaten teilweise vorhanden ({fund_cov*100:.0f}% Abdeckung, {fund_fields_loaded}/21 Felder)."
     )
 
-if red_flag_notes:
-    st.warning("Red Flags erkannt: " + " | ".join(red_flag_notes))
+if red_flag_items:
+    st.warning("Red Flags erkannt: " + " | ".join(red_flag_notes[:4]))
 
+# ---------- Scores ----------
 st.subheader("Scores")
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 c1.metric("Company Quality", f"{company}/100", ampel(company))
-c2.metric("Setup Quality", f"{setup}/100", ampel(setup))
+c2.metric("Setup Quality", f"{setup_adj}/100", ampel(setup_adj))
 c3.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
 c4.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
 c5.metric("Investment Score", f"{investment}/100", ampel(investment))
@@ -1401,23 +1669,23 @@ c6.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
 c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
 
 st.caption(
-    "Zusätzlich zur bisherigen Logik berücksichtigt diese Version nun Growth Quality, "
-    "Red Flags, relative Stärke vs. Benchmark sowie Profil und Chartverlauf."
+    "Diese Version ergänzt Watchlist-/Positionsmodus, passenden Benchmark, Marktfilter, "
+    "strukturierte Red Flags und einen erklärenden Warum?-Block."
 )
 
 st.markdown("### Scores verständlich erklärt")
 st.markdown(
-    "- **Company Quality** bewertet die Qualität des Unternehmens: Profitabilität, Wachstum, Wachstumsqualität, Bilanz, Bewertung, Analysteneinschätzung und Risiko.\n"
-    "- **Setup Quality** bewertet das technische Gesamtbild im strengen 23-Säulen-Kernmodell. Wenn Trend, Momentum, Volumen und Volatilität nicht gemeinsam tragen, wird dieser Wert bewusst gedeckelt.\n"
-    "- **Kurzfrist Core** bewertet die kurzfristige technische Lage mit Fokus auf Momentum, Volumen, Volatilität und relativer Stärke.\n"
-    "- **Kurzfrist Hilfsboard** ist eine zusätzliche Kurzfrist-Ampel aus einzelnen Handelssignalen.\n"
-    "- **Investment Score** ist die Gesamtbewertung aus technischer Qualität und Unternehmensqualität.\n"
+    "- **Company Quality** bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.\n"
+    "- **Setup Quality** bewertet das technische Gesamtbild. In v6.1 fließt zusätzlich ein kleiner Marktfilter ein.\n"
+    "- **Kurzfrist Core** bewertet die kurzfristige technische Lage.\n"
+    "- **Kurzfrist Hilfsboard** ist eine ergänzende Kurzfrist-Ampel.\n"
+    "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
     "- **TradingBoard Score** ist der dashboardnahe Referenzscore für die Trading-Entscheidung.\n"
-    "- **Konfluenz** zeigt, wie viele der vier Kernbereiche Trend, Momentum, Volumen und Volatilität gleichzeitig tragfähig sind."
+    "- **Konfluenz** zeigt, wie viele Kernbereiche gleichzeitig tragfähig sind."
 )
 
+# ---------- Tabs ----------
 st.divider()
-
 t0, t1, t2, t3, t4, t5, t6 = st.tabs([
     "Profil & Chart",
     "Technik",
@@ -1441,7 +1709,6 @@ with t0:
     st.write(summary_short)
 
     st.markdown("**Chartverlauf**")
-
     chart_range = st.selectbox(
         "Zeitraum",
         ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
@@ -1460,7 +1727,6 @@ with t0:
 
     chart_data = chart_df[["Close"]].copy()
     chart_data = chart_data.rename(columns={"Close": f"{ticker} Kurs"})
-
     st.line_chart(chart_data, use_container_width=True)
 
     perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
@@ -1473,6 +1739,8 @@ with t0:
     p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
 
 with t1:
+    st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_info['regime']}")
+
     cols = st.columns(2)
     items = [
         ("S3 Trend", s3a, s3, s3t),
@@ -1480,7 +1748,7 @@ with t1:
         ("S5 Volumen", s5a, s5, s5t),
         ("S6 Volatilitaet", s6a, s6, s6t),
         ("52W-Lage", ampel(w52), w52, f"{dist52:.1f}% vom 52W-Hoch"),
-        ("Relative Stärke", ampel(rs_score), rs_score, f"vs SPY 3M: {fmt_num(rs_vs_benchmark_63,1,'%')}"),
+        ("Relative Stärke", ampel(rs_score), rs_score, f"RS composite: {fmt_num(rs_composite,1,'%')}"),
     ]
     for i, (lab, ico, score, com) in enumerate(items):
         with cols[i % 2]:
@@ -1491,28 +1759,29 @@ with t1:
                 unsafe_allow_html=True,
             )
 
-    st.dataframe(
-        pd.DataFrame(
-            {
-                "Indikator": [
-                    "Kurs", "MA20", "MA50", "MA150", "MA200",
-                    "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR in %",
-                    "Stoch %K", "Stoch %D", "Williams %R", "ROC20", "ROC60",
-                    "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch",
-                    "3M Performance", "3M Benchmark SPY", "3M Outperformance vs SPY"
-                ],
-                "Wert": [
-                    f"{price:.2f}", f"{ma20:.2f}", f"{ma50:.2f}", f"{ma150:.2f}", f"{ma200:.2f}",
-                    f"{rsi:.1f}", f"{macd_v:.3f}", f"{signal_v:.3f}", f"{macd_hist_current:.3f}", f"{adx:.1f}",
-                    f"{atr:.3f}", f"{atr_pct:.1f}%", f"{stoch_k_v:.1f}", f"{stoch_d_v:.1f}", f"{willr_v:.1f}",
-                    f"{roc20:.1f}%", f"{roc60:.1f}%", f"{high52:.2f}", f"{low52:.2f}", f"{dist52:.1f}%",
-                    f"{ret63:.1f}%", fmt_num(benchmark_ret63, 1, "%"), fmt_num(rs_vs_benchmark_63, 1, "%")
-                ],
-            }
-        ),
-        hide_index=True,
-        use_container_width=True,
-    )
+    tech_df = pd.DataFrame({
+        "Indikator": [
+            "Kurs", "MA20", "MA50", "MA150", "MA200",
+            "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR in %",
+            "Stoch %K", "Stoch %D", "Williams %R", "ROC20", "ROC60",
+            "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch",
+            "1M Aktie", "1M Benchmark", "1M Outperformance",
+            "3M Aktie", "3M Benchmark", "3M Outperformance",
+            "6M Aktie", "6M Benchmark", "6M Outperformance",
+            "RS Composite", "Marktregime"
+        ],
+        "Wert": [
+            f"{price:.2f}", f"{ma20:.2f}", f"{ma50:.2f}", f"{ma150:.2f}", f"{ma200:.2f}",
+            f"{rsi:.1f}", f"{macd_v:.3f}", f"{signal_v:.3f}", f"{macd_hist_current:.3f}", f"{adx:.1f}",
+            f"{atr:.3f}", f"{atr_pct:.1f}%", f"{stoch_k_v:.1f}", f"{stoch_d_v:.1f}", f"{willr_v:.1f}",
+            f"{roc20:.1f}%", f"{roc60:.1f}%", f"{high52:.2f}", f"{low52:.2f}", f"{dist52:.1f}%",
+            fmt_num(ret21, 1, "%"), fmt_num(bench_ret21, 1, "%"), fmt_num(rs_vs_benchmark_21, 1, "%"),
+            fmt_num(ret63, 1, "%"), fmt_num(bench_ret63, 1, "%"), fmt_num(rs_vs_benchmark_63, 1, "%"),
+            fmt_num(ret126, 1, "%"), fmt_num(bench_ret126, 1, "%"), fmt_num(rs_vs_benchmark_126, 1, "%"),
+            fmt_num(rs_composite, 1, "%"), market_info["regime"]
+        ],
+    })
+    st.dataframe(tech_df, hide_index=True, use_container_width=True)
 
 with t2:
     c1, c2, c3, c4 = st.columns(4)
@@ -1522,18 +1791,16 @@ with t2:
     c4.metric("Board Fokus", "Einzelne Handelssignale")
 
     st.dataframe(
-        pd.DataFrame(
-            {
-                "Kennzahl": ["Kurzfrist Core", "Kurzfrist Hilfsboard", "Board-Signal", "Board-Treiber"],
-                "Wert": [f"{short_term_score}/100", str(stb_score), stb_signal, stb_text],
-                "Kommentar": [
-                    "S4 Momentum 45%, S5 Volumen 30%, S6 Volatilitaet 20%, RS 5%",
-                    "Additive Kurzfrist-Punkte aus MA/RSI/Momentum/ADX/Stoch/Williams",
-                    stb_empf,
-                    stb_text
-                ],
-            }
-        ),
+        pd.DataFrame({
+            "Kennzahl": ["Kurzfrist Core", "Kurzfrist Hilfsboard", "Board-Signal", "Board-Treiber"],
+            "Wert": [f"{short_term_score}/100", str(stb_score), stb_signal, stb_text],
+            "Kommentar": [
+                "S4 Momentum 45%, S5 Volumen 28%, S6 Volatilitaet 17%, RS 10%",
+                "Additive Kurzfrist-Punkte aus MA/RSI/Momentum/ADX/Stoch/Williams",
+                stb_empf,
+                stb_text
+            ],
+        }),
         hide_index=True,
         use_container_width=True,
     )
@@ -1559,68 +1826,67 @@ with t4:
         unsafe_allow_html=True
     )
 
-    st.dataframe(
-        pd.DataFrame(
-            {
-                "Fundament-Block": [
-                    "Qualitaet", "Wachstum", "Growth Quality", "Bewertung",
-                    "Bilanz", "Sentiment", "Risiko"
-                ],
-                "Score": [
-                    quality_score, growth_score, growth_quality, valuation_score,
-                    balance_score, sentiment_score, risk_score
-                ],
-                "Kommentar": [
-                    f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | Eigenkapitalrendite {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')} | Freier Cashflow {'positiv' if pd.notna(fcf) and fcf > 0 else ('negativ' if pd.notna(fcf) else 'n/a')}",
-                    f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | Gewinnwachstum je Aktie {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')} | 6-Monats-Performance {fmt_num(ret126,1,'%')}",
-                    f"Wachstum+Cashflow+Margen-Qualität | Stil: {stock_style}",
-                    f"KGV {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | KUV {fmt_num(ps,2)} | KBV {fmt_num(pb,2)} | Analysten-Potenzial {fmt_num(upside,1,'%')}",
-                    f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | Verschuldung zu Eigenkapital {fmt_num(debt_to_equity,1)}",
-                    f"Analystenmeinung {rec_label} | Anzahl Analysten {fmt_num(analysts,0)} | Durchschnittliche Empfehlung {fmt_num(rec_mean,2)} | Kursziel {fmt_num(target,2)}",
-                    f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR in Prozent {fmt_num(atr_pct,1,'%')}",
-                ],
-            }
-        ),
-        hide_index=True,
-        use_container_width=True,
-    )
+    fund_df = pd.DataFrame({
+        "Fundament-Block": [
+            "Qualitaet", "Wachstum", "Growth Quality", "Bewertung",
+            "Bilanz", "Sentiment", "Risiko"
+        ],
+        "Score": [
+            quality_score, growth_score, growth_quality, valuation_score,
+            balance_score, sentiment_score, risk_score
+        ],
+        "Kommentar": [
+            f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | ROE {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')}",
+            f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | EPS-Wachstum {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')}",
+            f"Wachstum + Cashflow + Margen | Stil: {stock_style}",
+            f"KGV {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | KUV {fmt_num(ps,2)} | KBV {fmt_num(pb,2)}",
+            f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | D/E {fmt_num(debt_to_equity,1)}",
+            f"Analystenmeinung {rec_label} | Anzahl {fmt_num(analysts,0)} | Mean {fmt_num(rec_mean,2)}",
+            f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR% {fmt_num(atr_pct,1,'%')}",
+        ],
+    })
+    st.dataframe(fund_df, hide_index=True, use_container_width=True)
+
+    st.markdown("**Strukturierte Red Flags**")
+    st.dataframe(red_flags_df, hide_index=True, use_container_width=True)
 
 with t5:
-    st.dataframe(
-        pd.DataFrame(
-            {
-                "Safeguard": [
-                    "S0 Currency/Exchange",
-                    "S0 Preis-Typ-Lock",
-                    "S1 Earnings",
-                    "S2 Regime",
-                    "S3 Konfluenz-Cap",
-                    "S4 Datenabdeckung",
-                    "S5 Red Flags"
-                ],
-                "Status": [
-                    "🟢",
-                    "🟢",
-                    sg_earn,
-                    reg_amp,
-                    "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"),
-                    "🟢" if fund_cov >= 0.55 else ("🟡" if fund_cov >= 0.35 else "🔴"),
-                    "🟢" if red_flag_penalty == 0 else ("🟡" if red_flag_penalty <= 8 else "🔴"),
-                ],
-                "Kommentar": [
-                    f"{ccy} | {exch}",
-                    "auto_adjust=True Yahoo Finance",
-                    sg_earn_txt,
-                    regime,
-                    f"{kb}/4 Kernbloecke",
-                    f"Fundamental-Coverage {fund_cov*100:.0f}%",
-                    f"Penalty {red_flag_penalty} | {'keine' if not red_flag_notes else ' | '.join(red_flag_notes)}"
-                ],
-            }
-        ),
-        hide_index=True,
-        use_container_width=True,
-    )
+    safeguard_df = pd.DataFrame({
+        "Safeguard": [
+            "S0 Currency/Exchange",
+            "S0 Preis-Typ-Lock",
+            "S1 Earnings",
+            "S2 Regime",
+            "S3 Konfluenz-Cap",
+            "S4 Datenabdeckung",
+            "S5 Marktfilter",
+            "S6 Modus",
+            "S7 Red Flags"
+        ],
+        "Status": [
+            "🟢",
+            "🟢",
+            sg_earn,
+            reg_amp,
+            "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"),
+            "🟢" if fund_cov >= 0.55 else ("🟡" if fund_cov >= 0.35 else "🔴"),
+            market_info["ampel"],
+            "🟢",
+            "🟢" if red_flag_penalty_total == 0 else ("🟡" if red_flag_penalty_total <= 10 else "🔴"),
+        ],
+        "Kommentar": [
+            f"{ccy} | {exch}",
+            "auto_adjust=True Yahoo Finance",
+            sg_earn_txt,
+            regime,
+            f"{kb}/4 Kernbloecke",
+            f"Fundamental-Coverage {fund_cov*100:.0f}%",
+            f"{benchmark_label} | {market_info['regime']}",
+            mode_label,
+            f"Penalty {red_flag_penalty_total}"
+        ],
+    })
+    st.dataframe(safeguard_df, hide_index=True, use_container_width=True)
 
 with t6:
     c1, c2, c3 = st.columns(3)
@@ -1638,6 +1904,7 @@ with t6:
     c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
     c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
 
+# ---------- Horizon lamps ----------
 st.divider()
 st.subheader("5 Zeithorizont-Ampeln")
 cols = st.columns(5)
@@ -1648,16 +1915,39 @@ for col, (lab, scv) in zip(cols, hmap.items()):
         unsafe_allow_html=True,
     )
 
+# ---------- Recommendation + Why block ----------
 st.divider()
 st.subheader("Handlungsempfehlung")
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Core Empfehlung", emp)
-c2.metric("Core Conviction", conv)
-c3.metric("Kurzfrist Core", f"{short_term_score}/100")
+c1.metric("Modus", mode_label)
+c2.metric("Core Empfehlung", emp)
+c3.metric("Core Conviction", conv)
 c4.metric("Kurzfrist Hilfsboard", stb_signal, str(stb_score))
-c5.metric("TradingBoard Urteil", tb_empf)
+c5.metric("Marktfilter", market_info["regime"], market_info["ampel"])
+
+st.markdown("### Warum?")
+w1, w2 = st.columns(2)
+
+with w1:
+    st.markdown("**Top-Stärken**")
+    if strengths:
+        for s in strengths:
+            st.write(f"- {s}")
+    else:
+        st.write("- Keine klaren Stärken identifiziert.")
+
+with w2:
+    st.markdown("**Top-Schwächen**")
+    if weaknesses:
+        for w in weaknesses:
+            st.write(f"- {w}")
+    else:
+        st.write("- Keine wesentlichen Schwächen identifiziert.")
+
+st.markdown("**Kurzfazit**")
+st.write(decision_summary)
 
 st.caption(
-    "Die App zeigt bewusst drei getrennte Sichtweisen: das strenge 23-Saeulen-Core-Modell, "
-    "die kurzfristige Hilfsboard-Ampel und den dashboardnahen TradingBoard-Referenzscore mit getrenntem Kontextblock."
+    "Die App zeigt bewusst mehrere getrennte Sichtweisen: Core-Modell, kurzfristige Hilfsboard-Ampel, "
+    "dashboardnahen TradingBoard-Referenzscore, Marktfilter und eine qualitative Begründung."
 )

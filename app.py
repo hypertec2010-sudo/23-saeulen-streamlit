@@ -4,13 +4,15 @@ from datetime import datetime, timezone, date, timedelta
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import requests
 import streamlit as st
 import yfinance as yf
+from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v6.1"
+APP_VERSION = "v6.2A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -387,31 +389,22 @@ def build_red_flags(
             "Penalty": penalty
         })
 
-    # Ertrags-Risiko
     if pd.notna(earnings_growth) and earnings_growth < -0.15:
         add_item("Ertrags-Risiko", "Gewinnwachstum stark negativ", 8)
     if pd.notna(profit_margin) and profit_margin < 0:
         add_item("Ertrags-Risiko", "Gewinnmarge negativ", 8)
-
-    # Umsatz-/Geschäfts-Risiko
     if pd.notna(revenue_growth) and revenue_growth < -0.10:
         add_item("Umsatz-/Geschäfts-Risiko", "Umsatzwachstum negativ", 6)
-
-    # Cashflow-Risiko
     if pd.notna(fcf) and fcf < 0:
         add_item("Cashflow-Risiko", "Freier Cashflow negativ", 6)
     if pd.notna(op_cf) and op_cf < 0:
         add_item("Cashflow-Risiko", "Operativer Cashflow negativ", 5)
-
-    # Bilanz-Risiko
     if pd.notna(debt_to_equity) and debt_to_equity > 180:
         add_item("Bilanz-Risiko", "Verschuldung sehr hoch", 8)
     if pd.notna(current_ratio) and current_ratio < 1.0:
         add_item("Bilanz-Risiko", "Liquidität schwach (Current Ratio < 1.0)", 5)
     if pd.notna(quick_ratio) and quick_ratio < 0.8:
         add_item("Bilanz-Risiko", "Quick Ratio schwach (< 0.8)", 4)
-
-    # Event-Risiko
     if has_upcoming_earnings and pd.notna(days_earn) and days_earn <= 7:
         add_item("Event-Risiko", f"Earnings in {int(days_earn)} Tagen", 6)
 
@@ -501,6 +494,86 @@ def build_decision_explanation(
             summary = "Aktuell eher Beobachtung statt Einstieg."
 
     return strengths, weaknesses, summary
+
+
+def infer_data_source_flags(info):
+    direct_fields = [
+        "profitMargins", "operatingMargins", "grossMargins", "returnOnEquity", "returnOnAssets",
+        "revenueGrowth", "earningsGrowth", "currentRatio", "quickRatio", "debtToEquity",
+        "freeCashflow", "operatingCashflow", "forwardPE", "pegRatio", "priceToSalesTrailing12Months",
+        "priceToBook", "beta", "shortPercentOfFloat", "recommendationMean",
+        "numberOfAnalystOpinions", "targetMeanPrice"
+    ]
+    loaded = int(info.get("_fund_fields_loaded", 0) or 0)
+    total = len(direct_fields)
+    derived = max(0, loaded - min(loaded, total))
+    coverage = loaded / total if total else 0
+    if coverage >= 0.75:
+        confidence = "Hoch"
+        confidence_icon = "🟢"
+    elif coverage >= 0.50:
+        confidence = "Mittel"
+        confidence_icon = "🟡"
+    else:
+        confidence = "Niedrig"
+        confidence_icon = "🔴"
+    return {
+        "loaded": loaded,
+        "total": total,
+        "coverage": coverage,
+        "derived_estimate": derived,
+        "confidence": confidence,
+        "confidence_icon": confidence_icon
+    }
+
+
+def build_candlestick_chart(chart_df, ticker, ccy):
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=[0.75, 0.25]
+    )
+
+    fig.add_trace(
+        go.Candlestick(
+            x=chart_df.index,
+            open=chart_df["Open"],
+            high=chart_df["High"],
+            low=chart_df["Low"],
+            close=chart_df["Close"],
+            name=f"{ticker}"
+        ),
+        row=1, col=1
+    )
+
+    if "MA20" in chart_df.columns:
+        fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df["MA20"], mode="lines", name="MA20"), row=1, col=1)
+    if "MA50" in chart_df.columns:
+        fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df["MA50"], mode="lines", name="MA50"), row=1, col=1)
+    if "MA200" in chart_df.columns:
+        fig.add_trace(go.Scatter(x=chart_df.index, y=chart_df["MA200"], mode="lines", name="MA200"), row=1, col=1)
+
+    fig.add_trace(
+        go.Bar(
+            x=chart_df.index,
+            y=chart_df["Volume"],
+            name="Volumen"
+        ),
+        row=2, col=1
+    )
+
+    fig.update_layout(
+        title=f"{ticker} Candlestick-Chart ({ccy})",
+        xaxis_rangeslider_visible=False,
+        height=650,
+        template="plotly_dark",
+        margin=dict(l=20, r=20, t=50, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0)
+    )
+    fig.update_yaxes(title_text=f"Kurs ({ccy})", row=1, col=1)
+    fig.update_yaxes(title_text="Volumen", row=2, col=1)
+    return fig
 
 
 # ---------- Data Enrichment ----------
@@ -835,7 +908,7 @@ def search_tickers(query, max_results=8):
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Core + TradingBoard + Marktfilter + Erklärung")
+    st.caption(f"{APP_VERSION} | Candlestick + Volumen + Fundamental-Confidence")
     st.divider()
 
     search_input = st.text_input(
@@ -932,7 +1005,7 @@ with st.sidebar:
 st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
 st.caption(
     "Core-Modell und TradingBoard werden getrennt gerechnet. "
-    "Zusätzlich sind Watchlist-/Positionsmodus, Marktfilter, strukturierte Red Flags und ein Warum?-Block integriert."
+    "Zusätzlich sind Candlestick-Chart mit Volumen und Fundamental-Confidence integriert."
 )
 
 if not st.session_state.analysis_requested:
@@ -978,11 +1051,18 @@ company_summary = info.get("longBusinessSummary", "")
 if not company_summary:
     company_summary = "Keine Unternehmensbeschreibung verfügbar."
 
+confidence_info = infer_data_source_flags(info)
+
 # ---------- Technicals ----------
-ma20 = safe_last(close.rolling(20).mean())
-ma50 = safe_last(close.rolling(50).mean())
-ma150 = safe_last(close.rolling(150).mean())
-ma200 = safe_last(close.rolling(200).mean())
+ma20_series = close.rolling(20).mean()
+ma50_series = close.rolling(50).mean()
+ma150_series = close.rolling(150).mean()
+ma200_series = close.rolling(200).mean()
+
+ma20 = safe_last(ma20_series)
+ma50 = safe_last(ma50_series)
+ma150 = safe_last(ma150_series)
+ma200 = safe_last(ma200_series)
 
 ema12 = close.ewm(span=12, adjust=False).mean()
 ema26 = close.ewm(span=26, adjust=False).mean()
@@ -1194,7 +1274,6 @@ if strict_mode:
     elif kb == 2:
         setup_raw = min(setup_raw, 58)
 setup = round(clamp(setup_raw))
-
 setup_adj = round(clamp(setup * 0.88 + market_info["score"] * 0.12))
 
 # ---------- Fundamental Scores ----------
@@ -1311,7 +1390,6 @@ else:
     company = base_company
 company = int(clamp(company))
 
-# Investment score now uses adjusted setup
 investment = round(clamp(setup_adj * ws + company * wc))
 
 # ---------- Trade Setup ----------
@@ -1669,14 +1747,14 @@ c6.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
 c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
 
 st.caption(
-    "Diese Version ergänzt Watchlist-/Positionsmodus, passenden Benchmark, Marktfilter, "
-    "strukturierte Red Flags und einen erklärenden Warum?-Block."
+    "Diese Version ergänzt Candlestick-Chart mit Volumen und eine transparentere Einschätzung "
+    "der Qualität der Fundamentaldaten."
 )
 
 st.markdown("### Scores verständlich erklärt")
 st.markdown(
     "- **Company Quality** bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.\n"
-    "- **Setup Quality** bewertet das technische Gesamtbild. In v6.1 fließt zusätzlich ein kleiner Marktfilter ein.\n"
+    "- **Setup Quality** bewertet das technische Gesamtbild. Zusätzlich fließt ein kleiner Marktfilter ein.\n"
     "- **Kurzfrist Core** bewertet die kurzfristige technische Lage.\n"
     "- **Kurzfrist Hilfsboard** ist eine ergänzende Kurzfrist-Ampel.\n"
     "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
@@ -1725,9 +1803,12 @@ with t0:
     else:
         chart_df = df.copy()
 
-    chart_data = chart_df[["Close"]].copy()
-    chart_data = chart_data.rename(columns={"Close": f"{ticker} Kurs"})
-    st.line_chart(chart_data, use_container_width=True)
+    chart_df["MA20"] = chart_df["Close"].rolling(20).mean()
+    chart_df["MA50"] = chart_df["Close"].rolling(50).mean()
+    chart_df["MA200"] = chart_df["Close"].rolling(200).mean()
+
+    fig = build_candlestick_chart(chart_df, ticker, ccy)
+    st.plotly_chart(fig, use_container_width=True)
 
     perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
     perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
@@ -1826,6 +1907,12 @@ with t4:
         unsafe_allow_html=True
     )
 
+    f1, f2, f3, f4 = st.columns(4)
+    f1.metric("Fundamental-Confidence", confidence_info["confidence"], confidence_info["confidence_icon"])
+    f2.metric("Coverage", f"{confidence_info['coverage']*100:.0f}%")
+    f3.metric("Geladene Felder", f"{confidence_info['loaded']}/{confidence_info['total']}")
+    f4.metric("Abgeleitete Felder", str(confidence_info["derived_estimate"]))
+
     fund_df = pd.DataFrame({
         "Fundament-Block": [
             "Qualitaet", "Wachstum", "Growth Quality", "Bewertung",
@@ -1861,7 +1948,8 @@ with t5:
             "S4 Datenabdeckung",
             "S5 Marktfilter",
             "S6 Modus",
-            "S7 Red Flags"
+            "S7 Red Flags",
+            "S8 Fundamental-Confidence"
         ],
         "Status": [
             "🟢",
@@ -1873,6 +1961,7 @@ with t5:
             market_info["ampel"],
             "🟢",
             "🟢" if red_flag_penalty_total == 0 else ("🟡" if red_flag_penalty_total <= 10 else "🔴"),
+            confidence_info["confidence_icon"],
         ],
         "Kommentar": [
             f"{ccy} | {exch}",
@@ -1883,7 +1972,8 @@ with t5:
             f"Fundamental-Coverage {fund_cov*100:.0f}%",
             f"{benchmark_label} | {market_info['regime']}",
             mode_label,
-            f"Penalty {red_flag_penalty_total}"
+            f"Penalty {red_flag_penalty_total}",
+            confidence_info["confidence"]
         ],
     })
     st.dataframe(safeguard_df, hide_index=True, use_container_width=True)
@@ -1949,5 +2039,5 @@ st.write(decision_summary)
 
 st.caption(
     "Die App zeigt bewusst mehrere getrennte Sichtweisen: Core-Modell, kurzfristige Hilfsboard-Ampel, "
-    "dashboardnahen TradingBoard-Referenzscore, Marktfilter und eine qualitative Begründung."
+    "dashboardnahen TradingBoard-Referenzscore, Marktfilter, Fundamental-Confidence und eine qualitative Begründung."
 )

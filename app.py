@@ -1077,6 +1077,23 @@ def search_tickers(query, max_results=8):
     return clean
 
 
+def looks_like_real_ticker(user_input):
+    raw = str(user_input or "").strip()
+    if not raw:
+        return False
+
+    upper = raw.upper()
+
+    if re.fullmatch(r"[A-Z0-9]{1,5}([.\-][A-Z0-9]{1,5})?", upper):
+        # Wörter wie Apple, Siemens, Nvidia nicht blind als Ticker behandeln,
+        # außer der Nutzer hat sie bewusst in echter Ticker-Schreibweise eingegeben.
+        if raw.isalpha() and raw != upper:
+            return False
+        return True
+
+    return False
+
+
 def score_search_result(query, item):
     query = str(query or "").strip().lower()
 
@@ -1123,11 +1140,7 @@ def resolve_input_to_ticker(user_input, fallback=None):
     raw = user_input.strip()
     upper = raw.upper()
 
-    looks_like_real_ticker = bool(
-        re.fullmatch(r"[A-Z0-9]{1,5}([.\-][A-Z0-9]{1,5})?", upper)
-    )
-
-    if looks_like_real_ticker:
+    if looks_like_real_ticker(raw):
         return upper
 
     results = search_tickers(raw, max_results=8)
@@ -1138,7 +1151,7 @@ def resolve_input_to_ticker(user_input, fallback=None):
         if symbol:
             return str(symbol).upper()
 
-    return fallback if fallback else upper
+    return fallback if fallback else None
 
 def build_short_thesis(investment, tb_score, market_regime, top_red_flag, position_mode):
     if position_mode:
@@ -2070,10 +2083,7 @@ with st.sidebar:
     ticker = st.session_state.selected_ticker
 
     if search_input:
-        looks_like_ticker = (
-            " " not in search_input and len(search_input) <= 12
-            and search_input.replace(".", "").replace("-", "").isalnum()
-        )
+        looks_like_ticker = looks_like_real_ticker(search_input)
 
         if looks_like_ticker:
             ticker = search_input.upper()

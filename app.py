@@ -1123,18 +1123,20 @@ def build_short_thesis(investment, tb_score, market_regime, top_red_flag, positi
 def build_ranking_table(results):
     rows = []
     for r in results:
+        market_info = r.get("market_info", {}) or {}
+        confidence_info = r.get("confidence_info", {}) or {}
         rows.append({
-            "Ticker": r["ticker"],
-            "Name": r["name"],
-            "Benchmark": r["benchmark_label"],
-            "Marktregime": r["market_info"]["regime"],
-            "Company Quality": r["company"],
-            "Setup Quality": r["setup_adj"],
-            "Investment Score": r["investment"],
-            "TradingBoard Score": r["tb_score"],
-            "Fundamental-Confidence": round(r["confidence_info"]["coverage"] * 100),
-            "Top Red Flag": r["top_red_flag"],
-            "Kurzfazit": r["short_thesis"],
+            "Ticker": r.get("ticker", "-"),
+            "Name": r.get("name", r.get("ticker", "-")),
+            "Benchmark": r.get("benchmark_label", "-"),
+            "Marktregime": market_info.get("regime", "UNBEKANNT"),
+            "Company Quality": r.get("company", np.nan),
+            "Setup Quality": r.get("setup_adj", np.nan),
+            "Investment Score": r.get("investment", np.nan),
+            "TradingBoard Score": r.get("tb_score", np.nan),
+            "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
+            "Top Red Flag": r.get("top_red_flag", "-"),
+            "Kurzfazit": r.get("short_thesis", r.get("decision_summary", "-")),
         })
     df = pd.DataFrame(rows)
     if not df.empty:
@@ -1996,6 +1998,9 @@ def analyze_stock(
         "beta": beta,
         "short_pct": short_pct,
         "market_cap": market_cap,
+        "short_thesis": short_thesis,
+        "emp": emp,
+        "conv": conv,
     }
 
 
@@ -2170,7 +2175,7 @@ results_map = {r["ticker"]: r for r in results}
 st.session_state.ranking_df = ranking_df
 st.session_state.ranking_results = results_map
 
-if st.session_state.selected_ranking_ticker not in results_map:
+if st.session_state.selected_ranking_ticker not in results_map and not ranking_df.empty:
     st.session_state.selected_ranking_ticker = ranking_df.iloc[0]["Ticker"]
 
 # Prefer explicit single-analysis ticker if present in results
@@ -2179,7 +2184,7 @@ if st.session_state.analysis_ticker in results_map:
 else:
     selected_display_ticker = st.session_state.selected_ranking_ticker
 
-if selected_display_ticker not in results_map:
+if selected_display_ticker not in results_map and not ranking_df.empty:
     selected_display_ticker = ranking_df.iloc[0]["Ticker"]
 
 # ---------- Ranking Section ----------
@@ -2657,8 +2662,8 @@ st.divider()
 st.subheader("Handlungsempfehlung")
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Modus", mode_label)
-c2.metric("Core Empfehlung", result["short_thesis"].split(".")[0])
-c3.metric("Core Conviction", "HIGH" if investment >= 78 else ("MEDIUM" if investment >= 60 else "LOW"))
+c2.metric("Core Empfehlung", result.get("emp", "-"))
+c3.metric("Core Conviction", result.get("conv", "-"))
 c4.metric("Kurzfrist Hilfsboard", stb_signal, str(stb_score))
 c5.metric("Marktfilter", market_info["regime"], market_info["ampel"])
 

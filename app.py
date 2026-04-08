@@ -1061,6 +1061,8 @@ def search_tickers(query, max_results=8):
         results.append({
             "symbol": symbol,
             "name": name,
+            "shortname": item.get("shortname"),
+            "longname": item.get("longname"),
             "exchange": exch_disp,
             "type": quote_type,
             "label": f"{name} ({symbol}) - {exch_disp}"
@@ -1075,24 +1077,68 @@ def search_tickers(query, max_results=8):
     return clean
 
 
+def score_search_result(query, item):
+    query = str(query or "").strip().lower()
+
+    symbol = str(item.get("symbol", "") or "").strip().lower()
+    name = str(item.get("name", "") or item.get("shortname", "") or item.get("longname", "") or "").strip().lower()
+    exchange = str(item.get("exchange", "") or "").strip().lower()
+    quote_type = str(item.get("type", "") or item.get("quoteType", "") or "").strip().upper()
+
+    score = 0
+
+    if query == symbol:
+        score += 120
+    if query == name:
+        score += 110
+    if query in name and name:
+        score += 55
+    if query in symbol and symbol:
+        score += 35
+
+    q_tokens = {t for t in re.split(r"\W+", query) if t}
+    n_tokens = {t for t in re.split(r"\W+", name) if t}
+    overlap = len(q_tokens & n_tokens)
+    score += overlap * 12
+
+    if quote_type == "EQUITY":
+        score += 12
+    elif quote_type == "ETF":
+        score += 6
+
+    if exchange in {"nasdaq", "nasdaqgs", "nyq", "nyse", "xetra", "par", "ams", "mil", "six", "lse"}:
+        score += 4
+
+    if not name:
+        score -= 10
+
+    return score
+
+
 def resolve_input_to_ticker(user_input, fallback=None):
     user_input = str(user_input or "").strip()
     if not user_input:
         return fallback
 
-    looks_like_ticker = (
-        " " not in user_input and len(user_input) <= 12
-        and user_input.replace(".", "").replace("-", "").isalnum()
+    raw = user_input.strip()
+    upper = raw.upper()
+
+    looks_like_real_ticker = bool(
+        re.fullmatch(r"[A-Z0-9]{1,5}([.\-][A-Z0-9]{1,5})?", upper)
     )
-    if looks_like_ticker:
-        return user_input.upper()
 
-    results = search_tickers(user_input, max_results=8)
+    if looks_like_real_ticker:
+        return upper
+
+    results = search_tickers(raw, max_results=8)
     if results:
-        return results[0]["symbol"]
+        ranked = sorted(results, key=lambda x: score_search_result(raw, x), reverse=True)
+        best = ranked[0]
+        symbol = best.get("symbol")
+        if symbol:
+            return str(symbol).upper()
 
-    return fallback if fallback else user_input.upper()
-
+    return fallback if fallback else upper
 
 def build_short_thesis(investment, tb_score, market_regime, top_red_flag, position_mode):
     if position_mode:
@@ -2205,6 +2251,14 @@ st.download_button(
     file_name=f"capital_hill_ranking_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
     mime="text/csv"
 )
+
+try:
+    resolved_df = pd.DataFrame(resolved_input_rows)
+    if not resolved_df.empty:
+        with st.expander("Aufgelöste Eingaben", expanded=False):
+            st.dataframe(resolved_df, hide_index=True, use_container_width=True)
+except Exception:
+    pass
 
 sel_col1, sel_col2 = st.columns([2, 1])
 with sel_col1:

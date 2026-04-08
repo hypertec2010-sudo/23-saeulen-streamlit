@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 import re
 import warnings
@@ -1621,7 +1622,8 @@ def analyze_stock(
 
     # ---------- Trade Setup ----------
     if valid_trade_setup:
-            struct_stop = round(ma50 * 0.965, 2)
+        atr_stop = round(price - 1.8 * atr, 2)
+        struct_stop = round(ma50 * 0.965, 2)
         stop_used = min(atr_stop, struct_stop)
         stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
         if stop_used <= 0 or stop_used >= price:

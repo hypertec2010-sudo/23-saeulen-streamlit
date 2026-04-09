@@ -256,6 +256,53 @@ def shorten_text(value, max_len=42):
     return clipped + "..."
 
 
+def display_mode_label(mode_label):
+    mapping = {
+        "Watchlist": "Beobachtung",
+        "Position": "Bestehende Position",
+    }
+    return mapping.get(str(mode_label or ""), str(mode_label or "-"))
+
+
+def display_emp_label(emp):
+    mapping = {
+        "BUY / ACCUMULATE": "Kauf / Aufbau",
+        "WATCH / EINSTIEG PRÜFEN": "Beobachten / Einstieg prüfen",
+        "BEOBACHTEN": "Weiter beobachten",
+        "AVOID / WAIT": "Aktuell kein Einstieg",
+        "HALTEN / AUSBAUEN": "Halten / ggf. ausbauen",
+        "HALTEN / ENGE BEOBACHTUNG": "Halten / eng beobachten",
+        "HALTEN / RISIKO PRÜFEN": "Halten / Risiko prüfen",
+        "RISIKO REDUZIEREN / STOPP PRÜFEN": "Risiko senken / Stop prüfen",
+        "NO TRADE": "Kein valides Setup",
+        "NO TRADE / WAIT": "Noch kein valides Setup",
+        "VETO - Earnings < 7 Tage": "Kein Trade vor Zahlen",
+    }
+    return mapping.get(str(emp or ""), str(emp or "-"))
+
+
+def display_conv_label(conv):
+    mapping = {
+        "HIGH": "hoch",
+        "MEDIUM": "mittel",
+        "LOW-MEDIUM": "eher verhalten",
+        "LOW": "niedrig",
+        "NONE": "keine",
+        "-": "-",
+    }
+    return mapping.get(str(conv or ""), str(conv or "-"))
+
+
+def display_stb_label(signal):
+    mapping = {
+        "LONG": "Bullisch",
+        "HOLD": "Neutral / Halten",
+        "WAIT": "Abwarten",
+        "SHORT": "Schwach / defensiv",
+    }
+    return mapping.get(str(signal or ""), str(signal or "-"))
+
+
 # ---------- Indicators ----------
 def rsi14(close):
     d = close.diff()
@@ -2156,7 +2203,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Candlestick + Volumen + Fundamental-Confidence + Ranking + dynamische Zielherleitung")
+    st.caption(f"{APP_VERSION} | Candlestick + Volumen + Fundamental-Confidence + Ranking + klare Handlungssprache")
     st.divider()
 
     search_input = st.text_input(
@@ -2596,7 +2643,7 @@ top_red_flag = result["top_red_flag"]
 st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")
 st.markdown(
     f"<div class='small-note'>Sektor: {sector} | Industrie: {industry} | Stil: {stock_style} | "
-    f"Modus: {mode_label} | Benchmark: {benchmark_label} | Marktregime: {market_regime_label(market_info['regime'])} | "
+    f"Kontext: {display_mode_label(mode_label)} | Benchmark: {benchmark_label} | Marktumfeld: {market_regime_label(market_info['regime'])} | "
     f"Top Red Flag: {top_red_flag}</div>",
     unsafe_allow_html=True
 )
@@ -2651,7 +2698,7 @@ st.markdown(
     "- **Company Quality** bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.\n"
     "- **Setup Quality** bewertet das technische Gesamtbild. Zusätzlich fließt ein kleiner Marktfilter ein.\n"
     "- **Kurzfrist Core** bewertet die kurzfristige technische Lage.\n"
-    "- **Kurzfrist Hilfsboard** ist eine ergänzende Kurzfrist-Ampel.\n"
+    "- **Kurzfristiges Signalbild** ist eine ergänzende Kurzfrist-Ampel.\n"
     "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
     "- **TradingBoard Score** ist der dashboardnahe Referenzscore für die Trading-Entscheidung.\n"
     "- **Konfluenz** zeigt, wie viele Kernbereiche gleichzeitig tragfähig sind."
@@ -2866,7 +2913,7 @@ with t5:
 
 with t6:
     if not valid_trade_setup:
-        st.error("Kein valides Trade-Setup: Score-, Markt- oder Konfluenzlage reicht aktuell nicht aus.")
+        st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
         st.write(
             f"Aktuell: Investment Score {investment}/100 | "
             f"Setup Quality {setup_adj}/100 | "
@@ -2911,13 +2958,13 @@ for col, (lab, scv) in zip(cols, hmap.items()):
 st.divider()
 st.subheader("Handlungsempfehlung")
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Modus", mode_label)
-c2.metric("Core Empfehlung", result.get("emp", "-"))
-c3.metric("Core Conviction", result.get("conv", "-"))
-c4.metric("Kurzfrist Hilfsboard", stb_signal, str(stb_score))
-c5.metric("Marktfilter", market_regime_label(market_info["regime"]), market_info["ampel"])
+c1.metric("Analysekontext", display_mode_label(mode_label))
+c2.metric("Haupteinschätzung", display_emp_label(result.get("emp", "-")))
+c3.metric("Überzeugungsgrad", display_conv_label(result.get("conv", "-")))
+c4.metric("Kurzfristsignal", display_stb_label(stb_signal), str(stb_score))
+c5.metric("Marktumfeld", market_regime_label(market_info["regime"]), market_info["ampel"])
 
-st.markdown("### Warum?")
+st.markdown("### Warum diese Einschätzung?")
 w1, w2 = st.columns(2)
 
 with w1:

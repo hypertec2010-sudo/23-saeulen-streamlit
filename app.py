@@ -1633,6 +1633,7 @@ def analyze_stock(
         risk_per_share = price - stop_used
 
         tp1 = round(price + 1 * risk_per_share, 2)
+        tp1_source = "1R vom Stop"
 
         # Dynamisches Hauptziel:
         # 1) Analysten-Target, wenn sinnvoll über dem aktuellen Kurs
@@ -1640,17 +1641,22 @@ def analyze_stock(
         # 3) sonst klassischer 2R-Fallback
         if pd.notna(target) and target > price:
             tp2 = round(target, 2)
+            tp2_source = "Analysten-Target"
         elif pd.notna(high52) and high52 > price:
             tp2 = round(high52, 2)
+            tp2_source = "52W-Hoch"
         else:
             tp2 = round(price + 2 * risk_per_share, 2)
+            tp2_source = "2R-Fallback"
 
         # TP3 als erweitertes Ziel:
         # bevorzugt 52W-Hoch oberhalb von TP2, sonst 3R / TP2+1R
         if pd.notna(high52) and high52 > tp2:
             tp3 = round(high52, 2)
+            tp3_source = "52W-Hoch"
         else:
             tp3 = round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
+            tp3_source = "Erweitertes R-Ziel"
 
         crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
         risk_eur = depot * (risk_pct / 100)
@@ -1663,6 +1669,9 @@ def analyze_stock(
         tp1 = np.nan
         tp2 = np.nan
         tp3 = np.nan
+        tp1_source = "-"
+        tp2_source = "-"
+        tp3_source = "-"
         crv = np.nan
         risk_eur = depot * (risk_pct / 100)
         pos_size = 0
@@ -2029,6 +2038,9 @@ def analyze_stock(
         "tp1": tp1,
         "tp2": tp2,
         "tp3": tp3,
+        "tp1_source": tp1_source,
+        "tp2_source": tp2_source,
+        "tp3_source": tp3_source,
         "crv": crv,
         "pos_size": pos_size,
         "risk_eur": risk_eur,
@@ -2107,7 +2119,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Candlestick + Volumen + Fundamental-Confidence + Ranking")
+    st.caption(f"{APP_VERSION} | Candlestick + Volumen + Fundamental-Confidence + Ranking + dynamische Zielherleitung")
     st.divider()
 
     search_input = st.text_input(
@@ -2393,6 +2405,9 @@ stop_dist = result["stop_dist"]
 tp1 = result["tp1"]
 tp2 = result["tp2"]
 tp3 = result["tp3"]
+tp1_source = result["tp1_source"]
+tp2_source = result["tp2_source"]
+tp3_source = result["tp3_source"]
 crv = result["crv"]
 pos_size = result["pos_size"]
 risk_eur = result["risk_eur"]
@@ -2762,6 +2777,11 @@ with t6:
         c7.metric(f"Chance-Risiko-Verhältnis {ampel_crv(crv)}", f"{crv:.1f}:1")
         c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
         c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
+
+        st.markdown("**Zielherleitung**")
+        st.write(f"• TP1: {tp1_source}")
+        st.write(f"• TP2: {tp2_source}")
+        st.write(f"• TP3: {tp3_source}")
 
 # ---------- Horizon lamps ----------
 st.divider()

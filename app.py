@@ -1210,20 +1210,33 @@ def build_ranking_table(results):
     for r in results:
         market_info = r.get("market_info", {}) or {}
         confidence_info = r.get("confidence_info", {}) or {}
+        full_red_flag = r.get("top_red_flag", "-")
+        full_thesis = r.get("short_thesis", r.get("decision_summary", "-"))
+
         rows.append({
             "Ticker": r.get("ticker", "-"),
-            "Name": r.get("name", r.get("ticker", "-")),
+            "Name": shorten_text(r.get("name", r.get("ticker", "-")), 28),
             "Benchmark": r.get("benchmark_label", "-"),
-            "Marktregime": market_info.get("regime", "UNBEKANNT"),
+            "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
             "Company Quality": r.get("company", np.nan),
             "Setup Quality": r.get("setup_adj", np.nan),
             "Investment Score": r.get("investment", np.nan),
             "TradingBoard Score": r.get("tb_score", np.nan),
             "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
-            "Top Red Flag": r.get("top_red_flag", "-"),
-            "Kurzfazit": r.get("short_thesis", r.get("decision_summary", "-")),
+            "Top Red Flag": shorten_text(full_red_flag, 34),
+            "Kurzfazit": shorten_text(full_thesis, 52),
+            "_Top Red Flag Full": full_red_flag if full_red_flag else "-",
+            "_Kurzfazit Full": full_thesis if full_thesis else "-",
         })
+
     df = pd.DataFrame(rows)
+
+    # Hidden helper columns always available even if old caches / edge cases occur
+    if "_Top Red Flag Full" not in df.columns:
+        df["_Top Red Flag Full"] = df.get("Top Red Flag", "-")
+    if "_Kurzfazit Full" not in df.columns:
+        df["_Kurzfazit Full"] = df.get("Kurzfazit", "-")
+
     if not df.empty:
         df = df.sort_values(
             by=["Investment Score", "TradingBoard Score", "Company Quality"],
@@ -1231,7 +1244,6 @@ def build_ranking_table(results):
         ).reset_index(drop=True)
         df.index = df.index + 1
     return df
-
 
 def compute_chart_df(df, chart_range):
     if chart_range == "3 Monate":
@@ -2325,7 +2337,7 @@ if selected_display_ticker not in results_map and not ranking_df.empty:
 st.subheader("Ranking mehrerer Aktien")
 st.caption(
     "Ranking-Tabelle für Multi-Screening. Die bisherige Einzelanalyse darunter bleibt vollständig erhalten. "
-    "Red Flag und Kurzfazit stehen unter der Tabelle vollständig, damit nichts abgeschnitten wird."
+    "Red Flag und Kurzfazit stehen darunter in einer Kartenansicht vollständig und lesbar."
 )
 
 ranking_display_cols = [
@@ -2369,23 +2381,52 @@ st.download_button(
 
 if not ranking_df.empty:
     st.markdown("**Ranking-Details**")
-    detail_df = ranking_df[["Ticker", "_Top Red Flag Full", "_Kurzfazit Full"]].rename(
-        columns={
-            "_Top Red Flag Full": "Red Flag",
-            "_Kurzfazit Full": "Kurzfazit",
-        }
-    )
-    st.dataframe(
-        detail_df,
-        hide_index=True,
-        use_container_width=True,
-        height=420,
-        column_config={
-            "Ticker": st.column_config.TextColumn("Ticker", width="small"),
-            "Red Flag": st.column_config.TextColumn("Red Flag", width="large"),
-            "Kurzfazit": st.column_config.TextColumn("Kurzfazit", width="large"),
-        },
-    )
+
+    card_df = ranking_df.copy()
+    if "_Top Red Flag Full" not in card_df.columns:
+        card_df["_Top Red Flag Full"] = card_df.get("Top Red Flag", "-")
+    if "_Kurzfazit Full" not in card_df.columns:
+        card_df["_Kurzfazit Full"] = card_df.get("Kurzfazit", "-")
+
+    for _, row in card_df.iterrows():
+        score_val = row.get("Investment Score", np.nan)
+        score_text, score_color = score_badge(score_val if pd.notna(score_val) else 0)
+        st.markdown(
+            f"""
+<div style="border:1px solid #2f3542;border-radius:14px;padding:14px 16px;margin:10px 0;background:#111827;">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:1.05rem;font-weight:700;">{row.get("Ticker", "-")} — {row.get("Name", "-")}</div>
+      <div style="color:#9aa4b2;font-size:0.9rem;">
+        Benchmark: {row.get("Benchmark", "-")} | Marktregime: {row.get("Marktregime", "-")}
+      </div>
+    </div>
+    <div style="background:{score_color};color:white;border-radius:999px;padding:6px 12px;font-weight:700;">
+      {score_text}: {row.get("Investment Score", "n/a")}
+    </div>
+  </div>
+
+  <div style="margin-top:10px;color:#d1d5db;font-size:0.92rem;">
+    <b>Scores:</b>
+    Company {row.get("Company Quality", "n/a")} |
+    Setup {row.get("Setup Quality", "n/a")} |
+    TradingBoard {row.get("TradingBoard Score", "n/a")} |
+    Fundamental-Confidence {row.get("Fundamental-Confidence", "n/a")}
+  </div>
+
+  <div style="margin-top:12px;">
+    <div style="font-weight:700;margin-bottom:4px;">Red Flag</div>
+    <div style="color:#e5e7eb;">{row.get("_Top Red Flag Full", "-")}</div>
+  </div>
+
+  <div style="margin-top:12px;">
+    <div style="font-weight:700;margin-bottom:4px;">Kurzfazit</div>
+    <div style="color:#e5e7eb;">{row.get("_Kurzfazit Full", "-")}</div>
+  </div>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 try:
     resolved_df = pd.DataFrame(resolved_input_rows)

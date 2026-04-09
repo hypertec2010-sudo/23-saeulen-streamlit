@@ -231,6 +231,27 @@ def style_ranking_df(df):
     return styler
 
 
+def market_regime_label(regime):
+    mapping = {
+        "POSITIV": "Positiv",
+        "NEGATIV": "Negativ",
+        "NEUTRAL": "Neutral",
+        "UNBEKANNT": "Keine belastbaren Benchmark-Daten",
+    }
+    return mapping.get(str(regime or "").upper(), str(regime or "-"))
+
+
+def shorten_text(value, max_len=42):
+    if value is None:
+        return "-"
+    txt = str(value).strip()
+    if not txt:
+        return "-"
+    if len(txt) <= max_len:
+        return txt
+    return txt[: max_len - 3].rsplit(" ", 1)[0] + "..."
+
+
 # ---------- Indicators ----------
 def rsi14(close):
     d = close.diff()
@@ -2299,21 +2320,62 @@ if selected_display_ticker not in results_map and not ranking_df.empty:
 # ---------- Ranking Section ----------
 st.subheader("Ranking mehrerer Aktien")
 st.caption(
-    "Ranking-Tabelle für Multi-Screening. Die bisherige Einzelanalyse darunter bleibt vollständig erhalten."
+    "Ranking-Tabelle für Multi-Screening. Die bisherige Einzelanalyse darunter bleibt vollständig erhalten. "
+    "Lange Texte werden in der Übersicht gekürzt; die Volltexte stehen darunter."
 )
+
+ranking_display_cols = [
+    "Ticker",
+    "Name",
+    "Benchmark",
+    "Marktregime",
+    "Company Quality",
+    "Setup Quality",
+    "Investment Score",
+    "TradingBoard Score",
+    "Fundamental-Confidence",
+    "Top Red Flag",
+    "Kurzfazit",
+]
+
+ranking_display_df = ranking_df[ranking_display_cols].copy()
+
 st.dataframe(
-    style_ranking_df(ranking_df),
+    style_ranking_df(ranking_display_df),
     hide_index=False,
     use_container_width=True,
-    height=420
+    height=420,
+    column_config={
+        "Ticker": st.column_config.TextColumn("Ticker", width="small"),
+        "Name": st.column_config.TextColumn("Name", width="medium"),
+        "Benchmark": st.column_config.TextColumn("Benchmark", width="small"),
+        "Marktregime": st.column_config.TextColumn("Marktregime", width="medium"),
+        "Company Quality": st.column_config.NumberColumn("Company Quality", width="small", format="%.0f"),
+        "Setup Quality": st.column_config.NumberColumn("Setup Quality", width="small", format="%.0f"),
+        "Investment Score": st.column_config.NumberColumn("Investment Score", width="small", format="%.0f"),
+        "TradingBoard Score": st.column_config.NumberColumn("TradingBoard Score", width="small", format="%.0f"),
+        "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
+        "Top Red Flag": st.column_config.TextColumn("Top Red Flag", width="medium"),
+        "Kurzfazit": st.column_config.TextColumn("Kurzfazit", width="large"),
+    },
 )
 
 st.download_button(
     "Ranking als CSV exportieren",
-    data=ranking_df.to_csv(index=False).encode("utf-8-sig"),
+    data=ranking_df.drop(columns=["_Top Red Flag Full", "_Kurzfazit Full"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
     file_name=f"capital_hill_ranking_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
     mime="text/csv"
 )
+
+if not ranking_df.empty:
+    with st.expander("Volltexte zu Red Flag und Kurzfazit", expanded=False):
+        full_text_df = ranking_df[["Ticker", "_Top Red Flag Full", "_Kurzfazit Full"]].rename(
+            columns={
+                "_Top Red Flag Full": "Top Red Flag (voll)",
+                "_Kurzfazit Full": "Kurzfazit (voll)",
+            }
+        )
+        st.dataframe(full_text_df, hide_index=True, use_container_width=True)
 
 try:
     resolved_df = pd.DataFrame(resolved_input_rows)
@@ -2483,7 +2545,7 @@ top_red_flag = result["top_red_flag"]
 st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")
 st.markdown(
     f"<div class='small-note'>Sektor: {sector} | Industrie: {industry} | Stil: {stock_style} | "
-    f"Modus: {mode_label} | Benchmark: {benchmark_label} | Marktregime: {market_info['regime']} | "
+    f"Modus: {mode_label} | Benchmark: {benchmark_label} | Marktregime: {market_regime_label(market_info['regime'])} | "
     f"Top Red Flag: {top_red_flag}</div>",
     unsafe_allow_html=True
 )
@@ -2593,7 +2655,7 @@ with t0:
     st.write(short_thesis)
 
 with t1:
-    st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_info['regime']}")
+    st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_regime_label(market_info['regime'])}")
 
     cols = st.columns(2)
     items = [
@@ -2632,7 +2694,7 @@ with t1:
             fmt_num(ret21, 1, "%"), fmt_num(bench_ret21, 1, "%"), fmt_num(rs_vs_benchmark_21, 1, "%"),
             fmt_num(ret63, 1, "%"), fmt_num(bench_ret63, 1, "%"), fmt_num(rs_vs_benchmark_63, 1, "%"),
             fmt_num(ret126, 1, "%"), fmt_num(bench_ret126, 1, "%"), fmt_num(rs_vs_benchmark_126, 1, "%"),
-            fmt_num(rs_composite, 1, "%"), market_info["regime"]
+            fmt_num(rs_composite, 1, "%"), market_regime_label(market_info["regime"])
         ],
     })
     st.dataframe(tech_df, hide_index=True, use_container_width=True)
@@ -2743,7 +2805,7 @@ with t5:
             regime,
             f"{kb}/4 Kernbloecke",
             f"Fundamental-Coverage {fund_cov*100:.0f}%",
-            f"{benchmark_label} | {market_info['regime']}",
+            f"{benchmark_label} | {market_regime_label(market_info['regime'])}",
             mode_label,
             f"Penalty {red_flag_penalty_total}",
             confidence_info["confidence"]
@@ -2758,7 +2820,7 @@ with t6:
             f"Aktuell: Investment Score {investment}/100 | "
             f"Setup Quality {setup_adj}/100 | "
             f"Konfluenz {kb}/4 | "
-            f"Marktregime {market_info['regime']}"
+            f"Marktregime {market_regime_label(market_info['regime'])}"
         )
         if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
             st.write("Zusatzhinweis: Earnings-Veto aktiv.")
@@ -2802,7 +2864,7 @@ c1.metric("Modus", mode_label)
 c2.metric("Core Empfehlung", result.get("emp", "-"))
 c3.metric("Core Conviction", result.get("conv", "-"))
 c4.metric("Kurzfrist Hilfsboard", stb_signal, str(stb_score))
-c5.metric("Marktfilter", market_info["regime"], market_info["ampel"])
+c5.metric("Marktfilter", market_regime_label(market_info["regime"]), market_info["ampel"])
 
 st.markdown("### Warum?")
 w1, w2 = st.columns(2)

@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v8.0"
+APP_VERSION = "v8.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -61,7 +61,13 @@ if "analysis_requested" not in st.session_state:
     st.session_state.analysis_requested = False
 
 if "batch_input" not in st.session_state:
-    st.session_state.batch_input = "AAPL"
+    st.session_state.batch_input = ""
+
+if "analysis_mode" not in st.session_state:
+    st.session_state.analysis_mode = "Einzelanalyse"
+
+if "analysis_mode_run" not in st.session_state:
+    st.session_state.analysis_mode_run = "Einzelanalyse"
 
 if "ranking_df" not in st.session_state:
     st.session_state.ranking_df = pd.DataFrame()
@@ -2350,70 +2356,83 @@ with st.sidebar:
     st.caption(f"{APP_VERSION} | Premium-Dashboard mit Ranking, Zielherleitung und klarer Handlungssprache")
     st.divider()
 
-    search_input = st.text_input(
-        "Aktie oder Ticker (Einzelanalyse-Auswahl)",
-        value=st.session_state.search_input,
-        placeholder="z. B. AAPL, BASF, Siemens, BAS.DE",
-        key="search_input_widget"
-    ).strip()
-    st.session_state.search_input = search_input
-
-    st.caption("Du kannst einen Ticker oder einen Firmennamen eingeben.")
+    st.markdown("### 1) Was möchtest du analysieren?")
+    analysis_mode = st.radio(
+        "Analyseart",
+        ["Einzelanalyse", "Mehrfach-Ranking"],
+        horizontal=True,
+        index=0 if st.session_state.analysis_mode == "Einzelanalyse" else 1,
+        key="analysis_mode_widget"
+    )
+    st.session_state.analysis_mode = analysis_mode
 
     search_results = []
     ticker = st.session_state.selected_ticker
 
-    if search_input:
-        looks_like_ticker = looks_like_real_ticker(search_input)
+    if analysis_mode == "Einzelanalyse":
+        search_input = st.text_input(
+            "Unternehmen oder Ticker",
+            value=st.session_state.search_input,
+            placeholder="z. B. Apple, Siemens, AAPL, SAP.DE",
+            key="search_input_widget"
+        ).strip()
+        st.session_state.search_input = search_input
+        st.caption("Beispiele: Apple, Siemens, AAPL, SAP.DE")
 
-        if looks_like_ticker:
-            ticker = search_input.upper()
-            st.session_state.selected_ticker = ticker
-            st.session_state.selected_search_label = None
-        else:
-            search_results = search_tickers(search_input)
+        if search_input:
+            looks_like_ticker = looks_like_real_ticker(search_input)
 
-            if len(search_results) == 1:
-                ticker = search_results[0]["symbol"]
+            if looks_like_ticker:
+                ticker = search_input.upper()
                 st.session_state.selected_ticker = ticker
-                st.session_state.selected_search_label = search_results[0]["label"]
-                st.caption(f"Automatisch gefunden: {search_results[0]['label']}")
-            elif len(search_results) > 1:
-                labels = [r["label"] for r in search_results]
-
-                if st.session_state.selected_search_label not in labels:
-                    st.session_state.selected_search_label = labels[0]
-
-                selected_label = st.selectbox(
-                    "Passenden Treffer auswählen",
-                    options=labels,
-                    index=labels.index(st.session_state.selected_search_label),
-                    key="search_result_select"
-                )
-
-                st.session_state.selected_search_label = selected_label
-                ticker = next(r["symbol"] for r in search_results if r["label"] == selected_label)
-                st.session_state.selected_ticker = ticker
+                st.session_state.selected_search_label = None
             else:
-                st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
-                ticker = st.session_state.selected_ticker
+                search_results = search_tickers(search_input)
+
+                if len(search_results) == 1:
+                    ticker = search_results[0]["symbol"]
+                    st.session_state.selected_ticker = ticker
+                    st.session_state.selected_search_label = search_results[0]["label"]
+                    st.caption(f"Automatisch gefunden: {search_results[0]['label']}")
+                elif len(search_results) > 1:
+                    labels = [r["label"] for r in search_results]
+
+                    if st.session_state.selected_search_label not in labels:
+                        st.session_state.selected_search_label = labels[0]
+
+                    selected_label = st.selectbox(
+                        "Passenden Treffer auswählen",
+                        options=labels,
+                        index=labels.index(st.session_state.selected_search_label),
+                        key="search_result_select"
+                    )
+
+                    st.session_state.selected_search_label = selected_label
+                    ticker = next(r["symbol"] for r in search_results if r["label"] == selected_label)
+                    st.session_state.selected_ticker = ticker
+                else:
+                    st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder den Ticker direkt eingeben.")
+                    ticker = st.session_state.selected_ticker
+        else:
+            ticker = st.session_state.selected_ticker
+
+        st.caption(f"Aktuelle Auswahl: {st.session_state.selected_ticker}")
+
     else:
-        ticker = st.session_state.selected_ticker
+        batch_input = st.text_area(
+            "Mehrere Unternehmen oder Ticker",
+            value=st.session_state.batch_input,
+            placeholder="z. B.\nApple\nMicrosoft\nSAP.DE\nASML",
+            height=140,
+            key="batch_input_widget"
+        )
+        st.session_state.batch_input = batch_input
+        st.caption("Ein Wert pro Zeile oder getrennt durch Komma bzw. Semikolon.")
 
     st.divider()
-    st.markdown("**v6.2B Mehrfach-Ranking**")
-    batch_input = st.text_area(
-        "Mehrere Ticker oder Firmennamen",
-        value=st.session_state.batch_input,
-        placeholder="AAPL\nMSFT\nSAP\nNVIDIA\nASML",
-        height=120,
-        key="batch_input_widget"
-    )
-    st.session_state.batch_input = batch_input
-    st.caption("Getrennt durch Zeilenumbruch, Komma oder Semikolon. Einzelanalyse bleibt erhalten.")
-
+    st.markdown("### 2) In welchem Kontext bewerten?")
     horizon = st.selectbox(
-        "Zeithorizont",
+        "Geplanter Zeithorizont",
         [
             "Kurzfrist (1-7 Tage)",
             "Swing (1-4 Wochen)",
@@ -2423,32 +2442,62 @@ with st.sidebar:
         ],
     )
 
-    st.divider()
-    depot = st.number_input("Depotwert EUR", min_value=1000, value=10000, step=1000)
-    risk_pct = st.slider("Risiko pro Trade (%)", min_value=0.5, max_value=5.0, value=1.0, step=0.5)
+    context_choice = st.radio(
+        "Analysekontext",
+        ["Beobachtung", "Bestehende Position"],
+        horizontal=True,
+        index=1 if st.session_state.last_mode_label == "Position" else 0,
+        key="context_choice_widget"
+    )
 
-    st.divider()
-    override = st.number_input("Kurs-Override (0 = auto)", min_value=0.0, value=0.0, step=0.01, format="%.2f")
-    buy_in_override = st.number_input("Buy-in fuer TradingBoard (0 = Watchlist)", min_value=0.0, value=0.0, step=0.01, format="%.2f")
-    smart_money_default = st.checkbox("TradingBoard: Smart Money = True", value=True)
-    strict_mode = st.checkbox("Strenges 23-Saeulen-Mapping", value=True)
+    if context_choice == "Bestehende Position":
+        buy_in_override = st.number_input(
+            "Dein Einstiegskurs",
+            min_value=0.0,
+            value=0.0,
+            step=0.01,
+            format="%.2f",
+            help="Nur ausfüllen, wenn du die Aktie bereits hältst."
+        )
+        mode_label = "Position"
+    else:
+        buy_in_override = 0.0
+        mode_label = "Watchlist"
+        st.caption("Kontext: Beobachtung / noch nicht investiert")
 
     position_mode = buy_in_override > 0
-    mode_label = "Position" if position_mode else "Watchlist"
     st.session_state.last_mode_label = mode_label
 
-    st.caption(f"Modus: {mode_label}")
-    st.caption(f"Aktueller Ticker: {st.session_state.selected_ticker}")
+    st.divider()
+    st.markdown("### 3) Risikoeinstellungen")
+    depot = st.number_input("Depotwert in EUR", min_value=1000, value=10000, step=1000)
+    risk_pct = st.slider("Maximales Risiko pro Trade (%)", min_value=0.5, max_value=5.0, value=1.0, step=0.5)
+
+    with st.expander("Erweiterte Einstellungen", expanded=False):
+        override = st.number_input(
+            "Kurs-Override (optional)",
+            min_value=0.0,
+            value=0.0,
+            step=0.01,
+            format="%.2f",
+            help="Nur verwenden, wenn du einen anderen Einstiegskurs simulieren möchtest."
+        )
+        smart_money_default = st.checkbox("Smart-Money-Signal standardmäßig positiv", value=True)
+        strict_mode = st.checkbox("Strenges 23-Säulen-Mapping", value=True)
+
+        if st.button("Cache leeren", use_container_width=True):
+            st.cache_data.clear()
+            st.success("Cache geleert. Bitte Analyse neu starten.")
 
     st.divider()
-    if st.button("Cache leeren", use_container_width=True):
-        st.cache_data.clear()
-        st.success("Cache geleert. Bitte Analyse neu starten.")
-
     run_analysis = st.button("Analyse starten", use_container_width=True, type="primary")
     if run_analysis:
-        st.session_state.analysis_ticker = st.session_state.selected_ticker
+        st.session_state.analysis_mode_run = analysis_mode
         st.session_state.analysis_requested = True
+        if analysis_mode == "Einzelanalyse":
+            st.session_state.analysis_ticker = st.session_state.selected_ticker
+        else:
+            st.session_state.analysis_ticker = st.session_state.selected_ticker
 
 
 # ---------- Main ----------
@@ -2460,17 +2509,29 @@ st.caption(
 )
 
 if not st.session_state.analysis_requested:
-    st.info("Aktie oder Ticker eingeben und Analyse starten klicken.")
+    st.info("Wähle links eine Analyseart, gib Unternehmen oder Ticker ein und starte dann die Analyse.")
     st.stop()
 
 # ---------- Batch / Ranking Run ----------
-entries = split_batch_input(st.session_state.batch_input)
+analysis_mode_run = st.session_state.get("analysis_mode_run", "Einzelanalyse")
+
+if analysis_mode_run == "Einzelanalyse":
+    entries = [st.session_state.analysis_ticker]
+else:
+    entries = split_batch_input(st.session_state.batch_input)
+
 if not entries:
     entries = [st.session_state.analysis_ticker]
 
 resolved_entries = []
+resolved_input_rows = []
 for e in entries:
-    resolved = resolve_input_to_ticker(e, fallback=st.session_state.analysis_ticker)
+    fallback = st.session_state.analysis_ticker if analysis_mode_run == "Einzelanalyse" else None
+    resolved = resolve_input_to_ticker(e, fallback=fallback)
+    resolved_input_rows.append({
+        "Eingabe": e,
+        "Aufgelöst zu": resolved if resolved else "Nicht gefunden"
+    })
     if resolved and resolved not in resolved_entries:
         resolved_entries.append(resolved)
 
@@ -2488,8 +2549,8 @@ for i, tkr in enumerate(resolved_entries, start=1):
             horizon=horizon,
             depot=depot,
             risk_pct=risk_pct,
-            override=override if len(resolved_entries) == 1 else 0.0,
-            buy_in_override=buy_in_override if len(resolved_entries) == 1 else 0.0,
+            override=override if analysis_mode_run == "Einzelanalyse" and len(resolved_entries) == 1 else 0.0,
+            buy_in_override=buy_in_override if analysis_mode_run == "Einzelanalyse" and len(resolved_entries) == 1 else 0.0,
             smart_money_default=smart_money_default,
             strict_mode=strict_mode
         )
@@ -2506,6 +2567,11 @@ if not results:
     if errors:
         st.write(pd.DataFrame(errors, columns=["Ticker", "Fehler"]))
     st.stop()
+
+if analysis_mode_run == "Einzelanalyse":
+    st.caption("Aktiver Modus: Einzelanalyse")
+else:
+    st.caption("Aktiver Modus: Mehrfach-Ranking")
 
 ranking_df = build_ranking_table(results)
 results_map = {r["ticker"]: r for r in results}
@@ -2527,7 +2593,7 @@ if selected_display_ticker not in results_map and not ranking_df.empty:
 # ---------- Ranking Section ----------
 st.subheader("Ranking mehrerer Aktien")
 st.caption(
-    "Ranking-Tabelle für Multi-Screening. Die bisherige Einzelanalyse darunter bleibt vollständig erhalten. "
+    "Ranking-Tabelle für Multi-Screening. In der Einzelanalyse wird automatisch nur ein Wert verarbeitet. "
     "Red Flag und Kurzfazit stehen darunter in einer Kartenansicht vollständig und lesbar."
 )
 

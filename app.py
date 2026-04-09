@@ -2636,22 +2636,25 @@ ranking_display_cols = [
 
 ranking_display_df = ranking_df[ranking_display_cols].copy()
 
+ranking_column_config = {
+    "Ticker": st.column_config.TextColumn("Ticker", width="small"),
+    "Name": st.column_config.TextColumn("Name", width="medium"),
+    "Benchmark": st.column_config.TextColumn("Benchmark", width="small"),
+    "Marktregime": st.column_config.TextColumn("Marktregime", width="medium"),
+    "Company Quality": st.column_config.NumberColumn("Company Quality", width="small", format="%.0f"),
+    "Setup Quality": st.column_config.NumberColumn("Setup Quality", width="small", format="%.0f"),
+    "Investment Score": st.column_config.NumberColumn("Investment Score", width="small", format="%.0f"),
+    "Kurzfrist-Timing": st.column_config.NumberColumn("Kurzfrist-Timing", width="small", format="%.0f"),
+    "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
+}
+ranking_column_config = {k: v for k, v in ranking_column_config.items() if k in ranking_display_df.columns}
+
 st.dataframe(
     style_ranking_df(ranking_display_df),
     hide_index=False,
     use_container_width=True,
     height=420,
-    column_config={
-        "Ticker": st.column_config.TextColumn("Ticker", width="small"),
-        "Name": st.column_config.TextColumn("Name", width="medium"),
-        "Benchmark": st.column_config.TextColumn("Benchmark", width="small"),
-        "Marktregime": st.column_config.TextColumn("Marktregime", width="medium"),
-        "Company Quality": st.column_config.NumberColumn("Company Quality", width="small", format="%.0f"),
-        "Setup Quality": st.column_config.NumberColumn("Setup Quality", width="small", format="%.0f"),
-        "Investment Score": st.column_config.NumberColumn("Investment Score", width="small", format="%.0f"),
-        "Kurzfrist-Timing": st.column_config.NumberColumn("Kurzfrist-Timing", width="small", format="%.0f"),
-        "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
-    },
+    column_config=ranking_column_config,
 )
 
 st.download_button(
@@ -2692,7 +2695,7 @@ if not ranking_df.empty:
     <b>Scores:</b>
     Company {row.get("Company Quality", "n/a")} |
     Setup {row.get("Setup Quality", "n/a")} |
-    Kurzfrist-Timing {row.get("Kurzfrist-Timing", "n/a")} |
+    Kurzfrist-Timing {row.get("Kurzfrist-Timing", row.get("TradingBoard Score", "n/a"))} |
     Fundamental-Confidence {row.get("Fundamental-Confidence", "n/a")}
   </div>
 

@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v7.0"
+APP_VERSION = "v8.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -79,16 +79,147 @@ if "last_mode_label" not in st.session_state:
 st.markdown("""
 <style>
 .metric-card{
-    background:#1e2130;
-    border-radius:10px;
+    background:linear-gradient(180deg,#111827 0%, #0f172a 100%);
+    border-radius:16px;
     padding:16px 20px;
-    margin:6px 0;
+    margin:8px 0;
+    border:1px solid #243042;
     border-left:4px solid #4CAF50;
+    box-shadow:0 10px 24px rgba(0,0,0,0.18);
 }
 .metric-card.red{border-left-color:#f44336;}
 .metric-card.yellow{border-left-color:#FFC107;}
 .small-note{color:#9aa4b2;font-size:0.88rem;}
 pre{white-space:pre-wrap !important;}
+.score-card{
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+    border:1px solid #243042;
+    border-radius:18px;
+    padding:16px 16px 14px 16px;
+    min-height:124px;
+    box-shadow:0 10px 24px rgba(0,0,0,0.18);
+}
+.score-label{
+    color:#94a3b8;
+    font-size:0.80rem;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    line-height:1.2;
+    margin-bottom:10px;
+}
+.score-value{
+    color:#f8fafc;
+    font-size:1.55rem;
+    font-weight:800;
+    line-height:1.15;
+}
+.score-delta{
+    color:#cbd5e1;
+    font-size:0.88rem;
+    line-height:1.2;
+    margin-top:10px;
+}
+.score-card.company{border-left:4px solid #3b82f6;}
+.score-card.setup{border-left:4px solid #22c55e;}
+.score-card.short{border-left:4px solid #f59e0b;}
+.score-card.helper{border-left:4px solid #a78bfa;}
+.score-card.investment{border-left:4px solid #14b8a6;}
+.score-card.board{border-left:4px solid #ef4444;}
+.score-card.kb{border-left:4px solid #eab308;}
+.section-card{
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+    border:1px solid #243042;
+    border-radius:18px;
+    padding:16px 18px;
+    box-shadow:0 10px 24px rgba(0,0,0,0.18);
+    margin:10px 0;
+}
+.premium-card{
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+    border:1px solid #243042;
+    border-radius:18px;
+    padding:16px 18px;
+    box-shadow:0 10px 24px rgba(0,0,0,0.18);
+}
+.premium-title{
+    color:#94a3b8;
+    font-size:0.80rem;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    margin-bottom:8px;
+}
+.premium-value{
+    color:#f8fafc;
+    font-size:1.15rem;
+    font-weight:700;
+    line-height:1.25;
+}
+.premium-sub{
+    color:#cbd5e1;
+    font-size:0.88rem;
+    margin-top:8px;
+    line-height:1.2;
+}
+.reco-card{
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+    border:1px solid #243042;
+    border-radius:18px;
+    padding:14px 16px;
+    min-height:132px;
+    box-shadow:0 10px 24px rgba(0,0,0,0.20);
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+}
+.reco-top{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:10px;
+}
+.reco-label{
+    color:#94a3b8;
+    font-size:0.79rem;
+    line-height:1.2;
+    margin-bottom:8px;
+    letter-spacing:0.02em;
+    text-transform:uppercase;
+}
+.reco-icon{
+    font-size:1.1rem;
+    line-height:1;
+    opacity:0.95;
+}
+.reco-value{
+    color:#f8fafc;
+    font-size:1.05rem;
+    font-weight:700;
+    line-height:1.28;
+    white-space:normal;
+    word-break:break-word;
+}
+.reco-delta{
+    color:#cbd5e1;
+    font-size:0.85rem;
+    margin-top:10px;
+    line-height:1.2;
+}
+.reco-chip{
+    display:inline-block;
+    margin-top:10px;
+    padding:4px 10px;
+    border-radius:999px;
+    background:#1e293b;
+    color:#e2e8f0;
+    font-size:0.78rem;
+    font-weight:600;
+    width:fit-content;
+}
+.reco-card.context{border-left:4px solid #60a5fa;}
+.reco-card.main{border-left:4px solid #22c55e;}
+.reco-card.conviction{border-left:4px solid #a78bfa;}
+.reco-card.signal{border-left:4px solid #f59e0b;}
+.reco-card.market{border-left:4px solid #14b8a6;}
 .score-pill{
     border-radius:999px;
     padding:2px 10px;
@@ -301,6 +432,19 @@ def display_stb_label(signal):
         "SHORT": "Schwach / defensiv",
     }
     return mapping.get(str(signal or ""), str(signal or "-"))
+
+
+def render_score_card(label, value, subtitle="", variant="company"):
+    st.markdown(
+        f"""
+        <div class="score-card {variant}">
+            <div class="score-label">{label}</div>
+            <div class="score-value">{value}</div>
+            <div class="score-delta">{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ---------- Indicators ----------
@@ -2203,7 +2347,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Candlestick + Volumen + Fundamental-Confidence + Ranking + klare Handlungssprache")
+    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Ranking, Zielherleitung und klarer Handlungssprache")
     st.divider()
 
     search_input = st.text_input(
@@ -2440,20 +2584,20 @@ if not ranking_df.empty:
         score_text, score_color = score_badge(score_val if pd.notna(score_val) else 0)
         st.markdown(
             f"""
-<div style="border:1px solid #2f3542;border-radius:14px;padding:14px 16px;margin:10px 0;background:#111827;">
+<div class="section-card" style="margin:12px 0;">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
     <div>
-      <div style="font-size:1.05rem;font-weight:700;">{row.get("Ticker", "-")} — {row.get("Name", "-")}</div>
-      <div style="color:#9aa4b2;font-size:0.9rem;">
-        Benchmark: {row.get("Benchmark", "-")} | Marktregime: {row.get("Marktregime", "-")}
+      <div style="font-size:1.08rem;font-weight:800;color:#f8fafc;">{row.get("Ticker", "-")} — {row.get("Name", "-")}</div>
+      <div style="color:#94a3b8;font-size:0.90rem;margin-top:3px;">
+        Benchmark: {row.get("Benchmark", "-")} | Marktumfeld: {row.get("Marktregime", "-")}
       </div>
     </div>
-    <div style="background:{score_color};color:white;border-radius:999px;padding:6px 12px;font-weight:700;">
+    <div style="background:{score_color};color:white;border-radius:999px;padding:7px 13px;font-weight:800;box-shadow:0 8px 18px rgba(0,0,0,0.18);">
       {score_text}: {row.get("Investment Score", "n/a")}
     </div>
   </div>
 
-  <div style="margin-top:10px;color:#d1d5db;font-size:0.92rem;">
+  <div style="margin-top:12px;color:#d1d5db;font-size:0.92rem;line-height:1.5;">
     <b>Scores:</b>
     Company {row.get("Company Quality", "n/a")} |
     Setup {row.get("Setup Quality", "n/a")} |
@@ -2461,14 +2605,14 @@ if not ranking_df.empty:
     Fundamental-Confidence {row.get("Fundamental-Confidence", "n/a")}
   </div>
 
-  <div style="margin-top:12px;">
-    <div style="font-weight:700;margin-bottom:4px;">Red Flag</div>
-    <div style="color:#e5e7eb;">{row.get("_Top Red Flag Full", "-")}</div>
+  <div style="margin-top:14px;padding:12px 14px;border-radius:14px;background:#0b1220;border:1px solid #1f2937;">
+    <div style="font-weight:800;margin-bottom:5px;color:#f8fafc;">Red Flag</div>
+    <div style="color:#e5e7eb;line-height:1.5;">{row.get("_Top Red Flag Full", "-")}</div>
   </div>
 
-  <div style="margin-top:12px;">
-    <div style="font-weight:700;margin-bottom:4px;">Kurzfazit</div>
-    <div style="color:#e5e7eb;">{row.get("_Kurzfazit Full", "-")}</div>
+  <div style="margin-top:12px;padding:12px 14px;border-radius:14px;background:#0b1220;border:1px solid #1f2937;">
+    <div style="font-weight:800;margin-bottom:5px;color:#f8fafc;">Kurzfazit</div>
+    <div style="color:#e5e7eb;line-height:1.5;">{row.get("_Kurzfazit Full", "-")}</div>
   </div>
 </div>
             """,
@@ -2649,18 +2793,67 @@ st.markdown(
 )
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Kurs (Adj. Close)", f"{price:.2f} {ccy}", ts)
-c2.metric("Trend-Regime", regime, reg_amp)
-c3.metric("Earnings-Datum", sg_earn_txt, sg_earn)
-
-if has_upcoming_earnings:
-    c4.metric("Earnings-Countdown", f"{int(days_earn)}d", sg_earn)
-elif has_past_earnings:
-    c4.metric("Earnings-Countdown", "vorbei", sg_earn)
-else:
-    c4.metric("Earnings-Countdown", "kein Datum", sg_earn)
-
-c5.metric("Analysten-Target", fmt_num(target, 2, f" {ccy}"), fmt_num(upside, 1, "%"))
+with c1:
+    st.markdown(
+        f"""
+        <div class="premium-card">
+            <div class="premium-title">Kurs (Adj. Close)</div>
+            <div class="premium-value">{price:.2f} {ccy}</div>
+            <div class="premium-sub">{ts}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with c2:
+    st.markdown(
+        f"""
+        <div class="premium-card">
+            <div class="premium-title">Trend-Regime</div>
+            <div class="premium-value">{regime}</div>
+            <div class="premium-sub">{reg_amp}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with c3:
+    st.markdown(
+        f"""
+        <div class="premium-card">
+            <div class="premium-title">Earnings-Datum</div>
+            <div class="premium-value">{sg_earn_txt}</div>
+            <div class="premium-sub">{sg_earn}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with c4:
+    if has_upcoming_earnings:
+        countdown_value = f"{int(days_earn)}d"
+    elif has_past_earnings:
+        countdown_value = "vorbei"
+    else:
+        countdown_value = "kein Datum"
+    st.markdown(
+        f"""
+        <div class="premium-card">
+            <div class="premium-title">Earnings-Countdown</div>
+            <div class="premium-value">{countdown_value}</div>
+            <div class="premium-sub">{sg_earn}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with c5:
+    st.markdown(
+        f"""
+        <div class="premium-card">
+            <div class="premium-title">Analysten-Target</div>
+            <div class="premium-value">{fmt_num(target, 2, f" {ccy}")}</div>
+            <div class="premium-sub">{fmt_num(upside, 1, "%")}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 st.divider()
 
@@ -2680,13 +2873,20 @@ if red_flag_items:
 # ---------- Scores ----------
 st.subheader("Scores")
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-c1.metric("Company Quality", f"{company}/100", ampel(company))
-c2.metric("Setup Quality", f"{setup_adj}/100", ampel(setup_adj))
-c3.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
-c4.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
-c5.metric("Investment Score", f"{investment}/100", ampel(investment))
-c6.metric("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score))
-c7.metric("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"))
+with c1:
+    render_score_card("Company Quality", f"{company}/100", ampel(company), "company")
+with c2:
+    render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup")
+with c3:
+    render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short")
+with c4:
+    render_score_card("Kurzfristiges Signalbild", f"{stb_score} Punkte", display_stb_label(stb_signal), "helper")
+with c5:
+    render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment")
+with c6:
+    render_score_card("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score), "board")
+with c7:
+    render_score_card("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"), "kb")
 
 st.caption(
     "Diese Version ergänzt Candlestick-Chart mit Volumen, Ranking mehrerer Aktien, "
@@ -2958,11 +3158,91 @@ for col, (lab, scv) in zip(cols, hmap.items()):
 st.divider()
 st.subheader("Handlungsempfehlung")
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Analysekontext", display_mode_label(mode_label))
-c2.metric("Haupteinschätzung", display_emp_label(result.get("emp", "-")))
-c3.metric("Überzeugungsgrad", display_conv_label(result.get("conv", "-")))
-c4.metric("Kurzfristsignal", display_stb_label(stb_signal), str(stb_score))
-c5.metric("Marktumfeld", market_regime_label(market_info["regime"]), market_info["ampel"])
+
+with c1:
+    st.markdown(
+        f"""
+        <div class="reco-card context">
+            <div>
+                <div class="reco-top">
+                    <div class="reco-label">Analysekontext</div>
+                    <div class="reco-icon">🧭</div>
+                </div>
+                <div class="reco-value">{display_mode_label(mode_label)}</div>
+            </div>
+            <div class="reco-chip">Aktueller Rahmen</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with c2:
+    st.markdown(
+        f"""
+        <div class="reco-card main">
+            <div>
+                <div class="reco-top">
+                    <div class="reco-label">Haupteinschätzung</div>
+                    <div class="reco-icon">🎯</div>
+                </div>
+                <div class="reco-value">{display_emp_label(result.get("emp", "-"))}</div>
+            </div>
+            <div class="reco-chip">Zentrale Aussage</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with c3:
+    st.markdown(
+        f"""
+        <div class="reco-card conviction">
+            <div>
+                <div class="reco-top">
+                    <div class="reco-label">Überzeugungsgrad</div>
+                    <div class="reco-icon">📌</div>
+                </div>
+                <div class="reco-value">{display_conv_label(result.get("conv", "-"))}</div>
+            </div>
+            <div class="reco-chip">Vertrauen ins Setup</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with c4:
+    st.markdown(
+        f"""
+        <div class="reco-card signal">
+            <div>
+                <div class="reco-top">
+                    <div class="reco-label">Kurzfristsignal</div>
+                    <div class="reco-icon">⚡</div>
+                </div>
+                <div class="reco-value">{display_stb_label(stb_signal)}</div>
+            </div>
+            <div class="reco-delta">Score: {stb_score}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with c5:
+    st.markdown(
+        f"""
+        <div class="reco-card market">
+            <div>
+                <div class="reco-top">
+                    <div class="reco-label">Marktumfeld</div>
+                    <div class="reco-icon">🌍</div>
+                </div>
+                <div class="reco-value">{market_regime_label(market_info["regime"])}</div>
+            </div>
+            <div class="reco-delta">{market_info["ampel"]}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 st.markdown("### Warum diese Einschätzung?")
 w1, w2 = st.columns(2)

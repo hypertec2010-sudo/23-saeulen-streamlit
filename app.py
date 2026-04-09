@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v8.1"
+APP_VERSION = "v8.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -451,6 +451,28 @@ def render_score_card(label, value, subtitle="", variant="company"):
         """,
         unsafe_allow_html=True,
     )
+
+
+def trading_timing_label(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "-"
+    if s >= 9:
+        return "stark"
+    if s >= 5:
+        return "konstruktiv"
+    if s >= 3:
+        return "abwartend"
+    return "schwach"
+
+
+def normalize_tb_score_100(score):
+    try:
+        s = float(score)
+    except Exception:
+        return np.nan
+    return int(round(clamp((s + 3) / 12 * 100, 0, 100)))
 
 
 # ---------- Indicators ----------
@@ -1418,7 +1440,7 @@ def build_ranking_table(results):
             "Company Quality": r.get("company", np.nan),
             "Setup Quality": r.get("setup_adj", np.nan),
             "Investment Score": r.get("investment", np.nan),
-            "TradingBoard Score": r.get("tb_score", np.nan),
+            "Kurzfrist-Timing": r.get("tb_score_100", normalize_tb_score_100(r.get("tb_score", np.nan))),
             "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
             "Top Red Flag": shorten_text(full_red_flag, 34),
             "Kurzfazit": shorten_text(full_thesis, 52),
@@ -1428,7 +1450,6 @@ def build_ranking_table(results):
 
     df = pd.DataFrame(rows)
 
-    # Hidden helper columns always available even if old caches / edge cases occur
     if "_Top Red Flag Full" not in df.columns:
         df["_Top Red Flag Full"] = df.get("Top Red Flag", "-")
     if "_Kurzfazit Full" not in df.columns:
@@ -1436,7 +1457,7 @@ def build_ranking_table(results):
 
     if not df.empty:
         df = df.sort_values(
-            by=["Investment Score", "TradingBoard Score", "Company Quality"],
+            by=["Investment Score", "Kurzfrist-Timing", "Company Quality"],
             ascending=False
         ).reset_index(drop=True)
         df.index = df.index + 1
@@ -2121,6 +2142,8 @@ def analyze_stock(
         tb_context.append("S23: Benchmark-Vergleich n/a ❌")
 
     tb_signal, tb_empf = tb_signal_label(tb_score)
+    tb_score_100 = normalize_tb_score_100(tb_score)
+    tb_timing_text = trading_timing_label(tb_score)
 
     # ---------- Short-term helper board ----------
     stb_score = 0
@@ -2249,6 +2272,8 @@ def analyze_stock(
         "setup_adj": setup_adj,
         "investment": investment,
         "tb_score": tb_score,
+        "tb_score_100": tb_score_100,
+        "tb_timing_text": tb_timing_text,
         "tb_signal": tb_signal,
         "tb_empf": tb_empf,
         "tb_df": tb_df,
@@ -2353,7 +2378,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Ranking, Zielherleitung und klarer Handlungssprache")
+    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Ranking, Zielherleitung, klarer Handlungssprache und verständlicherem Timing-Score")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")
@@ -2624,7 +2649,7 @@ st.dataframe(
         "Company Quality": st.column_config.NumberColumn("Company Quality", width="small", format="%.0f"),
         "Setup Quality": st.column_config.NumberColumn("Setup Quality", width="small", format="%.0f"),
         "Investment Score": st.column_config.NumberColumn("Investment Score", width="small", format="%.0f"),
-        "TradingBoard Score": st.column_config.NumberColumn("TradingBoard Score", width="small", format="%.0f"),
+        "Kurzfrist-Timing": st.column_config.NumberColumn("Kurzfrist-Timing", width="small", format="%.0f"),
         "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
     },
 )
@@ -2667,7 +2692,7 @@ if not ranking_df.empty:
     <b>Scores:</b>
     Company {row.get("Company Quality", "n/a")} |
     Setup {row.get("Setup Quality", "n/a")} |
-    TradingBoard {row.get("TradingBoard Score", "n/a")} |
+    Kurzfrist-Timing {row.get("Kurzfrist-Timing", "n/a")} |
     Fundamental-Confidence {row.get("Fundamental-Confidence", "n/a")}
   </div>
 
@@ -2753,6 +2778,8 @@ company = result["company"]
 setup_adj = result["setup_adj"]
 investment = result["investment"]
 tb_score = result["tb_score"]
+tb_score_100 = result["tb_score_100"]
+tb_timing_text = result["tb_timing_text"]
 tb_signal = result["tb_signal"]
 tb_empf = result["tb_empf"]
 tb_df = result["tb_df"]
@@ -2950,7 +2977,7 @@ with c4:
 with c5:
     render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment")
 with c6:
-    render_score_card("TradingBoard Score", f"{tb_score} Punkte", ampel_tb(tb_score), "board")
+    render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board")
 with c7:
     render_score_card("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"), "kb")
 
@@ -2966,7 +2993,7 @@ st.markdown(
     "- **Kurzfrist Core** bewertet die kurzfristige technische Lage.\n"
     "- **Kurzfristiges Signalbild** ist eine ergänzende Kurzfrist-Ampel.\n"
     "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
-    "- **TradingBoard Score** ist der dashboardnahe Referenzscore für die Trading-Entscheidung.\n"
+    "- **Kurzfrist-Timing** zeigt, wie gut das aktuelle Timing für einen taktischen Einstieg wirkt. Der kleine Board-Score wird dafür zusätzlich auf 100 normiert.\n"
     "- **Konfluenz** zeigt, wie viele Kernbereiche gleichzeitig tragfähig sind."
 )
 
@@ -3087,14 +3114,14 @@ with t2:
 
 with t3:
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("TradingBoard Score", str(tb_score), tb_signal)
-    c2.metric("Signal", tb_signal, tb_empf)
+    c1.metric("Kurzfrist-Timing", f"{tb_score_100}/100", tb_timing_text)
+    c2.metric("Board-Signal", tb_signal, tb_empf)
     c3.metric("TradingBoard Stop-Loss", f"{price - (2.5 * atr):.2f} {ccy}")
     c4.metric("TradingBoard Kursziel 2", f"{tp2:.2f} {ccy}")
 
     st.dataframe(tb_df, hide_index=True, use_container_width=True)
 
-    st.markdown("**TradingBoard Referenzscore**")
+    st.markdown("**Board-Details (Kurzfrist-Timing)**")
     st.text("\n".join(tb_details))
 
     st.markdown("**Board-Kontext (nicht im Score)**")
@@ -3287,7 +3314,7 @@ with c4:
                 </div>
                 <div class="reco-value">{display_stb_label(stb_signal)}</div>
             </div>
-            <div class="reco-delta">Score: {stb_score}</div>
+            <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
         </div>
         """,
         unsafe_allow_html=True,

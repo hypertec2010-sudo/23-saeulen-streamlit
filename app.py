@@ -249,7 +249,11 @@ def shorten_text(value, max_len=42):
         return "-"
     if len(txt) <= max_len:
         return txt
-    return txt[: max_len - 3].rsplit(" ", 1)[0] + "..."
+    clipped = txt[: max_len - 3]
+    if " " in clipped:
+        clipped = clipped.rsplit(" ", 1)[0]
+    clipped = clipped.rstrip(" ,;:-")
+    return clipped + "..."
 
 
 # ---------- Indicators ----------
@@ -2321,7 +2325,7 @@ if selected_display_ticker not in results_map and not ranking_df.empty:
 st.subheader("Ranking mehrerer Aktien")
 st.caption(
     "Ranking-Tabelle für Multi-Screening. Die bisherige Einzelanalyse darunter bleibt vollständig erhalten. "
-    "Lange Texte werden in der Übersicht gekürzt; die Volltexte stehen darunter."
+    "Red Flag und Kurzfazit stehen unter der Tabelle vollständig, damit nichts abgeschnitten wird."
 )
 
 ranking_display_cols = [
@@ -2334,8 +2338,6 @@ ranking_display_cols = [
     "Investment Score",
     "TradingBoard Score",
     "Fundamental-Confidence",
-    "Top Red Flag",
-    "Kurzfazit",
 ]
 
 ranking_display_df = ranking_df[ranking_display_cols].copy()
@@ -2355,8 +2357,6 @@ st.dataframe(
         "Investment Score": st.column_config.NumberColumn("Investment Score", width="small", format="%.0f"),
         "TradingBoard Score": st.column_config.NumberColumn("TradingBoard Score", width="small", format="%.0f"),
         "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
-        "Top Red Flag": st.column_config.TextColumn("Top Red Flag", width="medium"),
-        "Kurzfazit": st.column_config.TextColumn("Kurzfazit", width="large"),
     },
 )
 
@@ -2368,14 +2368,24 @@ st.download_button(
 )
 
 if not ranking_df.empty:
-    with st.expander("Volltexte zu Red Flag und Kurzfazit", expanded=False):
-        full_text_df = ranking_df[["Ticker", "_Top Red Flag Full", "_Kurzfazit Full"]].rename(
-            columns={
-                "_Top Red Flag Full": "Top Red Flag (voll)",
-                "_Kurzfazit Full": "Kurzfazit (voll)",
-            }
-        )
-        st.dataframe(full_text_df, hide_index=True, use_container_width=True)
+    st.markdown("**Ranking-Details**")
+    detail_df = ranking_df[["Ticker", "_Top Red Flag Full", "_Kurzfazit Full"]].rename(
+        columns={
+            "_Top Red Flag Full": "Red Flag",
+            "_Kurzfazit Full": "Kurzfazit",
+        }
+    )
+    st.dataframe(
+        detail_df,
+        hide_index=True,
+        use_container_width=True,
+        height=420,
+        column_config={
+            "Ticker": st.column_config.TextColumn("Ticker", width="small"),
+            "Red Flag": st.column_config.TextColumn("Red Flag", width="large"),
+            "Kurzfazit": st.column_config.TextColumn("Kurzfazit", width="large"),
+        },
+    )
 
 try:
     resolved_df = pd.DataFrame(resolved_input_rows)

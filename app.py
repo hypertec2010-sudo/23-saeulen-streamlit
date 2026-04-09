@@ -2630,11 +2630,17 @@ ranking_display_cols = [
     "Company Quality",
     "Setup Quality",
     "Investment Score",
-    "TradingBoard Score",
+    "Kurzfrist-Timing",
     "Fundamental-Confidence",
 ]
 
-ranking_display_df = ranking_df[ranking_display_cols].copy()
+ranking_display_df = ranking_df.copy()
+
+if "Kurzfrist-Timing" not in ranking_display_df.columns and "TradingBoard Score" in ranking_display_df.columns:
+    ranking_display_df = ranking_display_df.rename(columns={"TradingBoard Score": "Kurzfrist-Timing"})
+
+available_ranking_cols = [c for c in ranking_display_cols if c in ranking_display_df.columns]
+ranking_display_df = ranking_display_df[available_ranking_cols].copy()
 
 ranking_column_config = {
     "Ticker": st.column_config.TextColumn("Ticker", width="small"),

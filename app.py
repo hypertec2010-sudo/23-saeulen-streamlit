@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.0.2"
+APP_VERSION = "v9.0.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2645,7 +2645,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | v9.0.2 mit stabiler Setup-Confidence, numerischer Tradeability und klarer Rot-Gelb-Grün-Logik im Ranking")
+    st.caption(f"{APP_VERSION} | v9.0.3 mit korrigierter Rot-Gelb-Grün-Darstellung auch für Investment- und Trading-Attraktivität im Ranking")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")

@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v8.3"
+APP_VERSION = "v8.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1925,38 +1925,114 @@ def analyze_stock(
 
     # ---------- Trade Setup ----------
     if base_trade_setup_ok:
-        atr_stop = round(price - 1.8 * atr, 2)
-        struct_stop = round(ma50 * 0.965, 2)
-        stop_used = min(atr_stop, struct_stop)
+        generic_atr_stop = round(price - 1.8 * atr, 2)
+        generic_struct_stop = round(ma50 * 0.965, 2)
+
+        # Setup-spezifische Stop-Logik
+        if setup_type == "Breakout":
+            breakout_ref = prev20_high if pd.notna(prev20_high) else ma20
+            stop_candidate_1 = price - 1.6 * atr
+            stop_candidate_2 = breakout_ref * 0.97 if pd.notna(breakout_ref) else np.nan
+            stop_source = "Unter Breakout-Level / ATR"
+        elif setup_type == "Pullback im Aufwärtstrend":
+            stop_candidate_1 = price - 1.5 * atr
+            stop_candidate_2 = ma50 * 0.985 if pd.notna(ma50) else np.nan
+            stop_source = "Unter Pullback-Zone / MA50"
+        elif setup_type == "Rebound im Aufwärtstrend":
+            stop_candidate_1 = price - 1.3 * atr
+            stop_candidate_2 = prev20_low * 0.99 if pd.notna(prev20_low) else np.nan
+            stop_source = "Unter Rebound-Tief"
+        elif setup_type == "Trendfolge":
+            trend_ref = ma20 if pd.notna(ma20) else ma50
+            stop_candidate_1 = price - 1.8 * atr
+            stop_candidate_2 = trend_ref * 0.985 if pd.notna(trend_ref) else np.nan
+            stop_source = "Unter Trendzone / ATR"
+        else:
+            stop_candidate_1 = generic_atr_stop
+            stop_candidate_2 = generic_struct_stop
+            stop_source = "Standard-Stop aus ATR / MA50"
+
+        stop_candidates = [x for x in [stop_candidate_1, stop_candidate_2, generic_atr_stop, generic_struct_stop] if pd.notna(x) and x > 0 and x < price]
+        stop_used = round(min(stop_candidates), 2) if stop_candidates else round(price - max(price * 0.08, atr * 1.8), 2)
+
+        atr_stop = round(stop_candidate_1, 2) if pd.notna(stop_candidate_1) else round(generic_atr_stop, 2)
         stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
+
         if stop_used <= 0 or stop_used >= price:
             stop_used = round(price - max(price * 0.08, atr * 1.8), 2)
             stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
+            stop_source = "Fallback-Stop"
 
         risk_per_share = price - stop_used
 
         tp1 = round(price + 1 * risk_per_share, 2)
         tp1_source = "1R vom Stop"
 
-        # Dynamisches Hauptziel:
-        # 1) Analysten-Target, wenn sinnvoll über dem aktuellen Kurs
-        # 2) sonst 52W-Hoch, wenn sinnvoll
-        # 3) sonst klassischer 2R-Fallback
-        if pd.notna(target) and target > price:
-            tp2 = round(target, 2)
-            tp2_source = "Analysten-Target"
-        elif pd.notna(high52) and high52 > price:
-            tp2 = round(high52, 2)
-            tp2_source = "52W-Hoch"
-        else:
-            tp2 = round(price + 2 * risk_per_share, 2)
-            tp2_source = "2R-Fallback"
+        technical_target = nearest_resistance if pd.notna(nearest_resistance) and nearest_resistance > price else np.nan
+        analyst_target = target if pd.notna(target) and target > price else np.nan
+        breakout_projection = prev20_high + 2.0 * atr if pd.notna(prev20_high) and pd.notna(atr) and prev20_high > 0 else np.nan
+        rebound_target = ma50 if pd.notna(ma50) and ma50 > price else np.nan
 
-        if pd.notna(high52) and high52 > tp2:
-            tp3 = round(high52, 2)
-            tp3_source = "52W-Hoch"
+        # Setup-spezifische Ziel-Logik
+        if setup_type == "Breakout":
+            target_candidates = [x for x in [technical_target, breakout_projection, high52, analyst_target] if pd.notna(x) and x > price]
+            tp2 = round(min(target_candidates), 2) if target_candidates else round(price + 2 * risk_per_share, 2)
+            if pd.notna(technical_target) and tp2 == round(technical_target, 2):
+                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
+            elif pd.notna(breakout_projection) and tp2 == round(breakout_projection, 2):
+                tp2_source = "Breakout-Projektion"
+            elif pd.notna(high52) and tp2 == round(high52, 2):
+                tp2_source = "52W-Hoch"
+            elif pd.notna(analyst_target) and tp2 == round(analyst_target, 2):
+                tp2_source = "Analysten-Target"
+            else:
+                tp2_source = "2R-Fallback"
+        elif setup_type == "Pullback im Aufwärtstrend":
+            if pd.notna(technical_target):
+                tp2 = round(technical_target, 2)
+                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
+            elif pd.notna(analyst_target):
+                tp2 = round(analyst_target, 2)
+                tp2_source = "Analysten-Target"
+            elif pd.notna(high52) and high52 > price:
+                tp2 = round(high52, 2)
+                tp2_source = "52W-Hoch"
+            else:
+                tp2 = round(price + 2 * risk_per_share, 2)
+                tp2_source = "2R-Fallback"
+        elif setup_type == "Rebound im Aufwärtstrend":
+            if pd.notna(rebound_target):
+                tp2 = round(rebound_target, 2)
+                tp2_source = "Rebound-Ziel (MA50)"
+            elif pd.notna(technical_target):
+                tp2 = round(technical_target, 2)
+                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
+            else:
+                tp2 = round(price + 1.8 * risk_per_share, 2)
+                tp2_source = "Konservatives Rebound-Ziel"
         else:
-            tp3 = round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
+            if pd.notna(technical_target):
+                tp2 = round(technical_target, 2)
+                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
+            elif pd.notna(analyst_target):
+                tp2 = round(analyst_target, 2)
+                tp2_source = "Analysten-Target"
+            elif pd.notna(high52) and high52 > price:
+                tp2 = round(high52, 2)
+                tp2_source = "52W-Hoch"
+            else:
+                tp2 = round(price + 2 * risk_per_share, 2)
+                tp2_source = "2R-Fallback"
+
+        tp3_candidates = [x for x in [analyst_target, high52, price + 3 * risk_per_share, tp2 + risk_per_share] if pd.notna(x) and x > tp2]
+        tp3 = round(min(tp3_candidates), 2) if tp3_candidates else round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
+        if pd.notna(analyst_target) and tp3 == round(analyst_target, 2):
+            tp3_source = "Analysten-Target"
+        elif pd.notna(high52) and tp3 == round(high52, 2):
+            tp3_source = "52W-Hoch"
+        elif tp3 == round(price + 3 * risk_per_share, 2):
+            tp3_source = "3R-Ziel"
+        else:
             tp3_source = "Erweitertes R-Ziel"
 
         crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
@@ -2003,6 +2079,7 @@ def analyze_stock(
         tp1_source = "-"
         tp2_source = "-"
         tp3_source = "-"
+        stop_source = "-"
         crv = np.nan
         nearest_resistance_rr = np.nan
         tradeability_score = 0
@@ -2389,6 +2466,7 @@ def analyze_stock(
         "tp1_source": tp1_source,
         "tp2_source": tp2_source,
         "tp3_source": tp3_source,
+        "stop_source": stop_source,
         "crv": crv,
         "pos_size": pos_size,
         "risk_eur": risk_eur,
@@ -2478,7 +2556,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Ranking, Zielherleitung, klarer Handlungssprache und erster echter Tradeability-Logik")
+    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Tradeability-Logik sowie setup-spezifischen Stops und Zielen")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")
@@ -2916,6 +2994,7 @@ tp3 = result["tp3"]
 tp1_source = result["tp1_source"]
 tp2_source = result["tp2_source"]
 tp3_source = result["tp3_source"]
+stop_source = result["stop_source"]
 crv = result["crv"]
 pos_size = result["pos_size"]
 risk_eur = result["risk_eur"]
@@ -3371,7 +3450,8 @@ with t6:
         u2.metric("Upside bis Widerstand", fmt_num(upside_to_resistance_pct, 1, "%"))
         u3.metric("Upside/Risiko bis Widerstand", fmt_num(nearest_resistance_rr, 2, ":1"))
 
-        st.markdown("**Zielherleitung**")
+        st.markdown("**Herleitung von Stop und Zielen**")
+        st.write(f"• Stop-Loss: {stop_source}")
         st.write(f"• TP1: {tp1_source}")
         st.write(f"• TP2: {tp2_source}")
         st.write(f"• TP3: {tp3_source}")

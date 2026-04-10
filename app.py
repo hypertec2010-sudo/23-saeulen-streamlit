@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v8.7"
+APP_VERSION = "v9.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -487,6 +487,52 @@ def tradeability_label(score):
     if s >= 45:
         return "eingeschränkt"
     return "schwach"
+
+
+def investment_case_label(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "-"
+    if s >= 80:
+        return "sehr attraktiv"
+    if s >= 70:
+        return "attraktiv"
+    if s >= 55:
+        return "okay"
+    if s >= 40:
+        return "schwach"
+    return "unattraktiv"
+
+
+def trading_case_label(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "-"
+    if s >= 80:
+        return "sehr attraktiv"
+    if s >= 68:
+        return "attraktiv"
+    if s >= 52:
+        return "brauchbar"
+    if s >= 40:
+        return "eher abwarten"
+    return "nicht attraktiv"
+
+
+def setup_confidence_label(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "-"
+    if s >= 80:
+        return "hoch"
+    if s >= 60:
+        return "mittel"
+    if s >= 40:
+        return "moderat"
+    return "niedrig"
 
 
 def linear_score(value, low, high, floor=10, ceiling=95):
@@ -1509,6 +1555,8 @@ def build_ranking_table(results):
             "Company Quality": r.get("company", np.nan),
             "Setup Quality": r.get("setup_adj", np.nan),
             "Investment Score": r.get("investment", np.nan),
+            "Investment-Attraktivität": r.get("investment_case_score", np.nan),
+            "Trading-Attraktivität": r.get("trading_case_score", np.nan),
             "Tradeability": r.get("tradeability_score", np.nan),
             "Kurzfrist-Timing": r.get("tb_score_100", normalize_tb_score_100(r.get("tb_score", np.nan))),
             "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
@@ -1527,7 +1575,7 @@ def build_ranking_table(results):
 
     if not df.empty:
         df = df.sort_values(
-            by=["Investment Score", "Tradeability", "Kurzfrist-Timing"],
+            by=["Investment-Attraktivität", "Trading-Attraktivität", "Tradeability"],
             ascending=False
         ).reset_index(drop=True)
         df.index = df.index + 1
@@ -2040,6 +2088,38 @@ def analyze_stock(
         ))
         tradeability_text = tradeability_label(tradeability_score)
 
+        setup_confidence = round(clamp(
+            (88 if setup_type in {"Breakout", "Pullback im Aufwärtstrend", "Trendfolge"} else 72 if setup_type in {"Rebound im Aufwärtstrend"} else 35) * 0.35
+            + s3 * 0.20
+            + s4 * 0.20
+            + min(kb / 4 * 100, 100) * 0.15
+            + (100 if entry_quality == "gut" else 60 if entry_quality == "abwarten" else 45) * 0.10
+        ))
+        setup_confidence_text = setup_confidence_label(setup_confidence)
+
+        confidence_numeric = round(confidence_info.get("coverage", 0) * 100) if isinstance(confidence_info, dict) else 50
+        market_long_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 30)
+        red_flag_adjustment = clamp(100 - min(red_flag_penalty_total * 4, 55), 35, 100)
+
+        investment_case_score = round(clamp(
+            company * 0.35
+            + investment * 0.35
+            + confidence_numeric * 0.10
+            + market_long_score * 0.10
+            + red_flag_adjustment * 0.10
+        ))
+        investment_case_text = investment_case_label(investment_case_score)
+
+        entry_location_score = 90 if entry_quality == "gut" else (58 if entry_quality == "abwarten" else 44)
+        trading_case_score = round(clamp(
+            tradeability_score * 0.35
+            + tb_score_100 * 0.25
+            + setup_adj * 0.20
+            + entry_location_score * 0.10
+            + market_trade_score * 0.10
+        ))
+        trading_case_text = trading_case_label(trading_case_score)
+
         risk_eur = depot * (risk_pct / 100)
         pos_size = int(risk_eur / risk_per_share) if risk_per_share > 0 else 0
         time_stop = (date.today() + timedelta(days=hd)).strftime("%d.%m.%Y")
@@ -2064,6 +2144,27 @@ def analyze_stock(
         entry_score = np.nan
         timing_trade_score = np.nan
         market_trade_score = np.nan
+        setup_confidence = np.nan
+        setup_confidence_text = "-"
+        confidence_numeric = round(confidence_info.get("coverage", 0) * 100) if isinstance(confidence_info, dict) else 50
+        market_long_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 30)
+        red_flag_adjustment = clamp(100 - min(red_flag_penalty_total * 4, 55), 35, 100)
+        investment_case_score = round(clamp(
+            company * 0.35
+            + investment * 0.35
+            + confidence_numeric * 0.10
+            + market_long_score * 0.10
+            + red_flag_adjustment * 0.10
+        ))
+        investment_case_text = investment_case_label(investment_case_score)
+        trading_case_score = round(clamp(
+            (tradeability_score if pd.notna(tradeability_score) else 20) * 0.35
+            + tb_score_100 * 0.25
+            + setup_adj * 0.20
+            + 40 * 0.10
+            + (85 if market_info["regime"] == "POSITIV" else 60 if market_info["regime"] == "NEUTRAL" else 25) * 0.10
+        ))
+        trading_case_text = trading_case_label(trading_case_score)
         risk_eur = depot * (risk_pct / 100)
         pos_size = 0
         time_stop = "-"
@@ -2441,6 +2542,12 @@ def analyze_stock(
         "entry_quality": entry_quality,
         "tradeability_score": tradeability_score,
         "tradeability_text": tradeability_text,
+        "investment_case_score": investment_case_score,
+        "investment_case_text": investment_case_text,
+        "trading_case_score": trading_case_score,
+        "trading_case_text": trading_case_text,
+        "setup_confidence": setup_confidence,
+        "setup_confidence_text": setup_confidence_text,
         "trade_crv_score": crv_score,
         "trade_stop_score": stop_score,
         "trade_entry_score": entry_score,
@@ -2524,7 +2631,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Tradeability 2.0, verständlicherem Timing-Score und konkreter Entry-Zone")
+    st.caption(f"{APP_VERSION} | v9.0 startet mit Investment-Case, Trading-Case, Setup-Confidence und Executive Summary")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")
@@ -2776,6 +2883,8 @@ ranking_display_cols = [
     "Company Quality",
     "Setup Quality",
     "Investment Score",
+    "Investment-Attraktivität",
+    "Trading-Attraktivität",
     "Tradeability",
     "Kurzfrist-Timing",
     "Fundamental-Confidence",
@@ -2797,6 +2906,8 @@ ranking_column_config = {
     "Company Quality": st.column_config.NumberColumn("Company Quality", width="small", format="%.0f"),
     "Setup Quality": st.column_config.NumberColumn("Setup Quality", width="small", format="%.0f"),
     "Investment Score": st.column_config.NumberColumn("Investment Score", width="small", format="%.0f"),
+    "Investment-Attraktivität": st.column_config.NumberColumn("Investment-Attraktivität", width="small", format="%.0f"),
+    "Trading-Attraktivität": st.column_config.NumberColumn("Trading-Attraktivität", width="small", format="%.0f"),
     "Tradeability": st.column_config.NumberColumn("Tradeability", width="small", format="%.0f"),
     "Kurzfrist-Timing": st.column_config.NumberColumn("Kurzfrist-Timing", width="small", format="%.0f"),
     "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
@@ -2967,6 +3078,12 @@ entry_source = result["entry_source"]
 entry_quality = result["entry_quality"]
 tradeability_score = result["tradeability_score"]
 tradeability_text = result["tradeability_text"]
+investment_case_score = result["investment_case_score"]
+investment_case_text = result["investment_case_text"]
+trading_case_score = result["trading_case_score"]
+trading_case_text = result["trading_case_text"]
+setup_confidence = result["setup_confidence"]
+setup_confidence_text = result["setup_confidence_text"]
 trade_crv_score = result["trade_crv_score"]
 trade_stop_score = result["trade_stop_score"]
 trade_entry_score = result["trade_entry_score"]
@@ -3131,6 +3248,20 @@ if red_flag_items:
     st.warning("Red Flags erkannt: " + " | ".join(red_flag_notes[:4]))
 
 # ---------- Scores ----------
+st.subheader("Executive Summary")
+sx1, sx2, sx3, sx4, sx5 = st.columns(5)
+with sx1:
+    render_score_card("Investment-Attraktivität", f"{investment_case_score}/100", investment_case_text, "investment")
+with sx2:
+    render_score_card("Trading-Attraktivität", f"{trading_case_score}/100", trading_case_text, "board")
+with sx3:
+    render_score_card("Setup-Typ", setup_type, preferred_entry, "setup")
+with sx4:
+    render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper")
+with sx5:
+    action_label = display_emp_label(result.get("emp", "-"))
+    render_score_card("Handlung", action_label, market_regime_label(market_info["regime"]), "kb")
+
 st.subheader("Scores")
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 with c1:
@@ -3146,7 +3277,7 @@ with c5:
 with c6:
     render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short")
 with c7:
-    render_score_card("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"), "helper")
+    render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper")
 
 st.caption(
     "Diese Version ergänzt Candlestick-Chart mit Volumen, Ranking mehrerer Aktien, "
@@ -3160,9 +3291,11 @@ st.markdown(
     "- **Kurzfrist Core** bewertet die kurzfristige technische Lage.\n"
     "- **Kurzfristiges Signalbild** ist eine ergänzende Kurzfrist-Ampel.\n"
     "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
-    "- **Tradeability** bewertet, wie gut der Case praktisch handelbar ist. In v8.7 wird dieser Wert kontinuierlicher aus CRV, Stop-Distanz, Timing, Entry-Qualität und Marktumfeld berechnet.\n"
-    "- **Kurzfrist-Timing** zeigt, wie gut das aktuelle Timing für einen taktischen Einstieg wirkt. Der kleine Board-Score wird dafür zusätzlich auf 100 normiert.\n"
-    "- **Konfluenz** zeigt, wie viele Kernbereiche gleichzeitig tragfähig sind."
+    "- **Investment-Attraktivität** bewertet, wie attraktiv die Aktie grundsätzlich als Investment-Case ist.\n"
+    "- **Trading-Attraktivität** bewertet, wie attraktiv der Trade aktuell konkret ist.\n"
+    "- **Tradeability** bewertet, wie gut der Case praktisch handelbar ist. In v9.0 fließt dieser Wert in die Trading-Attraktivität ein.\n"
+    "- **Kurzfrist-Timing** zeigt, wie gut das aktuelle Timing für einen taktischen Einstieg wirkt.\n"
+    "- **Setup-Confidence** zeigt, wie sauber und belastbar das erkannte Setup aktuell wirkt."
 )
 
 # ---------- Tabs ----------
@@ -3405,13 +3538,13 @@ with t6:
         e2.metric("Entry-Herleitung", entry_source)
         e3.metric("Aktuelle Lage", entry_quality)
 
-        st.markdown("**Tradeability-Komponenten**")
+        st.markdown("**Case-Komponenten**")
         tc1, tc2, tc3, tc4, tc5 = st.columns(5)
-        tc1.metric("CRV-Score", fmt_num(trade_crv_score, 0))
-        tc2.metric("Stop-Score", fmt_num(trade_stop_score, 0))
-        tc3.metric("Entry-Score", fmt_num(trade_entry_score, 0))
-        tc4.metric("Timing-Score", fmt_num(trade_timing_score, 0))
-        tc5.metric("Markt-Score", fmt_num(trade_market_score, 0))
+        tc1.metric("Investment-Case", f"{investment_case_score}/100", investment_case_text)
+        tc2.metric("Trading-Case", f"{trading_case_score}/100", trading_case_text)
+        tc3.metric("CRV-Score", fmt_num(trade_crv_score, 0))
+        tc4.metric("Entry-Score", fmt_num(trade_entry_score, 0))
+        tc5.metric("Setup-Confidence", fmt_num(setup_confidence, 0))
 
         st.markdown("**Zielherleitung**")
         st.write(f"• TP1: {tp1_source}")

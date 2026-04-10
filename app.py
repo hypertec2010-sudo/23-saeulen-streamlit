@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.0.3"
+APP_VERSION = "v9.0.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -350,14 +350,21 @@ def score_badge(score):
 
 def style_ranking_df(df):
     score_cols = [
-        "Company Quality", "Setup Quality", "Investment Score",
-        "Tradeability", "Kurzfrist-Timing", "TradingBoard Score", "Fundamental-Confidence"
+        "Company Quality",
+        "Setup Quality",
+        "Investment Score",
+        "Investment-Attraktivität",
+        "Trading-Attraktivität",
+        "Tradeability",
+        "Kurzfrist-Timing",
+        "TradingBoard Score",
+        "Fundamental-Confidence",
     ]
 
     def cell_style(v):
         try:
             _, color = score_badge(float(v))
-            return f"background-color: {color}; color: white;"
+            return f"background-color: {color}; color: white; font-weight:700;"
         except Exception:
             return ""
 
@@ -2645,7 +2652,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | v9.0.3 mit korrigierter Rot-Gelb-Grün-Darstellung auch für Investment- und Trading-Attraktivität im Ranking")
+    st.caption(f"{APP_VERSION} | v9.0.4 mit korrigierter Rot-Gelb-Grün-Darstellung auch für Investment- und Trading-Attraktivität im Ranking")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")

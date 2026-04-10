@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.0.5"
+APP_VERSION = "v9.0.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2139,7 +2139,7 @@ def analyze_stock(
         # wenn Setup-Typ, Timing oder Setup-Confidence dagegen sprechen.
         if setup_type == "Kein sauberes Setup":
             trading_case_score = min(trading_case_score, 55)
-        if pd.notna(tb_score_100) and tb_score_100 < 50:
+        if pd.notna(timing_trade_score) and timing_trade_score < 50:
             trading_case_score = min(trading_case_score, 52)
         if pd.notna(setup_confidence) and setup_confidence < 60:
             trading_case_score = min(trading_case_score, 58)
@@ -2201,7 +2201,7 @@ def analyze_stock(
         ))
         if setup_type == "Kein sauberes Setup":
             trading_case_score = min(trading_case_score, 55)
-        if pd.notna(tb_score_100) and tb_score_100 < 50:
+        if pd.notna(timing_trade_score) and timing_trade_score < 50:
             trading_case_score = min(trading_case_score, 52)
         if pd.notna(setup_confidence) and setup_confidence < 60:
             trading_case_score = min(trading_case_score, 58)
@@ -2675,7 +2675,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | v9.0.5 mit konsistenterem Trading-Case und klareren Score-Erklärungen")
+    st.caption(f"{APP_VERSION} | v9.0.6 mit konsistenterem Trading-Case, klareren Score-Erklärungen und gefixtem Timing-Zugriff")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")

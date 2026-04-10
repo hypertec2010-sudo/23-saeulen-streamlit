@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.6"
+APP_VERSION = "v9.6.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2210,31 +2210,33 @@ def analyze_stock(
             technical_target_1 = prev20_high if pd.notna(prev20_high) and prev20_high > price else np.nan
             technical_target_2 = high52 if pd.notna(high52) and high52 > price else np.nan
 
-        target_candidates_tp2 = [x for x in [technical_target_1, target if pd.notna(target) and target > price else np.nan, high52 if pd.notna(high52) and high52 > price else np.nan, price + 2 * risk_per_share] if pd.notna(x) and x > price]
-        tp2 = round(min(target_candidates_tp2), 2) if target_candidates_tp2 else round(price + 2 * risk_per_share, 2)
-
-        if pd.notna(technical_target_1) and abs(tp2 - technical_target_1) < 0.05:
+        tp2_floor = price + 1.8 * risk_per_share
+        if pd.notna(technical_target_1) and technical_target_1 > price:
+            tp2 = round(max(float(technical_target_1), tp2_floor), 2)
             tp2_source = f"Primärziel aus Setup ({setup_type})"
-        elif pd.notna(target) and abs(tp2 - float(target)) < 0.05:
+        elif pd.notna(target) and target > price:
+            tp2 = round(max(float(target), tp2_floor), 2)
             tp2_source = "Analysten-Target"
-        elif pd.notna(high52) and abs(tp2 - float(high52)) < 0.05:
+        elif pd.notna(high52) and high52 > price:
+            tp2 = round(max(float(high52), tp2_floor), 2)
             tp2_source = "52W-Hoch"
         else:
+            tp2 = round(price + 2 * risk_per_share, 2)
             tp2_source = "2R-Fallback"
 
-        target_candidates_tp3 = [x for x in [technical_target_2, target if pd.notna(target) and target > tp2 else np.nan, high52 if pd.notna(high52) and high52 > tp2 else np.nan, price + 3 * risk_per_share, tp2 + risk_per_share] if pd.notna(x) and x > tp2]
-        tp3 = round(min(target_candidates_tp3), 2) if target_candidates_tp3 else round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
-
-        if pd.notna(technical_target_2) and abs(tp3 - technical_target_2) < 0.05:
+        tp3_floor = max(price + 2.8 * risk_per_share, tp2 + 0.8 * risk_per_share)
+        if pd.notna(technical_target_2) and technical_target_2 > tp2:
+            tp3 = round(max(float(technical_target_2), tp3_floor), 2)
             tp3_source = f"Sekundärziel aus Setup ({setup_type})"
-        elif pd.notna(target) and abs(tp3 - float(target)) < 0.05:
+        elif pd.notna(target) and target > tp2:
+            tp3 = round(max(float(target), tp3_floor), 2)
             tp3_source = "Analysten-Target"
-        elif pd.notna(high52) and abs(tp3 - float(high52)) < 0.05:
+        elif pd.notna(high52) and high52 > tp2:
+            tp3 = round(max(float(high52), tp3_floor), 2)
             tp3_source = "52W-Hoch"
-        elif abs(tp3 - (price + 3 * risk_per_share)) < 0.05:
-            tp3_source = "3R-Ziel"
         else:
-            tp3_source = "Erweitertes R-Ziel"
+            tp3 = round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
+            tp3_source = "3R-Ziel"
 
         crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
         timing_trade_score = round(clamp(s4 * 0.45 + s5 * 0.25 + rs_score * 0.20 + s6 * 0.10))
@@ -2312,6 +2314,8 @@ def analyze_stock(
         tp1_source = "-"
         tp2_source = "-"
         tp3_source = "-"
+        technical_target_1 = np.nan
+        technical_target_2 = np.nan
         stop_source = "-"
         suggested_entry_zone = "-"
         entry_source = "-"

@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v8.6"
+APP_VERSION = "v8.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -480,13 +480,56 @@ def tradeability_label(score):
         s = float(score)
     except Exception:
         return "-"
-    if s >= 75:
+    if s >= 78:
         return "hoch handelbar"
-    if s >= 60:
+    if s >= 62:
         return "brauchbar"
     if s >= 45:
         return "eingeschränkt"
     return "schwach"
+
+
+def linear_score(value, low, high, floor=10, ceiling=95):
+    if pd.isna(value):
+        return np.nan
+    if high == low:
+        return ceiling
+    scaled = (float(value) - low) / (high - low)
+    return clamp(floor + scaled * (ceiling - floor), floor, ceiling)
+
+
+def ideal_range_score(value, ideal_low, ideal_high, hard_low, hard_high, floor=15, ceiling=92):
+    if pd.isna(value):
+        return np.nan
+    v = float(value)
+    if ideal_low <= v <= ideal_high:
+        return ceiling
+    if v < ideal_low:
+        if v <= hard_low:
+            return floor
+        scaled = (v - hard_low) / (ideal_low - hard_low)
+        return clamp(floor + scaled * (ceiling - floor), floor, ceiling)
+    if v >= hard_high:
+        return floor
+    scaled = (hard_high - v) / (hard_high - ideal_high)
+    return clamp(floor + scaled * (ceiling - floor), floor, ceiling)
+
+
+def entry_quality_score(entry_quality, price, entry_low, entry_high):
+    quality = str(entry_quality or "").lower()
+    if quality == "gut":
+        return 88
+    if quality == "abwarten":
+        if pd.notna(entry_high) and entry_high > 0 and pd.notna(price):
+            gap_pct = (float(price) / float(entry_high) - 1) * 100
+            return clamp(62 - gap_pct * 4.5, 20, 62)
+        return 45
+    if quality == "früh":
+        if pd.notna(entry_low) and entry_low > 0 and pd.notna(price):
+            gap_pct = (float(entry_low) / float(price) - 1) * 100
+            return clamp(55 - max(gap_pct, 0) * 2.5, 25, 55)
+        return 40
+    return 45
 
 
 def format_price_zone(low, high, ccy):
@@ -499,66 +542,6 @@ def format_price_zone(low, high, ccy):
     if pd.notna(low):
         return f"ab {float(low):.2f} {ccy}"
     return f"bis {float(high):.2f} {ccy}"
-
-
-def cluster_levels(levels, tolerance_pct=0.015, max_levels=6):
-    clean = sorted([float(x) for x in levels if pd.notna(x)])
-    if not clean:
-        return []
-
-    clusters = []
-    for lvl in clean:
-        placed = False
-        for c in clusters:
-            ref = c["mean"]
-            if ref > 0 and abs(lvl - ref) / ref <= tolerance_pct:
-                c["values"].append(lvl)
-                c["mean"] = float(np.mean(c["values"]))
-                placed = True
-                break
-        if not placed:
-            clusters.append({"values": [lvl], "mean": lvl})
-
-    clusters = sorted(clusters, key=lambda x: (len(x["values"]), x["mean"]), reverse=True)
-    clustered = [round(c["mean"], 2) for c in clusters[:max_levels]]
-    return sorted(clustered)
-
-
-def detect_technical_resistances(high_series, close_series, current_price, lookback=180):
-    if high_series is None or close_series is None or len(high_series) < 20:
-        return []
-
-    hs = pd.Series(high_series).tail(lookback).reset_index(drop=True)
-    cs = pd.Series(close_series).tail(lookback).reset_index(drop=True)
-
-    candidate_levels = []
-
-    for i in range(2, len(hs) - 2):
-        h = hs.iloc[i]
-        if pd.isna(h):
-            continue
-        if h > hs.iloc[i - 1] and h > hs.iloc[i - 2] and h >= hs.iloc[i + 1] and h >= hs.iloc[i + 2]:
-            if h > current_price:
-                candidate_levels.append(float(h))
-
-    try:
-        candidate_levels.extend([
-            float(hs.tail(20).max()),
-            float(hs.tail(50).max()),
-            float(hs.max()),
-        ])
-    except Exception:
-        pass
-
-    candidate_levels = [x for x in candidate_levels if pd.notna(x) and x > current_price]
-    return cluster_levels(candidate_levels, tolerance_pct=0.012, max_levels=6)
-
-
-def pick_resistance_info(levels, current_price):
-    valid = [x for x in levels if pd.notna(x) and x > current_price]
-    primary = valid[0] if len(valid) >= 1 else np.nan
-    secondary = valid[1] if len(valid) >= 2 else np.nan
-    return primary, secondary
 
 
 # ---------- Indicators ----------
@@ -1663,25 +1646,6 @@ def analyze_stock(
     prev20_high = safe_last(close.shift(1).rolling(20).max(), np.nan)
     prev20_low = safe_last(close.shift(1).rolling(20).min(), np.nan)
 
-    technical_resistance_levels = detect_technical_resistances(high, close, price, lookback=180)
-    nearest_resistance, secondary_resistance = pick_resistance_info(technical_resistance_levels, price)
-    nearest_resistance = nearest_resistance if pd.notna(nearest_resistance) else np.nan
-    secondary_resistance = secondary_resistance if pd.notna(secondary_resistance) else np.nan
-    nearest_resistance_source = "Cluster-Widerstand" if pd.notna(nearest_resistance) else "-"
-
-    if pd.isna(nearest_resistance) and pd.notna(prev20_high) and prev20_high > price:
-        nearest_resistance = prev20_high
-        nearest_resistance_source = "20T-Hoch"
-    elif pd.isna(nearest_resistance) and pd.notna(high52) and high52 > price:
-        nearest_resistance = high52
-        nearest_resistance_source = "52W-Hoch"
-
-    if pd.isna(secondary_resistance) and pd.notna(high52) and high52 > price and (pd.isna(nearest_resistance) or abs(high52 - nearest_resistance) > 0.01):
-        secondary_resistance = high52
-
-    upside_to_resistance_pct = ((nearest_resistance / price) - 1) * 100 if pd.notna(nearest_resistance) and price > 0 else np.nan
-    upside_to_secondary_pct = ((secondary_resistance / price) - 1) * 100 if pd.notna(secondary_resistance) and price > 0 else np.nan
-
     macd_hist_series = macd - signal
     macd_hist_current = safe_last(macd_hist_series, 0)
     macd_hist_prev = safe_last(macd_hist_series.shift(1), 0)
@@ -2012,59 +1976,19 @@ def analyze_stock(
         tp1 = round(price + 1 * risk_per_share, 2)
         tp1_source = "1R vom Stop"
 
-        if setup_type == "Breakout":
-            if pd.notna(nearest_resistance):
-                tp2 = round(nearest_resistance, 2)
-                tp2_source = f"Primärer technischer Widerstand ({nearest_resistance_source})"
-            elif pd.notna(target) and target > price:
-                tp2 = round(target, 2)
-                tp2_source = "Analysten-Target"
-            else:
-                tp2 = round(price + 2 * risk_per_share, 2)
-                tp2_source = "2R-Fallback"
-        elif setup_type == "Pullback im Aufwärtstrend":
-            if pd.notna(nearest_resistance):
-                tp2 = round(nearest_resistance, 2)
-                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
-            elif pd.notna(high52) and high52 > price:
-                tp2 = round(high52, 2)
-                tp2_source = "52W-Hoch"
-            else:
-                tp2 = round(price + 2 * risk_per_share, 2)
-                tp2_source = "2R-Fallback"
-        elif setup_type == "Rebound im Aufwärtstrend":
-            if pd.notna(ma50) and ma50 > price:
-                tp2 = round(ma50, 2)
-                tp2_source = "Rebound-Ziel an MA50"
-            elif pd.notna(nearest_resistance):
-                tp2 = round(nearest_resistance, 2)
-                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
-            else:
-                tp2 = round(price + 1.8 * risk_per_share, 2)
-                tp2_source = "Konservatives Rebound-Ziel"
+        if pd.notna(target) and target > price:
+            tp2 = round(target, 2)
+            tp2_source = "Analysten-Target"
+        elif pd.notna(high52) and high52 > price:
+            tp2 = round(high52, 2)
+            tp2_source = "52W-Hoch"
         else:
-            if pd.notna(nearest_resistance):
-                tp2 = round(nearest_resistance, 2)
-                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
-            elif pd.notna(target) and target > price:
-                tp2 = round(target, 2)
-                tp2_source = "Analysten-Target"
-            elif pd.notna(high52) and high52 > price:
-                tp2 = round(high52, 2)
-                tp2_source = "52W-Hoch"
-            else:
-                tp2 = round(price + 2 * risk_per_share, 2)
-                tp2_source = "2R-Fallback"
+            tp2 = round(price + 2 * risk_per_share, 2)
+            tp2_source = "2R-Fallback"
 
-        if pd.notna(secondary_resistance) and secondary_resistance > tp2:
-            tp3 = round(secondary_resistance, 2)
-            tp3_source = "Sekundärer technischer Widerstand"
-        elif pd.notna(high52) and high52 > tp2:
+        if pd.notna(high52) and high52 > tp2:
             tp3 = round(high52, 2)
             tp3_source = "52W-Hoch"
-        elif pd.notna(target) and target > tp2:
-            tp3 = round(target, 2)
-            tp3_source = "Analysten-Target"
         else:
             tp3 = round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
             tp3_source = "Erweitertes R-Ziel"
@@ -2102,23 +2026,17 @@ def analyze_stock(
 
         crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
         timing_trade_score = round(clamp(s4 * 0.45 + s5 * 0.25 + rs_score * 0.20 + s6 * 0.10))
-        stop_score = 85 if 3 <= stop_dist <= 8 else (70 if 2 <= stop_dist <= 10 else (52 if 1 <= stop_dist <= 12 else 30))
-        crv_score = 95 if crv >= 2.5 else (82 if crv >= 2.0 else (68 if crv >= 1.5 else (48 if crv >= 1.2 else 20)))
-        resistance_rr = ((nearest_resistance - price) / risk_per_share) if pd.notna(nearest_resistance) and risk_per_share > 0 else np.nan
-        resistance_score = (
-            88 if pd.notna(resistance_rr) and resistance_rr >= 2.0 else
-            (72 if pd.notna(resistance_rr) and resistance_rr >= 1.5 else
-             (55 if pd.notna(resistance_rr) and resistance_rr >= 1.2 else
-              (45 if pd.isna(resistance_rr) else 22)))
-        )
+        stop_score = ideal_range_score(stop_dist, ideal_low=3.0, ideal_high=7.5, hard_low=1.0, hard_high=13.0)
+        crv_score = linear_score(crv, low=0.9, high=3.0, floor=15, ceiling=95)
         market_trade_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 25)
+        entry_score = entry_quality_score(entry_quality, price, entry_low, entry_high)
 
         tradeability_score = round(clamp(
             crv_score * 0.34
-            + resistance_score * 0.22
-            + stop_score * 0.14
-            + timing_trade_score * 0.18
-            + market_trade_score * 0.12
+            + stop_score * 0.18
+            + timing_trade_score * 0.22
+            + market_trade_score * 0.10
+            + entry_score * 0.16
         ))
         tradeability_text = tradeability_label(tradeability_score)
 
@@ -2139,12 +2057,17 @@ def analyze_stock(
         entry_source = "-"
         entry_quality = "-"
         crv = np.nan
-        resistance_rr = np.nan
         tradeability_score = np.nan
         tradeability_text = "-"
+        crv_score = np.nan
+        stop_score = np.nan
+        entry_score = np.nan
+        timing_trade_score = np.nan
+        market_trade_score = np.nan
         risk_eur = depot * (risk_pct / 100)
         pos_size = 0
         time_stop = "-"
+
     short_term_score = round(clamp(s4 * 0.45 + s5 * 0.28 + s6 * 0.17 + rs_score * 0.10))
     swing_score = round(clamp(s3 * 0.26 + s4 * 0.28 + s5 * 0.16 + s6 * 0.10 + rs_score * 0.12 + w52 * 0.08))
     mid_term_score = round(clamp(setup_adj * 0.55 + company * 0.45))
@@ -2518,11 +2441,11 @@ def analyze_stock(
         "entry_quality": entry_quality,
         "tradeability_score": tradeability_score,
         "tradeability_text": tradeability_text,
-        "nearest_resistance": nearest_resistance,
-        "secondary_resistance": secondary_resistance,
-        "nearest_resistance_source": nearest_resistance_source,
-        "upside_to_resistance_pct": upside_to_resistance_pct,
-        "upside_to_secondary_pct": upside_to_secondary_pct,
+        "trade_crv_score": crv_score,
+        "trade_stop_score": stop_score,
+        "trade_entry_score": entry_score,
+        "trade_timing_score": timing_trade_score,
+        "trade_market_score": market_trade_score,
         "crv": crv,
         "pos_size": pos_size,
         "risk_eur": risk_eur,
@@ -2601,7 +2524,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Premium-Dashboard mit präziserer Widerstandslogik, Tradeability und konkreter Entry-Zone")
+    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Tradeability 2.0, verständlicherem Timing-Score und konkreter Entry-Zone")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")
@@ -3044,11 +2967,11 @@ entry_source = result["entry_source"]
 entry_quality = result["entry_quality"]
 tradeability_score = result["tradeability_score"]
 tradeability_text = result["tradeability_text"]
-nearest_resistance = result["nearest_resistance"]
-secondary_resistance = result["secondary_resistance"]
-nearest_resistance_source = result["nearest_resistance_source"]
-upside_to_resistance_pct = result["upside_to_resistance_pct"]
-upside_to_secondary_pct = result["upside_to_secondary_pct"]
+trade_crv_score = result["trade_crv_score"]
+trade_stop_score = result["trade_stop_score"]
+trade_entry_score = result["trade_entry_score"]
+trade_timing_score = result["trade_timing_score"]
+trade_market_score = result["trade_market_score"]
 crv = result["crv"]
 pos_size = result["pos_size"]
 risk_eur = result["risk_eur"]
@@ -3237,9 +3160,8 @@ st.markdown(
     "- **Kurzfrist Core** bewertet die kurzfristige technische Lage.\n"
     "- **Kurzfristiges Signalbild** ist eine ergänzende Kurzfrist-Ampel.\n"
     "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
-    "- **Tradeability** bewertet, wie gut der Case praktisch handelbar ist.\n"
+    "- **Tradeability** bewertet, wie gut der Case praktisch handelbar ist. In v8.7 wird dieser Wert kontinuierlicher aus CRV, Stop-Distanz, Timing, Entry-Qualität und Marktumfeld berechnet.\n"
     "- **Kurzfrist-Timing** zeigt, wie gut das aktuelle Timing für einen taktischen Einstieg wirkt. Der kleine Board-Score wird dafür zusätzlich auf 100 normiert.\n"
-    "- **Technische Widerstände** werden jetzt präziser aus lokalen Hochpunkten und Widerstands-Clustern abgeleitet.\n"
     "- **Konfluenz** zeigt, wie viele Kernbereiche gleichzeitig tragfähig sind."
 )
 
@@ -3483,11 +3405,13 @@ with t6:
         e2.metric("Entry-Herleitung", entry_source)
         e3.metric("Aktuelle Lage", entry_quality)
 
-        st.markdown("**Technische Widerstände**")
-        r1, r2, r3 = st.columns(3)
-        r1.metric("Primärer Widerstand", fmt_num(nearest_resistance, 2, f" {ccy}"), nearest_resistance_source)
-        r2.metric("Sekundärer Widerstand", fmt_num(secondary_resistance, 2, f" {ccy}"))
-        r3.metric("Upside bis primär", fmt_num(upside_to_resistance_pct, 1, "%"))
+        st.markdown("**Tradeability-Komponenten**")
+        tc1, tc2, tc3, tc4, tc5 = st.columns(5)
+        tc1.metric("CRV-Score", fmt_num(trade_crv_score, 0))
+        tc2.metric("Stop-Score", fmt_num(trade_stop_score, 0))
+        tc3.metric("Entry-Score", fmt_num(trade_entry_score, 0))
+        tc4.metric("Timing-Score", fmt_num(trade_timing_score, 0))
+        tc5.metric("Markt-Score", fmt_num(trade_market_score, 0))
 
         st.markdown("**Zielherleitung**")
         st.write(f"• TP1: {tp1_source}")

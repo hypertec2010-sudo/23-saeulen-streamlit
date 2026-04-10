@@ -1678,14 +1678,9 @@ def analyze_stock(
 
     technical_resistance_levels = detect_technical_resistances(high, close, price, lookback=180)
     nearest_resistance, secondary_resistance = pick_resistance_info(technical_resistance_levels, price)
-
-    if pd.notna(nearest_resistance):
-        nearest_resistance_source = "Cluster-Widerstand"
-    elif pd.notna(prev20_high) and prev20_high > price:
-        nearest_resistance = prev20_high
-        nearest_resistance_source = "20T-Hoch"
-    elif pd.notna(high52) if False else False:
-        pass
+    nearest_resistance = nearest_resistance if pd.notna(nearest_resistance) else np.nan
+    secondary_resistance = secondary_resistance if pd.notna(secondary_resistance) else np.nan
+    nearest_resistance_source = "Cluster-Widerstand" if pd.notna(nearest_resistance) else "-"
 
     macd_hist_series = macd - signal
     macd_hist_current = safe_last(macd_hist_series, 0)

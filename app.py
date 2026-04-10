@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.2"
+APP_VERSION = "v9.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2055,36 +2055,7 @@ def analyze_stock(
 
     # ---------- Trade Setup ----------
     if valid_trade_setup:
-        atr_stop = round(price - 1.8 * atr, 2)
-        struct_stop = round(ma50 * 0.965, 2)
-        stop_used = min(atr_stop, struct_stop)
-        stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
-        if stop_used <= 0 or stop_used >= price:
-            stop_used = round(price - max(price * 0.08, atr * 1.8), 2)
-            stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
-
-        risk_per_share = price - stop_used
-
-        tp1 = round(price + 1 * risk_per_share, 2)
-        tp1_source = "1R vom Stop"
-
-        if pd.notna(target) and target > price:
-            tp2 = round(target, 2)
-            tp2_source = "Analysten-Target"
-        elif pd.notna(high52) and high52 > price:
-            tp2 = round(high52, 2)
-            tp2_source = "52W-Hoch"
-        else:
-            tp2 = round(price + 2 * risk_per_share, 2)
-            tp2_source = "2R-Fallback"
-
-        if pd.notna(high52) and high52 > tp2:
-            tp3 = round(high52, 2)
-            tp3_source = "52W-Hoch"
-        else:
-            tp3 = round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
-            tp3_source = "Erweitertes R-Ziel"
-
+        # Einstieg je Setup-Typ
         if setup_type == "Breakout":
             anchor_price = prev20_high if pd.notna(prev20_high) else price
             entry_low = max(anchor_price, price * 0.995)
@@ -2130,6 +2101,105 @@ def analyze_stock(
             "gut" if pd.notna(entry_low) and pd.notna(entry_high) and entry_low <= price <= entry_high
             else ("abwarten" if pd.notna(entry_high) and price > entry_high else "früh")
         )
+
+        # Stop-Logik je Setup-Typ
+        generic_atr_stop = price - 1.8 * atr if pd.notna(atr) else np.nan
+        generic_struct_stop = ma50 * 0.965 if pd.notna(ma50) else np.nan
+        setup_stop_candidates = []
+        stop_source = "Standard-Stop"
+
+        if setup_type == "Breakout":
+            breakout_level = prev20_high if pd.notna(prev20_high) else price
+            setup_stop_candidates = [
+                breakout_level * 0.975 if pd.notna(breakout_level) else np.nan,
+                price - 1.6 * atr if pd.notna(atr) else np.nan,
+                ma20 * 0.985 if pd.notna(ma20) else np.nan,
+            ]
+            stop_source = "Unter Breakout-Level / ATR"
+        elif setup_type == "Breakout-Retest":
+            retest_level = prev20_high if pd.notna(prev20_high) else price
+            setup_stop_candidates = [
+                retest_level * 0.985 if pd.notna(retest_level) else np.nan,
+                prev20_low * 0.995 if pd.notna(prev20_low) else np.nan,
+                price - 1.4 * atr if pd.notna(atr) else np.nan,
+            ]
+            stop_source = "Unter Retest-Niveau"
+        elif setup_type == "Pullback an MA20":
+            setup_stop_candidates = [
+                ma20 * 0.985 if pd.notna(ma20) else np.nan,
+                prev20_low * 0.995 if pd.notna(prev20_low) else np.nan,
+                price - 1.4 * atr if pd.notna(atr) else np.nan,
+            ]
+            stop_source = "Unter MA20 / Pullback-Tief"
+        elif setup_type == "Pullback an MA50":
+            setup_stop_candidates = [
+                ma50 * 0.985 if pd.notna(ma50) else np.nan,
+                prev20_low * 0.99 if pd.notna(prev20_low) else np.nan,
+                price - 1.5 * atr if pd.notna(atr) else np.nan,
+            ]
+            stop_source = "Unter MA50 / Pullback-Tief"
+        elif setup_type == "Rebound":
+            setup_stop_candidates = [
+                prev20_low * 0.99 if pd.notna(prev20_low) else np.nan,
+                price - 1.3 * atr if pd.notna(atr) else np.nan,
+                ma20 * 0.98 if pd.notna(ma20) else np.nan,
+            ]
+            stop_source = "Unter Rebound-Tief"
+        elif setup_type == "Range-Breakout":
+            range_top = prev20_high if pd.notna(prev20_high) else price
+            setup_stop_candidates = [
+                range_top * 0.985 if pd.notna(range_top) else np.nan,
+                price - 1.5 * atr if pd.notna(atr) else np.nan,
+                ma20 * 0.985 if pd.notna(ma20) else np.nan,
+            ]
+            stop_source = "Unter Range-Oberkante"
+        elif setup_type == "Trendfolge":
+            setup_stop_candidates = [
+                ma20 * 0.985 if pd.notna(ma20) else np.nan,
+                ma50 * 0.985 if pd.notna(ma50) else np.nan,
+                price - 1.8 * atr if pd.notna(atr) else np.nan,
+            ]
+            stop_source = "Unter Trendzone / Higher Low"
+
+        stop_candidates = [
+            x for x in setup_stop_candidates + [generic_atr_stop, generic_struct_stop]
+            if pd.notna(x) and x > 0 and x < price
+        ]
+
+        if stop_candidates:
+            stop_used = round(max(stop_candidates), 2)
+        else:
+            stop_used = round(price - max(price * 0.08, (atr * 1.8 if pd.notna(atr) else price * 0.06)), 2)
+            stop_source = "Fallback-Stop"
+
+        atr_stop = round(generic_atr_stop, 2) if pd.notna(generic_atr_stop) else np.nan
+        stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
+        if stop_used <= 0 or stop_used >= price:
+            stop_used = round(price - max(price * 0.08, (atr * 1.8 if pd.notna(atr) else price * 0.06)), 2)
+            stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
+            stop_source = "Fallback-Stop"
+
+        risk_per_share = price - stop_used
+
+        tp1 = round(price + 1 * risk_per_share, 2)
+        tp1_source = "1R vom Stop"
+
+        if pd.notna(target) and target > price:
+            tp2 = round(target, 2)
+            tp2_source = "Analysten-Target"
+        elif pd.notna(high52) and high52 > price:
+            tp2 = round(high52, 2)
+            tp2_source = "52W-Hoch"
+        else:
+            tp2 = round(price + 2 * risk_per_share, 2)
+            tp2_source = "2R-Fallback"
+
+        if pd.notna(high52) and high52 > tp2:
+            tp3 = round(high52, 2)
+            tp3_source = "52W-Hoch"
+        else:
+            tp3 = round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
+            tp3_source = "Erweitertes R-Ziel"
 
         crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
         timing_trade_score = round(clamp(s4 * 0.45 + s5 * 0.25 + rs_score * 0.20 + s6 * 0.10))
@@ -2207,6 +2277,7 @@ def analyze_stock(
         tp1_source = "-"
         tp2_source = "-"
         tp3_source = "-"
+        stop_source = "-"
         suggested_entry_zone = "-"
         entry_source = "-"
         entry_quality = "-"
@@ -2622,6 +2693,7 @@ def analyze_stock(
         "tp1_source": tp1_source,
         "tp2_source": tp2_source,
         "tp3_source": tp3_source,
+        "stop_source": stop_source,
         "suggested_entry_zone": suggested_entry_zone,
         "entry_source": entry_source,
         "entry_quality": entry_quality,
@@ -3182,6 +3254,7 @@ tp3 = result["tp3"]
 tp1_source = result["tp1_source"]
 tp2_source = result["tp2_source"]
 tp3_source = result["tp3_source"]
+stop_source = result["stop_source"]
 suggested_entry_zone = result["suggested_entry_zone"]
 entry_source = result["entry_source"]
 entry_quality = result["entry_quality"]
@@ -3697,7 +3770,8 @@ with t6:
         tc4.metric("Entry-Score", fmt_num(trade_entry_score, 0))
         tc5.metric("Setup-Confidence", fmt_num(setup_confidence, 0))
 
-        st.markdown("**Zielherleitung**")
+        st.markdown("**Herleitung von Stop und Zielen**")
+        st.write(f"• Stop: {stop_source}")
         st.write(f"• TP1: {tp1_source}")
         st.write(f"• TP2: {tp2_source}")
         st.write(f"• TP3: {tp3_source}")

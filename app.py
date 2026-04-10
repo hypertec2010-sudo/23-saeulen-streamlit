@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.0"
+APP_VERSION = "v9.0.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -129,8 +129,8 @@ pre{white-space:pre-wrap !important;}
 .score-card.setup{border-left:4px solid #22c55e;}
 .score-card.short{border-left:4px solid #f59e0b;}
 .score-card.helper{border-left:4px solid #a78bfa;}
-.score-card.investment{border-left:4px solid #14b8a6;}
-.score-card.board{border-left:4px solid #ef4444; box-shadow:0 12px 28px rgba(239,68,68,0.22);}
+.score-card.investment{border-left:4px solid #14b8a6; box-shadow:0 12px 28px rgba(20,184,166,0.24); background:linear-gradient(180deg,#0b1f20 0%, #111827 100%);}
+.score-card.board{border-left:4px solid #ef4444; box-shadow:0 12px 28px rgba(239,68,68,0.24); background:linear-gradient(180deg,#221113 0%, #111827 100%);}
 .score-card.kb{border-left:4px solid #14b8a6; box-shadow:0 12px 28px rgba(20,184,166,0.22);}
 .section-card{
     background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
@@ -2001,6 +2001,14 @@ def analyze_stock(
         setup_type = "Kein sauberes Setup"
         preferred_entry = "Aktuell kein sauberer Einstieg"
 
+    setup_confidence = round(clamp(
+        (88 if setup_type in {"Breakout", "Pullback im Aufwärtstrend", "Trendfolge"} else 72 if setup_type in {"Rebound im Aufwärtstrend"} else 35) * 0.38
+        + s3 * 0.22
+        + s4 * 0.22
+        + min(kb / 4 * 100, 100) * 0.18
+    ))
+    setup_confidence_text = setup_confidence_label(setup_confidence)
+
     valid_trade_setup = (
         investment >= 60
         and setup_adj >= 55
@@ -2144,8 +2152,6 @@ def analyze_stock(
         entry_score = np.nan
         timing_trade_score = np.nan
         market_trade_score = np.nan
-        setup_confidence = np.nan
-        setup_confidence_text = "-"
         confidence_numeric = round(confidence_info.get("coverage", 0) * 100) if isinstance(confidence_info, dict) else 50
         market_long_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 30)
         red_flag_adjustment = clamp(100 - min(red_flag_penalty_total * 4, 55), 35, 100)
@@ -2633,7 +2639,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | v9.0 startet mit Investment-Case, Trading-Case, Setup-Confidence und Executive Summary")
+    st.caption(f"{APP_VERSION} | v9.0.1 mit Investment-Case, Trading-Case, stabiler Setup-Confidence und farblich hervorgehobener Executive Summary")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")

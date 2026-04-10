@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.5"
+APP_VERSION = "v9.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1567,6 +1567,9 @@ def build_ranking_table(results):
             "Investment-Attraktivität": r.get("investment_case_score", np.nan),
             "Einstieg jetzt attraktiv?": r.get("trading_case_score", np.nan),
             "Trade-Struktur": r.get("tradeability_score", np.nan),
+            "Setup-Confidence": r.get("setup_confidence", np.nan),
+            "Entry-Lage": r.get("entry_quality", "-"),
+            "Valides Setup": "Ja" if r.get("valid_trade_setup", False) else "Nein",
             "Kurzfrist-Timing": r.get("tb_score_100", normalize_tb_score_100(r.get("tb_score", np.nan))),
             "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
             "Top Red Flag": shorten_text(full_red_flag, 34),
@@ -3119,29 +3122,65 @@ st.caption(
 )
 
 ranking_focus = st.radio(
-    "Ranking-Fokus",
-    ["Investment-Fokus", "Trading-Fokus"],
+    "Ranking-Modus",
+    ["Investment-Ranking", "Trading-Ranking", "Watchlist-Ranking"],
     horizontal=True,
     key="ranking_focus_mode"
 )
 
-if ranking_focus == "Trading-Fokus":
+filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+with filter_col1:
+    only_valid_setup = st.checkbox("Nur valide Setups", value=False, key="ranking_only_valid")
+with filter_col2:
+    min_investment_attr = st.slider("Min. Investment-Attraktivität", 0, 100, 0, 5, key="ranking_min_invest")
+with filter_col3:
+    min_entry_attr = st.slider("Min. Einstieg jetzt attraktiv?", 0, 100, 0, 5, key="ranking_min_entry")
+with filter_col4:
+    available_setup_types = sorted([str(x) for x in ranking_df.get("Setup-Typ", pd.Series(dtype=str)).dropna().unique().tolist()]) if not ranking_df.empty and "Setup-Typ" in ranking_df.columns else []
+    selected_setup_types = st.multiselect(
+        "Setup-Typen filtern",
+        options=available_setup_types,
+        default=available_setup_types,
+        key="ranking_setup_filter"
+    )
+
+ranking_df = ranking_df.copy()
+
+if only_valid_setup and "Valides Setup" in ranking_df.columns:
+    ranking_df = ranking_df[ranking_df["Valides Setup"] == "Ja"]
+
+if "Investment-Attraktivität" in ranking_df.columns:
+    ranking_df = ranking_df[pd.to_numeric(ranking_df["Investment-Attraktivität"], errors="coerce").fillna(0) >= min_investment_attr]
+
+if "Einstieg jetzt attraktiv?" in ranking_df.columns:
+    ranking_df = ranking_df[pd.to_numeric(ranking_df["Einstieg jetzt attraktiv?"], errors="coerce").fillna(0) >= min_entry_attr]
+
+if selected_setup_types and "Setup-Typ" in ranking_df.columns:
+    ranking_df = ranking_df[ranking_df["Setup-Typ"].isin(selected_setup_types)]
+
+if ranking_focus == "Trading-Ranking":
     ranking_df = ranking_df.sort_values(
-        by=["Einstieg jetzt attraktiv?", "Trade-Struktur", "Kurzfrist-Timing"],
+        by=["Einstieg jetzt attraktiv?", "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence"],
         ascending=False
     ).reset_index(drop=True)
-    ranking_df.index = ranking_df.index + 1
+elif ranking_focus == "Watchlist-Ranking":
+    ranking_df = ranking_df.sort_values(
+        by=["Investment-Attraktivität", "Setup-Confidence", "Trade-Struktur", "Einstieg jetzt attraktiv?"],
+        ascending=False
+    ).reset_index(drop=True)
 else:
     ranking_df = ranking_df.sort_values(
-        by=["Investment-Attraktivität", "Investment Score", "Company Quality"],
+        by=["Investment-Attraktivität", "Investment Score", "Company Quality", "Fundamental-Confidence"],
         ascending=False
     ).reset_index(drop=True)
-    ranking_df.index = ranking_df.index + 1
+
+ranking_df.index = ranking_df.index + 1
 
 ranking_display_cols = [
     "Ticker",
     "Name",
     "Setup-Typ",
+    "Valides Setup",
     "Benchmark",
     "Marktregime",
     "Company Quality",
@@ -3150,6 +3189,8 @@ ranking_display_cols = [
     "Investment-Attraktivität",
     "Einstieg jetzt attraktiv?",
     "Trade-Struktur",
+    "Setup-Confidence",
+    "Entry-Lage",
     "Kurzfrist-Timing",
     "Fundamental-Confidence",
 ]
@@ -3166,6 +3207,7 @@ ranking_column_config = {
     "Ticker": st.column_config.TextColumn("Ticker", width="small"),
     "Name": st.column_config.TextColumn("Name", width="medium"),
     "Setup-Typ": st.column_config.TextColumn("Setup-Typ", width="medium"),
+    "Valides Setup": st.column_config.TextColumn("Valides Setup", width="small"),
     "Benchmark": st.column_config.TextColumn("Benchmark", width="small"),
     "Marktregime": st.column_config.TextColumn("Marktregime", width="medium"),
     "Company Quality": st.column_config.NumberColumn("Company Quality", width="small", format="%.0f"),
@@ -3174,6 +3216,8 @@ ranking_column_config = {
     "Investment-Attraktivität": st.column_config.NumberColumn("Investment-Attraktivität", width="small", format="%.0f"),
     "Einstieg jetzt attraktiv?": st.column_config.NumberColumn("Einstieg jetzt attraktiv?", width="small", format="%.0f"),
     "Trade-Struktur": st.column_config.NumberColumn("Trade-Struktur", width="small", format="%.0f"),
+    "Setup-Confidence": st.column_config.NumberColumn("Setup-Confidence", width="small", format="%.0f"),
+    "Entry-Lage": st.column_config.TextColumn("Entry-Lage", width="small"),
     "Kurzfrist-Timing": st.column_config.NumberColumn("Kurzfrist-Timing", width="small", format="%.0f"),
     "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
 }
@@ -3195,7 +3239,7 @@ st.download_button(
 )
 
 if not ranking_df.empty:
-    st.markdown("**Ranking-Details**")
+    st.markdown(f"**Ranking-Details – {ranking_focus}**")
 
     card_df = ranking_df.copy()
     if "_Top Red Flag Full" not in card_df.columns:

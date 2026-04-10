@@ -1646,19 +1646,6 @@ def analyze_stock(
     low52 = safe_last(close.rolling(252).min(), float(close.min()))
     dist52 = price / high52 * 100 if high52 else 50
 
-    if pd.isna(nearest_resistance) and pd.notna(prev20_high) and prev20_high > price:
-        nearest_resistance = prev20_high
-        nearest_resistance_source = "20T-Hoch"
-    elif pd.isna(nearest_resistance) and pd.notna(high52) and high52 > price:
-        nearest_resistance = high52
-        nearest_resistance_source = "52W-Hoch"
-
-    if pd.isna(secondary_resistance) and pd.notna(high52) and high52 > price and (pd.isna(nearest_resistance) or abs(high52 - nearest_resistance) > 0.01):
-        secondary_resistance = high52
-
-    upside_to_resistance_pct = ((nearest_resistance / price) - 1) * 100 if pd.notna(nearest_resistance) and price > 0 else np.nan
-    upside_to_secondary_pct = ((secondary_resistance / price) - 1) * 100 if pd.notna(secondary_resistance) and price > 0 else np.nan
-
     obv = (np.sign(close.diff()) * vol).fillna(0).cumsum()
     obv_trend = "steigend" if float(obv.iloc[-1]) > float(obv.iloc[-20]) else "fallend"
 
@@ -1681,6 +1668,19 @@ def analyze_stock(
     nearest_resistance = nearest_resistance if pd.notna(nearest_resistance) else np.nan
     secondary_resistance = secondary_resistance if pd.notna(secondary_resistance) else np.nan
     nearest_resistance_source = "Cluster-Widerstand" if pd.notna(nearest_resistance) else "-"
+
+    if pd.isna(nearest_resistance) and pd.notna(prev20_high) and prev20_high > price:
+        nearest_resistance = prev20_high
+        nearest_resistance_source = "20T-Hoch"
+    elif pd.isna(nearest_resistance) and pd.notna(high52) and high52 > price:
+        nearest_resistance = high52
+        nearest_resistance_source = "52W-Hoch"
+
+    if pd.isna(secondary_resistance) and pd.notna(high52) and high52 > price and (pd.isna(nearest_resistance) or abs(high52 - nearest_resistance) > 0.01):
+        secondary_resistance = high52
+
+    upside_to_resistance_pct = ((nearest_resistance / price) - 1) * 100 if pd.notna(nearest_resistance) and price > 0 else np.nan
+    upside_to_secondary_pct = ((secondary_resistance / price) - 1) * 100 if pd.notna(secondary_resistance) and price > 0 else np.nan
 
     macd_hist_series = macd - signal
     macd_hist_current = safe_last(macd_hist_series, 0)

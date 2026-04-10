@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.0.6"
+APP_VERSION = "v9.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -354,8 +354,8 @@ def style_ranking_df(df):
         "Setup Quality",
         "Investment Score",
         "Investment-Attraktivität",
-        "Trading-Attraktivität",
-        "Tradeability",
+        "Einstieg jetzt attraktiv?",
+        "Trade-Struktur",
         "Kurzfrist-Timing",
         "TradingBoard Score",
         "Fundamental-Confidence",
@@ -1564,8 +1564,8 @@ def build_ranking_table(results):
             "Setup Quality": r.get("setup_adj", np.nan),
             "Investment Score": r.get("investment", np.nan),
             "Investment-Attraktivität": r.get("investment_case_score", np.nan),
-            "Trading-Attraktivität": r.get("trading_case_score", np.nan),
-            "Tradeability": r.get("tradeability_score", np.nan),
+            "Einstieg jetzt attraktiv?": r.get("trading_case_score", np.nan),
+            "Trade-Struktur": r.get("tradeability_score", np.nan),
             "Kurzfrist-Timing": r.get("tb_score_100", normalize_tb_score_100(r.get("tb_score", np.nan))),
             "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
             "Top Red Flag": shorten_text(full_red_flag, 34),
@@ -1583,7 +1583,7 @@ def build_ranking_table(results):
 
     if not df.empty:
         df = df.sort_values(
-            by=["Investment-Attraktivität", "Trading-Attraktivität", "Tradeability"],
+            by=["Investment-Attraktivität", "Einstieg jetzt attraktiv?", "Trade-Struktur"],
             ascending=False
         ).reset_index(drop=True)
         df.index = df.index + 1
@@ -2135,7 +2135,7 @@ def analyze_stock(
             + market_trade_score * 0.10
         ))
 
-        # Konsistenz-Deckel: ein Trading-Case darf nicht sehr hoch werden,
+        # Konsistenz-Deckel: ein Einstiegs-Case darf nicht sehr hoch werden,
         # wenn Setup-Typ, Timing oder Setup-Confidence dagegen sprechen.
         if setup_type == "Kein sauberes Setup":
             trading_case_score = min(trading_case_score, 55)
@@ -2675,7 +2675,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | v9.0.6 mit konsistenterem Trading-Case, klareren Score-Erklärungen und gefixtem Timing-Zugriff")
+    st.caption(f"{APP_VERSION} | v9.0.6 mit konsistenterem Einstiegs-Case, klareren Score-Erklärungen und gefixtem Timing-Zugriff")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")
@@ -2919,6 +2919,26 @@ st.caption(
     "Red Flag und Kurzfazit stehen darunter in einer Kartenansicht vollständig und lesbar."
 )
 
+ranking_focus = st.radio(
+    "Ranking-Fokus",
+    ["Investment-Fokus", "Trading-Fokus"],
+    horizontal=True,
+    key="ranking_focus_mode"
+)
+
+if ranking_focus == "Trading-Fokus":
+    ranking_df = ranking_df.sort_values(
+        by=["Einstieg jetzt attraktiv?", "Trade-Struktur", "Kurzfrist-Timing"],
+        ascending=False
+    ).reset_index(drop=True)
+    ranking_df.index = ranking_df.index + 1
+else:
+    ranking_df = ranking_df.sort_values(
+        by=["Investment-Attraktivität", "Investment Score", "Company Quality"],
+        ascending=False
+    ).reset_index(drop=True)
+    ranking_df.index = ranking_df.index + 1
+
 ranking_display_cols = [
     "Ticker",
     "Name",
@@ -2928,8 +2948,8 @@ ranking_display_cols = [
     "Setup Quality",
     "Investment Score",
     "Investment-Attraktivität",
-    "Trading-Attraktivität",
-    "Tradeability",
+    "Einstieg jetzt attraktiv?",
+    "Trade-Struktur",
     "Kurzfrist-Timing",
     "Fundamental-Confidence",
 ]
@@ -2951,8 +2971,8 @@ ranking_column_config = {
     "Setup Quality": st.column_config.NumberColumn("Setup Quality", width="small", format="%.0f"),
     "Investment Score": st.column_config.NumberColumn("Investment Score", width="small", format="%.0f"),
     "Investment-Attraktivität": st.column_config.NumberColumn("Investment-Attraktivität", width="small", format="%.0f"),
-    "Trading-Attraktivität": st.column_config.NumberColumn("Trading-Attraktivität", width="small", format="%.0f"),
-    "Tradeability": st.column_config.NumberColumn("Tradeability", width="small", format="%.0f"),
+    "Einstieg jetzt attraktiv?": st.column_config.NumberColumn("Einstieg jetzt attraktiv?", width="small", format="%.0f"),
+    "Trade-Struktur": st.column_config.NumberColumn("Trade-Struktur", width="small", format="%.0f"),
     "Kurzfrist-Timing": st.column_config.NumberColumn("Kurzfrist-Timing", width="small", format="%.0f"),
     "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
 }
@@ -3004,7 +3024,7 @@ if not ranking_df.empty:
     <b>Scores:</b>
     Company {row.get("Company Quality", "n/a")} |
     Setup {row.get("Setup Quality", "n/a")} |
-    Tradeability {row.get("Tradeability", "n/a")} |
+    Trade-Struktur {row.get("Trade-Struktur", "n/a")} |
     Kurzfrist-Timing {row.get("Kurzfrist-Timing", row.get("TradingBoard Score", "n/a"))}
   </div>
 
@@ -3306,11 +3326,11 @@ with sx1:
     )
 with sx2:
     render_score_card(
-        "Trading-Attraktivität",
+        "Einstieg jetzt attraktiv?",
         f"{trading_case_score}/100",
         trading_case_text,
         "board",
-        tooltip="Wie attraktiv der Trade aktuell konkret ist. Nutzt Tradeability, Timing, Setup Quality, Entry-Lage und Marktumfeld. Wird bewusst gedeckelt, wenn Setup oder Timing nicht sauber sind."
+        tooltip="Wie attraktiv ein Einstieg genau jetzt gerade ist. Nutzt Trade-Struktur, Timing, Setup Quality, Entry-Lage und Marktumfeld. Wird bewusst gedeckelt, wenn Setup oder Timing nicht sauber sind."
     )
 with sx3:
     render_score_card(
@@ -3335,16 +3355,16 @@ with sx5:
         action_label,
         market_regime_label(market_info["regime"]),
         "kb",
-        tooltip="Verdichtete Handlungsempfehlung aus Investment-Case, Trading-Case, Timing, Marktumfeld und Vetos."
+        tooltip="Verdichtete Handlungsempfehlung aus Investment-Case, Einstiegs-Case, Timing, Marktumfeld und Vetos."
     )
 
 with st.expander("Score-Erklärungen anzeigen", expanded=False):
     st.markdown(
         "- **Investment-Attraktivität**: Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.\n"
-        "- **Trading-Attraktivität**: Wie attraktiv der Trade aktuell konkret ist. Dieser Wert wird bewusst gedeckelt, wenn Setup-Typ, Timing oder Setup-Confidence dagegen sprechen.\n"
+        "- **Trading-Attraktivität**: Wie attraktiv ein Einstieg genau jetzt gerade ist. Dieser Wert wird bewusst gedeckelt, wenn Setup-Typ, Timing oder Setup-Confidence dagegen sprechen.\n"
         "- **Setup-Typ**: Das wahrscheinlichste charttechnische Muster.\n"
         "- **Setup-Confidence**: Wie sauber und belastbar dieses Setup aktuell wirkt.\n"
-        "- **Tradeability**: Wie gut der Case praktisch handelbar ist, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld.\n"
+        "- **Trade-Struktur**: Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld.\n"
         "- **Kurzfrist-Timing**: Schneller Taktik- und Timing-Blick aus dem Board."
     )
 
@@ -3357,7 +3377,7 @@ with c2:
 with c3:
     render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment")
 with c4:
-    render_score_card("Tradeability", f"{fmt_num(tradeability_score,0)}" + "/100", tradeability_text, "kb")
+    render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}" + "/100", tradeability_text, "kb")
 with c5:
     render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board")
 with c6:
@@ -3378,8 +3398,8 @@ st.markdown(
     "- **Kurzfristiges Signalbild** ist eine ergänzende Kurzfrist-Ampel.\n"
     "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
     "- **Investment-Attraktivität** bewertet, wie attraktiv die Aktie grundsätzlich als Investment-Case ist.\n"
-    "- **Trading-Attraktivität** bewertet, wie attraktiv der Trade aktuell konkret ist.\n"
-    "- **Tradeability** bewertet, wie gut der Case praktisch handelbar ist. In v9.0 fließt dieser Wert in die Trading-Attraktivität ein.\n"
+    "- **Einstieg jetzt attraktiv?** bewertet, wie attraktiv ein Einstieg genau jetzt gerade ist.\n"
+    "- **Trade-Struktur** bewertet, wie gut der Case praktisch handelbar ist. In v9.0 fließt dieser Wert in die Trading-Attraktivität ein.\n"
     "- **Kurzfrist-Timing** zeigt, wie gut das aktuelle Timing für einen taktischen Einstieg wirkt.\n"
     "- **Setup-Confidence** zeigt, wie sauber und belastbar das erkannte Setup aktuell wirkt."
 )
@@ -3627,7 +3647,7 @@ with t6:
         st.markdown("**Case-Komponenten**")
         tc1, tc2, tc3, tc4, tc5 = st.columns(5)
         tc1.metric("Investment-Case", f"{investment_case_score}/100", investment_case_text)
-        tc2.metric("Trading-Case", f"{trading_case_score}/100", trading_case_text)
+        tc2.metric("Einstiegs-Case", f"{trading_case_score}/100", trading_case_text)
         tc3.metric("CRV-Score", fmt_num(trade_crv_score, 0))
         tc4.metric("Entry-Score", fmt_num(trade_entry_score, 0))
         tc5.metric("Setup-Confidence", fmt_num(setup_confidence, 0))

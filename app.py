@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.6.1"
+APP_VERSION = "v9.6.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -356,6 +356,7 @@ def style_ranking_df(df):
         "Investment-Attraktivität",
         "Einstieg jetzt attraktiv?",
         "Trade-Struktur",
+        "Setup-Confidence",
         "Kurzfrist-Timing",
         "TradingBoard Score",
         "Fundamental-Confidence",
@@ -368,10 +369,24 @@ def style_ranking_df(df):
         except Exception:
             return ""
 
+    def entry_style(v):
+        val = str(v or "").strip().lower()
+        if val == "gut":
+            return "background-color: rgba(34,197,94,0.28); color: white; font-weight:700;"
+        if val == "abwarten":
+            return "background-color: rgba(245,158,11,0.28); color: white; font-weight:700;"
+        if val == "früh":
+            return "background-color: rgba(239,68,68,0.28); color: white; font-weight:700;"
+        return ""
+
     styler = df.style
     for c in score_cols:
         if c in df.columns:
             styler = styler.map(cell_style, subset=[c])
+
+    if "Entry-Lage" in df.columns:
+        styler = styler.map(entry_style, subset=["Entry-Lage"])
+
     return styler
 
 

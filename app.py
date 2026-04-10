@@ -1982,7 +1982,7 @@ def analyze_stock(
         )
 
         crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
-        timing_trade_score = round(clamp((tb_score_100 if pd.notna(tb_score_100) else 50) * 0.55 + short_term_score * 0.45))
+        timing_trade_score = round(clamp(s4 * 0.45 + s5 * 0.25 + rs_score * 0.20 + s6 * 0.10))
         stop_score = 85 if 3 <= stop_dist <= 8 else (70 if 2 <= stop_dist <= 10 else (52 if 1 <= stop_dist <= 12 else 30))
         crv_score = 95 if crv >= 2.5 else (82 if crv >= 2.0 else (68 if crv >= 1.5 else (48 if crv >= 1.2 else 20)))
         market_trade_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 25)

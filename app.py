@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.1"
+APP_VERSION = "v9.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1558,6 +1558,7 @@ def build_ranking_table(results):
         rows.append({
             "Ticker": r.get("ticker", "-"),
             "Name": shorten_text(r.get("name", r.get("ticker", "-")), 28),
+            "Setup-Typ": r.get("setup_type", "-"),
             "Benchmark": r.get("benchmark_label", "-"),
             "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
             "Company Quality": r.get("company", np.nan),
@@ -1993,27 +1994,53 @@ def analyze_stock(
 
     investment = round(clamp(setup_adj * ws + company * wc))
 
-    if pd.notna(prev20_high) and price > prev20_high:
+    if bb_squeeze and pd.notna(prev20_high) and price > prev20_high and vol_ratio >= 1.0:
+        setup_type = "Range-Breakout"
+        preferred_entry = "Ausbruch über Range-Oberkante"
+    elif pd.notna(prev20_high) and price > prev20_high and vol_ratio >= 1.05 and rsi < 78:
         setup_type = "Breakout"
         preferred_entry = "Breakout über 20T-Hoch"
-    elif price > ma50 and pd.notna(ma20) and abs(price - ma20) / price <= 0.03:
-        setup_type = "Pullback im Aufwärtstrend"
-        preferred_entry = "Pullback nahe MA20 / Trendfortsetzung"
-    elif price > ma200 and rsi < 40:
-        setup_type = "Rebound im Aufwärtstrend"
+    elif (
+        pd.notna(prev20_high)
+        and price > ma20 > ma50
+        and abs(price - prev20_high) / prev20_high <= 0.02
+        and -3 <= ret5 <= 4
+    ):
+        setup_type = "Breakout-Retest"
+        preferred_entry = "Retest des Ausbruchsniveaus"
+    elif price > ma50 and ma20 > ma50 and pd.notna(ma20) and abs(price - ma20) / price <= 0.025:
+        setup_type = "Pullback an MA20"
+        preferred_entry = "Pullback nahe MA20"
+    elif price > ma200 and pd.notna(ma50) and abs(price - ma50) / price <= 0.03:
+        setup_type = "Pullback an MA50"
+        preferred_entry = "Pullback nahe MA50"
+    elif price > ma200 and rsi < 42 and macd_hist_current > macd_hist_prev:
+        setup_type = "Rebound"
         preferred_entry = "Rebound nach Stabilisierung"
-    elif price > ma50 and price > ma200:
+    elif price > ma50 and price > ma200 and rs_score >= 55:
         setup_type = "Trendfolge"
         preferred_entry = "Trendfolge bei Rücksetzer"
     else:
         setup_type = "Kein sauberes Setup"
         preferred_entry = "Aktuell kein sauberer Einstieg"
 
+    setup_base_score = {
+        "Breakout": 88,
+        "Breakout-Retest": 86,
+        "Pullback an MA20": 84,
+        "Pullback an MA50": 78,
+        "Trendfolge": 76,
+        "Rebound": 68,
+        "Range-Breakout": 82,
+        "Kein sauberes Setup": 35,
+    }.get(setup_type, 40)
+
     setup_confidence = round(clamp(
-        (88 if setup_type in {"Breakout", "Pullback im Aufwärtstrend", "Trendfolge"} else 72 if setup_type in {"Rebound im Aufwärtstrend"} else 35) * 0.38
+        setup_base_score * 0.38
         + s3 * 0.22
         + s4 * 0.22
-        + min(kb / 4 * 100, 100) * 0.18
+        + min(kb / 4 * 100, 100) * 0.10
+        + (85 if market_info["regime"] == "POSITIV" else 60 if market_info["regime"] == "NEUTRAL" else 35) * 0.08
     ))
     setup_confidence_text = setup_confidence_label(setup_confidence)
 
@@ -2021,6 +2048,7 @@ def analyze_stock(
         investment >= 60
         and setup_adj >= 55
         and kb >= 2
+        and setup_type != "Kein sauberes Setup"
         and market_info["regime"] != "NEGATIV"
         and not (has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7)
     )
@@ -2062,16 +2090,31 @@ def analyze_stock(
             entry_low = max(anchor_price, price * 0.995)
             entry_high = max(anchor_price * 1.015, price * 1.005)
             entry_source = "Breakout-Zone über dem Ausbruchsniveau"
-        elif setup_type == "Pullback im Aufwärtstrend":
+        elif setup_type == "Breakout-Retest":
+            anchor_price = prev20_high if pd.notna(prev20_high) else price
+            entry_low = anchor_price * 0.99 if pd.notna(anchor_price) else price * 0.98
+            entry_high = anchor_price * 1.01 if pd.notna(anchor_price) else price * 1.00
+            entry_source = "Retest-Zone am früheren Breakout-Level"
+        elif setup_type == "Pullback an MA20":
             anchor_price = ma20 if pd.notna(ma20) else ma50
             entry_low = anchor_price * 0.99 if pd.notna(anchor_price) else price * 0.98
             entry_high = anchor_price * 1.01 if pd.notna(anchor_price) else price
-            entry_source = "Pullback-Zone nahe MA20 / Trendlinie"
-        elif setup_type == "Rebound im Aufwärtstrend":
+            entry_source = "Pullback-Zone nahe MA20"
+        elif setup_type == "Pullback an MA50":
+            anchor_price = ma50 if pd.notna(ma50) else ma20
+            entry_low = anchor_price * 0.985 if pd.notna(anchor_price) else price * 0.97
+            entry_high = anchor_price * 1.015 if pd.notna(anchor_price) else price
+            entry_source = "Pullback-Zone nahe MA50"
+        elif setup_type == "Rebound":
             anchor_price = prev20_low if pd.notna(prev20_low) else ma20
             entry_low = anchor_price * 1.00 if pd.notna(anchor_price) else price * 0.98
             entry_high = anchor_price * 1.03 if pd.notna(anchor_price) else price
             entry_source = "Rebound-Zone nach Stabilisierung"
+        elif setup_type == "Range-Breakout":
+            anchor_price = prev20_high if pd.notna(prev20_high) else price
+            entry_low = anchor_price * 1.000 if pd.notna(anchor_price) else price * 0.995
+            entry_high = anchor_price * 1.012 if pd.notna(anchor_price) else price * 1.005
+            entry_source = "Ausbruchszone über der Range"
         elif setup_type == "Trendfolge":
             anchor_price = ma20 if pd.notna(ma20) else price
             entry_low = anchor_price * 0.995 if pd.notna(anchor_price) else price * 0.99
@@ -2942,6 +2985,7 @@ else:
 ranking_display_cols = [
     "Ticker",
     "Name",
+    "Setup-Typ",
     "Benchmark",
     "Marktregime",
     "Company Quality",
@@ -2965,6 +3009,7 @@ ranking_display_df = ranking_display_df[available_ranking_cols].copy()
 ranking_column_config = {
     "Ticker": st.column_config.TextColumn("Ticker", width="small"),
     "Name": st.column_config.TextColumn("Name", width="medium"),
+    "Setup-Typ": st.column_config.TextColumn("Setup-Typ", width="medium"),
     "Benchmark": st.column_config.TextColumn("Benchmark", width="small"),
     "Marktregime": st.column_config.TextColumn("Marktregime", width="medium"),
     "Company Quality": st.column_config.NumberColumn("Company Quality", width="small", format="%.0f"),
@@ -3338,7 +3383,7 @@ with sx3:
         setup_type,
         preferred_entry,
         "setup",
-        tooltip="Das aktuell wahrscheinlichste charttechnische Muster, z. B. Breakout, Pullback, Trendfolge oder kein sauberes Setup."
+        tooltip="Das aktuell wahrscheinlichste charttechnische Muster, z. B. Breakout, Breakout-Retest, Pullback an MA20, Pullback an MA50, Trendfolge, Rebound, Range-Breakout oder kein sauberes Setup."
     )
 with sx4:
     render_score_card(
@@ -3362,7 +3407,7 @@ with st.expander("Score-Erklärungen anzeigen", expanded=False):
     st.markdown(
         "- **Investment-Attraktivität**: Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.\n"
         "- **Trading-Attraktivität**: Wie attraktiv ein Einstieg genau jetzt gerade ist. Dieser Wert wird bewusst gedeckelt, wenn Setup-Typ, Timing oder Setup-Confidence dagegen sprechen.\n"
-        "- **Setup-Typ**: Das wahrscheinlichste charttechnische Muster.\n"
+        "- **Setup-Typ**: Das wahrscheinlichste charttechnische Muster, z. B. Breakout, Breakout-Retest, Pullback an MA20, Pullback an MA50, Trendfolge, Rebound oder Range-Breakout.\n"
         "- **Setup-Confidence**: Wie sauber und belastbar dieses Setup aktuell wirkt.\n"
         "- **Trade-Struktur**: Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld.\n"
         "- **Kurzfrist-Timing**: Schneller Taktik- und Timing-Blick aus dem Board."

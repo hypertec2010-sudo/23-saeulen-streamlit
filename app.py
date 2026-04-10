@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.0.1"
+APP_VERSION = "v9.0.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2145,13 +2145,19 @@ def analyze_stock(
         entry_source = "-"
         entry_quality = "-"
         crv = np.nan
-        tradeability_score = np.nan
-        tradeability_text = "-"
+        timing_trade_score = round(clamp(s4 * 0.45 + s5 * 0.25 + rs_score * 0.20 + s6 * 0.10))
+        market_trade_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 25)
+        tradeability_score = round(clamp(
+            20 * 0.34
+            + 30 * 0.18
+            + timing_trade_score * 0.22
+            + market_trade_score * 0.10
+            + 35 * 0.16
+        ))
+        tradeability_text = tradeability_label(tradeability_score)
         crv_score = np.nan
         stop_score = np.nan
         entry_score = np.nan
-        timing_trade_score = np.nan
-        market_trade_score = np.nan
         confidence_numeric = round(confidence_info.get("coverage", 0) * 100) if isinstance(confidence_info, dict) else 50
         market_long_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 30)
         red_flag_adjustment = clamp(100 - min(red_flag_penalty_total * 4, 55), 35, 100)
@@ -2639,7 +2645,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | v9.0.1 mit Investment-Case, Trading-Case, stabiler Setup-Confidence und farblich hervorgehobener Executive Summary")
+    st.caption(f"{APP_VERSION} | v9.0.2 mit stabiler Setup-Confidence, numerischer Tradeability und klarer Rot-Gelb-Grün-Logik im Ranking")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")

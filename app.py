@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v8.2"
+APP_VERSION = "v8.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -473,6 +473,24 @@ def normalize_tb_score_100(score):
     except Exception:
         return np.nan
     return int(round(clamp((s + 3) / 12 * 100, 0, 100)))
+
+
+def tradeability_label(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "-"
+    if s >= 75:
+        return "hoch handelbar"
+    if s >= 60:
+        return "brauchbar"
+    if s >= 45:
+        return "eingeschränkt"
+    return "schwach"
+
+
+def yes_no_icon(flag):
+    return "✅" if flag else "❌"
 
 
 # ---------- Indicators ----------
@@ -1440,6 +1458,7 @@ def build_ranking_table(results):
             "Company Quality": r.get("company", np.nan),
             "Setup Quality": r.get("setup_adj", np.nan),
             "Investment Score": r.get("investment", np.nan),
+            "Tradeability": r.get("tradeability_score", np.nan),
             "Kurzfrist-Timing": r.get("tb_score_100", normalize_tb_score_100(r.get("tb_score", np.nan))),
             "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
             "Top Red Flag": shorten_text(full_red_flag, 34),
@@ -1457,7 +1476,7 @@ def build_ranking_table(results):
 
     if not df.empty:
         df = df.sort_values(
-            by=["Investment Score", "Kurzfrist-Timing", "Company Quality"],
+            by=["Investment Score", "Tradeability", "Kurzfrist-Timing"],
             ascending=False
         ).reset_index(drop=True)
         df.index = df.index + 1
@@ -1867,7 +1886,7 @@ def analyze_stock(
 
     investment = round(clamp(setup_adj * ws + company * wc))
 
-    valid_trade_setup = (
+    base_trade_setup_ok = (
         investment >= 60
         and setup_adj >= 55
         and kb >= 2
@@ -1875,8 +1894,37 @@ def analyze_stock(
         and not (has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7)
     )
 
+    resistance_20 = prev20_high if pd.notna(prev20_high) and prev20_high > price else np.nan
+    resistance_50 = safe_last(close.shift(1).rolling(50).max(), np.nan)
+    resistance_50 = resistance_50 if pd.notna(resistance_50) and resistance_50 > price else np.nan
+
+    technical_resistance_candidates = [x for x in [resistance_20, resistance_50, high52] if pd.notna(x) and x > price]
+    nearest_resistance = min(technical_resistance_candidates) if technical_resistance_candidates else np.nan
+    upside_to_resistance_pct = ((nearest_resistance / price) - 1) * 100 if pd.notna(nearest_resistance) and price > 0 else np.nan
+    nearest_resistance_source = (
+        "20T-Hoch" if pd.notna(resistance_20) and nearest_resistance == resistance_20 else
+        ("50T-Hoch" if pd.notna(resistance_50) and nearest_resistance == resistance_50 else
+         ("52W-Hoch" if pd.notna(high52) and nearest_resistance == high52 else "-"))
+    )
+
+    if pd.notna(prev20_high) and price > prev20_high:
+        setup_type = "Breakout"
+        preferred_entry = "Breakout über 20T-Hoch"
+    elif price > ma50 and pd.notna(ma20) and abs(price - ma20) / price <= 0.03:
+        setup_type = "Pullback im Aufwärtstrend"
+        preferred_entry = "Pullback nahe MA20 / Trendfortsetzung"
+    elif price > ma200 and rsi < 40:
+        setup_type = "Rebound im Aufwärtstrend"
+        preferred_entry = "Rebound nach Schwäche"
+    elif price > ma50 and price > ma200:
+        setup_type = "Trendfolge"
+        preferred_entry = "Trendfolge bei Rücksetzer"
+    else:
+        setup_type = "Kein sauberes Setup"
+        preferred_entry = "Aktuell kein sauberer Einstieg"
+
     # ---------- Trade Setup ----------
-    if valid_trade_setup:
+    if base_trade_setup_ok:
         atr_stop = round(price - 1.8 * atr, 2)
         struct_stop = round(ma50 * 0.965, 2)
         stop_used = min(atr_stop, struct_stop)
@@ -1904,8 +1952,6 @@ def analyze_stock(
             tp2 = round(price + 2 * risk_per_share, 2)
             tp2_source = "2R-Fallback"
 
-        # TP3 als erweitertes Ziel:
-        # bevorzugt 52W-Hoch oberhalb von TP2, sonst 3R / TP2+1R
         if pd.notna(high52) and high52 > tp2:
             tp3 = round(high52, 2)
             tp3_source = "52W-Hoch"
@@ -1914,6 +1960,36 @@ def analyze_stock(
             tp3_source = "Erweitertes R-Ziel"
 
         crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
+        nearest_resistance_rr = (
+            (nearest_resistance - price) / (price - stop_used)
+            if pd.notna(nearest_resistance) and (price - stop_used) > 0 else np.nan
+        )
+
+        crv_score = 95 if crv >= 2.5 else (82 if crv >= 2.0 else (68 if crv >= 1.5 else (48 if crv >= 1.2 else 20)))
+        stop_score = 85 if 3 <= stop_dist <= 8 else (70 if 2 <= stop_dist <= 10 else (52 if 1 <= stop_dist <= 12 else 30))
+        resistance_score = (
+            88 if pd.notna(nearest_resistance_rr) and nearest_resistance_rr >= 2.0 else
+            (72 if pd.notna(nearest_resistance_rr) and nearest_resistance_rr >= 1.5 else
+             (55 if pd.notna(nearest_resistance_rr) and nearest_resistance_rr >= 1.2 else
+              (45 if pd.isna(nearest_resistance_rr) else 22)))
+        )
+        market_trade_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 25)
+        timing_trade_score = round(clamp(s4 * 0.55 + s5 * 0.25 + rs_score * 0.20))
+
+        tradeability_score = round(clamp(
+            crv_score * 0.34
+            + resistance_score * 0.22
+            + stop_score * 0.14
+            + timing_trade_score * 0.18
+            + market_trade_score * 0.12
+        ))
+
+        min_crv_ok = crv >= 1.3
+        resistance_ok = pd.isna(nearest_resistance_rr) or nearest_resistance_rr >= 1.2
+        tradeability_ok = tradeability_score >= 55
+
+        valid_trade_setup = base_trade_setup_ok and min_crv_ok and resistance_ok and tradeability_ok
+
         risk_eur = depot * (risk_pct / 100)
         pos_size = int(risk_eur / risk_per_share) if risk_per_share > 0 else 0
         time_stop = (date.today() + timedelta(days=hd)).strftime("%d.%m.%Y")
@@ -1928,6 +2004,12 @@ def analyze_stock(
         tp2_source = "-"
         tp3_source = "-"
         crv = np.nan
+        nearest_resistance_rr = np.nan
+        tradeability_score = 0
+        min_crv_ok = False
+        resistance_ok = False
+        tradeability_ok = False
+        valid_trade_setup = False
         risk_eur = depot * (risk_pct / 100)
         pos_size = 0
         time_stop = "-"
@@ -1951,6 +2033,13 @@ def analyze_stock(
     # ---------- Recommendations ----------
     if has_upcoming_earnings and days_earn < 7:
         emp, conv = ("VETO - Earnings < 7 Tage", "-")
+    elif not position_mode and not valid_trade_setup:
+        if pd.notna(crv) and crv < 1.0:
+            emp, conv = ("NO TRADE", "NONE")
+        elif pd.notna(tradeability_score) and tradeability_score < 45:
+            emp, conv = ("NO TRADE / WAIT", "LOW")
+        else:
+            emp, conv = ("WATCH / EINSTIEG PRÜFEN", "LOW")
     elif position_mode:
         if investment >= 78 and kb >= 3 and market_info["regime"] != "NEGATIV":
             emp, conv = ("HALTEN / AUSBAUEN", "HIGH")
@@ -1961,9 +2050,9 @@ def analyze_stock(
         else:
             emp, conv = ("RISIKO REDUZIEREN / STOPP PRÜFEN", "LOW")
     else:
-        if investment >= 78 and kb >= 3 and market_info["regime"] == "POSITIV":
+        if investment >= 78 and kb >= 3 and market_info["regime"] == "POSITIV" and tradeability_score >= 70:
             emp, conv = ("BUY / ACCUMULATE", "HIGH")
-        elif investment >= 68:
+        elif investment >= 68 and tradeability_score >= 55:
             emp, conv = ("WATCH / EINSTIEG PRÜFEN", "MEDIUM")
         elif investment >= 52:
             emp, conv = ("BEOBACHTEN", "LOW-MEDIUM")
@@ -2306,6 +2395,17 @@ def analyze_stock(
         "risk_pct": risk_pct,
         "time_stop": time_stop,
         "valid_trade_setup": valid_trade_setup,
+        "tradeability_score": tradeability_score,
+        "tradeability_label": tradeability_label(tradeability_score),
+        "setup_type": setup_type,
+        "preferred_entry": preferred_entry,
+        "nearest_resistance": nearest_resistance,
+        "nearest_resistance_source": nearest_resistance_source,
+        "upside_to_resistance_pct": upside_to_resistance_pct,
+        "nearest_resistance_rr": nearest_resistance_rr,
+        "min_crv_ok": min_crv_ok,
+        "resistance_ok": resistance_ok,
+        "tradeability_ok": tradeability_ok,
         "short_term_score": short_term_score,
         "s3": s3,
         "s3a": s3a,
@@ -2378,7 +2478,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Ranking, Zielherleitung, klarer Handlungssprache und verständlicherem Timing-Score")
+    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Ranking, Zielherleitung, klarer Handlungssprache und erster echter Tradeability-Logik")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")
@@ -2630,6 +2730,7 @@ ranking_display_cols = [
     "Company Quality",
     "Setup Quality",
     "Investment Score",
+    "Tradeability",
     "Kurzfrist-Timing",
     "Fundamental-Confidence",
 ]
@@ -2650,6 +2751,7 @@ ranking_column_config = {
     "Company Quality": st.column_config.NumberColumn("Company Quality", width="small", format="%.0f"),
     "Setup Quality": st.column_config.NumberColumn("Setup Quality", width="small", format="%.0f"),
     "Investment Score": st.column_config.NumberColumn("Investment Score", width="small", format="%.0f"),
+    "Tradeability": st.column_config.NumberColumn("Tradeability", width="small", format="%.0f"),
     "Kurzfrist-Timing": st.column_config.NumberColumn("Kurzfrist-Timing", width="small", format="%.0f"),
     "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
 }
@@ -2701,8 +2803,8 @@ if not ranking_df.empty:
     <b>Scores:</b>
     Company {row.get("Company Quality", "n/a")} |
     Setup {row.get("Setup Quality", "n/a")} |
-    Kurzfrist-Timing {row.get("Kurzfrist-Timing", row.get("TradingBoard Score", "n/a"))} |
-    Fundamental-Confidence {row.get("Fundamental-Confidence", "n/a")}
+    Tradeability {row.get("Tradeability", "n/a")} |
+    Kurzfrist-Timing {row.get("Kurzfrist-Timing", row.get("TradingBoard Score", "n/a"))}
   </div>
 
   <div style="margin-top:14px;padding:12px 14px;border-radius:14px;background:#0b1220;border:1px solid #1f2937;">
@@ -2819,6 +2921,17 @@ pos_size = result["pos_size"]
 risk_eur = result["risk_eur"]
 time_stop = result["time_stop"]
 valid_trade_setup = result["valid_trade_setup"]
+tradeability_score = result["tradeability_score"]
+tradeability_text = result["tradeability_label"]
+setup_type = result["setup_type"]
+preferred_entry = result["preferred_entry"]
+nearest_resistance = result["nearest_resistance"]
+nearest_resistance_source = result["nearest_resistance_source"]
+upside_to_resistance_pct = result["upside_to_resistance_pct"]
+nearest_resistance_rr = result["nearest_resistance_rr"]
+min_crv_ok = result["min_crv_ok"]
+resistance_ok = result["resistance_ok"]
+tradeability_ok = result["tradeability_ok"]
 short_term_score = result["short_term_score"]
 s3 = result["s3"]
 s3a = result["s3a"]
@@ -2988,7 +3101,7 @@ with c5:
 with c6:
     render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board")
 with c7:
-    render_score_card("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"), "kb")
+    render_score_card("Tradeability", f"{tradeability_score}/100", tradeability_text, "kb")
 
 st.caption(
     "Diese Version ergänzt Candlestick-Chart mit Volumen, Ranking mehrerer Aktien, "
@@ -3003,7 +3116,7 @@ st.markdown(
     "- **Kurzfristiges Signalbild** ist eine ergänzende Kurzfrist-Ampel.\n"
     "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
     "- **Kurzfrist-Timing** zeigt, wie gut das aktuelle Timing für einen taktischen Einstieg wirkt. Der kleine Board-Score wird dafür zusätzlich auf 100 normiert.\n"
-    "- **Konfluenz** zeigt, wie viele Kernbereiche gleichzeitig tragfähig sind."
+    "- **Tradeability** bewertet, wie gut der Case praktisch handelbar ist – mit Blick auf CRV, Stop-Distanz, technisches Upside und Marktumfeld."
 )
 
 # ---------- Tabs ----------
@@ -3215,12 +3328,17 @@ with t5:
 
 with t6:
     if not valid_trade_setup:
-        st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
+        st.error("Kein valides Trade-Setup: Das Modell sieht aktuell keinen ausreichend handelbaren Neueinstieg.")
         st.write(
             f"Aktuell: Investment Score {investment}/100 | "
             f"Setup Quality {setup_adj}/100 | "
-            f"Konfluenz {kb}/4 | "
-            f"Marktregime {market_regime_label(market_info['regime'])}"
+            f"Tradeability {tradeability_score}/100 | "
+            f"Marktumfeld {market_regime_label(market_info['regime'])}"
+        )
+        st.write(
+            f"Prüfungen: Mindest-CRV {yes_no_icon(min_crv_ok)} | "
+            f"Technisches Upside {yes_no_icon(resistance_ok)} | "
+            f"Handelbarkeit {yes_no_icon(tradeability_ok)}"
         )
         if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
             st.write("Zusatzhinweis: Earnings-Veto aktiv.")
@@ -3239,6 +3357,19 @@ with t6:
         c7.metric(f"Chance-Risiko-Verhältnis {ampel_crv(crv)}", f"{crv:.1f}:1")
         c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
         c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
+
+        st.markdown("**Trade-Qualität**")
+        q1, q2, q3, q4 = st.columns(4)
+        q1.metric("Tradeability", f"{tradeability_score}/100", tradeability_text)
+        q2.metric("Setup-Typ", setup_type)
+        q3.metric("Bevorzugter Einstieg", preferred_entry)
+        q4.metric("Mindest-CRV erfüllt", yes_no_icon(min_crv_ok))
+
+        st.markdown("**Technisches Upside**")
+        u1, u2, u3 = st.columns(3)
+        u1.metric("Nächster Widerstand", fmt_num(nearest_resistance, 2, f" {ccy}"), nearest_resistance_source)
+        u2.metric("Upside bis Widerstand", fmt_num(upside_to_resistance_pct, 1, "%"))
+        u3.metric("Upside/Risiko bis Widerstand", fmt_num(nearest_resistance_rr, 2, ":1"))
 
         st.markdown("**Zielherleitung**")
         st.write(f"• TP1: {tp1_source}")
@@ -3323,7 +3454,7 @@ with c4:
                 </div>
                 <div class="reco-value">{display_stb_label(stb_signal)}</div>
             </div>
-            <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
+            <div class="reco-delta">Timing: {tb_timing_text} | Tradeability: {tradeability_score}/100</div>
         </div>
         """,
         unsafe_allow_html=True,

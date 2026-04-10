@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v8.4"
+APP_VERSION = "v8.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -130,8 +130,8 @@ pre{white-space:pre-wrap !important;}
 .score-card.short{border-left:4px solid #f59e0b;}
 .score-card.helper{border-left:4px solid #a78bfa;}
 .score-card.investment{border-left:4px solid #14b8a6;}
-.score-card.board{border-left:4px solid #ef4444;}
-.score-card.kb{border-left:4px solid #eab308;}
+.score-card.board{border-left:4px solid #ef4444; box-shadow:0 12px 28px rgba(239,68,68,0.22);}
+.score-card.kb{border-left:4px solid #14b8a6; box-shadow:0 12px 28px rgba(20,184,166,0.22);}
 .section-card{
     background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
     border:1px solid #243042;
@@ -351,7 +351,7 @@ def score_badge(score):
 def style_ranking_df(df):
     score_cols = [
         "Company Quality", "Setup Quality", "Investment Score",
-        "TradingBoard Score", "Fundamental-Confidence"
+        "Tradeability", "Kurzfrist-Timing", "TradingBoard Score", "Fundamental-Confidence"
     ]
 
     def cell_style(v):
@@ -489,8 +489,16 @@ def tradeability_label(score):
     return "schwach"
 
 
-def yes_no_icon(flag):
-    return "✅" if flag else "❌"
+def format_price_zone(low, high, ccy):
+    if pd.isna(low) and pd.isna(high):
+        return "-"
+    if pd.notna(low) and pd.notna(high):
+        if abs(float(low) - float(high)) < 0.01:
+            return f"{float(low):.2f} {ccy}"
+        return f"{float(low):.2f} - {float(high):.2f} {ccy}"
+    if pd.notna(low):
+        return f"ab {float(low):.2f} {ccy}"
+    return f"bis {float(high):.2f} {ccy}"
 
 
 # ---------- Indicators ----------
@@ -1886,27 +1894,6 @@ def analyze_stock(
 
     investment = round(clamp(setup_adj * ws + company * wc))
 
-    base_trade_setup_ok = (
-        investment >= 60
-        and setup_adj >= 55
-        and kb >= 2
-        and market_info["regime"] != "NEGATIV"
-        and not (has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7)
-    )
-
-    resistance_20 = prev20_high if pd.notna(prev20_high) and prev20_high > price else np.nan
-    resistance_50 = safe_last(close.shift(1).rolling(50).max(), np.nan)
-    resistance_50 = resistance_50 if pd.notna(resistance_50) and resistance_50 > price else np.nan
-
-    technical_resistance_candidates = [x for x in [resistance_20, resistance_50, high52] if pd.notna(x) and x > price]
-    nearest_resistance = min(technical_resistance_candidates) if technical_resistance_candidates else np.nan
-    upside_to_resistance_pct = ((nearest_resistance / price) - 1) * 100 if pd.notna(nearest_resistance) and price > 0 else np.nan
-    nearest_resistance_source = (
-        "20T-Hoch" if pd.notna(resistance_20) and nearest_resistance == resistance_20 else
-        ("50T-Hoch" if pd.notna(resistance_50) and nearest_resistance == resistance_50 else
-         ("52W-Hoch" if pd.notna(high52) and nearest_resistance == high52 else "-"))
-    )
-
     if pd.notna(prev20_high) and price > prev20_high:
         setup_type = "Breakout"
         preferred_entry = "Breakout über 20T-Hoch"
@@ -1915,7 +1902,7 @@ def analyze_stock(
         preferred_entry = "Pullback nahe MA20 / Trendfortsetzung"
     elif price > ma200 and rsi < 40:
         setup_type = "Rebound im Aufwärtstrend"
-        preferred_entry = "Rebound nach Schwäche"
+        preferred_entry = "Rebound nach Stabilisierung"
     elif price > ma50 and price > ma200:
         setup_type = "Trendfolge"
         preferred_entry = "Trendfolge bei Rücksetzer"
@@ -1923,148 +1910,90 @@ def analyze_stock(
         setup_type = "Kein sauberes Setup"
         preferred_entry = "Aktuell kein sauberer Einstieg"
 
+    valid_trade_setup = (
+        investment >= 60
+        and setup_adj >= 55
+        and kb >= 2
+        and market_info["regime"] != "NEGATIV"
+        and not (has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7)
+    )
+
     # ---------- Trade Setup ----------
-    if base_trade_setup_ok:
-        generic_atr_stop = round(price - 1.8 * atr, 2)
-        generic_struct_stop = round(ma50 * 0.965, 2)
-
-        # Setup-spezifische Stop-Logik
-        if setup_type == "Breakout":
-            breakout_ref = prev20_high if pd.notna(prev20_high) else ma20
-            stop_candidate_1 = price - 1.6 * atr
-            stop_candidate_2 = breakout_ref * 0.97 if pd.notna(breakout_ref) else np.nan
-            stop_source = "Unter Breakout-Level / ATR"
-        elif setup_type == "Pullback im Aufwärtstrend":
-            stop_candidate_1 = price - 1.5 * atr
-            stop_candidate_2 = ma50 * 0.985 if pd.notna(ma50) else np.nan
-            stop_source = "Unter Pullback-Zone / MA50"
-        elif setup_type == "Rebound im Aufwärtstrend":
-            stop_candidate_1 = price - 1.3 * atr
-            stop_candidate_2 = prev20_low * 0.99 if pd.notna(prev20_low) else np.nan
-            stop_source = "Unter Rebound-Tief"
-        elif setup_type == "Trendfolge":
-            trend_ref = ma20 if pd.notna(ma20) else ma50
-            stop_candidate_1 = price - 1.8 * atr
-            stop_candidate_2 = trend_ref * 0.985 if pd.notna(trend_ref) else np.nan
-            stop_source = "Unter Trendzone / ATR"
-        else:
-            stop_candidate_1 = generic_atr_stop
-            stop_candidate_2 = generic_struct_stop
-            stop_source = "Standard-Stop aus ATR / MA50"
-
-        stop_candidates = [x for x in [stop_candidate_1, stop_candidate_2, generic_atr_stop, generic_struct_stop] if pd.notna(x) and x > 0 and x < price]
-        stop_used = round(min(stop_candidates), 2) if stop_candidates else round(price - max(price * 0.08, atr * 1.8), 2)
-
-        atr_stop = round(stop_candidate_1, 2) if pd.notna(stop_candidate_1) else round(generic_atr_stop, 2)
+    if valid_trade_setup:
+        atr_stop = round(price - 1.8 * atr, 2)
+        struct_stop = round(ma50 * 0.965, 2)
+        stop_used = min(atr_stop, struct_stop)
         stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
-
         if stop_used <= 0 or stop_used >= price:
             stop_used = round(price - max(price * 0.08, atr * 1.8), 2)
             stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
-            stop_source = "Fallback-Stop"
 
         risk_per_share = price - stop_used
 
         tp1 = round(price + 1 * risk_per_share, 2)
         tp1_source = "1R vom Stop"
 
-        technical_target = nearest_resistance if pd.notna(nearest_resistance) and nearest_resistance > price else np.nan
-        analyst_target = target if pd.notna(target) and target > price else np.nan
-        breakout_projection = prev20_high + 2.0 * atr if pd.notna(prev20_high) and pd.notna(atr) and prev20_high > 0 else np.nan
-        rebound_target = ma50 if pd.notna(ma50) and ma50 > price else np.nan
-
-        # Setup-spezifische Ziel-Logik
-        if setup_type == "Breakout":
-            target_candidates = [x for x in [technical_target, breakout_projection, high52, analyst_target] if pd.notna(x) and x > price]
-            tp2 = round(min(target_candidates), 2) if target_candidates else round(price + 2 * risk_per_share, 2)
-            if pd.notna(technical_target) and tp2 == round(technical_target, 2):
-                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
-            elif pd.notna(breakout_projection) and tp2 == round(breakout_projection, 2):
-                tp2_source = "Breakout-Projektion"
-            elif pd.notna(high52) and tp2 == round(high52, 2):
-                tp2_source = "52W-Hoch"
-            elif pd.notna(analyst_target) and tp2 == round(analyst_target, 2):
-                tp2_source = "Analysten-Target"
-            else:
-                tp2_source = "2R-Fallback"
-        elif setup_type == "Pullback im Aufwärtstrend":
-            if pd.notna(technical_target):
-                tp2 = round(technical_target, 2)
-                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
-            elif pd.notna(analyst_target):
-                tp2 = round(analyst_target, 2)
-                tp2_source = "Analysten-Target"
-            elif pd.notna(high52) and high52 > price:
-                tp2 = round(high52, 2)
-                tp2_source = "52W-Hoch"
-            else:
-                tp2 = round(price + 2 * risk_per_share, 2)
-                tp2_source = "2R-Fallback"
-        elif setup_type == "Rebound im Aufwärtstrend":
-            if pd.notna(rebound_target):
-                tp2 = round(rebound_target, 2)
-                tp2_source = "Rebound-Ziel (MA50)"
-            elif pd.notna(technical_target):
-                tp2 = round(technical_target, 2)
-                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
-            else:
-                tp2 = round(price + 1.8 * risk_per_share, 2)
-                tp2_source = "Konservatives Rebound-Ziel"
+        if pd.notna(target) and target > price:
+            tp2 = round(target, 2)
+            tp2_source = "Analysten-Target"
+        elif pd.notna(high52) and high52 > price:
+            tp2 = round(high52, 2)
+            tp2_source = "52W-Hoch"
         else:
-            if pd.notna(technical_target):
-                tp2 = round(technical_target, 2)
-                tp2_source = f"Technischer Widerstand ({nearest_resistance_source})"
-            elif pd.notna(analyst_target):
-                tp2 = round(analyst_target, 2)
-                tp2_source = "Analysten-Target"
-            elif pd.notna(high52) and high52 > price:
-                tp2 = round(high52, 2)
-                tp2_source = "52W-Hoch"
-            else:
-                tp2 = round(price + 2 * risk_per_share, 2)
-                tp2_source = "2R-Fallback"
+            tp2 = round(price + 2 * risk_per_share, 2)
+            tp2_source = "2R-Fallback"
 
-        tp3_candidates = [x for x in [analyst_target, high52, price + 3 * risk_per_share, tp2 + risk_per_share] if pd.notna(x) and x > tp2]
-        tp3 = round(min(tp3_candidates), 2) if tp3_candidates else round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
-        if pd.notna(analyst_target) and tp3 == round(analyst_target, 2):
-            tp3_source = "Analysten-Target"
-        elif pd.notna(high52) and tp3 == round(high52, 2):
+        if pd.notna(high52) and high52 > tp2:
+            tp3 = round(high52, 2)
             tp3_source = "52W-Hoch"
-        elif tp3 == round(price + 3 * risk_per_share, 2):
-            tp3_source = "3R-Ziel"
         else:
+            tp3 = round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
             tp3_source = "Erweitertes R-Ziel"
 
-        crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
-        nearest_resistance_rr = (
-            (nearest_resistance - price) / (price - stop_used)
-            if pd.notna(nearest_resistance) and (price - stop_used) > 0 else np.nan
+        if setup_type == "Breakout":
+            anchor_price = prev20_high if pd.notna(prev20_high) else price
+            entry_low = max(anchor_price, price * 0.995)
+            entry_high = max(anchor_price * 1.015, price * 1.005)
+            entry_source = "Breakout-Zone über dem Ausbruchsniveau"
+        elif setup_type == "Pullback im Aufwärtstrend":
+            anchor_price = ma20 if pd.notna(ma20) else ma50
+            entry_low = anchor_price * 0.99 if pd.notna(anchor_price) else price * 0.98
+            entry_high = anchor_price * 1.01 if pd.notna(anchor_price) else price
+            entry_source = "Pullback-Zone nahe MA20 / Trendlinie"
+        elif setup_type == "Rebound im Aufwärtstrend":
+            anchor_price = prev20_low if pd.notna(prev20_low) else ma20
+            entry_low = anchor_price * 1.00 if pd.notna(anchor_price) else price * 0.98
+            entry_high = anchor_price * 1.03 if pd.notna(anchor_price) else price
+            entry_source = "Rebound-Zone nach Stabilisierung"
+        elif setup_type == "Trendfolge":
+            anchor_price = ma20 if pd.notna(ma20) else price
+            entry_low = anchor_price * 0.995 if pd.notna(anchor_price) else price * 0.99
+            entry_high = anchor_price * 1.015 if pd.notna(anchor_price) else price * 1.01
+            entry_source = "Trendfolge-Zone bei Rücksetzer"
+        else:
+            entry_low = price
+            entry_high = price
+            entry_source = "Aktueller Kurs / kein sauberes Setup"
+
+        suggested_entry_zone = format_price_zone(entry_low, entry_high, ccy)
+        entry_quality = (
+            "gut" if pd.notna(entry_low) and pd.notna(entry_high) and entry_low <= price <= entry_high
+            else ("abwarten" if pd.notna(entry_high) and price > entry_high else "früh")
         )
 
-        crv_score = 95 if crv >= 2.5 else (82 if crv >= 2.0 else (68 if crv >= 1.5 else (48 if crv >= 1.2 else 20)))
+        crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
+        timing_trade_score = round(clamp((tb_score_100 if pd.notna(tb_score_100) else 50) * 0.55 + short_term_score * 0.45))
         stop_score = 85 if 3 <= stop_dist <= 8 else (70 if 2 <= stop_dist <= 10 else (52 if 1 <= stop_dist <= 12 else 30))
-        resistance_score = (
-            88 if pd.notna(nearest_resistance_rr) and nearest_resistance_rr >= 2.0 else
-            (72 if pd.notna(nearest_resistance_rr) and nearest_resistance_rr >= 1.5 else
-             (55 if pd.notna(nearest_resistance_rr) and nearest_resistance_rr >= 1.2 else
-              (45 if pd.isna(nearest_resistance_rr) else 22)))
-        )
+        crv_score = 95 if crv >= 2.5 else (82 if crv >= 2.0 else (68 if crv >= 1.5 else (48 if crv >= 1.2 else 20)))
         market_trade_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 25)
-        timing_trade_score = round(clamp(s4 * 0.55 + s5 * 0.25 + rs_score * 0.20))
 
         tradeability_score = round(clamp(
-            crv_score * 0.34
-            + resistance_score * 0.22
-            + stop_score * 0.14
-            + timing_trade_score * 0.18
+            crv_score * 0.42
+            + stop_score * 0.18
+            + timing_trade_score * 0.28
             + market_trade_score * 0.12
         ))
-
-        min_crv_ok = crv >= 1.3
-        resistance_ok = pd.isna(nearest_resistance_rr) or nearest_resistance_rr >= 1.2
-        tradeability_ok = tradeability_score >= 55
-
-        valid_trade_setup = base_trade_setup_ok and min_crv_ok and resistance_ok and tradeability_ok
+        tradeability_text = tradeability_label(tradeability_score)
 
         risk_eur = depot * (risk_pct / 100)
         pos_size = int(risk_eur / risk_per_share) if risk_per_share > 0 else 0
@@ -2079,14 +2008,12 @@ def analyze_stock(
         tp1_source = "-"
         tp2_source = "-"
         tp3_source = "-"
-        stop_source = "-"
+        suggested_entry_zone = "-"
+        entry_source = "-"
+        entry_quality = "-"
         crv = np.nan
-        nearest_resistance_rr = np.nan
-        tradeability_score = 0
-        min_crv_ok = False
-        resistance_ok = False
-        tradeability_ok = False
-        valid_trade_setup = False
+        tradeability_score = np.nan
+        tradeability_text = "-"
         risk_eur = depot * (risk_pct / 100)
         pos_size = 0
         time_stop = "-"
@@ -2110,13 +2037,6 @@ def analyze_stock(
     # ---------- Recommendations ----------
     if has_upcoming_earnings and days_earn < 7:
         emp, conv = ("VETO - Earnings < 7 Tage", "-")
-    elif not position_mode and not valid_trade_setup:
-        if pd.notna(crv) and crv < 1.0:
-            emp, conv = ("NO TRADE", "NONE")
-        elif pd.notna(tradeability_score) and tradeability_score < 45:
-            emp, conv = ("NO TRADE / WAIT", "LOW")
-        else:
-            emp, conv = ("WATCH / EINSTIEG PRÜFEN", "LOW")
     elif position_mode:
         if investment >= 78 and kb >= 3 and market_info["regime"] != "NEGATIV":
             emp, conv = ("HALTEN / AUSBAUEN", "HIGH")
@@ -2127,9 +2047,9 @@ def analyze_stock(
         else:
             emp, conv = ("RISIKO REDUZIEREN / STOPP PRÜFEN", "LOW")
     else:
-        if investment >= 78 and kb >= 3 and market_info["regime"] == "POSITIV" and tradeability_score >= 70:
+        if investment >= 78 and kb >= 3 and market_info["regime"] == "POSITIV":
             emp, conv = ("BUY / ACCUMULATE", "HIGH")
-        elif investment >= 68 and tradeability_score >= 55:
+        elif investment >= 68:
             emp, conv = ("WATCH / EINSTIEG PRÜFEN", "MEDIUM")
         elif investment >= 52:
             emp, conv = ("BEOBACHTEN", "LOW-MEDIUM")
@@ -2466,24 +2386,17 @@ def analyze_stock(
         "tp1_source": tp1_source,
         "tp2_source": tp2_source,
         "tp3_source": tp3_source,
-        "stop_source": stop_source,
+        "suggested_entry_zone": suggested_entry_zone,
+        "entry_source": entry_source,
+        "entry_quality": entry_quality,
+        "tradeability_score": tradeability_score,
+        "tradeability_text": tradeability_text,
         "crv": crv,
         "pos_size": pos_size,
         "risk_eur": risk_eur,
         "risk_pct": risk_pct,
         "time_stop": time_stop,
         "valid_trade_setup": valid_trade_setup,
-        "tradeability_score": tradeability_score,
-        "tradeability_label": tradeability_label(tradeability_score),
-        "setup_type": setup_type,
-        "preferred_entry": preferred_entry,
-        "nearest_resistance": nearest_resistance,
-        "nearest_resistance_source": nearest_resistance_source,
-        "upside_to_resistance_pct": upside_to_resistance_pct,
-        "nearest_resistance_rr": nearest_resistance_rr,
-        "min_crv_ok": min_crv_ok,
-        "resistance_ok": resistance_ok,
-        "tradeability_ok": tradeability_ok,
         "short_term_score": short_term_score,
         "s3": s3,
         "s3a": s3a,
@@ -2556,7 +2469,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Tradeability-Logik sowie setup-spezifischen Stops und Zielen")
+    st.caption(f"{APP_VERSION} | Premium-Dashboard mit Tradeability, verständlicherem Timing-Score und konkreter Entry-Zone")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")
@@ -2994,23 +2907,16 @@ tp3 = result["tp3"]
 tp1_source = result["tp1_source"]
 tp2_source = result["tp2_source"]
 tp3_source = result["tp3_source"]
-stop_source = result["stop_source"]
+suggested_entry_zone = result["suggested_entry_zone"]
+entry_source = result["entry_source"]
+entry_quality = result["entry_quality"]
+tradeability_score = result["tradeability_score"]
+tradeability_text = result["tradeability_text"]
 crv = result["crv"]
 pos_size = result["pos_size"]
 risk_eur = result["risk_eur"]
 time_stop = result["time_stop"]
 valid_trade_setup = result["valid_trade_setup"]
-tradeability_score = result["tradeability_score"]
-tradeability_text = result["tradeability_label"]
-setup_type = result["setup_type"]
-preferred_entry = result["preferred_entry"]
-nearest_resistance = result["nearest_resistance"]
-nearest_resistance_source = result["nearest_resistance_source"]
-upside_to_resistance_pct = result["upside_to_resistance_pct"]
-nearest_resistance_rr = result["nearest_resistance_rr"]
-min_crv_ok = result["min_crv_ok"]
-resistance_ok = result["resistance_ok"]
-tradeability_ok = result["tradeability_ok"]
 short_term_score = result["short_term_score"]
 s3 = result["s3"]
 s3a = result["s3a"]
@@ -3172,15 +3078,15 @@ with c1:
 with c2:
     render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup")
 with c3:
-    render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short")
-with c4:
-    render_score_card("Kurzfristiges Signalbild", f"{stb_score} Punkte", display_stb_label(stb_signal), "helper")
-with c5:
     render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment")
-with c6:
+with c4:
+    render_score_card("Tradeability", f"{fmt_num(tradeability_score,0)}" + "/100", tradeability_text, "kb")
+with c5:
     render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board")
+with c6:
+    render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short")
 with c7:
-    render_score_card("Tradeability", f"{tradeability_score}/100", tradeability_text, "kb")
+    render_score_card("Konfluenz", f"{kb}/4", "Robust" if kb >= 3 else ("Fragil" if kb == 2 else "Schwach"), "helper")
 
 st.caption(
     "Diese Version ergänzt Candlestick-Chart mit Volumen, Ranking mehrerer Aktien, "
@@ -3194,8 +3100,9 @@ st.markdown(
     "- **Kurzfrist Core** bewertet die kurzfristige technische Lage.\n"
     "- **Kurzfristiges Signalbild** ist eine ergänzende Kurzfrist-Ampel.\n"
     "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
+    "- **Tradeability** bewertet, wie gut der Case praktisch handelbar ist.\n"
     "- **Kurzfrist-Timing** zeigt, wie gut das aktuelle Timing für einen taktischen Einstieg wirkt. Der kleine Board-Score wird dafür zusätzlich auf 100 normiert.\n"
-    "- **Tradeability** bewertet, wie gut der Case praktisch handelbar ist – mit Blick auf CRV, Stop-Distanz, technisches Upside und Marktumfeld."
+    "- **Konfluenz** zeigt, wie viele Kernbereiche gleichzeitig tragfähig sind."
 )
 
 # ---------- Tabs ----------
@@ -3407,17 +3314,12 @@ with t5:
 
 with t6:
     if not valid_trade_setup:
-        st.error("Kein valides Trade-Setup: Das Modell sieht aktuell keinen ausreichend handelbaren Neueinstieg.")
+        st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
         st.write(
             f"Aktuell: Investment Score {investment}/100 | "
             f"Setup Quality {setup_adj}/100 | "
-            f"Tradeability {tradeability_score}/100 | "
-            f"Marktumfeld {market_regime_label(market_info['regime'])}"
-        )
-        st.write(
-            f"Prüfungen: Mindest-CRV {yes_no_icon(min_crv_ok)} | "
-            f"Technisches Upside {yes_no_icon(resistance_ok)} | "
-            f"Handelbarkeit {yes_no_icon(tradeability_ok)}"
+            f"Konfluenz {kb}/4 | "
+            f"Marktregime {market_regime_label(market_info['regime'])}"
         )
         if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
             st.write("Zusatzhinweis: Earnings-Veto aktiv.")
@@ -3437,21 +3339,13 @@ with t6:
         c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
         c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
 
-        st.markdown("**Trade-Qualität**")
-        q1, q2, q3, q4 = st.columns(4)
-        q1.metric("Tradeability", f"{tradeability_score}/100", tradeability_text)
-        q2.metric("Setup-Typ", setup_type)
-        q3.metric("Bevorzugter Einstieg", preferred_entry)
-        q4.metric("Mindest-CRV erfüllt", yes_no_icon(min_crv_ok))
+        st.markdown("**Konkreter Einstiegsvorschlag**")
+        e1, e2, e3 = st.columns(3)
+        e1.metric("Entry-Zone", suggested_entry_zone)
+        e2.metric("Entry-Herleitung", entry_source)
+        e3.metric("Aktuelle Lage", entry_quality)
 
-        st.markdown("**Technisches Upside**")
-        u1, u2, u3 = st.columns(3)
-        u1.metric("Nächster Widerstand", fmt_num(nearest_resistance, 2, f" {ccy}"), nearest_resistance_source)
-        u2.metric("Upside bis Widerstand", fmt_num(upside_to_resistance_pct, 1, "%"))
-        u3.metric("Upside/Risiko bis Widerstand", fmt_num(nearest_resistance_rr, 2, ":1"))
-
-        st.markdown("**Herleitung von Stop und Zielen**")
-        st.write(f"• Stop-Loss: {stop_source}")
+        st.markdown("**Zielherleitung**")
         st.write(f"• TP1: {tp1_source}")
         st.write(f"• TP2: {tp2_source}")
         st.write(f"• TP3: {tp3_source}")
@@ -3534,7 +3428,7 @@ with c4:
                 </div>
                 <div class="reco-value">{display_stb_label(stb_signal)}</div>
             </div>
-            <div class="reco-delta">Timing: {tb_timing_text} | Tradeability: {tradeability_score}/100</div>
+            <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
         </div>
         """,
         unsafe_allow_html=True,

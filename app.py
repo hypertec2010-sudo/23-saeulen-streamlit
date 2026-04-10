@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.4"
+APP_VERSION = "v9.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2570,6 +2570,51 @@ def analyze_stock(
     tb_score_100 = normalize_tb_score_100(tb_score)
     tb_timing_text = trading_timing_label(tb_score)
 
+    # ---------- Positionsmanagement 2.0 ----------
+    if position_mode:
+        add_on_action = "Nein"
+        partial_profit_action = "Nein"
+        stop_action = "Beibehalten"
+        risk_note = "Keine Auffälligkeit"
+        position_action = "Halten"
+
+        if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
+            risk_note = "Earnings-Risiko kurzfristig erhöht"
+
+        if pd.notna(tb_perf) and tb_perf >= 12 and pd.notna(tp1) and price >= tp1 * 0.98:
+            partial_profit_action = "Ja, Teilgewinn prüfen"
+
+        if investment_case_score >= 72 and trading_case_score >= 68 and valid_trade_setup and market_info["regime"] != "NEGATIV":
+            add_on_action = "Ja, selektiv möglich"
+
+        if trading_case_score < 48 or market_info["regime"] == "NEGATIV":
+            position_action = "Risiko reduzieren"
+        elif trading_case_score < 60 or setup_confidence < 60:
+            position_action = "Halten / eng beobachten"
+        elif investment_case_score >= 75 and trading_case_score >= 68:
+            position_action = "Halten / ggf. ausbauen"
+        else:
+            position_action = "Halten"
+
+        if pd.notna(stop_used) and price > 0:
+            if pd.notna(tb_perf) and tb_perf >= 15 and pd.notna(tp1) and price >= tp1:
+                stop_action = f"Stop auf {max(stop_used, tb_basispreis):.2f} {ccy} anheben"
+            elif pd.notna(tb_perf) and tb_perf >= 8:
+                stop_action = f"Stop enger nachziehen auf {stop_used:.2f} {ccy}"
+            else:
+                stop_action = f"Stop aktuell bei {stop_used:.2f} {ccy}"
+
+        if pd.notna(tb_perf) and tb_perf < -6 and trading_case_score < 55:
+            risk_note = "Verlustposition mit schwächerem Setup"
+        elif pd.notna(tb_perf) and tb_perf > 18:
+            risk_note = "Gewinnposition, aktives Management sinnvoll"
+    else:
+        position_action = "Nicht anwendbar"
+        add_on_action = "Nicht anwendbar"
+        partial_profit_action = "Nicht anwendbar"
+        stop_action = "Nicht anwendbar"
+        risk_note = "Watchlist-Modus"
+
     # ---------- Short-term helper board ----------
     stb_score = 0
     stb_items = []
@@ -2699,6 +2744,11 @@ def analyze_stock(
         "tb_score": tb_score,
         "tb_score_100": tb_score_100,
         "tb_timing_text": tb_timing_text,
+        "position_action": position_action,
+        "add_on_action": add_on_action,
+        "partial_profit_action": partial_profit_action,
+        "stop_action": stop_action,
+        "risk_note": risk_note,
         "tb_signal": tb_signal,
         "tb_empf": tb_empf,
         "tb_df": tb_df,
@@ -3263,6 +3313,11 @@ investment = result["investment"]
 tb_score = result["tb_score"]
 tb_score_100 = result["tb_score_100"]
 tb_timing_text = result["tb_timing_text"]
+position_action = result["position_action"]
+add_on_action = result["add_on_action"]
+partial_profit_action = result["partial_profit_action"]
+stop_action = result["stop_action"]
+risk_note = result["risk_note"]
 tb_signal = result["tb_signal"]
 tb_empf = result["tb_empf"]
 tb_df = result["tb_df"]
@@ -3560,14 +3615,15 @@ st.markdown(
 
 # ---------- Tabs ----------
 st.divider()
-t0, t1, t2, t3, t4, t5, t6 = st.tabs([
+t0, t1, t2, t3, t4, t5, t6, t7 = st.tabs([
     "Profil & Chart",
     "Technik",
     "Kurzfrist-Vergleich",
     "TradingBoard",
     "Fundamental",
     "Safeguards",
-    "Trade-Setup"
+    "Trade-Setup",
+    "Positionsmanagement"
 ])
 
 with t0:
@@ -3816,6 +3872,28 @@ with t6:
         td1.metric("Primärziel aus Setup", fmt_num(technical_target_1, 2, f" {ccy}"))
         td2.metric("Sekundärziel aus Setup", fmt_num(technical_target_2, 2, f" {ccy}"))
 
+with t7:
+    if not position_mode:
+        st.info("Dieser Bereich ist nur relevant, wenn ein Buy-in gesetzt ist und damit der Positionsmodus aktiv ist.")
+    else:
+        p1, p2, p3 = st.columns(3)
+        p1.metric("Positions-Aktion", position_action)
+        p2.metric("Nachkauf sinnvoll?", add_on_action)
+        p3.metric("Teilgewinn prüfen?", partial_profit_action)
+
+        p4, p5, p6 = st.columns(3)
+        p4.metric("Stop-Anpassung", stop_action)
+        p5.metric("Performance seit Einstieg", fmt_num(tb_perf, 1, "%"))
+        p6.metric("Risiko-Hinweis", risk_note)
+
+        st.markdown("**Einordnung**")
+        st.write(
+            f"Die Positionsentscheidung kombiniert Investment-Case ({investment_case_score}/100), "
+            f"Einstiegs-Case ({trading_case_score}/100), Setup-Confidence ({fmt_num(setup_confidence,0)}/100), "
+            f"Marktumfeld ({market_regime_label(market_info['regime'])}) und die bisherige Performance seit Einstieg."
+        )
+
+
 # ---------- Horizon lamps ----------
 st.divider()
 st.subheader("5 Zeithorizont-Ampeln")
@@ -3850,6 +3928,8 @@ with c1:
     )
 
 with c2:
+    main_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
+    main_chip = "Positions-Aktion" if position_mode else "Zentrale Aussage"
     st.markdown(
         f"""
         <div class="reco-card main">
@@ -3858,9 +3938,9 @@ with c2:
                     <div class="reco-label">Haupteinschätzung</div>
                     <div class="reco-icon">🎯</div>
                 </div>
-                <div class="reco-value">{display_emp_label(result.get("emp", "-"))}</div>
+                <div class="reco-value">{main_label}</div>
             </div>
-            <div class="reco-chip">Zentrale Aussage</div>
+            <div class="reco-chip">{main_chip}</div>
         </div>
         """,
         unsafe_allow_html=True,

@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.0.4"
+APP_VERSION = "v9.0.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -447,10 +447,11 @@ def display_stb_label(signal):
     return mapping.get(str(signal or ""), str(signal or "-"))
 
 
-def render_score_card(label, value, subtitle="", variant="company"):
+def render_score_card(label, value, subtitle="", variant="company", tooltip=""):
+    title_attr = f' title="{tooltip}"' if tooltip else ""
     st.markdown(
         f"""
-        <div class="score-card {variant}">
+        <div class="score-card {variant}"{title_attr}>
             <div class="score-label">{label}</div>
             <div class="score-value">{value}</div>
             <div class="score-delta">{subtitle}</div>
@@ -2133,6 +2134,21 @@ def analyze_stock(
             + entry_location_score * 0.10
             + market_trade_score * 0.10
         ))
+
+        # Konsistenz-Deckel: ein Trading-Case darf nicht sehr hoch werden,
+        # wenn Setup-Typ, Timing oder Setup-Confidence dagegen sprechen.
+        if setup_type == "Kein sauberes Setup":
+            trading_case_score = min(trading_case_score, 55)
+        if pd.notna(tb_score_100) and tb_score_100 < 50:
+            trading_case_score = min(trading_case_score, 52)
+        if pd.notna(setup_confidence) and setup_confidence < 60:
+            trading_case_score = min(trading_case_score, 58)
+        if entry_quality == "abwarten":
+            trading_case_score = min(trading_case_score, 60)
+        elif entry_quality == "früh":
+            trading_case_score = min(trading_case_score, 56)
+
+        trading_case_score = round(clamp(trading_case_score))
         trading_case_text = trading_case_label(trading_case_score)
 
         risk_eur = depot * (risk_pct / 100)
@@ -2183,6 +2199,13 @@ def analyze_stock(
             + 40 * 0.10
             + (85 if market_info["regime"] == "POSITIV" else 60 if market_info["regime"] == "NEUTRAL" else 25) * 0.10
         ))
+        if setup_type == "Kein sauberes Setup":
+            trading_case_score = min(trading_case_score, 55)
+        if pd.notna(tb_score_100) and tb_score_100 < 50:
+            trading_case_score = min(trading_case_score, 52)
+        if pd.notna(setup_confidence) and setup_confidence < 60:
+            trading_case_score = min(trading_case_score, 58)
+        trading_case_score = round(clamp(trading_case_score))
         trading_case_text = trading_case_label(trading_case_score)
         risk_eur = depot * (risk_pct / 100)
         pos_size = 0
@@ -2652,7 +2675,7 @@ def analyze_stock(
 # ---------- Sidebar ----------
 with st.sidebar:
     st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | v9.0.4 mit korrigierter Rot-Gelb-Grün-Darstellung auch für Investment- und Trading-Attraktivität im Ranking")
+    st.caption(f"{APP_VERSION} | v9.0.5 mit konsistenterem Trading-Case und klareren Score-Erklärungen")
     st.divider()
 
     st.markdown("### 1) Was möchtest du analysieren?")
@@ -3274,16 +3297,56 @@ if red_flag_items:
 st.subheader("Executive Summary")
 sx1, sx2, sx3, sx4, sx5 = st.columns(5)
 with sx1:
-    render_score_card("Investment-Attraktivität", f"{investment_case_score}/100", investment_case_text, "investment")
+    render_score_card(
+        "Investment-Attraktivität",
+        f"{investment_case_score}/100",
+        investment_case_text,
+        "investment",
+        tooltip="Wie attraktiv die Aktie grundsätzlich als Investment-Case ist. Nutzt vor allem Company Quality, Investment Score, Datenqualität, Marktumfeld und Red Flags."
+    )
 with sx2:
-    render_score_card("Trading-Attraktivität", f"{trading_case_score}/100", trading_case_text, "board")
+    render_score_card(
+        "Trading-Attraktivität",
+        f"{trading_case_score}/100",
+        trading_case_text,
+        "board",
+        tooltip="Wie attraktiv der Trade aktuell konkret ist. Nutzt Tradeability, Timing, Setup Quality, Entry-Lage und Marktumfeld. Wird bewusst gedeckelt, wenn Setup oder Timing nicht sauber sind."
+    )
 with sx3:
-    render_score_card("Setup-Typ", setup_type, preferred_entry, "setup")
+    render_score_card(
+        "Setup-Typ",
+        setup_type,
+        preferred_entry,
+        "setup",
+        tooltip="Das aktuell wahrscheinlichste charttechnische Muster, z. B. Breakout, Pullback, Trendfolge oder kein sauberes Setup."
+    )
 with sx4:
-    render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper")
+    render_score_card(
+        "Setup-Confidence",
+        f"{fmt_num(setup_confidence,0)}/100",
+        setup_confidence_text,
+        "helper",
+        tooltip="Wie sauber und belastbar das erkannte Setup wirkt. Nutzt Trendstruktur, Momentum, Konfluenz und Entry-Lage."
+    )
 with sx5:
     action_label = display_emp_label(result.get("emp", "-"))
-    render_score_card("Handlung", action_label, market_regime_label(market_info["regime"]), "kb")
+    render_score_card(
+        "Handlung",
+        action_label,
+        market_regime_label(market_info["regime"]),
+        "kb",
+        tooltip="Verdichtete Handlungsempfehlung aus Investment-Case, Trading-Case, Timing, Marktumfeld und Vetos."
+    )
+
+with st.expander("Score-Erklärungen anzeigen", expanded=False):
+    st.markdown(
+        "- **Investment-Attraktivität**: Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.\n"
+        "- **Trading-Attraktivität**: Wie attraktiv der Trade aktuell konkret ist. Dieser Wert wird bewusst gedeckelt, wenn Setup-Typ, Timing oder Setup-Confidence dagegen sprechen.\n"
+        "- **Setup-Typ**: Das wahrscheinlichste charttechnische Muster.\n"
+        "- **Setup-Confidence**: Wie sauber und belastbar dieses Setup aktuell wirkt.\n"
+        "- **Tradeability**: Wie gut der Case praktisch handelbar ist, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld.\n"
+        "- **Kurzfrist-Timing**: Schneller Taktik- und Timing-Blick aus dem Board."
+    )
 
 st.subheader("Scores")
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)

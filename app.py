@@ -2113,7 +2113,7 @@ def analyze_stock(
         entry_location_score = 90 if entry_quality == "gut" else (58 if entry_quality == "abwarten" else 44)
         trading_case_score = round(clamp(
             tradeability_score * 0.35
-            + tb_score_100 * 0.25
+            + timing_trade_score * 0.25
             + setup_adj * 0.20
             + entry_location_score * 0.10
             + market_trade_score * 0.10
@@ -2159,7 +2159,7 @@ def analyze_stock(
         investment_case_text = investment_case_label(investment_case_score)
         trading_case_score = round(clamp(
             (tradeability_score if pd.notna(tradeability_score) else 20) * 0.35
-            + tb_score_100 * 0.25
+            + timing_trade_score * 0.25
             + setup_adj * 0.20
             + 40 * 0.10
             + (85 if market_info["regime"] == "POSITIV" else 60 if market_info["regime"] == "NEUTRAL" else 25) * 0.10

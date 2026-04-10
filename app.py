@@ -2542,6 +2542,8 @@ def analyze_stock(
         "entry_quality": entry_quality,
         "tradeability_score": tradeability_score,
         "tradeability_text": tradeability_text,
+        "setup_type": setup_type,
+        "preferred_entry": preferred_entry,
         "investment_case_score": investment_case_score,
         "investment_case_text": investment_case_text,
         "trading_case_score": trading_case_score,

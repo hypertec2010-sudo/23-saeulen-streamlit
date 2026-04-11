@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.8"
+APP_VERSION = "v9.9"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3793,16 +3793,6 @@ with sx5:
         tooltip="Verdichtete Handlungsempfehlung aus Investment-Case, Einstiegs-Case, Timing, Marktumfeld und Vetos."
     )
 
-with st.expander("Score-Erklärungen anzeigen", expanded=False):
-    st.markdown(
-        "- **Investment-Attraktivität**: Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.\n"
-        "- **Trading-Attraktivität**: Wie attraktiv ein Einstieg genau jetzt gerade ist. Dieser Wert wird bewusst gedeckelt, wenn Setup-Typ, Timing oder Setup-Confidence dagegen sprechen.\n"
-        "- **Setup-Typ**: Das wahrscheinlichste charttechnische Muster, z. B. Breakout, Breakout-Retest, Pullback an MA20, Pullback an MA50, Trendfolge, Rebound oder Range-Breakout.\n"
-        "- **Setup-Confidence**: Wie sauber und belastbar dieses Setup aktuell wirkt.\n"
-        "- **Trade-Struktur**: Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld.\n"
-        "- **Kurzfrist-Timing**: Schneller Taktik- und Timing-Blick aus dem Board."
-    )
-
 se1, se2 = st.columns([1.4, 2.6])
 with se1:
     st.download_button(
@@ -3812,42 +3802,69 @@ with se1:
         mime="text/csv"
     )
 with se2:
-    st.caption("Export enthält Setup-Typ, Attraktivitäts-Scores, Entry-Zone, Stop, Ziele, CRV, Handlung und Red Flag.")
+    st.caption("Bei Executive Summary und Scores kannst du mit der Maus über die Karten fahren, um die Bedeutung direkt zu sehen.")
 
 st.subheader("Scores")
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 with c1:
-    render_score_card("Company Quality", f"{company}/100", ampel(company), "company")
+    render_score_card(
+        "Company Quality",
+        f"{company}/100",
+        ampel(company),
+        "company",
+        tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens."
+    )
 with c2:
-    render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup")
+    render_score_card(
+        "Setup Quality",
+        f"{setup_adj}/100",
+        ampel(setup_adj),
+        "setup",
+        tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter."
+    )
 with c3:
-    render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment")
+    render_score_card(
+        "Investment Score",
+        f"{investment}/100",
+        ampel(investment),
+        "investment",
+        tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität. Dieser Wert verbindet Setup und Unternehmensqualität."
+    )
 with c4:
-    render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}" + "/100", tradeability_text, "kb")
+    render_score_card(
+        "Trade-Struktur",
+        f"{fmt_num(tradeability_score,0)}/100",
+        tradeability_text,
+        "kb",
+        tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld."
+    )
 with c5:
-    render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board")
+    render_score_card(
+        "Kurzfrist-Timing",
+        f"{tb_score_100}/100",
+        f"{tb_timing_text} | Board: {tb_score} Punkte",
+        "board",
+        tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard. Zeigt, wie gut der Moment für einen taktischen Einstieg wirkt."
+    )
 with c6:
-    render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short")
+    render_score_card(
+        "Kurzfrist Core",
+        f"{short_term_score}/100",
+        ampel(short_term_score),
+        "short",
+        tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke."
+    )
 with c7:
-    render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper")
+    render_score_card(
+        "Setup-Confidence",
+        f"{fmt_num(setup_confidence,0)}/100",
+        setup_confidence_text,
+        "helper",
+        tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt. Nutzt Setup-Typ, Trendstruktur, Momentum, Konfluenz und Marktumfeld."
+    )
 
 st.caption(
-    "Diese Version ergänzt Candlestick-Chart mit Volumen, Ranking mehrerer Aktien, "
-    "stil-/sektorabhängige Feinkalibrierung und eine transparentere Einschätzung der Qualität der Fundamentaldaten."
-)
-
-st.markdown("### Scores verständlich erklärt")
-st.markdown(
-    "- **Company Quality** bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.\n"
-    "- **Setup Quality** bewertet das technische Gesamtbild. Zusätzlich fließt ein kleiner Marktfilter ein.\n"
-    "- **Kurzfrist Core** bewertet die kurzfristige technische Lage.\n"
-    "- **Kurzfristiges Signalbild** ist eine ergänzende Kurzfrist-Ampel.\n"
-    "- **Investment Score** ist die Gesamtbewertung aus technischer und fundamentaler Qualität.\n"
-    "- **Investment-Attraktivität** bewertet, wie attraktiv die Aktie grundsätzlich als Investment-Case ist.\n"
-    "- **Einstieg jetzt attraktiv?** bewertet, wie attraktiv ein Einstieg genau jetzt gerade ist.\n"
-    "- **Trade-Struktur** bewertet, wie gut der Case praktisch handelbar ist. In v9.0 fließt dieser Wert in die Trading-Attraktivität ein.\n"
-    "- **Kurzfrist-Timing** zeigt, wie gut das aktuelle Timing für einen taktischen Einstieg wirkt.\n"
-    "- **Setup-Confidence** zeigt, wie sauber und belastbar das erkannte Setup aktuell wirkt."
+    "v9.9 verschiebt Score-Erklärungen direkt in die Mouseover-Karten und strafft damit die Oberfläche."
 )
 
 # ---------- Tabs ----------

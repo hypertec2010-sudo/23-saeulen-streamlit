@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.1.1"
+APP_VERSION = "v10.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -252,6 +252,47 @@ pre{white-space:pre-wrap !important;}
     color:white !important;
     border-color:transparent !important;
     box-shadow:0 10px 24px rgba(59,130,246,0.25);
+}
+
+.mobile-result-card{
+    background:linear-gradient(180deg,#111827 0%, #0b1220 100%);
+    border:1px solid #243042;
+    border-radius:18px;
+    padding:14px 16px;
+    box-shadow:0 12px 28px rgba(0,0,0,0.16);
+    margin:8px 0;
+}
+.mobile-result-label{
+    font-size:0.8rem;
+    color:#9fb1c8;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+}
+.mobile-result-value{
+    font-size:1.3rem;
+    color:#f8fafc;
+    font-weight:900;
+    margin-top:6px;
+    line-height:1.15;
+}
+.mobile-result-sub{
+    font-size:0.9rem;
+    color:#d1d5db;
+    margin-top:7px;
+    line-height:1.35;
+}
+@media (max-width: 768px){
+    .hero-title{font-size:1.35rem !important;}
+    .hero-sub{font-size:0.90rem !important;}
+    .hero-chip{font-size:0.80rem !important;padding:6px 10px !important;}
+    .decision-card{min-height:auto !important;padding:14px 14px 12px 14px !important;}
+    .decision-card .dc-value{font-size:1.55rem !important;}
+    .bullet-card{min-height:auto !important;}
+    .compact-panel{min-height:auto !important;}
+    .reco-card{min-height:auto !important;}
+    .stTabs [data-baseweb="tab-list"]{gap:8px !important;padding:8px !important;}
+    .stTabs [data-baseweb="tab"]{padding:8px 11px !important;font-size:0.84rem !important;}
 }
 .model-pill{
     display:inline-block;
@@ -3129,6 +3170,15 @@ def analyze_stock(
     }
 
 
+st.title("📊 Capital Hill Score Modell")
+st.markdown(f"<div class='model-pill'>Release {APP_VERSION} · Mobile-optimierte Steuerung · Premium-Dashboard</div>", unsafe_allow_html=True)
+st.caption(
+    "Investment- und Trading-Entscheidungen in einer Oberfläche. "
+    "Mit Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement und Watchlist-Triggern."
+)
+
+st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
 # ---------- Analyse-Steuerung im Hauptbereich ----------
 st.markdown(
     """
@@ -3294,12 +3344,6 @@ if run_analysis:
     st.session_state.analysis_requested = True
     st.session_state.analysis_mode_run = analysis_mode
 # ---------- Main ----------
-st.title("📊 Capital Hill Score Modell")
-st.markdown(f"<div class='model-pill'>Release {APP_VERSION} · Mobile-optimierte Steuerung · Premium-Dashboard</div>", unsafe_allow_html=True)
-st.caption(
-    "Investment- und Trading-Entscheidungen in einer Oberfläche. "
-    "Mit Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement und Watchlist-Triggern."
-)
 
 if not st.session_state.analysis_requested:
     st.info("Wähle links eine Analyseart, gib Unternehmen oder Ticker ein und starte dann die Analyse.")
@@ -3900,6 +3944,31 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+st.subheader("Kompaktansicht")
+m1, m2 = st.columns(2)
+with m1:
+    st.markdown(
+        f"""
+        <div class="mobile-result-card" title="Verdichtete Hauptaussage für die aktuelle Situation.">
+            <div class="mobile-result-label">Hauptsignal</div>
+            <div class="mobile-result-value">{main_action_label}</div>
+            <div class="mobile-result-sub">{market_regime_label(market_info["regime"])} · Setup: {setup_type}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with m2:
+    st.markdown(
+        f"""
+        <div class="mobile-result-card" title="Die zwei wichtigsten numerischen Aussagen auf einen Blick.">
+            <div class="mobile-result-label">Investment / Einstieg</div>
+            <div class="mobile-result-value">{investment_case_score}/100 · {trading_case_score}/100</div>
+            <div class="mobile-result-sub">{investment_case_text} · {trading_case_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 st.subheader("Entscheidung auf einen Blick")
 d1, d2, d3 = st.columns(3)
 with d1:
@@ -4370,14 +4439,15 @@ with t8:
 
 # ---------- Horizon lamps ----------
 st.divider()
-st.subheader("5 Zeithorizont-Ampeln")
-cols = st.columns(5)
-for col, (lab, scv) in zip(cols, hmap.items()):
-    col.markdown(
-        f"<div style='text-align:center'><div style='font-size:2rem'>{ampel(scv)}</div>"
-        f"<small>{lab}<br><b>{scv}/100</b></small></div>",
-        unsafe_allow_html=True,
-    )
+with st.expander("Zeithorizonte anzeigen", expanded=False):
+    st.subheader("5 Zeithorizont-Ampeln")
+    cols = st.columns(5)
+    for col, (lab, scv) in zip(cols, hmap.items()):
+        col.markdown(
+            f"<div style='text-align:center'><div style='font-size:2rem'>{ampel(scv)}</div>"
+            f"<small>{lab}<br><b>{scv}/100</b></small></div>",
+            unsafe_allow_html=True,
+        )
 
 # ---------- Recommendation + Why block ----------
 st.divider()

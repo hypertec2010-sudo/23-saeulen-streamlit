@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.1"
+APP_VERSION = "v10.1.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -198,12 +198,13 @@ pre{white-space:pre-wrap !important;}
 .decision-card .dc-value{font-size:1.85rem;font-weight:900;color:#f8fafc;line-height:1.05;margin-top:8px;}
 .decision-card .dc-sub{font-size:0.98rem;color:#e5e7eb;font-weight:700;margin-top:7px;}
 .decision-card .dc-note{font-size:0.88rem;color:#cbd5e1;margin-top:8px;line-height:1.4;}
-.decision-card.invest{border-left:5px solid #14b8a6;}
-.decision-card.entry{border-left:5px solid #f59e0b;}
-.decision-card.action{border-left:5px solid #8b5cf6;}
+.decision-card.invest{border-left:5px solid #14b8a6;background:linear-gradient(180deg,#082f2d 0%,#111827 100%);box-shadow:0 16px 32px rgba(20,184,166,0.20);}
+.decision-card.entry{border-left:5px solid #f59e0b;background:linear-gradient(180deg,#3a2410 0%,#111827 100%);box-shadow:0 16px 32px rgba(245,158,11,0.20);}
+.decision-card.action{border-left:5px solid #8b5cf6;background:linear-gradient(180deg,#24143d 0%,#111827 100%);box-shadow:0 16px 32px rgba(139,92,246,0.20);}
 .compact-panel{
     background:linear-gradient(180deg,#111827 0%, #0f172a 100%);
     border:1px solid #243042;border-radius:18px;padding:14px 16px;min-height:118px;
+    box-shadow:0 12px 28px rgba(0,0,0,0.16);
 }
 .compact-panel .cp-label{font-size:0.82rem;color:#9fb1c8;font-weight:800;text-transform:uppercase;}
 .compact-panel .cp-value{font-size:1.28rem;font-weight:900;color:#f8fafc;margin-top:6px;}
@@ -226,6 +227,44 @@ pre{white-space:pre-wrap !important;}
 .mobile-form-title{font-size:1.15rem;font-weight:800;color:#f8fafc;margin-bottom:4px;}
 .mobile-form-sub{font-size:0.92rem;color:#cbd5e1;margin-bottom:10px;line-height:1.45;}
 .mobile-note{font-size:0.84rem;color:#94a3b8;margin-top:6px;}
+
+.stTabs [data-baseweb="tab-list"]{
+    gap:10px;
+    flex-wrap:wrap;
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+    border:1px solid #243042;
+    border-radius:18px;
+    padding:10px;
+    margin-bottom:10px;
+}
+.stTabs [data-baseweb="tab"]{
+    height:auto;
+    white-space:nowrap;
+    border-radius:999px;
+    padding:10px 14px;
+    background:linear-gradient(180deg,#111827 0%, #0b1220 100%);
+    border:1px solid #334155;
+    color:#cbd5e1;
+    font-weight:700;
+}
+.stTabs [aria-selected="true"]{
+    background:linear-gradient(90deg,#2563eb 0%, #7c3aed 100%) !important;
+    color:white !important;
+    border-color:transparent !important;
+    box-shadow:0 10px 24px rgba(59,130,246,0.25);
+}
+.model-pill{
+    display:inline-block;
+    margin-top:6px;
+    padding:6px 10px;
+    border-radius:999px;
+    background:linear-gradient(90deg,#0f766e 0%, #1d4ed8 100%);
+    color:white;
+    font-size:0.84rem;
+    font-weight:800;
+    letter-spacing:0.02em;
+}
+
 
 .reco-card{
     background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
@@ -3255,11 +3294,11 @@ if run_analysis:
     st.session_state.analysis_requested = True
     st.session_state.analysis_mode_run = analysis_mode
 # ---------- Main ----------
-st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
+st.title("📊 Capital Hill Score Modell")
+st.markdown(f"<div class='model-pill'>Release {APP_VERSION} · Mobile-optimierte Steuerung · Premium-Dashboard</div>", unsafe_allow_html=True)
 st.caption(
-    "Core-Modell und TradingBoard werden getrennt gerechnet. "
-    "Zusätzlich sind Candlestick-Chart mit Volumen, Fundamental-Confidence, Multi-Ranking "
-    "und stil-/sektorabhängige Feinkalibrierung integriert."
+    "Investment- und Trading-Entscheidungen in einer Oberfläche. "
+    "Mit Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement und Watchlist-Triggern."
 )
 
 if not st.session_state.analysis_requested:

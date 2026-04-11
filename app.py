@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.0B.1"
+APP_VERSION = "v10.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -215,6 +215,18 @@ pre{white-space:pre-wrap !important;}
 .bullet-card h4{margin:0 0 10px 0;color:#f8fafc;font-size:0.98rem;}
 .bullet-card ul{margin:0;padding-left:18px;}
 .bullet-card li{color:#d1d5db;line-height:1.5;margin-bottom:4px;}
+.mobile-form-card{
+    background:linear-gradient(180deg,#111827 0%, #0b1220 100%);
+    border:1px solid #243042;
+    border-radius:22px;
+    padding:16px 18px;
+    margin:12px 0 18px 0;
+    box-shadow:0 14px 30px rgba(0,0,0,0.18);
+}
+.mobile-form-title{font-size:1.15rem;font-weight:800;color:#f8fafc;margin-bottom:4px;}
+.mobile-form-sub{font-size:0.92rem;color:#cbd5e1;margin-bottom:10px;line-height:1.45;}
+.mobile-note{font-size:0.84rem;color:#94a3b8;margin-top:6px;}
+
 .reco-card{
     background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
     border:1px solid #243042;
@@ -3078,89 +3090,54 @@ def analyze_stock(
     }
 
 
-# ---------- Sidebar ----------
-with st.sidebar:
-    st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
-    st.caption(f"{APP_VERSION} | v9.0.6 mit konsistenterem Einstiegs-Case, klareren Score-Erklärungen und gefixtem Timing-Zugriff")
-    st.divider()
+# ---------- Analyse-Steuerung im Hauptbereich ----------
+st.markdown(
+    """
+    <div class="mobile-form-card">
+        <div class="mobile-form-title">Analyse starten</div>
+        <div class="mobile-form-sub">
+            Für Mobilgeräte ist die Eingabe jetzt direkt im Hauptbereich. Die wichtigsten Felder sind sofort sichtbar,
+            erweiterte Einstellungen bleiben eingeklappt.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-    st.markdown("### 1) Was möchtest du analysieren?")
-    analysis_mode = st.radio(
-        "Analyseart",
-        ["Einzelanalyse", "Mehrfach-Ranking"],
-        horizontal=True,
-        index=0 if st.session_state.analysis_mode == "Einzelanalyse" else 1,
-        key="analysis_mode_widget"
-    )
-    st.session_state.analysis_mode = analysis_mode
+analysis_mode = st.radio(
+    "Was möchtest du machen?",
+    ["Einzelanalyse", "Mehrere Aktien vergleichen"],
+    horizontal=True,
+    key="analysis_mode_widget_main"
+)
+st.session_state.analysis_mode = analysis_mode
 
-    search_results = []
-    ticker = st.session_state.selected_ticker
+single_input = ""
+batch_input = ""
 
-    if analysis_mode == "Einzelanalyse":
-        search_input = st.text_input(
-            "Unternehmen oder Ticker",
-            value=st.session_state.search_input,
-            placeholder="z. B. Apple, Siemens, AAPL, SAP.DE",
-            key="search_input_widget"
-        ).strip()
-        st.session_state.search_input = search_input
-        st.caption("Beispiele: Apple, Siemens, AAPL, SAP.DE")
+if analysis_mode == "Einzelanalyse":
+    single_input = st.text_input(
+        "Aktie oder Firmenname",
+        value=st.session_state.search_input,
+        placeholder="z. B. AAPL, Apple, Siemens, BASF",
+        key="search_input_widget_main"
+    ).strip()
+    st.session_state.search_input = single_input
+    st.caption("Du kannst einen Ticker oder einfach einen Firmennamen eingeben.")
+else:
+    batch_input = st.text_area(
+        "Mehrere Ticker oder Firmennamen",
+        value=st.session_state.batch_input,
+        placeholder="Ein Wert pro Zeile oder durch Komma trennen, z. B.\nAAPL\nMicrosoft\nASML\nNVIDIA",
+        height=120,
+        key="batch_input_widget_main"
+    ).strip()
+    st.session_state.batch_input = batch_input
+    st.caption("Ein Wert pro Zeile oder mit Komma trennen. Die App löst Firmennamen automatisch auf.")
 
-        if search_input:
-            looks_like_ticker = looks_like_real_ticker(search_input)
-
-            if looks_like_ticker:
-                ticker = search_input.upper()
-                st.session_state.selected_ticker = ticker
-                st.session_state.selected_search_label = None
-            else:
-                search_results = search_tickers(search_input)
-
-                if len(search_results) == 1:
-                    ticker = search_results[0]["symbol"]
-                    st.session_state.selected_ticker = ticker
-                    st.session_state.selected_search_label = search_results[0]["label"]
-                    st.caption(f"Automatisch gefunden: {search_results[0]['label']}")
-                elif len(search_results) > 1:
-                    labels = [r["label"] for r in search_results]
-
-                    if st.session_state.selected_search_label not in labels:
-                        st.session_state.selected_search_label = labels[0]
-
-                    selected_label = st.selectbox(
-                        "Passenden Treffer auswählen",
-                        options=labels,
-                        index=labels.index(st.session_state.selected_search_label),
-                        key="search_result_select"
-                    )
-
-                    st.session_state.selected_search_label = selected_label
-                    ticker = next(r["symbol"] for r in search_results if r["label"] == selected_label)
-                    st.session_state.selected_ticker = ticker
-                else:
-                    st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder den Ticker direkt eingeben.")
-                    ticker = st.session_state.selected_ticker
-        else:
-            ticker = st.session_state.selected_ticker
-
-        st.caption(f"Aktuelle Auswahl: {st.session_state.selected_ticker}")
-
-    else:
-        batch_input = st.text_area(
-            "Mehrere Unternehmen oder Ticker",
-            value=st.session_state.batch_input,
-            placeholder="z. B.\nApple\nMicrosoft\nSAP.DE\nASML",
-            height=140,
-            key="batch_input_widget"
-        )
-        st.session_state.batch_input = batch_input
-        st.caption("Ein Wert pro Zeile oder getrennt durch Komma bzw. Semikolon.")
-
-    st.divider()
-    st.markdown("### 2) In welchem Kontext bewerten?")
+with st.expander("Erweiterte Einstellungen", expanded=False):
     horizon = st.selectbox(
-        "Geplanter Zeithorizont",
+        "Zeithorizont",
         [
             "Kurzfrist (1-7 Tage)",
             "Swing (1-4 Wochen)",
@@ -3168,66 +3145,115 @@ with st.sidebar:
             "Langfrist (1-2 Jahre)",
             "Sehr langfristig (2+ Jahre)",
         ],
+        key="horizon_widget_main"
     )
 
-    context_choice = st.radio(
-        "Analysekontext",
-        ["Beobachtung", "Bestehende Position"],
-        horizontal=True,
-        index=1 if st.session_state.last_mode_label == "Position" else 0,
-        key="context_choice_widget"
-    )
+    adv1, adv2 = st.columns(2)
+    with adv1:
+        depot = st.number_input("Depotwert EUR", min_value=1000, value=10000, step=1000, key="depot_widget_main")
+        override = st.number_input("Kurs-Override (0 = auto)", min_value=0.0, value=0.0, step=0.01, format="%.2f", key="override_widget_main")
+        smart_money_default = st.checkbox("TradingBoard: Smart Money = True", value=True, key="smart_money_widget_main")
+    with adv2:
+        risk_pct = st.slider("Risiko pro Trade (%)", min_value=0.5, max_value=5.0, value=1.0, step=0.5, key="risk_pct_widget_main")
+        buy_in_override = st.number_input("Buy-in für Positionsmodus (0 = Watchlist)", min_value=0.0, value=0.0, step=0.01, format="%.2f", key="buy_in_widget_main")
+        strict_mode = st.checkbox("Strenges Mapping", value=True, key="strict_mode_widget_main")
 
-    if context_choice == "Bestehende Position":
-        buy_in_override = st.number_input(
-            "Dein Einstiegskurs",
-            min_value=0.0,
-            value=0.0,
-            step=0.01,
-            format="%.2f",
-            help="Nur ausfüllen, wenn du die Aktie bereits hältst."
-        )
-        mode_label = "Position"
-    else:
-        buy_in_override = 0.0
-        mode_label = "Watchlist"
-        st.caption("Kontext: Beobachtung / noch nicht investiert")
-
-    position_mode = buy_in_override > 0
-    st.session_state.last_mode_label = mode_label
-
-    st.divider()
-    st.markdown("### 3) Risikoeinstellungen")
-    depot = st.number_input("Depotwert in EUR", min_value=1000, value=10000, step=1000)
-    risk_pct = st.slider("Maximales Risiko pro Trade (%)", min_value=0.5, max_value=5.0, value=1.0, step=0.5)
-
-    with st.expander("Erweiterte Einstellungen", expanded=False):
-        override = st.number_input(
-            "Kurs-Override (optional)",
-            min_value=0.0,
-            value=0.0,
-            step=0.01,
-            format="%.2f",
-            help="Nur verwenden, wenn du einen anderen Einstiegskurs simulieren möchtest."
-        )
-        smart_money_default = st.checkbox("Smart-Money-Signal standardmäßig positiv", value=True)
-        strict_mode = st.checkbox("Strenges 23-Säulen-Mapping", value=True)
-
-        if st.button("Cache leeren", use_container_width=True):
+    action_col1, action_col2 = st.columns(2)
+    with action_col1:
+        if st.button("Cache leeren", use_container_width=True, key="clear_cache_main"):
             st.cache_data.clear()
             st.success("Cache geleert. Bitte Analyse neu starten.")
+    with action_col2:
+        st.markdown("<div class='mobile-note'>Tippe nur darauf, wenn Daten hängen oder du neue Werte erzwingen willst.</div>", unsafe_allow_html=True)
 
-    st.divider()
-    run_analysis = st.button("Analyse starten", use_container_width=True, type="primary")
-    if run_analysis:
-        st.session_state.analysis_mode_run = analysis_mode
-        st.session_state.analysis_requested = True
-        if analysis_mode == "Einzelanalyse":
-            st.session_state.analysis_ticker = st.session_state.selected_ticker
+position_mode = buy_in_override > 0
+mode_label = "Position" if position_mode else "Watchlist"
+st.caption(f"Aktueller Modus: {mode_label}")
+
+# ---- Eingabe auflösen ----
+search_results = []
+ticker = st.session_state.selected_ticker
+resolved_input_rows = []
+
+if analysis_mode == "Einzelanalyse":
+    search_input = single_input
+    if search_input:
+        looks_like_ticker = (
+            " " not in search_input and len(search_input) <= 12
+            and search_input.replace(".", "").replace("-", "").isalnum()
+        )
+
+        if looks_like_ticker:
+            ticker = search_input.upper()
+            st.session_state.selected_ticker = ticker
+            st.session_state.selected_search_label = None
+            resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Ticker direkt"}]
         else:
-            st.session_state.analysis_ticker = st.session_state.selected_ticker
+            search_results = search_tickers(search_input)
 
+            if len(search_results) == 1:
+                ticker = search_results[0]["symbol"]
+                st.session_state.selected_ticker = ticker
+                st.session_state.selected_search_label = search_results[0]["label"]
+                resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Firmenname aufgelöst"}]
+                st.caption(f"Automatisch gefunden: {search_results[0]['label']}")
+            elif len(search_results) > 1:
+                labels = [r["label"] for r in search_results]
+                if st.session_state.selected_search_label not in labels:
+                    st.session_state.selected_search_label = labels[0]
 
+                selected_label = st.selectbox(
+                    "Passenden Treffer auswählen",
+                    options=labels,
+                    index=labels.index(st.session_state.selected_search_label),
+                    key="search_result_select_main"
+                )
+
+                st.session_state.selected_search_label = selected_label
+                ticker = next(r["symbol"] for r in search_results if r["label"] == selected_label)
+                st.session_state.selected_ticker = ticker
+                resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Aus Trefferauswahl"}]
+            else:
+                st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
+                ticker = st.session_state.selected_ticker
+    else:
+        ticker = st.session_state.selected_ticker
+
+    analysis_candidates = [ticker] if ticker else []
+else:
+    raw_batch_entries = []
+    for part in re.split(r"[\n,;]+", batch_input):
+        part = str(part).strip()
+        if part:
+            raw_batch_entries.append(part)
+
+    analysis_candidates = []
+    for entry in raw_batch_entries:
+        looks_like_ticker = (
+            " " not in entry and len(entry) <= 12
+            and entry.replace(".", "").replace("-", "").isalnum()
+        )
+        if looks_like_ticker:
+            analysis_candidates.append(entry.upper())
+            resolved_input_rows.append({"Eingabe": entry, "Auflösung": entry.upper(), "Typ": "Ticker direkt"})
+        else:
+            matches = search_tickers(entry, max_results=3)
+            if matches:
+                analysis_candidates.append(matches[0]["symbol"])
+                resolved_input_rows.append({"Eingabe": entry, "Auflösung": matches[0]["symbol"], "Typ": "Firmenname aufgelöst"})
+            else:
+                resolved_input_rows.append({"Eingabe": entry, "Auflösung": "-", "Typ": "Nicht gefunden"})
+
+    # eindeutige Reihenfolge beibehalten
+    seen = set()
+    analysis_candidates = [x for x in analysis_candidates if not (x in seen or seen.add(x))]
+
+run_analysis = st.button("Analyse starten", use_container_width=True, type="primary", key="run_analysis_main")
+if run_analysis:
+    if analysis_mode == "Einzelanalyse":
+        st.session_state.analysis_ticker = ticker
+    st.session_state.analysis_requested = True
+    st.session_state.analysis_mode_run = analysis_mode
 # ---------- Main ----------
 st.title(f"📊 Capital-Hill-Score-Modell {APP_VERSION}")
 st.caption(

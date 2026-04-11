@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.7"
+APP_VERSION = "v9.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -386,6 +386,31 @@ def style_ranking_df(df):
 
     if "Entry-Lage" in df.columns:
         styler = styler.map(entry_style, subset=["Entry-Lage"])
+
+    def trigger_style(v):
+        val = str(v or "").strip().lower()
+        if val in {"aktiv", "nahe dran"}:
+            return "background-color: rgba(34,197,94,0.28); color: white; font-weight:700;"
+        if val in {"frühe beobachtung", "beobachten", "warten"}:
+            return "background-color: rgba(245,158,11,0.28); color: white; font-weight:700;"
+        if val in {"passiv"}:
+            return "background-color: rgba(239,68,68,0.28); color: white; font-weight:700;"
+        return ""
+
+    def priority_style(v):
+        val = str(v or "").strip().lower()
+        if val == "hoch":
+            return "background-color: rgba(34,197,94,0.28); color: white; font-weight:700;"
+        if val == "mittel":
+            return "background-color: rgba(245,158,11,0.28); color: white; font-weight:700;"
+        if val == "niedrig":
+            return "background-color: rgba(239,68,68,0.28); color: white; font-weight:700;"
+        return ""
+
+    if "Trigger-Status" in df.columns:
+        styler = styler.map(trigger_style, subset=["Trigger-Status"])
+    if "Watchlist-Priorität" in df.columns:
+        styler = styler.map(priority_style, subset=["Watchlist-Priorität"])
 
     return styler
 
@@ -1585,6 +1610,8 @@ def build_ranking_table(results):
             "Setup-Confidence": r.get("setup_confidence", np.nan),
             "Entry-Lage": r.get("entry_quality", "-"),
             "Valides Setup": "Ja" if r.get("valid_trade_setup", False) else "Nein",
+            "Trigger-Status": r.get("trigger_status", "-"),
+            "Watchlist-Priorität": r.get("watchlist_priority", "-"),
             "Kurzfrist-Timing": r.get("tb_score_100", normalize_tb_score_100(r.get("tb_score", np.nan))),
             "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
             "Top Red Flag": shorten_text(full_red_flag, 34),
@@ -1661,6 +1688,10 @@ def build_export_row(result):
         "Positionsgröße": result.get("pos_size", np.nan),
         "Risiko EUR": result.get("risk_eur", np.nan),
         "Handlung": result.get("position_action", result.get("emp", "-")),
+        "Trigger-Status": result.get("trigger_status", "-"),
+        "Watchlist-Priorität": result.get("watchlist_priority", "-"),
+        "Nächster Trigger": result.get("next_trigger", "-"),
+        "Trigger-Begründung": result.get("trigger_reason", "-"),
         "Top Red Flag": result.get("top_red_flag", "-"),
         "Kurzfazit": result.get("short_thesis", result.get("decision_summary", "-")),
         "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
@@ -2686,6 +2717,51 @@ def analyze_stock(
         stop_action = "Nicht anwendbar"
         risk_note = "Watchlist-Modus"
 
+    # ---------- Watchlist / Trigger-Logik ----------
+    if not position_mode:
+        if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
+            trigger_status = "Warten"
+            watchlist_priority = "Niedrig"
+            watchlist_priority_score = 30
+            next_trigger = "Nach den Zahlen neu prüfen"
+            trigger_reason = "Earnings-Veto kurzfristig"
+        elif valid_trade_setup and entry_quality == "gut" and trading_case_score >= 68:
+            trigger_status = "Aktiv"
+            watchlist_priority = "Hoch"
+            watchlist_priority_score = 85
+            next_trigger = "Jetzt prüfbar"
+            trigger_reason = "Setup valide und in Entry-Zone"
+        elif valid_trade_setup and entry_quality == "abwarten":
+            trigger_status = "Nahe dran"
+            watchlist_priority = "Hoch"
+            watchlist_priority_score = 78
+            next_trigger = "Rücksetzer in Entry-Zone abwarten"
+            trigger_reason = "Setup valide, aber Kurs über Entry-Zone"
+        elif setup_type != "Kein sauberes Setup" and trading_case_score >= 55:
+            trigger_status = "Frühe Beobachtung"
+            watchlist_priority = "Mittel"
+            watchlist_priority_score = 62
+            next_trigger = "Setup-Confirmation oder bessere Entry-Lage"
+            trigger_reason = "Solides Setup, aber Timing noch nicht ideal"
+        elif investment_case_score >= 70:
+            trigger_status = "Beobachten"
+            watchlist_priority = "Mittel"
+            watchlist_priority_score = 55
+            next_trigger = "Trading-Case verbessern"
+            trigger_reason = "Guter Investment-Case, aber Trigger fehlt"
+        else:
+            trigger_status = "Passiv"
+            watchlist_priority = "Niedrig"
+            watchlist_priority_score = 35
+            next_trigger = "Auf klareres Setup warten"
+            trigger_reason = "Noch kein priorisierter Watchlist-Kandidat"
+    else:
+        trigger_status = "Nicht anwendbar"
+        watchlist_priority = "Nicht anwendbar"
+        watchlist_priority_score = np.nan
+        next_trigger = "Nicht anwendbar"
+        trigger_reason = "Positionsmodus"
+
     # ---------- Short-term helper board ----------
     stb_score = 0
     stb_items = []
@@ -2820,6 +2896,11 @@ def analyze_stock(
         "partial_profit_action": partial_profit_action,
         "stop_action": stop_action,
         "risk_note": risk_note,
+        "trigger_status": trigger_status,
+        "watchlist_priority": watchlist_priority,
+        "watchlist_priority_score": watchlist_priority_score,
+        "next_trigger": next_trigger,
+        "trigger_reason": trigger_reason,
         "tb_signal": tb_signal,
         "tb_empf": tb_empf,
         "tb_df": tb_df,
@@ -3232,10 +3313,15 @@ if ranking_focus == "Trading-Ranking":
         ascending=False
     ).reset_index(drop=True)
 elif ranking_focus == "Watchlist-Ranking":
+    if "Watchlist-Priorität" in ranking_df.columns:
+        priority_map = {"Hoch": 3, "Mittel": 2, "Niedrig": 1}
+        ranking_df["_watchlist_sort"] = ranking_df["Watchlist-Priorität"].map(priority_map).fillna(0)
+    else:
+        ranking_df["_watchlist_sort"] = 0
     ranking_df = ranking_df.sort_values(
-        by=["Investment-Attraktivität", "Setup-Confidence", "Trade-Struktur", "Einstieg jetzt attraktiv?"],
-        ascending=False
-    ).reset_index(drop=True)
+        by=["_watchlist_sort", "Trigger-Status", "Investment-Attraktivität", "Setup-Confidence", "Trade-Struktur", "Einstieg jetzt attraktiv?"],
+        ascending=[False, False, False, False, False, False]
+    ).drop(columns=["_watchlist_sort"], errors="ignore").reset_index(drop=True)
 else:
     ranking_df = ranking_df.sort_values(
         by=["Investment-Attraktivität", "Investment Score", "Company Quality", "Fundamental-Confidence"],
@@ -3259,6 +3345,8 @@ ranking_display_cols = [
     "Trade-Struktur",
     "Setup-Confidence",
     "Entry-Lage",
+    "Trigger-Status",
+    "Watchlist-Priorität",
     "Kurzfrist-Timing",
     "Fundamental-Confidence",
 ]
@@ -3286,6 +3374,8 @@ ranking_column_config = {
     "Trade-Struktur": st.column_config.NumberColumn("Trade-Struktur", width="small", format="%.0f"),
     "Setup-Confidence": st.column_config.NumberColumn("Setup-Confidence", width="small", format="%.0f"),
     "Entry-Lage": st.column_config.TextColumn("Entry-Lage", width="small"),
+    "Trigger-Status": st.column_config.TextColumn("Trigger-Status", width="medium"),
+    "Watchlist-Priorität": st.column_config.TextColumn("Watchlist-Priorität", width="small"),
     "Kurzfrist-Timing": st.column_config.NumberColumn("Kurzfrist-Timing", width="small", format="%.0f"),
     "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
 }
@@ -3449,6 +3539,11 @@ add_on_action = result["add_on_action"]
 partial_profit_action = result["partial_profit_action"]
 stop_action = result["stop_action"]
 risk_note = result["risk_note"]
+trigger_status = result["trigger_status"]
+watchlist_priority = result["watchlist_priority"]
+watchlist_priority_score = result["watchlist_priority_score"]
+next_trigger = result["next_trigger"]
+trigger_reason = result["trigger_reason"]
 tb_signal = result["tb_signal"]
 tb_empf = result["tb_empf"]
 tb_df = result["tb_df"]
@@ -3757,7 +3852,7 @@ st.markdown(
 
 # ---------- Tabs ----------
 st.divider()
-t0, t1, t2, t3, t4, t5, t6, t7 = st.tabs([
+t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
     "Profil & Chart",
     "Technik",
     "Kurzfrist-Vergleich",
@@ -3765,7 +3860,8 @@ t0, t1, t2, t3, t4, t5, t6, t7 = st.tabs([
     "Fundamental",
     "Safeguards",
     "Trade-Setup",
-    "Positionsmanagement"
+    "Positionsmanagement",
+    "Watchlist & Trigger"
 ])
 
 with t0:
@@ -4033,6 +4129,31 @@ with t7:
             f"Die Positionsentscheidung kombiniert Investment-Case ({investment_case_score}/100), "
             f"Einstiegs-Case ({trading_case_score}/100), Setup-Confidence ({fmt_num(setup_confidence,0)}/100), "
             f"Marktumfeld ({market_regime_label(market_info['regime'])}) und die bisherige Performance seit Einstieg."
+        )
+
+
+with t8:
+    if position_mode:
+        st.info("Dieser Bereich ist vor allem für den Watchlist-Modus gedacht. Im Positionsmodus sind Trigger nur nachrangig relevant.")
+    else:
+        w1, w2, w3 = st.columns(3)
+        w1.metric("Trigger-Status", trigger_status)
+        w2.metric("Watchlist-Priorität", watchlist_priority)
+        w3.metric("Nächster Trigger", next_trigger)
+
+        st.markdown("**Warum steht die Aktie auf der Watchlist so weit oben?**")
+        st.write(trigger_reason)
+
+        w4, w5, w6 = st.columns(3)
+        w4.metric("Setup-Typ", setup_type)
+        w5.metric("Entry-Lage", entry_quality)
+        w6.metric("Einstieg jetzt attraktiv?", f"{trading_case_score}/100", trading_case_text)
+
+        st.markdown("**Praktische Watchlist-Logik**")
+        st.write(
+            "Die Watchlist-Logik priorisiert Werte, die entweder bereits valide sind, "
+            "kurz vor einem Trigger stehen oder einen starken Investment-Case haben, "
+            "aber noch auf besseres Timing warten."
         )
 
 

@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.0B"
+APP_VERSION = "v10.0B.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -306,7 +306,13 @@ def ampel_crv(c):
 
 
 def card_class(score):
-    return "" if score >= 70 else ("yellow" if score >= 45 else "red")
+    try:
+        s = float(score)
+        if np.isnan(s):
+            return "yellow"
+    except Exception:
+        return "yellow"
+    return "" if s >= 70 else ("yellow" if s >= 45 else "red")
 
 
 def safe_last(s, default=np.nan):

@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.6.2"
+APP_VERSION = "v9.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1621,6 +1621,55 @@ def compute_chart_df(df, chart_range):
     chart_df["MA50"] = chart_df["Close"].rolling(50).mean()
     chart_df["MA200"] = chart_df["Close"].rolling(200).mean()
     return chart_df
+
+
+def build_export_row(result):
+    market_info = result.get("market_info", {}) or {}
+    confidence_info = result.get("confidence_info", {}) or {}
+    return {
+        "Export-Zeitpunkt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Ticker": result.get("ticker", "-"),
+        "Name": result.get("name", "-"),
+        "Modus": result.get("mode_label", "-"),
+        "Setup-Typ": result.get("setup_type", "-"),
+        "Valides Setup": "Ja" if result.get("valid_trade_setup", False) else "Nein",
+        "Investment-Attraktivität": result.get("investment_case_score", np.nan),
+        "Einstieg jetzt attraktiv?": result.get("trading_case_score", np.nan),
+        "Trade-Struktur": result.get("tradeability_score", np.nan),
+        "Setup-Confidence": result.get("setup_confidence", np.nan),
+        "Entry-Lage": result.get("entry_quality", "-"),
+        "Entry-Zone": result.get("suggested_entry_zone", "-"),
+        "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
+        "Benchmark": result.get("benchmark_label", "-"),
+        "Company Quality": result.get("company", np.nan),
+        "Setup Quality": result.get("setup_adj", np.nan),
+        "Investment Score": result.get("investment", np.nan),
+        "Kurzfrist-Timing": result.get("tb_score_100", np.nan),
+        "TradingBoard Score": result.get("tb_score", np.nan),
+        "Kurs": result.get("price", np.nan),
+        "Stop": result.get("stop_used", np.nan),
+        "Stop-Herleitung": result.get("stop_source", "-"),
+        "TP1": result.get("tp1", np.nan),
+        "TP1-Herleitung": result.get("tp1_source", "-"),
+        "TP2": result.get("tp2", np.nan),
+        "TP2-Herleitung": result.get("tp2_source", "-"),
+        "TP3": result.get("tp3", np.nan),
+        "TP3-Herleitung": result.get("tp3_source", "-"),
+        "Primärziel aus Setup": result.get("technical_target_1", np.nan),
+        "Sekundärziel aus Setup": result.get("technical_target_2", np.nan),
+        "CRV": result.get("crv", np.nan),
+        "Positionsgröße": result.get("pos_size", np.nan),
+        "Risiko EUR": result.get("risk_eur", np.nan),
+        "Handlung": result.get("position_action", result.get("emp", "-")),
+        "Top Red Flag": result.get("top_red_flag", "-"),
+        "Kurzfazit": result.get("short_thesis", result.get("decision_summary", "-")),
+        "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
+    }
+
+
+def build_export_df(results):
+    rows = [build_export_row(r) for r in results]
+    return pd.DataFrame(rows)
 
 
 def analyze_stock(
@@ -3257,6 +3306,24 @@ st.download_button(
     mime="text/csv"
 )
 
+export_df = build_export_df(results)
+
+export_col1, export_col2 = st.columns(2)
+with export_col1:
+    st.download_button(
+        "Backtesting-Export für alle Ergebnisse",
+        data=export_df.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"capital_hill_backtest_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv"
+    )
+with export_col2:
+    if not export_df.empty:
+        st.metric("Export-Zeilen", len(export_df))
+
+with st.expander("Export-/Logging-Felder anzeigen", expanded=False):
+    st.caption("Diese Felder sind für Logging, Backtesting und spätere Qualitätskontrolle gedacht.")
+    st.dataframe(export_df, hide_index=True, use_container_width=True, height=260)
+
 if not ranking_df.empty:
     st.markdown(f"**Ranking-Details – {ranking_focus}**")
 
@@ -3332,6 +3399,7 @@ if errors:
         st.dataframe(pd.DataFrame(errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
 
 result = results_map[selected_display_ticker]
+single_export_df = build_export_df([result])
 ticker = result["ticker"]
 df = result["df"]
 info = result["info"]
@@ -3639,6 +3707,17 @@ with st.expander("Score-Erklärungen anzeigen", expanded=False):
         "- **Trade-Struktur**: Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld.\n"
         "- **Kurzfrist-Timing**: Schneller Taktik- und Timing-Blick aus dem Board."
     )
+
+se1, se2 = st.columns([1.4, 2.6])
+with se1:
+    st.download_button(
+        "Einzelanalyse als CSV exportieren",
+        data=single_export_df.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv"
+    )
+with se2:
+    st.caption("Export enthält Setup-Typ, Attraktivitäts-Scores, Entry-Zone, Stop, Ziele, CRV, Handlung und Red Flag.")
 
 st.subheader("Scores")
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)

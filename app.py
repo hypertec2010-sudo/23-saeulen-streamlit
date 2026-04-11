@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.2"
+APP_VERSION = "v10.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2626,9 +2626,9 @@ def analyze_stock(
     if has_upcoming_earnings and days_earn < 7:
         emp, conv = ("VETO - Earnings < 7 Tage", "-")
     elif position_mode:
-        if investment >= 78 and kb >= 3 and market_info["regime"] != "NEGATIV":
+        if investment >= 78 and kb >= 3 and market_info["regime"] == "POSITIV":
             emp, conv = ("HALTEN / AUSBAUEN", "HIGH")
-        elif investment >= 65:
+        elif investment >= 65 and market_info["regime"] != "NEGATIV":
             emp, conv = ("HALTEN / ENGE BEOBACHTUNG", "MEDIUM")
         elif investment >= 52:
             emp, conv = ("HALTEN / RISIKO PRÜFEN", "LOW-MEDIUM")
@@ -2637,7 +2637,7 @@ def analyze_stock(
     else:
         if investment >= 78 and kb >= 3 and market_info["regime"] == "POSITIV":
             emp, conv = ("BUY / ACCUMULATE", "HIGH")
-        elif investment >= 68:
+        elif investment >= 68 and market_info["regime"] != "NEGATIV":
             emp, conv = ("WATCH / EINSTIEG PRÜFEN", "MEDIUM")
         elif investment >= 52:
             emp, conv = ("BEOBACHTEN", "LOW-MEDIUM")
@@ -2833,14 +2833,20 @@ def analyze_stock(
         if pd.notna(tb_perf) and tb_perf >= 12 and pd.notna(tp1) and price >= tp1 * 0.98:
             partial_profit_action = "Ja, Teilgewinn prüfen"
 
-        if investment_case_score >= 72 and trading_case_score >= 68 and valid_trade_setup and market_info["regime"] != "NEGATIV":
+        if (
+            investment_case_score >= 74
+            and trading_case_score >= 70
+            and valid_trade_setup
+            and setup_confidence >= 62
+            and market_info["regime"] == "POSITIV"
+        ):
             add_on_action = "Ja, selektiv möglich"
 
-        if trading_case_score < 48 or market_info["regime"] == "NEGATIV":
+        if trading_case_score < 48 or market_info["regime"] == "NEGATIV" or setup_confidence < 45:
             position_action = "Risiko reduzieren"
-        elif trading_case_score < 60 or setup_confidence < 60:
+        elif trading_case_score < 60 or setup_confidence < 60 or entry_quality == "früh":
             position_action = "Halten / eng beobachten"
-        elif investment_case_score >= 75 and trading_case_score >= 68:
+        elif investment_case_score >= 75 and trading_case_score >= 68 and setup_confidence >= 60:
             position_action = "Halten / ggf. ausbauen"
         else:
             position_action = "Halten"
@@ -2872,42 +2878,70 @@ def analyze_stock(
             watchlist_priority_score = 30
             next_trigger = "Nach den Zahlen neu prüfen"
             trigger_reason = "Earnings-Veto kurzfristig"
-        elif valid_trade_setup and entry_quality == "gut" and trading_case_score >= 68:
+        elif market_info["regime"] == "NEGATIV":
+            trigger_status = "Passiv"
+            watchlist_priority = "Niedrig"
+            watchlist_priority_score = 28
+            next_trigger = "Auf besseres Marktumfeld warten"
+            trigger_reason = "Marktumfeld aktuell zu schwach"
+        elif valid_trade_setup and entry_quality == "gut" and trading_case_score >= 68 and setup_confidence >= 60:
             trigger_status = "Aktiv"
             watchlist_priority = "Hoch"
             watchlist_priority_score = 85
             next_trigger = "Jetzt prüfbar"
-            trigger_reason = "Setup valide und in Entry-Zone"
-        elif valid_trade_setup and entry_quality == "abwarten":
+            trigger_reason = "Setup valide, Timing stimmig und in Entry-Zone"
+        elif valid_trade_setup and entry_quality == "abwarten" and trading_case_score >= 60 and setup_confidence >= 55:
             trigger_status = "Nahe dran"
             watchlist_priority = "Hoch"
-            watchlist_priority_score = 78
+            watchlist_priority_score = 76
             next_trigger = "Rücksetzer in Entry-Zone abwarten"
-            trigger_reason = "Setup valide, aber Kurs über Entry-Zone"
-        elif setup_type != "Kein sauberes Setup" and trading_case_score >= 55:
+            trigger_reason = "Setup valide, aber Kurs aktuell über Entry-Zone"
+        elif setup_type != "Kein sauberes Setup" and entry_quality == "früh" and trading_case_score >= 55 and setup_confidence >= 50:
             trigger_status = "Frühe Beobachtung"
             watchlist_priority = "Mittel"
-            watchlist_priority_score = 62
+            watchlist_priority_score = 60
             next_trigger = "Setup-Confirmation oder bessere Entry-Lage"
-            trigger_reason = "Solides Setup, aber Timing noch nicht ideal"
+            trigger_reason = "Setup vorhanden, aber noch zu früh für einen sauberen Einstieg"
         elif investment_case_score >= 70:
             trigger_status = "Beobachten"
             watchlist_priority = "Mittel"
-            watchlist_priority_score = 55
+            watchlist_priority_score = 52
             next_trigger = "Trading-Case verbessern"
-            trigger_reason = "Guter Investment-Case, aber Trigger fehlt"
+            trigger_reason = "Guter Investment-Case, aber noch kein sauberer Trigger"
         else:
             trigger_status = "Passiv"
             watchlist_priority = "Niedrig"
             watchlist_priority_score = 35
             next_trigger = "Auf klareres Setup warten"
             trigger_reason = "Noch kein priorisierter Watchlist-Kandidat"
+
+        if setup_type == "Kein sauberes Setup":
+            trigger_status = "Passiv"
+            watchlist_priority = "Niedrig" if investment_case_score < 75 else "Mittel"
+            watchlist_priority_score = 38 if investment_case_score < 75 else 48
+            next_trigger = "Auf neues Setup warten"
+            trigger_reason = "Ohne sauberes Setup kein aktiver Trigger"
     else:
         trigger_status = "Nicht anwendbar"
         watchlist_priority = "Nicht anwendbar"
         watchlist_priority_score = np.nan
         next_trigger = "Nicht anwendbar"
         trigger_reason = "Positionsmodus"
+
+    # ---------- Finale Konsistenzregeln ----------
+    if not position_mode:
+        if setup_type == "Kein sauberes Setup":
+            emp = "BEOBACHTEN" if investment_case_score >= 70 else "AVOID / WAIT"
+            conv = "LOW-MEDIUM" if investment_case_score >= 70 else "LOW"
+        elif trigger_status == "Aktiv" and trading_case_score >= 68:
+            emp = "WATCH / EINSTIEG PRÜFEN"
+            conv = "MEDIUM" if conv == "-" else conv
+        elif trigger_status in {"Passiv", "Warten"}:
+            emp = "AVOID / WAIT" if investment_case_score < 70 else "BEOBACHTEN"
+
+    if position_mode and position_action == "Risiko reduzieren":
+        emp = "RISIKO REDUZIEREN / STOPP PRÜFEN"
+        conv = "LOW"
 
     # ---------- Short-term helper board ----------
     stb_score = 0

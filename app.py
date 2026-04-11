@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v9.9"
+APP_VERSION = "v10.0A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3749,48 +3749,138 @@ if red_flag_items:
     st.warning("Red Flags erkannt: " + " | ".join(red_flag_notes[:4]))
 
 # ---------- Scores ----------
-st.subheader("Executive Summary")
-sx1, sx2, sx3, sx4, sx5 = st.columns(5)
-with sx1:
-    render_score_card(
-        "Investment-Attraktivität",
-        f"{investment_case_score}/100",
-        investment_case_text,
-        "investment",
-        tooltip="Wie attraktiv die Aktie grundsätzlich als Investment-Case ist. Nutzt vor allem Company Quality, Investment Score, Datenqualität, Marktumfeld und Red Flags."
+# ---------- v10.0A Overview ----------
+main_action_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
+
+st.markdown(
+    f"""
+    <div class="hero-shell">
+        <div class="hero-kicker">Capital Hill Entscheidungsansicht</div>
+        <div class="hero-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
+        <div class="hero-sub">
+            {short_thesis}
+        </div>
+        <div class="hero-chip-row">
+            <div class="hero-chip">Setup-Typ: {setup_type}</div>
+            <div class="hero-chip">Marktumfeld: {market_regime_label(market_info["regime"])}</div>
+            <div class="hero-chip">Modus: {display_mode_label(mode_label)}</div>
+            <div class="hero-chip">Entry-Lage: {entry_quality}</div>
+            <div class="hero-chip">Top Red Flag: {shorten_text(top_red_flag, 42)}</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.subheader("Entscheidung auf einen Blick")
+d1, d2, d3 = st.columns(3)
+with d1:
+    st.markdown(
+        f"""
+        <div class="decision-card invest" title="Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.">
+            <div class="dc-label">Investment-Attraktivität</div>
+            <div class="dc-value">{investment_case_score}/100</div>
+            <div class="dc-sub">{investment_case_text}</div>
+            <div class="dc-note">Fokussiert auf Unternehmensqualität, Investment Score, Datenqualität, Marktumfeld und Red Flags.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-with sx2:
-    render_score_card(
-        "Einstieg jetzt attraktiv?",
-        f"{trading_case_score}/100",
-        trading_case_text,
-        "board",
-        tooltip="Wie attraktiv ein Einstieg genau jetzt gerade ist. Nutzt Trade-Struktur, Timing, Setup Quality, Entry-Lage und Marktumfeld. Wird bewusst gedeckelt, wenn Setup oder Timing nicht sauber sind."
+with d2:
+    st.markdown(
+        f"""
+        <div class="decision-card entry" title="Wie attraktiv ein Einstieg genau jetzt gerade ist.">
+            <div class="dc-label">Einstieg jetzt attraktiv?</div>
+            <div class="dc-value">{trading_case_score}/100</div>
+            <div class="dc-sub">{trading_case_text}</div>
+            <div class="dc-note">Berücksichtigt Trade-Struktur, Timing, Setup-Qualität, Entry-Lage und Marktumfeld.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-with sx3:
-    render_score_card(
-        "Setup-Typ",
-        setup_type,
-        preferred_entry,
-        "setup",
-        tooltip="Das aktuell wahrscheinlichste charttechnische Muster, z. B. Breakout, Breakout-Retest, Pullback an MA20, Pullback an MA50, Trendfolge, Rebound, Range-Breakout oder kein sauberes Setup."
+with d3:
+    st.markdown(
+        f"""
+        <div class="decision-card action" title="Verdichtete Hauptaussage für Watchlist oder Position.">
+            <div class="dc-label">Handlung</div>
+            <div class="dc-value">{main_action_label}</div>
+            <div class="dc-sub">{market_regime_label(market_info["regime"])}</div>
+            <div class="dc-note">Soll die Aktie jetzt beobachtet, geprüft, gehalten, ausgebaut oder defensiver gemanagt werden?</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-with sx4:
-    render_score_card(
-        "Setup-Confidence",
-        f"{fmt_num(setup_confidence,0)}/100",
-        setup_confidence_text,
-        "helper",
-        tooltip="Wie sauber und belastbar das erkannte Setup wirkt. Nutzt Trendstruktur, Momentum, Konfluenz und Entry-Lage."
+
+st.subheader("Warum diese Einschätzung?")
+wcol1, wcol2 = st.columns(2)
+with wcol1:
+    strengths_html = "".join([f"<li>{s}</li>" for s in strengths[:5]]) if strengths else "<li>Keine klaren Stärken identifiziert.</li>"
+    st.markdown(
+        f"""
+        <div class="info-panel">
+            <h4>Was spricht dafür?</h4>
+            <ul>{strengths_html}</ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-with sx5:
-    action_label = display_emp_label(result.get("emp", "-"))
-    render_score_card(
-        "Handlung",
-        action_label,
-        market_regime_label(market_info["regime"]),
-        "kb",
-        tooltip="Verdichtete Handlungsempfehlung aus Investment-Case, Einstiegs-Case, Timing, Marktumfeld und Vetos."
+with wcol2:
+    weaknesses_html = "".join([f"<li>{w}</li>" for w in weaknesses[:5]]) if weaknesses else "<li>Keine wesentlichen Schwächen identifiziert.</li>"
+    st.markdown(
+        f"""
+        <div class="info-panel">
+            <h4>Was spricht dagegen?</h4>
+            <ul>{weaknesses_html}</ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.subheader("Wichtige Begründungsbausteine")
+s1, s2, s3, s4 = st.columns(4)
+with s1:
+    st.markdown(
+        f"""
+        <div class="support-card" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
+            <div class="sc-label">Trade-Struktur</div>
+            <div class="sc-value">{fmt_num(tradeability_score,0)}/100</div>
+            <div class="sc-sub">{tradeability_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with s2:
+    st.markdown(
+        f"""
+        <div class="support-card" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
+            <div class="sc-label">Setup-Confidence</div>
+            <div class="sc-value">{fmt_num(setup_confidence,0)}/100</div>
+            <div class="sc-sub">{setup_confidence_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with s3:
+    st.markdown(
+        f"""
+        <div class="support-card" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
+            <div class="sc-label">Company Quality</div>
+            <div class="sc-value">{company}/100</div>
+            <div class="sc-sub">{ampel(company)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with s4:
+    st.markdown(
+        f"""
+        <div class="support-card" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
+            <div class="sc-label">Investment Score</div>
+            <div class="sc-value">{investment}/100</div>
+            <div class="sc-sub">{ampel(investment)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 se1, se2 = st.columns([1.4, 2.6])
@@ -3802,87 +3892,83 @@ with se1:
         mime="text/csv"
     )
 with se2:
-    st.caption("Bei Executive Summary und Scores kannst du mit der Maus über die Karten fahren, um die Bedeutung direkt zu sehen.")
+    st.caption("Die wichtigsten Aussagen bleiben vorne sichtbar. Diagnosescores bleiben erhalten, sind aber im Hintergrund organisiert.")
 
-st.subheader("Scores")
-c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-with c1:
-    render_score_card(
-        "Company Quality",
-        f"{company}/100",
-        ampel(company),
-        "company",
-        tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens."
-    )
-with c2:
-    render_score_card(
-        "Setup Quality",
-        f"{setup_adj}/100",
-        ampel(setup_adj),
-        "setup",
-        tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter."
-    )
-with c3:
-    render_score_card(
-        "Investment Score",
-        f"{investment}/100",
-        ampel(investment),
-        "investment",
-        tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität. Dieser Wert verbindet Setup und Unternehmensqualität."
-    )
-with c4:
-    render_score_card(
-        "Trade-Struktur",
-        f"{fmt_num(tradeability_score,0)}/100",
-        tradeability_text,
-        "kb",
-        tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld."
-    )
-with c5:
-    render_score_card(
-        "Kurzfrist-Timing",
-        f"{tb_score_100}/100",
-        f"{tb_timing_text} | Board: {tb_score} Punkte",
-        "board",
-        tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard. Zeigt, wie gut der Moment für einen taktischen Einstieg wirkt."
-    )
-with c6:
-    render_score_card(
-        "Kurzfrist Core",
-        f"{short_term_score}/100",
-        ampel(short_term_score),
-        "short",
-        tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke."
-    )
-with c7:
-    render_score_card(
-        "Setup-Confidence",
-        f"{fmt_num(setup_confidence,0)}/100",
-        setup_confidence_text,
-        "helper",
-        tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt. Nutzt Setup-Typ, Trendstruktur, Momentum, Konfluenz und Marktumfeld."
-    )
-
-st.caption(
-    "v9.9 verschiebt Score-Erklärungen direkt in die Mouseover-Karten und strafft damit die Oberfläche."
-)
+with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
+    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+    with c1:
+        render_score_card(
+            "Company Quality",
+            f"{company}/100",
+            ampel(company),
+            "company",
+            tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens."
+        )
+    with c2:
+        render_score_card(
+            "Setup Quality",
+            f"{setup_adj}/100",
+            ampel(setup_adj),
+            "setup",
+            tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter."
+        )
+    with c3:
+        render_score_card(
+            "Investment Score",
+            f"{investment}/100",
+            ampel(investment),
+            "investment",
+            tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität. Dieser Wert verbindet Setup und Unternehmensqualität."
+        )
+    with c4:
+        render_score_card(
+            "Trade-Struktur",
+            f"{fmt_num(tradeability_score,0)}/100",
+            tradeability_text,
+            "kb",
+            tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld."
+        )
+    with c5:
+        render_score_card(
+            "Kurzfrist-Timing",
+            f"{tb_score_100}/100",
+            f"{tb_timing_text} | Board: {tb_score} Punkte",
+            "board",
+            tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard."
+        )
+    with c6:
+        render_score_card(
+            "Kurzfrist Core",
+            f"{short_term_score}/100",
+            ampel(short_term_score),
+            "short",
+            tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke."
+        )
+    with c7:
+        render_score_card(
+            "Setup-Confidence",
+            f"{fmt_num(setup_confidence,0)}/100",
+            setup_confidence_text,
+            "helper",
+            tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt."
+        )
 
 # ---------- Tabs ----------
 st.divider()
 t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
-    "Profil & Chart",
-    "Technik",
-    "Kurzfrist-Vergleich",
+    "Überblick",
+    "Trading-Case",
+    "Signalbild",
     "TradingBoard",
-    "Fundamental",
-    "Safeguards",
-    "Trade-Setup",
-    "Positionsmanagement",
-    "Watchlist & Trigger"
+    "Investment-Case",
+    "Sicherheit & Checks",
+    "Trade-Plan",
+    "Position",
+    "Watchlist"
 ])
 
 with t0:
-    st.subheader("Unternehmensprofil")
+    st.subheader("Überblick & Chart")
 
     p1, p2, p3 = st.columns(3)
     p1.metric("Unternehmen", name)
@@ -3918,6 +4004,7 @@ with t0:
     st.write(short_thesis)
 
 with t1:
+    st.subheader("Trading-Case")
     st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_regime_label(market_info['regime'])}")
 
     cols = st.columns(2)
@@ -3963,6 +4050,7 @@ with t1:
     st.dataframe(tech_df, hide_index=True, use_container_width=True)
 
 with t2:
+    st.subheader("Kurzfristiges Signalbild")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
     c2.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
@@ -3985,6 +4073,7 @@ with t2:
     )
 
 with t3:
+    st.subheader("TradingBoard & Timing")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Kurzfrist-Timing", f"{tb_score_100}/100", tb_timing_text)
     c2.metric("Board-Signal", tb_signal, tb_empf)
@@ -4000,6 +4089,7 @@ with t3:
     st.text("\n".join(tb_context))
 
 with t4:
+    st.subheader("Investment-Case")
     st.markdown(
         f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}% | Geladene Felder: {fund_fields_loaded}/21</div>",
         unsafe_allow_html=True
@@ -4036,6 +4126,7 @@ with t4:
     st.dataframe(red_flags_df, hide_index=True, use_container_width=True)
 
 with t5:
+    st.subheader("Sicherheit & Checks")
     safeguard_df = pd.DataFrame({
         "Safeguard": [
             "S0 Currency/Exchange",
@@ -4077,6 +4168,7 @@ with t5:
     st.dataframe(safeguard_df, hide_index=True, use_container_width=True)
 
 with t6:
+    st.subheader("Trade-Plan")
     if not valid_trade_setup:
         st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
         st.write(
@@ -4128,6 +4220,7 @@ with t6:
         td2.metric("Sekundärziel aus Setup", fmt_num(technical_target_2, 2, f" {ccy}"))
 
 with t7:
+    st.subheader("Position")
     if not position_mode:
         st.info("Dieser Bereich ist nur relevant, wenn ein Buy-in gesetzt ist und damit der Positionsmodus aktiv ist.")
     else:
@@ -4150,6 +4243,7 @@ with t7:
 
 
 with t8:
+    st.subheader("Watchlist & Trigger")
     if position_mode:
         st.info("Dieser Bereich ist vor allem für den Watchlist-Modus gedacht. Im Positionsmodus sind Trigger nur nachrangig relevant.")
     else:

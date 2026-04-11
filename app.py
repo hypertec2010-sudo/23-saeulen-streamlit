@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.0A"
+APP_VERSION = "v10.0B"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -166,6 +166,55 @@ pre{white-space:pre-wrap !important;}
     margin-top:8px;
     line-height:1.2;
 }
+.hero-shell{
+    background:linear-gradient(135deg,#0f172a 0%, #111827 55%, #0b1220 100%);
+    border:1px solid #243042;
+    border-radius:24px;
+    padding:18px 20px;
+    box-shadow:0 18px 40px rgba(0,0,0,0.22);
+    margin:14px 0 18px 0;
+}
+.hero-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;}
+.hero-kicker{font-size:0.82rem;color:#93c5fd;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;}
+.hero-title{font-size:1.7rem;font-weight:900;color:#f8fafc;line-height:1.1;margin-top:6px;}
+.hero-sub{font-size:0.96rem;color:#cbd5e1;margin-top:8px;line-height:1.45;max-width:920px;}
+.hero-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+.hero-chip{
+    padding:7px 11px;border-radius:999px;background:#0b1220;border:1px solid #334155;
+    color:#e5e7eb;font-size:0.85rem;font-weight:700;
+}
+.hero-score-pill{
+    min-width:150px;padding:10px 12px;border-radius:16px;background:#0b1220;border:1px solid #334155;
+    color:#f8fafc;text-align:center;
+}
+.hero-score-pill .pill-label{font-size:0.76rem;color:#9fb1c8;font-weight:800;text-transform:uppercase;}
+.hero-score-pill .pill-value{font-size:1.35rem;font-weight:900;margin-top:4px;}
+.decision-card{
+    background:linear-gradient(180deg,#111827 0%,#0b1220 100%);
+    border:1px solid #243042;border-radius:22px;padding:16px 16px 14px 16px;min-height:150px;
+    box-shadow:0 14px 30px rgba(0,0,0,0.20);
+}
+.decision-card .dc-label{font-size:0.82rem;color:#9fb1c8;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;}
+.decision-card .dc-value{font-size:1.85rem;font-weight:900;color:#f8fafc;line-height:1.05;margin-top:8px;}
+.decision-card .dc-sub{font-size:0.98rem;color:#e5e7eb;font-weight:700;margin-top:7px;}
+.decision-card .dc-note{font-size:0.88rem;color:#cbd5e1;margin-top:8px;line-height:1.4;}
+.decision-card.invest{border-left:5px solid #14b8a6;}
+.decision-card.entry{border-left:5px solid #f59e0b;}
+.decision-card.action{border-left:5px solid #8b5cf6;}
+.compact-panel{
+    background:linear-gradient(180deg,#111827 0%, #0f172a 100%);
+    border:1px solid #243042;border-radius:18px;padding:14px 16px;min-height:118px;
+}
+.compact-panel .cp-label{font-size:0.82rem;color:#9fb1c8;font-weight:800;text-transform:uppercase;}
+.compact-panel .cp-value{font-size:1.28rem;font-weight:900;color:#f8fafc;margin-top:6px;}
+.compact-panel .cp-sub{font-size:0.9rem;color:#d1d5db;margin-top:6px;line-height:1.35;}
+.bullet-card{
+    background:linear-gradient(180deg,#111827 0%, #0b1220 100%);
+    border:1px solid #243042;border-radius:18px;padding:14px 16px;min-height:165px;
+}
+.bullet-card h4{margin:0 0 10px 0;color:#f8fafc;font-size:0.98rem;}
+.bullet-card ul{margin:0;padding-left:18px;}
+.bullet-card li{color:#d1d5db;line-height:1.5;margin-bottom:4px;}
 .reco-card{
     background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
     border:1px solid #243042;
@@ -3749,23 +3798,31 @@ if red_flag_items:
     st.warning("Red Flags erkannt: " + " | ".join(red_flag_notes[:4]))
 
 # ---------- Scores ----------
-# ---------- v10.0A Overview ----------
+# ---------- v10.0B Overview ----------
 main_action_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
+top_strengths = strengths[:3] if strengths else []
+top_weaknesses = weaknesses[:3] if weaknesses else []
 
 st.markdown(
     f"""
     <div class="hero-shell">
-        <div class="hero-kicker">Capital Hill Entscheidungsansicht</div>
-        <div class="hero-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
-        <div class="hero-sub">
-            {short_thesis}
+        <div class="hero-head">
+            <div>
+                <div class="hero-kicker">Capital Hill Entscheidungsansicht</div>
+                <div class="hero-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
+                <div class="hero-sub">{shorten_text(short_thesis, 190)}</div>
+            </div>
+            <div class="hero-score-pill" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
+                <div class="pill-label">Hauptsignal</div>
+                <div class="pill-value">{main_action_label}</div>
+            </div>
         </div>
         <div class="hero-chip-row">
-            <div class="hero-chip">Setup-Typ: {setup_type}</div>
+            <div class="hero-chip">Setup: {setup_type}</div>
             <div class="hero-chip">Marktumfeld: {market_regime_label(market_info["regime"])}</div>
             <div class="hero-chip">Modus: {display_mode_label(mode_label)}</div>
-            <div class="hero-chip">Entry-Lage: {entry_quality}</div>
-            <div class="hero-chip">Top Red Flag: {shorten_text(top_red_flag, 42)}</div>
+            <div class="hero-chip">Entry: {entry_quality}</div>
+            <div class="hero-chip">Red Flag: {shorten_text(top_red_flag, 34)}</div>
         </div>
     </div>
     """,
@@ -3781,7 +3838,7 @@ with d1:
             <div class="dc-label">Investment-Attraktivität</div>
             <div class="dc-value">{investment_case_score}/100</div>
             <div class="dc-sub">{investment_case_text}</div>
-            <div class="dc-note">Fokussiert auf Unternehmensqualität, Investment Score, Datenqualität, Marktumfeld und Red Flags.</div>
+            <div class="dc-note">Grundqualität und Investment-Case.</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3793,7 +3850,7 @@ with d2:
             <div class="dc-label">Einstieg jetzt attraktiv?</div>
             <div class="dc-value">{trading_case_score}/100</div>
             <div class="dc-sub">{trading_case_text}</div>
-            <div class="dc-note">Berücksichtigt Trade-Struktur, Timing, Setup-Qualität, Entry-Lage und Marktumfeld.</div>
+            <div class="dc-note">Timing, Setup und Entry-Lage.</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3801,50 +3858,64 @@ with d2:
 with d3:
     st.markdown(
         f"""
-        <div class="decision-card action" title="Verdichtete Hauptaussage für Watchlist oder Position.">
+        <div class="decision-card action" title="Verdichtete Handlungsempfehlung für Watchlist oder Position.">
             <div class="dc-label">Handlung</div>
             <div class="dc-value">{main_action_label}</div>
             <div class="dc-sub">{market_regime_label(market_info["regime"])}</div>
-            <div class="dc-note">Soll die Aktie jetzt beobachtet, geprüft, gehalten, ausgebaut oder defensiver gemanagt werden?</div>
+            <div class="dc-note">Was jetzt praktisch am ehesten sinnvoll ist.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-st.subheader("Warum diese Einschätzung?")
-wcol1, wcol2 = st.columns(2)
-with wcol1:
-    strengths_html = "".join([f"<li>{s}</li>" for s in strengths[:5]]) if strengths else "<li>Keine klaren Stärken identifiziert.</li>"
+st.subheader("Die wichtigsten Begründungen")
+b1, b2, b3 = st.columns(3)
+with b1:
+    strengths_html = "".join([f"<li>{s}</li>" for s in top_strengths]) if top_strengths else "<li>Keine klaren Stärken identifiziert.</li>"
     st.markdown(
         f"""
-        <div class="info-panel">
-            <h4>Was spricht dafür?</h4>
+        <div class="bullet-card">
+            <h4>Pro</h4>
             <ul>{strengths_html}</ul>
         </div>
         """,
         unsafe_allow_html=True,
     )
-with wcol2:
-    weaknesses_html = "".join([f"<li>{w}</li>" for w in weaknesses[:5]]) if weaknesses else "<li>Keine wesentlichen Schwächen identifiziert.</li>"
+with b2:
+    weaknesses_html = "".join([f"<li>{w}</li>" for w in top_weaknesses]) if top_weaknesses else "<li>Keine wesentlichen Schwächen identifiziert.</li>"
     st.markdown(
         f"""
-        <div class="info-panel">
-            <h4>Was spricht dagegen?</h4>
+        <div class="bullet-card">
+            <h4>Contra</h4>
             <ul>{weaknesses_html}</ul>
         </div>
         """,
         unsafe_allow_html=True,
     )
+with b3:
+    st.markdown(
+        f"""
+        <div class="bullet-card">
+            <h4>Kurzfazit</h4>
+            <ul>
+                <li>{shorten_text(decision_summary, 170)}</li>
+                <li>Setup-Typ: {setup_type}</li>
+                <li>Trigger / Lage: {entry_quality}</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-st.subheader("Wichtige Begründungsbausteine")
+st.subheader("Kernbausteine")
 s1, s2, s3, s4 = st.columns(4)
 with s1:
     st.markdown(
         f"""
-        <div class="support-card" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
-            <div class="sc-label">Trade-Struktur</div>
-            <div class="sc-value">{fmt_num(tradeability_score,0)}/100</div>
-            <div class="sc-sub">{tradeability_text}</div>
+        <div class="compact-panel" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
+            <div class="cp-label">Trade-Struktur</div>
+            <div class="cp-value">{fmt_num(tradeability_score,0)}/100</div>
+            <div class="cp-sub">{tradeability_text}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3852,10 +3923,10 @@ with s1:
 with s2:
     st.markdown(
         f"""
-        <div class="support-card" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
-            <div class="sc-label">Setup-Confidence</div>
-            <div class="sc-value">{fmt_num(setup_confidence,0)}/100</div>
-            <div class="sc-sub">{setup_confidence_text}</div>
+        <div class="compact-panel" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
+            <div class="cp-label">Setup-Confidence</div>
+            <div class="cp-value">{fmt_num(setup_confidence,0)}/100</div>
+            <div class="cp-sub">{setup_confidence_text}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3863,10 +3934,10 @@ with s2:
 with s3:
     st.markdown(
         f"""
-        <div class="support-card" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
-            <div class="sc-label">Company Quality</div>
-            <div class="sc-value">{company}/100</div>
-            <div class="sc-sub">{ampel(company)}</div>
+        <div class="compact-panel" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
+            <div class="cp-label">Company Quality</div>
+            <div class="cp-value">{company}/100</div>
+            <div class="cp-sub">{ampel(company)}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3874,16 +3945,16 @@ with s3:
 with s4:
     st.markdown(
         f"""
-        <div class="support-card" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
-            <div class="sc-label">Investment Score</div>
-            <div class="sc-value">{investment}/100</div>
-            <div class="sc-sub">{ampel(investment)}</div>
+        <div class="compact-panel" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
+            <div class="cp-label">Investment Score</div>
+            <div class="cp-value">{investment}/100</div>
+            <div class="cp-sub">{ampel(investment)}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-se1, se2 = st.columns([1.4, 2.6])
+se1, se2 = st.columns([1.2, 2.8])
 with se1:
     st.download_button(
         "Einzelanalyse als CSV exportieren",
@@ -3892,66 +3963,24 @@ with se1:
         mime="text/csv"
     )
 with se2:
-    st.caption("Die wichtigsten Aussagen bleiben vorne sichtbar. Diagnosescores bleiben erhalten, sind aber im Hintergrund organisiert.")
+    st.caption("Die Hauptansicht bleibt bewusst kurz. Vertiefende Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.")
 
 with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     with c1:
-        render_score_card(
-            "Company Quality",
-            f"{company}/100",
-            ampel(company),
-            "company",
-            tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens."
-        )
+        render_score_card("Company Quality", f"{company}/100", ampel(company), "company", tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens.")
     with c2:
-        render_score_card(
-            "Setup Quality",
-            f"{setup_adj}/100",
-            ampel(setup_adj),
-            "setup",
-            tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter."
-        )
+        render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup", tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter.")
     with c3:
-        render_score_card(
-            "Investment Score",
-            f"{investment}/100",
-            ampel(investment),
-            "investment",
-            tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität. Dieser Wert verbindet Setup und Unternehmensqualität."
-        )
+        render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment", tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität.")
     with c4:
-        render_score_card(
-            "Trade-Struktur",
-            f"{fmt_num(tradeability_score,0)}/100",
-            tradeability_text,
-            "kb",
-            tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann, vor allem über CRV, Stop-Distanz, Entry-Lage, Timing und Marktumfeld."
-        )
+        render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}/100", tradeability_text, "kb", tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.")
     with c5:
-        render_score_card(
-            "Kurzfrist-Timing",
-            f"{tb_score_100}/100",
-            f"{tb_timing_text} | Board: {tb_score} Punkte",
-            "board",
-            tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard."
-        )
+        render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board", tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard.")
     with c6:
-        render_score_card(
-            "Kurzfrist Core",
-            f"{short_term_score}/100",
-            ampel(short_term_score),
-            "short",
-            tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke."
-        )
+        render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short", tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke.")
     with c7:
-        render_score_card(
-            "Setup-Confidence",
-            f"{fmt_num(setup_confidence,0)}/100",
-            setup_confidence_text,
-            "helper",
-            tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt."
-        )
+        render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper", tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt.")
 
 # ---------- Tabs ----------
 st.divider()
@@ -4281,120 +4310,95 @@ for col, (lab, scv) in zip(cols, hmap.items()):
 
 # ---------- Recommendation + Why block ----------
 st.divider()
-st.subheader("Handlungsempfehlung")
-c1, c2, c3, c4, c5 = st.columns(5)
+with st.expander("Erweiterte Entscheidungsansicht", expanded=False):
+    st.subheader("Handlungsempfehlung")
+    c1, c2, c3, c4, c5 = st.columns(5)
 
-with c1:
-    st.markdown(
-        f"""
-        <div class="reco-card context">
-            <div>
-                <div class="reco-top">
-                    <div class="reco-label">Analysekontext</div>
-                    <div class="reco-icon">🧭</div>
+    with c1:
+        st.markdown(
+            f"""
+            <div class="reco-card context">
+                <div>
+                    <div class="reco-top">
+                        <div class="reco-label">Analysekontext</div>
+                        <div class="reco-icon">🧭</div>
+                    </div>
+                    <div class="reco-value">{display_mode_label(mode_label)}</div>
                 </div>
-                <div class="reco-value">{display_mode_label(mode_label)}</div>
+                <div class="reco-chip">Aktueller Rahmen</div>
             </div>
-            <div class="reco-chip">Aktueller Rahmen</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-with c2:
-    main_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
-    main_chip = "Positions-Aktion" if position_mode else "Zentrale Aussage"
-    st.markdown(
-        f"""
-        <div class="reco-card main">
-            <div>
-                <div class="reco-top">
-                    <div class="reco-label">Haupteinschätzung</div>
-                    <div class="reco-icon">🎯</div>
+    with c2:
+        main_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
+        main_chip = "Positions-Aktion" if position_mode else "Zentrale Aussage"
+        st.markdown(
+            f"""
+            <div class="reco-card main">
+                <div>
+                    <div class="reco-top">
+                        <div class="reco-label">Haupteinschätzung</div>
+                        <div class="reco-icon">🎯</div>
+                    </div>
+                    <div class="reco-value">{main_label}</div>
                 </div>
-                <div class="reco-value">{main_label}</div>
+                <div class="reco-chip">{main_chip}</div>
             </div>
-            <div class="reco-chip">{main_chip}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-with c3:
-    st.markdown(
-        f"""
-        <div class="reco-card conviction">
-            <div>
-                <div class="reco-top">
-                    <div class="reco-label">Überzeugungsgrad</div>
-                    <div class="reco-icon">📌</div>
+    with c3:
+        st.markdown(
+            f"""
+            <div class="reco-card conviction">
+                <div>
+                    <div class="reco-top">
+                        <div class="reco-label">Überzeugungsgrad</div>
+                        <div class="reco-icon">📌</div>
+                    </div>
+                    <div class="reco-value">{display_conv_label(result.get("conv", "-"))}</div>
                 </div>
-                <div class="reco-value">{display_conv_label(result.get("conv", "-"))}</div>
+                <div class="reco-chip">Vertrauen ins Setup</div>
             </div>
-            <div class="reco-chip">Vertrauen ins Setup</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-with c4:
-    st.markdown(
-        f"""
-        <div class="reco-card signal">
-            <div>
-                <div class="reco-top">
-                    <div class="reco-label">Kurzfristsignal</div>
-                    <div class="reco-icon">⚡</div>
+    with c4:
+        st.markdown(
+            f"""
+            <div class="reco-card signal">
+                <div>
+                    <div class="reco-top">
+                        <div class="reco-label">Kurzfristsignal</div>
+                        <div class="reco-icon">⚡</div>
+                    </div>
+                    <div class="reco-value">{display_stb_label(stb_signal)}</div>
                 </div>
-                <div class="reco-value">{display_stb_label(stb_signal)}</div>
+                <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
             </div>
-            <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-with c5:
-    st.markdown(
-        f"""
-        <div class="reco-card market">
-            <div>
-                <div class="reco-top">
-                    <div class="reco-label">Marktumfeld</div>
-                    <div class="reco-icon">🌍</div>
+    with c5:
+        st.markdown(
+            f"""
+            <div class="reco-card market">
+                <div>
+                    <div class="reco-top">
+                        <div class="reco-label">Marktumfeld</div>
+                        <div class="reco-icon">🌍</div>
+                    </div>
+                    <div class="reco-value">{market_regime_label(market_info["regime"])}</div>
                 </div>
-                <div class="reco-value">{market_regime_label(market_info["regime"])}</div>
+                <div class="reco-delta">{market_info["ampel"]}</div>
             </div>
-            <div class="reco-delta">{market_info["ampel"]}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-st.markdown("### Warum diese Einschätzung?")
-w1, w2 = st.columns(2)
-
-with w1:
-    st.markdown("**Top-Stärken**")
-    if strengths:
-        for s in strengths:
-            st.write(f"- {s}")
-    else:
-        st.write("- Keine klaren Stärken identifiziert.")
-
-with w2:
-    st.markdown("**Top-Schwächen**")
-    if weaknesses:
-        for w in weaknesses:
-            st.write(f"- {w}")
-    else:
-        st.write("- Keine wesentlichen Schwächen identifiziert.")
-
-st.markdown("**Kurzfazit**")
-st.write(decision_summary)
-
-st.caption(
-    "Die App zeigt bewusst mehrere getrennte Sichtweisen: Core-Modell, kurzfristige Hilfsboard-Ampel, "
-    "dashboardnahen TradingBoard-Referenzscore, Marktfilter, Fundamental-Confidence, Ranking-Tabelle "
-    "und eine qualitative Begründung."
-)
+    st.caption("Diese erweiterte Sicht zeigt die zusätzlichen Diagnose- und Einordnungsbausteine der Entscheidung.")

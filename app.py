@@ -17,7 +17,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.4"
+APP_VERSION = "v10.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1803,7 +1803,9 @@ def compute_chart_df(df, chart_range):
 def build_export_row(result):
     market_info = result.get("market_info", {}) or {}
     confidence_info = result.get("confidence_info", {}) or {}
+    run_id = st.session_state.get("current_run_id", datetime.now().strftime("%Y%m%d_%H%M%S"))
     return {
+        "Run-ID": run_id,
         "Export-Zeitpunkt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": result.get("ticker", "-"),
         "Name": result.get("name", "-"),
@@ -1883,7 +1885,9 @@ def get_or_create_worksheet(spreadsheet, sheet_name, rows=5000, cols=80):
 
 def append_df_to_gsheet(df, worksheet_name="Analysis_Log"):
     if df is None or df.empty:
-        return False, "Kein DataFrame zum Schreiben"
+        if worksheet_name == "Trigger_Log":
+            return False, "Keine Trigger-Kandidaten in diesem Lauf gefunden."
+        return False, "Keine Daten zum Schreiben vorhanden."
 
     client, err = get_gsheet_client()
     if client is None:
@@ -1907,6 +1911,14 @@ def append_df_to_gsheet(df, worksheet_name="Analysis_Log"):
         for row in rows:
             ws.append_row(row, value_input_option="USER_ENTERED")
 
+        if worksheet_name == "Analysis_Log":
+            if len(rows) == 1:
+                return True, "Einzelanalyse erfolgreich in Google Sheets gespeichert."
+            return True, f"{len(rows)} Analysen erfolgreich in Google Sheets gespeichert."
+        if worksheet_name == "Trigger_Log":
+            if len(rows) == 1:
+                return True, "1 Trigger-Kandidat erfolgreich in Google Sheets gespeichert."
+            return True, f"{len(rows)} Trigger-Kandidaten erfolgreich in Google Sheets gespeichert."
         return True, f"{len(rows)} Zeilen nach {worksheet_name} geschrieben"
     except Exception as e:
         return False, str(e)
@@ -1919,6 +1931,7 @@ def build_trigger_log_df(results):
             continue
         if r.get("trigger_status") in {"Aktiv", "Nahe dran"} or r.get("watchlist_priority") == "Hoch":
             rows.append({
+                "Run-ID": st.session_state.get("current_run_id", datetime.now().strftime("%Y%m%d_%H%M%S")),
                 "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Ticker": r.get("ticker", "-"),
                 "Name": r.get("name", "-"),
@@ -3496,6 +3509,8 @@ for e in entries:
 results = []
 errors = []
 
+st.session_state.current_run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
 progress = st.progress(0)
 status = st.empty()
 
@@ -3684,6 +3699,7 @@ st.download_button(
 export_df = build_export_df(results)
 
 export_col1, export_col2 = st.columns(2)
+st.caption("Du kannst Ergebnisse als CSV exportieren oder direkt in Google Sheets als Verlauf und Backtesting-Basis speichern.")
 with export_col1:
     st.download_button(
         "Backtesting-Export für alle Ergebnisse",
@@ -3697,7 +3713,7 @@ with export_col2:
 
 gs1, gs2 = st.columns(2)
 with gs1:
-    if st.button("Alle Analysen in Google Sheet schreiben", use_container_width=True, key="log_analysis_sheet"):
+    if st.button("Gesamten Run in Google Sheets speichern", use_container_width=True, key="log_analysis_sheet"):
         ok, msg = append_df_to_gsheet(export_df, worksheet_name="Analysis_Log")
         if ok:
             st.success(msg)
@@ -3705,15 +3721,18 @@ with gs1:
             st.error(f"Google-Sheet-Logging fehlgeschlagen: {msg}")
 with gs2:
     trigger_log_df = build_trigger_log_df(results)
-    if st.button("Trigger in Google Sheet schreiben", use_container_width=True, key="log_trigger_sheet"):
+    if st.button("Trigger-Kandidaten in Google Sheets speichern", use_container_width=True, key="log_trigger_sheet"):
         ok, msg = append_df_to_gsheet(trigger_log_df, worksheet_name="Trigger_Log")
         if ok:
             st.success(msg)
         else:
-            st.error(f"Trigger-Logging fehlgeschlagen: {msg}")
+            if "Keine Trigger-Kandidaten" in msg:
+                st.info(msg)
+            else:
+                st.error(f"Trigger-Logging fehlgeschlagen: {msg}")
 
 with st.expander("Export-/Logging-Felder anzeigen", expanded=False):
-    st.caption("Diese Felder sind für Logging, Backtesting und spätere Qualitätskontrolle gedacht.")
+    st.caption("Diese Felder dienen als Verlaufsspeicher, Backtesting-Basis und zur späteren Qualitätskontrolle.")
     st.dataframe(export_df, hide_index=True, use_container_width=True, height=260)
     if trigger_log_df is not None and not trigger_log_df.empty:
         st.markdown("**Trigger-Log Vorschau**")
@@ -4244,7 +4263,7 @@ with se1:
         mime="text/csv"
     )
 with se2:
-    if st.button("Einzelanalyse in Google Sheet loggen", use_container_width=True, key="log_single_sheet"):
+    if st.button("Einzelanalyse in Google Sheets speichern", use_container_width=True, key="log_single_sheet"):
         ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
         if ok:
             st.success(msg)

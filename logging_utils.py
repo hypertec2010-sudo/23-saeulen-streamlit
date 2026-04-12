@@ -8,6 +8,210 @@ import pandas as pd
 import streamlit as st
 
 
+
+def market_regime_display(regime):
+    regime = str(regime or "").upper()
+    if regime == "POSITIV":
+        return "Positiv"
+    if regime == "NEGATIV":
+        return "Negativ"
+    if regime == "NEUTRAL":
+        return "Neutral"
+    return "Unbekannt"
+
+
+def open_log_spreadsheet():
+    client, err = get_gsheet_client()
+    if client is None:
+        return None, err
+
+    spreadsheet_name = get_secret_or_env("LOG_SPREADSHEET_NAME", "Capital_Hill_Log")
+    if not spreadsheet_name:
+        return None, "LOG_SPREADSHEET_NAME fehlt"
+
+    try:
+        sh = client.open(spreadsheet_name)
+        return sh, None
+    except Exception as e:
+        return None, str(e)
+
+
+def load_watchlists_df():
+    sh, err = open_log_spreadsheet()
+    if sh is None:
+        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At"]), err
+
+    try:
+        ws = get_or_create_worksheet(sh, "Watchlists", rows=2000, cols=10)
+        values = ws.get_all_values()
+        if not values:
+            headers = ["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At"]
+            ws.append_row(headers, value_input_option="USER_ENTERED")
+            return pd.DataFrame(columns=headers), None
+
+        headers = values[0]
+        rows = values[1:]
+        if not rows:
+            return pd.DataFrame(columns=headers), None
+
+        df = pd.DataFrame(rows, columns=headers)
+        for col in ["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At"]:
+            if col not in df.columns:
+                df[col] = ""
+        return df, None
+    except Exception as e:
+        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At"]), str(e)
+
+
+def save_watchlists_df(df):
+    sh, err = open_log_spreadsheet()
+    if sh is None:
+        return False, err
+
+    try:
+        ws = get_or_create_worksheet(sh, "Watchlists", rows=max(2000, len(df) + 20), cols=10)
+        ws.clear()
+
+        headers = ["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At"]
+        ws.append_row(headers, value_input_option="USER_ENTERED")
+
+        if df is not None and not df.empty:
+            data = df[headers].fillna("").astype(str).values.tolist()
+            for row in data:
+                ws.append_row(row, value_input_option="USER_ENTERED")
+        return True, "Watchlists gespeichert"
+    except Exception as e:
+        return False, str(e)
+
+
+def create_watchlist(watchlist_name, watchlist_type):
+    name = str(watchlist_name or "").strip()
+    wl_type = str(watchlist_type or "").strip() or "Watchlist"
+    if not name:
+        return False, "Bitte einen Watchlist-Namen eingeben."
+
+    df, err = load_watchlists_df()
+    if err:
+        return False, err
+
+    existing = df["Watchlist_Name"].astype(str).str.strip().str.lower().tolist() if not df.empty else []
+    if name.lower() in existing:
+        return False, "Eine Watchlist mit diesem Namen existiert bereits."
+
+    new_row = pd.DataFrame([{
+        "Watchlist_Name": name,
+        "Watchlist_Type": wl_type,
+        "Ticker": "",
+        "Added_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }])
+    df = pd.concat([df, new_row], ignore_index=True)
+    return save_watchlists_df(df)
+
+
+def add_entries_to_watchlist(watchlist_name, watchlist_type, entries):
+    name = str(watchlist_name or "").strip()
+    if not name:
+        return False, "Keine Watchlist ausgewählt."
+
+    df, err = load_watchlists_df()
+    if err:
+        return False, err
+
+    if df.empty or name.lower() not in df["Watchlist_Name"].astype(str).str.strip().str.lower().tolist():
+        ok, msg = create_watchlist(name, watchlist_type)
+        if not ok:
+            return False, msg
+        df, err = load_watchlists_df()
+        if err:
+            return False, err
+
+    wl_type = watchlist_type
+    existing_rows = df[df["Watchlist_Name"].astype(str).str.strip().str.lower() == name.lower()].copy()
+    if not existing_rows.empty:
+        non_empty_types = [x for x in existing_rows["Watchlist_Type"].astype(str).tolist() if str(x).strip()]
+        if non_empty_types:
+            wl_type = non_empty_types[0]
+
+    existing_tickers = {
+        str(x).strip().upper()
+        for x in existing_rows["Ticker"].astype(str).tolist()
+        if str(x).strip()
+    }
+
+    cleaned = []
+    for entry in entries:
+        val = str(entry or "").strip().upper()
+        if val and val not in existing_tickers:
+            cleaned.append(val)
+
+    if not cleaned:
+        return False, "Keine neuen Ticker zum Hinzufügen gefunden."
+
+    new_rows = pd.DataFrame([
+        {
+            "Watchlist_Name": name,
+            "Watchlist_Type": wl_type,
+            "Ticker": ticker,
+            "Added_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        for ticker in cleaned
+    ])
+
+    df = pd.concat([df, new_rows], ignore_index=True)
+    ok, msg = save_watchlists_df(df)
+    if ok:
+        return True, f"{len(cleaned)} Ticker zu '{name}' hinzugefügt."
+    return False, msg
+
+
+def remove_ticker_from_watchlist(watchlist_name, ticker):
+    name = str(watchlist_name or "").strip()
+    tkr = str(ticker or "").strip().upper()
+    if not name or not tkr:
+        return False, "Bitte Watchlist und Ticker auswählen."
+
+    df, err = load_watchlists_df()
+    if err:
+        return False, err
+
+    mask = ~(
+        (df["Watchlist_Name"].astype(str).str.strip().str.lower() == name.lower()) &
+        (df["Ticker"].astype(str).str.strip().str.upper() == tkr)
+    )
+    new_df = df[mask].copy()
+
+    remaining_rows = new_df[new_df["Watchlist_Name"].astype(str).str.strip().str.lower() == name.lower()]
+    if remaining_rows.empty:
+        # metadata row beibehalten
+        new_df = pd.concat([new_df, pd.DataFrame([{
+            "Watchlist_Name": name,
+            "Watchlist_Type": "Watchlist",
+            "Ticker": "",
+            "Added_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }])], ignore_index=True)
+
+    ok, msg = save_watchlists_df(new_df)
+    if ok:
+        return True, f"{tkr} aus '{name}' entfernt."
+    return False, msg
+
+
+def delete_watchlist(watchlist_name):
+    name = str(watchlist_name or "").strip()
+    if not name:
+        return False, "Keine Watchlist ausgewählt."
+
+    df, err = load_watchlists_df()
+    if err:
+        return False, err
+
+    new_df = df[df["Watchlist_Name"].astype(str).str.strip().str.lower() != name.lower()].copy()
+    ok, msg = save_watchlists_df(new_df)
+    if ok:
+        return True, f"Watchlist '{name}' gelöscht."
+    return False, msg
+
+
 def build_export_row(result):
     market_info = result.get("market_info", {}) or {}
     confidence_info = result.get("confidence_info", {}) or {}
@@ -151,7 +355,7 @@ def build_trigger_log_df(results):
                 "Trade-Struktur": r.get("tradeability_score", np.nan),
                 "Setup-Confidence": r.get("setup_confidence", np.nan),
                 "Entry-Lage": r.get("entry_quality", "-"),
-                "Marktregime": market_regime_label((r.get("market_info", {}) or {}).get("regime", "UNBEKANNT")),
+                "Marktregime": market_regime_display((r.get("market_info", {}) or {}).get("regime", "UNBEKANNT")),
                 "Top Red Flag": r.get("top_red_flag", "-"),
                 "Kurzfazit": r.get("short_thesis", r.get("decision_summary", "-")),
             })

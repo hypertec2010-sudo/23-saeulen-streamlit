@@ -32,7 +32,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.10"
+APP_VERSION = "v10.10.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3282,17 +3282,26 @@ top1, top2 = st.columns([0.72, 2.28])
 with top1:
     if logo_path.exists():
         st.image(str(logo_path), use_container_width=True)
+        st.markdown(
+            f"""
+            <div style="text-align:left; margin-top:6px; margin-bottom:6px;">
+                <span class="model-pill">Release {APP_VERSION} · Premium Dashboard</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     else:
         st.title("📊 Capital Hill Score Modell")
+        st.markdown(
+            f"""
+            <div style="text-align:left; margin-top:6px; margin-bottom:6px;">
+                <span class="model-pill">Release {APP_VERSION} · Premium Dashboard</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 with top2:
-    st.markdown(
-        f"""
-        <div style="text-align:left; margin-top:10px; margin-bottom:6px;">
-            <span class="model-pill">Release {APP_VERSION} · Premium Dashboard</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("")
 st.caption(
     "Investment- und Trading-Entscheidungen in einer Oberfläche. "
     "Mit Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement, Watchlisten und Telegram-Alerts."

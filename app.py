@@ -30,7 +30,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.7"
+APP_VERSION = "v10.7.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -42,7 +42,6 @@ st.set_page_config(
 if not check_password():
     st.stop()
 
-# ---------- Session State / App Defaults ----------
 # ---------- Session State / App Defaults ----------
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "AAPL"

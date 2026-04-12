@@ -318,6 +318,20 @@ def save_alert_history_df(df):
         return False, str(e)
 
 
+
+
+def has_any_alert_history_for_ticker(watchlist_name, ticker):
+    df, err = load_alert_history_df()
+    if err or df.empty:
+        return False
+
+    mask = (
+        (df["Watchlist_Name"].astype(str).str.strip().str.lower() == str(watchlist_name).strip().lower()) &
+        (df["Ticker"].astype(str).str.strip().str.upper() == str(ticker).strip().upper())
+    )
+    return bool(mask.sum() > 0)
+
+
 def get_alert_history_entry(watchlist_name, ticker, alert_type):
     df, err = load_alert_history_df()
     if err or df.empty:

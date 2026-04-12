@@ -8,6 +8,61 @@ import pandas as pd
 import streamlit as st
 
 
+def build_export_row(result):
+    market_info = result.get("market_info", {}) or {}
+    confidence_info = result.get("confidence_info", {}) or {}
+    run_id = st.session_state.get("current_run_id", datetime.now().strftime("%Y%m%d_%H%M%S"))
+    return {
+        "Run-ID": run_id,
+        "Export-Zeitpunkt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Ticker": result.get("ticker", "-"),
+        "Name": result.get("name", "-"),
+        "Modus": result.get("mode_label", "-"),
+        "Setup-Typ": result.get("setup_type", "-"),
+        "Valides Setup": "Ja" if result.get("valid_trade_setup", False) else "Nein",
+        "Investment-Attraktivität": result.get("investment_case_score", np.nan),
+        "Einstieg jetzt attraktiv?": result.get("trading_case_score", np.nan),
+        "Trade-Struktur": result.get("tradeability_score", np.nan),
+        "Setup-Confidence": result.get("setup_confidence", np.nan),
+        "Entry-Lage": result.get("entry_quality", "-"),
+        "Entry-Zone": result.get("suggested_entry_zone", "-"),
+        "Marktregime": result.get("market_regime_label", "-") if "market_regime_label" in result else (market_info.get("regime", "UNBEKANNT") if isinstance(market_info, dict) else "-"),
+        "Benchmark": result.get("benchmark_label", "-"),
+        "Company Quality": result.get("company", np.nan),
+        "Setup Quality": result.get("setup_adj", np.nan),
+        "Investment Score": result.get("investment", np.nan),
+        "Kurzfrist-Timing": result.get("tb_score_100", np.nan),
+        "TradingBoard Score": result.get("tb_score", np.nan),
+        "Kurs": result.get("price", np.nan),
+        "Stop": result.get("stop_used", np.nan),
+        "Stop-Herleitung": result.get("stop_source", "-"),
+        "TP1": result.get("tp1", np.nan),
+        "TP1-Herleitung": result.get("tp1_source", "-"),
+        "TP2": result.get("tp2", np.nan),
+        "TP2-Herleitung": result.get("tp2_source", "-"),
+        "TP3": result.get("tp3", np.nan),
+        "TP3-Herleitung": result.get("tp3_source", "-"),
+        "Primärziel aus Setup": result.get("technical_target_1", np.nan),
+        "Sekundärziel aus Setup": result.get("technical_target_2", np.nan),
+        "CRV": result.get("crv", np.nan),
+        "Positionsgröße": result.get("pos_size", np.nan),
+        "Risiko EUR": result.get("risk_eur", np.nan),
+        "Handlung": result.get("position_action", result.get("emp", "-")),
+        "Trigger-Status": result.get("trigger_status", "-"),
+        "Watchlist-Priorität": result.get("watchlist_priority", "-"),
+        "Nächster Trigger": result.get("next_trigger", "-"),
+        "Trigger-Begründung": result.get("trigger_reason", "-"),
+        "Top Red Flag": result.get("top_red_flag", "-"),
+        "Kurzfazit": result.get("short_thesis", result.get("decision_summary", "-")),
+        "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
+    }
+
+
+def build_export_df(results):
+    rows = [build_export_row(r) for r in results]
+    return pd.DataFrame(rows)
+
+
 def get_secret_or_env(key, default=None):
     try:
         if key in st.secrets:

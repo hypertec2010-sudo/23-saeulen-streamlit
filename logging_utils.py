@@ -252,6 +252,136 @@ def get_watchlist_alert_mode(watchlist_name):
     return vals[0] if vals else "Standard"
 
 
+
+
+def load_alert_history_df():
+    sh, err = open_log_spreadsheet()
+    cols = [
+        "Watchlist_Name",
+        "Watchlist_Type",
+        "Alert_Mode",
+        "Ticker",
+        "Alert_Type",
+        "Alert_Signature",
+        "Last_Sent_At",
+        "Last_Sent_Date",
+    ]
+    if sh is None:
+        return pd.DataFrame(columns=cols), err
+
+    try:
+        ws = get_or_create_worksheet(sh, "Alert_History", rows=5000, cols=12)
+        values = ws.get_all_values()
+        if not values:
+            ws.append_row(cols, value_input_option="USER_ENTERED")
+            return pd.DataFrame(columns=cols), None
+
+        headers = values[0]
+        rows = values[1:]
+        if not rows:
+            return pd.DataFrame(columns=headers), None
+
+        df = pd.DataFrame(rows, columns=headers)
+        for col in cols:
+            if col not in df.columns:
+                df[col] = ""
+        return df[cols], None
+    except Exception as e:
+        return pd.DataFrame(columns=cols), str(e)
+
+
+def save_alert_history_df(df):
+    sh, err = open_log_spreadsheet()
+    cols = [
+        "Watchlist_Name",
+        "Watchlist_Type",
+        "Alert_Mode",
+        "Ticker",
+        "Alert_Type",
+        "Alert_Signature",
+        "Last_Sent_At",
+        "Last_Sent_Date",
+    ]
+    if sh is None:
+        return False, err
+
+    try:
+        ws = get_or_create_worksheet(sh, "Alert_History", rows=max(5000, len(df) + 20), cols=12)
+        ws.clear()
+        ws.append_row(cols, value_input_option="USER_ENTERED")
+        if df is not None and not df.empty:
+            data = df[cols].fillna("").astype(str).values.tolist()
+            for row in data:
+                ws.append_row(row, value_input_option="USER_ENTERED")
+        return True, "Alert-History gespeichert"
+    except Exception as e:
+        return False, str(e)
+
+
+def get_alert_history_entry(watchlist_name, ticker, alert_type):
+    df, err = load_alert_history_df()
+    if err or df.empty:
+        return None
+
+    mask = (
+        (df["Watchlist_Name"].astype(str).str.strip().str.lower() == str(watchlist_name).strip().lower()) &
+        (df["Ticker"].astype(str).str.strip().str.upper() == str(ticker).strip().upper()) &
+        (df["Alert_Type"].astype(str).str.strip() == str(alert_type).strip())
+    )
+    subset = df.loc[mask]
+    if subset.empty:
+        return None
+    return subset.iloc[0].to_dict()
+
+
+def upsert_alert_history_entry(watchlist_name, watchlist_type, alert_mode, ticker, alert_type, alert_signature):
+    df, err = load_alert_history_df()
+    if err:
+        return False, err
+
+    now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    if df is None or df.empty:
+        df = pd.DataFrame(columns=[
+            "Watchlist_Name",
+            "Watchlist_Type",
+            "Alert_Mode",
+            "Ticker",
+            "Alert_Type",
+            "Alert_Signature",
+            "Last_Sent_At",
+            "Last_Sent_Date",
+        ])
+
+    mask = (
+        (df["Watchlist_Name"].astype(str).str.strip().str.lower() == str(watchlist_name).strip().lower()) &
+        (df["Ticker"].astype(str).str.strip().str.upper() == str(ticker).strip().upper()) &
+        (df["Alert_Type"].astype(str).str.strip() == str(alert_type).strip())
+    )
+
+    if mask.sum() == 0:
+        new_row = pd.DataFrame([{
+            "Watchlist_Name": watchlist_name,
+            "Watchlist_Type": watchlist_type,
+            "Alert_Mode": alert_mode,
+            "Ticker": ticker,
+            "Alert_Type": alert_type,
+            "Alert_Signature": alert_signature,
+            "Last_Sent_At": now_ts,
+            "Last_Sent_Date": today,
+        }])
+        df = pd.concat([df, new_row], ignore_index=True)
+    else:
+        df.loc[mask, "Watchlist_Type"] = watchlist_type
+        df.loc[mask, "Alert_Mode"] = alert_mode
+        df.loc[mask, "Alert_Signature"] = alert_signature
+        df.loc[mask, "Last_Sent_At"] = now_ts
+        df.loc[mask, "Last_Sent_Date"] = today
+
+    return save_alert_history_df(df)
+
+
 def build_export_row(result):
     market_info = result.get("market_info", {}) or {}
     confidence_info = result.get("confidence_info", {}) or {}

@@ -17,7 +17,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.4"
+APP_VERSION = "v10.4.1-debug"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1855,10 +1855,12 @@ def build_export_df(results):
 
 def get_secret_or_env(key, default=None):
     try:
+        available_keys = list(st.secrets.keys())
+        st.info(f"DEBUG Secrets sichtbar: {available_keys}")
         if key in st.secrets:
             return st.secrets[key]
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(f"DEBUG Secrets-Fehler: {e}")
     return os.environ.get(key, default)
 
 

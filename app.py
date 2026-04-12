@@ -31,7 +31,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.9.2"
+APP_VERSION = "v10.9.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3297,28 +3297,56 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+st.markdown(
+    """
+    <style>
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
+        min-height: 122px;
+        white-space: pre-line;
+        line-height: 1.35;
+        font-weight: 800;
+        border-radius: 20px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 wc1, wc2, wc3 = st.columns(3)
 with wc1:
     if st.button(
-        "🔎 Sofortanalyse\nEinzelne Aktie prüfen oder mehrere Werte spontan vergleichen",
+        "🔎 Sofortanalyse\nEinzelaktie prüfen\noder mehrere Werte vergleichen",
         use_container_width=True,
         key="workspace_analysis_btn"
     ):
         st.session_state.workspace_mode = "Sofortanalyse"
 with wc2:
     if st.button(
-        "📋 Watchlisten\nBeobachtungslisten pflegen, Trigger priorisieren und mit Telegram prüfen",
+        "📋 Watchlisten\nBeobachtungslisten pflegen\nund Trigger gezielt prüfen",
         use_container_width=True,
         key="workspace_watchlist_btn"
     ):
         st.session_state.workspace_mode = "Watchlisten"
 with wc3:
     if st.button(
-        "🛡️ Positionen\nBestehende Positionen überwachen, Risiken erkennen und Maßnahmen ableiten",
+        "🛡️ Positionen\nBestehende Positionen überwachen\nund Maßnahmen ableiten",
         use_container_width=True,
         key="workspace_position_btn"
     ):
         st.session_state.workspace_mode = "Positionen"
+
+st.markdown(
+    """
+    <style>
+    div[data-testid="stButton"] > button {
+        min-height: auto;
+        white-space: normal;
+        line-height: 1.2;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 workspace_mode = st.session_state.workspace_mode
 

@@ -1,9 +1,12 @@
 
 # -*- coding: utf-8 -*-
+import os
 import re
+import json
 import warnings
 from datetime import datetime, timezone, date, timedelta
 
+import gspread
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -14,7 +17,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.3"
+APP_VERSION = "v10.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1850,6 +1853,90 @@ def build_export_df(results):
     return pd.DataFrame(rows)
 
 
+def get_secret_or_env(key, default=None):
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.environ.get(key, default)
+
+
+def get_gsheet_client():
+    creds_json_str = get_secret_or_env("GCP_CREDENTIALS")
+    if not creds_json_str:
+        return None, "GCP_CREDENTIALS fehlt"
+    try:
+        creds = json.loads(creds_json_str)
+        gc = gspread.service_account_from_dict(creds)
+        return gc, None
+    except Exception as e:
+        return None, f"GCP_CREDENTIALS ungueltig: {e}"
+
+
+def get_or_create_worksheet(spreadsheet, sheet_name, rows=5000, cols=80):
+    try:
+        return spreadsheet.worksheet(sheet_name)
+    except Exception:
+        return spreadsheet.add_worksheet(title=sheet_name, rows=str(rows), cols=str(cols))
+
+
+def append_df_to_gsheet(df, worksheet_name="Analysis_Log"):
+    if df is None or df.empty:
+        return False, "Kein DataFrame zum Schreiben"
+
+    client, err = get_gsheet_client()
+    if client is None:
+        return False, err
+
+    spreadsheet_name = get_secret_or_env("LOG_SPREADSHEET_NAME", "Capital_Hill_Log")
+    if not spreadsheet_name:
+        return False, "LOG_SPREADSHEET_NAME fehlt"
+
+    try:
+        sh = client.open(spreadsheet_name)
+        ws = get_or_create_worksheet(sh, worksheet_name, rows=max(5000, len(df) + 20), cols=max(80, len(df.columns) + 5))
+
+        existing_values = ws.get_all_values()
+        has_header = len(existing_values) > 0
+
+        if not has_header:
+            ws.append_row(df.columns.astype(str).tolist(), value_input_option="USER_ENTERED")
+
+        rows = df.fillna("").astype(str).values.tolist()
+        for row in rows:
+            ws.append_row(row, value_input_option="USER_ENTERED")
+
+        return True, f"{len(rows)} Zeilen nach {worksheet_name} geschrieben"
+    except Exception as e:
+        return False, str(e)
+
+
+def build_trigger_log_df(results):
+    rows = []
+    for r in results:
+        if r.get("mode_label") == "Position":
+            continue
+        if r.get("trigger_status") in {"Aktiv", "Nahe dran"} or r.get("watchlist_priority") == "Hoch":
+            rows.append({
+                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Ticker": r.get("ticker", "-"),
+                "Name": r.get("name", "-"),
+                "Modus": r.get("mode_label", "-"),
+                "Handlung": r.get("emp", "-"),
+                "Trigger-Status": r.get("trigger_status", "-"),
+                "Watchlist-Priorität": r.get("watchlist_priority", "-"),
+                "Einstieg jetzt attraktiv?": r.get("trading_case_score", np.nan),
+                "Trade-Struktur": r.get("tradeability_score", np.nan),
+                "Setup-Confidence": r.get("setup_confidence", np.nan),
+                "Entry-Lage": r.get("entry_quality", "-"),
+                "Marktregime": market_regime_label((r.get("market_info", {}) or {}).get("regime", "UNBEKANNT")),
+                "Top Red Flag": r.get("top_red_flag", "-"),
+                "Kurzfazit": r.get("short_thesis", r.get("decision_summary", "-")),
+            })
+    return pd.DataFrame(rows)
+
+
 def analyze_stock(
     ticker,
     horizon,
@@ -3608,9 +3695,29 @@ with export_col2:
     if not export_df.empty:
         st.metric("Export-Zeilen", len(export_df))
 
+gs1, gs2 = st.columns(2)
+with gs1:
+    if st.button("Alle Analysen in Google Sheet schreiben", use_container_width=True, key="log_analysis_sheet"):
+        ok, msg = append_df_to_gsheet(export_df, worksheet_name="Analysis_Log")
+        if ok:
+            st.success(msg)
+        else:
+            st.error(f"Google-Sheet-Logging fehlgeschlagen: {msg}")
+with gs2:
+    trigger_log_df = build_trigger_log_df(results)
+    if st.button("Trigger in Google Sheet schreiben", use_container_width=True, key="log_trigger_sheet"):
+        ok, msg = append_df_to_gsheet(trigger_log_df, worksheet_name="Trigger_Log")
+        if ok:
+            st.success(msg)
+        else:
+            st.error(f"Trigger-Logging fehlgeschlagen: {msg}")
+
 with st.expander("Export-/Logging-Felder anzeigen", expanded=False):
     st.caption("Diese Felder sind für Logging, Backtesting und spätere Qualitätskontrolle gedacht.")
     st.dataframe(export_df, hide_index=True, use_container_width=True, height=260)
+    if trigger_log_df is not None and not trigger_log_df.empty:
+        st.markdown("**Trigger-Log Vorschau**")
+        st.dataframe(trigger_log_df, hide_index=True, use_container_width=True, height=180)
 
 if not ranking_df.empty:
     st.markdown(f"**Ranking-Details – {ranking_focus}**")
@@ -4137,7 +4244,14 @@ with se1:
         mime="text/csv"
     )
 with se2:
-    st.caption("Die Hauptansicht bleibt bewusst kurz. Vertiefende Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.")
+    if st.button("Einzelanalyse in Google Sheet loggen", use_container_width=True, key="log_single_sheet"):
+        ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
+        if ok:
+            st.success(msg)
+        else:
+            st.error(f"Google-Sheet-Logging fehlgeschlagen: {msg}")
+
+st.caption("Die Hauptansicht bleibt bewusst kurz. Vertiefende Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.")
 
 with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)

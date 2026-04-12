@@ -17,7 +17,7 @@ from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.5"
+APP_VERSION = "v10.6A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -26,9 +26,27 @@ st.set_page_config(
 )
 
 
+# ---------- Auth / Secrets ----------
+def get_app_password():
+    try:
+        if "PASSWORD" in st.secrets:
+            return st.secrets["PASSWORD"]
+        if "SCREENER_APP_PASSWORD" in st.secrets:
+            return st.secrets["SCREENER_APP_PASSWORD"]
+    except Exception:
+        return None
+    return None
+
+
 def check_password():
+    app_password = get_app_password()
+
+    if not app_password:
+        st.error("Kein Passwort-Secret gefunden. Bitte in Streamlit Secrets PASSWORD oder SCREENER_APP_PASSWORD setzen.")
+        return False
+
     def password_entered():
-        if st.session_state["password"] == st.secrets["PASSWORD"]:
+        if st.session_state["password"] == app_password:
             st.session_state["password_correct"] = True
             del st.session_state["password"]
         else:
@@ -47,7 +65,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-# ---------- Session State ----------
+# ---------- Session State / App Defaults ----------
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "AAPL"
 
@@ -84,7 +102,7 @@ if "selected_ranking_ticker" not in st.session_state:
 if "last_mode_label" not in st.session_state:
     st.session_state.last_mode_label = "Watchlist"
 
-# ---------- CSS ----------
+# ---------- UI Theme / CSS ----------
 st.markdown("""
 <style>
 .metric-card{
@@ -498,6 +516,7 @@ def score_badge(score):
     return "Schwach", "#dc2626"
 
 
+# ---------- Ranking / Table Helpers ----------
 def style_ranking_df(df):
     score_cols = [
         "Company Quality",
@@ -1800,6 +1819,7 @@ def compute_chart_df(df, chart_range):
     return chart_df
 
 
+# ---------- Export / Logging Helpers ----------
 def build_export_row(result):
     market_info = result.get("market_info", {}) or {}
     confidence_info = result.get("confidence_info", {}) or {}
@@ -1924,6 +1944,16 @@ def append_df_to_gsheet(df, worksheet_name="Analysis_Log"):
         return False, str(e)
 
 
+def show_sheet_result(ok, msg, prefix_fail="Google-Sheet-Logging fehlgeschlagen"):
+    if ok:
+        st.success(msg)
+    else:
+        if "Keine Trigger-Kandidaten" in str(msg):
+            st.info(msg)
+        else:
+            st.error(f"{prefix_fail}: {msg}")
+
+
 def build_trigger_log_df(results):
     rows = []
     for r in results:
@@ -1950,6 +1980,7 @@ def build_trigger_log_df(results):
     return pd.DataFrame(rows)
 
 
+# ---------- Core Analysis Engine ----------
 def analyze_stock(
     ticker,
     horizon,
@@ -3304,6 +3335,7 @@ def analyze_stock(
     }
 
 
+# ---------- Main App Flow ----------
 st.title("📊 Capital Hill Score Modell")
 st.markdown(f"<div class='model-pill'>Release {APP_VERSION} · Mobile-optimierte Steuerung · Premium-Dashboard</div>", unsafe_allow_html=True)
 st.caption(
@@ -3715,21 +3747,12 @@ gs1, gs2 = st.columns(2)
 with gs1:
     if st.button("Gesamten Run in Google Sheets speichern", use_container_width=True, key="log_analysis_sheet"):
         ok, msg = append_df_to_gsheet(export_df, worksheet_name="Analysis_Log")
-        if ok:
-            st.success(msg)
-        else:
-            st.error(f"Google-Sheet-Logging fehlgeschlagen: {msg}")
+        show_sheet_result(ok, msg)
 with gs2:
     trigger_log_df = build_trigger_log_df(results)
     if st.button("Trigger-Kandidaten in Google Sheets speichern", use_container_width=True, key="log_trigger_sheet"):
         ok, msg = append_df_to_gsheet(trigger_log_df, worksheet_name="Trigger_Log")
-        if ok:
-            st.success(msg)
-        else:
-            if "Keine Trigger-Kandidaten" in msg:
-                st.info(msg)
-            else:
-                st.error(f"Trigger-Logging fehlgeschlagen: {msg}")
+        show_sheet_result(ok, msg, prefix_fail="Trigger-Logging fehlgeschlagen")
 
 with st.expander("Export-/Logging-Felder anzeigen", expanded=False):
     st.caption("Diese Felder dienen als Verlaufsspeicher, Backtesting-Basis und zur späteren Qualitätskontrolle.")
@@ -4265,10 +4288,7 @@ with se1:
 with se2:
     if st.button("Einzelanalyse in Google Sheets speichern", use_container_width=True, key="log_single_sheet"):
         ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
-        if ok:
-            st.success(msg)
-        else:
-            st.error(f"Google-Sheet-Logging fehlgeschlagen: {msg}")
+        show_sheet_result(ok, msg)
 
 st.caption("Die Hauptansicht bleibt bewusst kurz. Vertiefende Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.")
 

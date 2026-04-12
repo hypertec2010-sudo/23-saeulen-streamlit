@@ -67,21 +67,27 @@ def should_alert_for_watchlist_result(result, watchlist_type):
         position_action = str(result.get("position_action", "")).lower()
         partial_profit = str(result.get("partial_profit_action", "")).lower()
         risk_note = str(result.get("risk_note", "")).lower()
+        setup_conf = float(result.get("setup_confidence", 0) or 0)
         return (
             "risiko reduzieren" in position_action
             or partial_profit.startswith("ja")
             or "erhöht" in risk_note
             or "verlustposition" in risk_note
+            or ("eng beobachten" in position_action and setup_conf < 55)
         )
 
     trigger_status = str(result.get("trigger_status", ""))
     priority = str(result.get("watchlist_priority", ""))
     entry_score = float(result.get("trading_case_score", 0) or 0)
+    invest_score = float(result.get("investment_case_score", 0) or 0)
+    setup_conf = float(result.get("setup_confidence", 0) or 0)
     entry_quality = str(result.get("entry_quality", ""))
+    emp = str(result.get("emp", ""))
+
     return (
-        trigger_status == "Aktiv"
-        or (priority == "Hoch" and entry_score >= 70)
-        or (trigger_status == "Nahe dran" and entry_quality in {"gut", "abwarten"})
+        (trigger_status == "Aktiv" and entry_score >= 68 and setup_conf >= 58)
+        or (priority == "Hoch" and entry_score >= 72 and invest_score >= 65 and setup_conf >= 55)
+        or (trigger_status == "Nahe dran" and entry_quality in {"gut", "abwarten"} and entry_score >= 74 and "EINSTIEG PRÜFEN" in emp)
     )
 
 

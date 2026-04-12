@@ -12,7 +12,18 @@ def get_telegram_credentials():
     return token, chat_id
 
 
-def build_watchlist_telegram_text(result, watchlist_name, watchlist_type):
+def get_alert_type_label(result, watchlist_type):
+    if watchlist_type == "Positions-Watchlist":
+        position_action = str(result.get("position_action", "")).lower()
+        partial_profit = str(result.get("partial_profit_action", "")).lower()
+        if "risiko reduzieren" in position_action:
+            return "Risiko-Alert"
+        if partial_profit.startswith("ja"):
+            return "Teilgewinn-Alert"
+        return "Positions-Info"
+
+
+def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_mode="Standard"):
     ticker = result.get("ticker", "-")
     name = result.get("name", "-")
 
@@ -30,10 +41,12 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type):
     red_flag = result.get("top_red_flag", "-")
     mode = result.get("mode_label", "-")
 
+    alert_type = get_alert_type_label(result, watchlist_type)
     lines = [
-        "Capital Hill Alert",
+        f"Capital Hill | {alert_type}",
         f"Watchlist: {watchlist_name}",
         f"Typ: {watchlist_type}",
+        f"Alert-Modus: {alert_mode}",
         f"{ticker} | {name}",
         f"Modus: {mode}",
         f"Handlung: {action}",
@@ -62,12 +75,29 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type):
     return "\n".join(lines)
 
 
-def should_alert_for_watchlist_result(result, watchlist_type):
+def should_alert_for_watchlist_result(result, watchlist_type, alert_mode="Standard"):
+    mode = str(alert_mode or "Standard")
+
     if watchlist_type == "Positions-Watchlist":
         position_action = str(result.get("position_action", "")).lower()
         partial_profit = str(result.get("partial_profit_action", "")).lower()
         risk_note = str(result.get("risk_note", "")).lower()
         setup_conf = float(result.get("setup_confidence", 0) or 0)
+
+        if mode == "Konservativ":
+            return (
+                "risiko reduzieren" in position_action
+                or partial_profit.startswith("ja")
+                or "verlustposition" in risk_note
+            )
+        if mode == "Früh":
+            return (
+                "risiko reduzieren" in position_action
+                or partial_profit.startswith("ja")
+                or "erhöht" in risk_note
+                or "verlustposition" in risk_note
+                or ("eng beobachten" in position_action and setup_conf < 60)
+            )
         return (
             "risiko reduzieren" in position_action
             or partial_profit.startswith("ja")
@@ -84,6 +114,17 @@ def should_alert_for_watchlist_result(result, watchlist_type):
     entry_quality = str(result.get("entry_quality", ""))
     emp = str(result.get("emp", ""))
 
+    if mode == "Konservativ":
+        return (
+            (trigger_status == "Aktiv" and entry_score >= 72 and setup_conf >= 62 and invest_score >= 68)
+            or (priority == "Hoch" and entry_score >= 78 and invest_score >= 70 and setup_conf >= 60 and "EINSTIEG PRÜFEN" in emp)
+        )
+    if mode == "Früh":
+        return (
+            (trigger_status == "Aktiv" and entry_score >= 64 and setup_conf >= 52)
+            or (priority == "Hoch" and entry_score >= 68 and invest_score >= 62 and setup_conf >= 50)
+            or (trigger_status == "Nahe dran" and entry_quality in {"gut", "abwarten"} and entry_score >= 70)
+        )
     return (
         (trigger_status == "Aktiv" and entry_score >= 68 and setup_conf >= 58)
         or (priority == "Hoch" and entry_score >= 72 and invest_score >= 65 and setup_conf >= 55)
@@ -110,7 +151,7 @@ def send_telegram_message(message_text):
         return False, str(e)
 
 
-def send_watchlist_alerts(results, watchlist_name, watchlist_type):
+def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="Standard"):
     if not results:
         return False, "Keine Ergebnisse für Telegram-Alerts vorhanden.", 0
 
@@ -119,9 +160,9 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type):
     errors = []
 
     for result in results:
-        if should_alert_for_watchlist_result(result, watchlist_type):
+        if should_alert_for_watchlist_result(result, watchlist_type, alert_mode):
             matched += 1
-            msg = build_watchlist_telegram_text(result, watchlist_name, watchlist_type)
+            msg = build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_mode)
             ok, err = send_telegram_message(msg)
             if ok:
                 sent += 1

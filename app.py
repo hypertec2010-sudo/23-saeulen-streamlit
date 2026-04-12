@@ -32,7 +32,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.9.4"
+APP_VERSION = "v10.9.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3278,7 +3278,7 @@ def analyze_stock(
 # ---------- Main App Flow ----------
 logo_path = Path("a_logo_for_the_capital_hill_score_model_is_promi.png")
 
-top1, top2, top3 = st.columns([1, 2.2, 1])
+top1, top2, top3 = st.columns([1.8, 0.9, 1.8])
 with top2:
     if logo_path.exists():
         st.image(str(logo_path), use_container_width=True)
@@ -3317,7 +3317,6 @@ st.markdown(
     """
     <style>
     div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
-        min-height: 122px;
         white-space: pre-line;
         line-height: 1.35;
         font-weight: 800;
@@ -3331,21 +3330,21 @@ st.markdown(
 wc1, wc2, wc3 = st.columns(3)
 with wc1:
     if st.button(
-        "🔎 Sofortanalyse\nEinzelaktie prüfen\noder mehrere Werte vergleichen",
+        "🔎 Sofortanalyse\nEinzelaktie oder Vergleich",
         use_container_width=True,
         key="workspace_analysis_btn"
     ):
         st.session_state.workspace_mode = "Sofortanalyse"
 with wc2:
     if st.button(
-        "📋 Watchlisten\nBeobachtungslisten pflegen\nund Trigger gezielt prüfen",
+        "📋 Watchlisten\nListen pflegen und prüfen",
         use_container_width=True,
         key="workspace_watchlist_btn"
     ):
         st.session_state.workspace_mode = "Watchlisten"
 with wc3:
     if st.button(
-        "🛡️ Positionen\nBestehende Positionen überwachen\nund Maßnahmen ableiten",
+        "🛡️ Positionen\nPositionen überwachen",
         use_container_width=True,
         key="workspace_position_btn"
     ):
@@ -3355,9 +3354,11 @@ st.markdown(
     """
     <style>
     div[data-testid="stButton"] > button {
-        min-height: auto;
+        min-height: 2.75rem;
         white-space: normal;
-        line-height: 1.2;
+        line-height: 1.15;
+        padding-top: 0.35rem;
+        padding-bottom: 0.35rem;
     }
     </style>
     """,

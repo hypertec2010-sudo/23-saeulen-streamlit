@@ -31,7 +31,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.9.1"
+APP_VERSION = "v10.9.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -308,6 +308,13 @@ pre{white-space:pre-wrap !important;}
 .workspace-card.watchlist.active{box-shadow:0 20px 36px rgba(139,92,246,0.20);}
 .workspace-card.position.active{box-shadow:0 20px 36px rgba(245,158,11,0.20);}
 .workspace-select-btn{margin-top:10px;}
+
+div.stButton > button[kind="secondary"]{
+    border-radius:18px;
+}
+.mode-button{
+    width:100%;
+}
 .workspace-kicker{
     color:#cbd5e1;
     font-size:0.78rem;
@@ -3292,51 +3299,25 @@ st.markdown(
 
 wc1, wc2, wc3 = st.columns(3)
 with wc1:
-    analysis_active = "active" if st.session_state.workspace_mode == "Sofortanalyse" else ""
-    st.markdown(
-        f"""
-        <div class="workspace-card analysis {analysis_active}">
-            <div class="workspace-kicker">Arbeitsmodus</div>
-            <div class="workspace-name">Sofortanalyse</div>
-            <div class="workspace-desc">Eine Aktie direkt prüfen oder mehrere Werte spontan vergleichen.</div>
-            <div class="section-accent blue">Einzel- und Mehrfachanalyse</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if st.button("Sofortanalyse öffnen", use_container_width=True, key="workspace_analysis_btn"):
+    if st.button(
+        "🔎 Sofortanalyse\nEinzelne Aktie prüfen oder mehrere Werte spontan vergleichen",
+        use_container_width=True,
+        key="workspace_analysis_btn"
+    ):
         st.session_state.workspace_mode = "Sofortanalyse"
-
 with wc2:
-    watchlist_active = "active" if st.session_state.workspace_mode == "Watchlisten" else ""
-    st.markdown(
-        f"""
-        <div class="workspace-card watchlist {watchlist_active}">
-            <div class="workspace-kicker">Arbeitsmodus</div>
-            <div class="workspace-name">Watchlisten</div>
-            <div class="workspace-desc">Beobachtungslisten pflegen, Trigger-Kandidaten priorisieren und per Telegram prüfen.</div>
-            <div class="section-accent purple">Trigger und Beobachtung</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if st.button("Watchlisten öffnen", use_container_width=True, key="workspace_watchlist_btn"):
+    if st.button(
+        "📋 Watchlisten\nBeobachtungslisten pflegen, Trigger priorisieren und mit Telegram prüfen",
+        use_container_width=True,
+        key="workspace_watchlist_btn"
+    ):
         st.session_state.workspace_mode = "Watchlisten"
-
 with wc3:
-    position_active = "active" if st.session_state.workspace_mode == "Positionen" else ""
-    st.markdown(
-        f"""
-        <div class="workspace-card position {position_active}">
-            <div class="workspace-kicker">Arbeitsmodus</div>
-            <div class="workspace-name">Positionen</div>
-            <div class="workspace-desc">Bereits gehaltene Werte überwachen, Risiken erkennen und Maßnahmen ableiten.</div>
-            <div class="section-accent amber">Stop, Risiko, Teilgewinn</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if st.button("Positionen öffnen", use_container_width=True, key="workspace_position_btn"):
+    if st.button(
+        "🛡️ Positionen\nBestehende Positionen überwachen, Risiken erkennen und Maßnahmen ableiten",
+        use_container_width=True,
+        key="workspace_position_btn"
+    ):
         st.session_state.workspace_mode = "Positionen"
 
 workspace_mode = st.session_state.workspace_mode
@@ -3344,10 +3325,13 @@ workspace_mode = st.session_state.workspace_mode
 if not workspace_mode:
     st.info("Wähle oben einen Arbeitsmodus aus. Erst danach werden die passenden Eingaben und Werkzeuge eingeblendet.")
 elif workspace_mode == "Sofortanalyse":
+    st.markdown("<div class='section-accent blue'>Sofortanalyse aktiv</div>", unsafe_allow_html=True)
     st.caption("Direkter Einstieg für spontane Einzelanalysen oder Multi-Screenings.")
 elif workspace_mode == "Watchlisten":
+    st.markdown("<div class='section-accent purple'>Watchlisten aktiv</div>", unsafe_allow_html=True)
     st.caption("Hier organisierst du Beobachtungslisten und kannst sie direkt analysieren oder mit Telegram prüfen.")
 else:
+    st.markdown("<div class='section-accent amber'>Positionen aktiv</div>", unsafe_allow_html=True)
     st.caption("Hier konzentrierst du dich auf bestehende Positionen und führst sie als Positions-Watchlisten.")
 
 # ---------- Watchlisten direkt in der App ----------
@@ -3760,6 +3744,9 @@ if workspace_mode:
         st.session_state.analysis_requested = True
         st.session_state.analysis_mode_run = analysis_mode
 # ---------- Batch / Ranking Run ----------
+if not st.session_state.get("analysis_requested", False):
+    st.stop()
+
 analysis_mode_run = st.session_state.get("analysis_mode_run", "Einzelanalyse")
 
 if analysis_mode_run == "Einzelanalyse":
@@ -3810,6 +3797,7 @@ for i, tkr in enumerate(resolved_entries, start=1):
 
 progress.empty()
 status.empty()
+st.session_state.analysis_requested = False
 
 if not results:
     st.error("Keine belastbaren Ergebnisse. Prüfe die Eingaben.")

@@ -24,15 +24,17 @@ from logging_utils import (
     build_trigger_log_df,
     create_watchlist,
     delete_watchlist,
+    get_watchlist_alert_mode,
     load_watchlists_df,
     remove_ticker_from_watchlist,
+    update_watchlist_alert_mode,
 )
 from telegram_utils import send_watchlist_alerts
 from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.10.1"
+APP_VERSION = "v10.11A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -92,6 +94,9 @@ if "watchlist_new_name" not in st.session_state:
 
 if "watchlist_bulk_add" not in st.session_state:
     st.session_state.watchlist_bulk_add = ""
+
+if "selected_watchlist_alert_mode" not in st.session_state:
+    st.session_state.selected_watchlist_alert_mode = "Standard"
 
 if "run_selected_watchlist_name" not in st.session_state:
     st.session_state.run_selected_watchlist_name = ""
@@ -3467,7 +3472,9 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 st.session_state.selected_watchlist_name = selected_watchlist_name
 
                 selected_watchlist_type = filtered_catalog_df.loc[filtered_catalog_df["Watchlist_Name"] == selected_watchlist_name, "Watchlist_Type"].iloc[0]
-                st.caption(f"Typ: {selected_watchlist_type}")
+                current_alert_mode = get_watchlist_alert_mode(selected_watchlist_name)
+                st.session_state.selected_watchlist_alert_mode = current_alert_mode
+                st.caption(f"Typ: {selected_watchlist_type} · Alert-Modus: {current_alert_mode}")
             else:
                 selected_watchlist_name = ""
                 selected_watchlist_type = default_type
@@ -3487,6 +3494,27 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 for x in current_watchlist_df.get("Ticker", pd.Series(dtype=str)).tolist()
                 if str(x).strip()
             ]
+
+            st.markdown("**Alert-Einstellungen für diese Watchlist**")
+            am1, am2 = st.columns([1.6, 1.0])
+            with am1:
+                alert_mode_options = ["Konservativ", "Standard", "Früh"]
+                selected_alert_mode = st.selectbox(
+                    "Alert-Schärfe",
+                    options=alert_mode_options,
+                    index=alert_mode_options.index(st.session_state.selected_watchlist_alert_mode) if st.session_state.selected_watchlist_alert_mode in alert_mode_options else 1,
+                    key="selected_watchlist_alert_mode_widget"
+                )
+                st.caption("Konservativ = nur starke Fälle · Standard = sinnvoller Mittelweg · Früh = meldet früher.")
+            with am2:
+                st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                if st.button("Alert-Modus speichern", use_container_width=True, key="save_watchlist_alert_mode_btn"):
+                    ok, msg = update_watchlist_alert_mode(selected_watchlist_name, selected_alert_mode)
+                    if ok:
+                        st.session_state.selected_watchlist_alert_mode = selected_alert_mode
+                        st.success("Alert-Modus gespeichert.")
+                    else:
+                        st.error(msg)
 
             st.markdown("**Ticker zur Watchlist hinzufügen**")
             add1, add2 = st.columns([2, 1])
@@ -3875,6 +3903,7 @@ if st.session_state.get("send_watchlist_alerts_after_run", False):
         results,
         st.session_state.get("run_selected_watchlist_name", "Watchlist"),
         st.session_state.get("run_selected_watchlist_type", "Watchlist"),
+        st.session_state.get("selected_watchlist_alert_mode", "Standard"),
     )
     if ok:
         st.success(msg)

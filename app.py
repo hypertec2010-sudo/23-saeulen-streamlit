@@ -34,7 +34,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.11A"
+APP_VERSION = "v10.11B"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3908,7 +3908,7 @@ if st.session_state.get("send_watchlist_alerts_after_run", False):
     if ok:
         st.success(msg)
     else:
-        if "Keine alert-relevanten Werte" in msg:
+        if "Keine alert-relevanten Werte" in msg or "unterdrückt" in msg:
             st.info(msg)
         else:
             st.error(msg)

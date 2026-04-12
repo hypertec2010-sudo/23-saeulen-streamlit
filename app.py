@@ -26,11 +26,12 @@ from logging_utils import (
     load_watchlists_df,
     remove_ticker_from_watchlist,
 )
+from telegram_utils import send_watchlist_alerts
 from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.7.1"
+APP_VERSION = "v10.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -90,6 +91,15 @@ if "watchlist_new_name" not in st.session_state:
 
 if "watchlist_bulk_add" not in st.session_state:
     st.session_state.watchlist_bulk_add = ""
+
+if "run_selected_watchlist_name" not in st.session_state:
+    st.session_state.run_selected_watchlist_name = ""
+
+if "run_selected_watchlist_type" not in st.session_state:
+    st.session_state.run_selected_watchlist_type = "Watchlist"
+
+if "send_watchlist_alerts_after_run" not in st.session_state:
+    st.session_state.send_watchlist_alerts_after_run = False
 
 
 # ---------- UI Theme / CSS ----------
@@ -3180,7 +3190,7 @@ st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
 # ---------- Watchlisten direkt in der App ----------
 with st.expander("Watchlisten verwalten", expanded=False):
-    st.caption("Watchlisten werden direkt in der App gepflegt und im Hintergrund dauerhaft gespeichert. Du musst dafür nicht manuell in Google Sheets arbeiten.")
+    st.caption("Watchlisten werden direkt in der App gepflegt und im Hintergrund dauerhaft gespeichert. Du musst dafür nicht manuell in Google Sheets arbeiten. Für Telegram-Alerts werden normale Watchlisten und Positions-Watchlisten unterschiedlich behandelt.")
 
     watchlists_df, watchlists_err = load_watchlists_df()
     if watchlists_err:
@@ -3337,7 +3347,7 @@ with st.expander("Watchlisten verwalten", expanded=False):
         else:
             st.info("Diese Watchlist hat aktuell noch keine Ticker.")
 
-        act1, act2 = st.columns(2)
+        act1, act2, act3 = st.columns(3)
         with act1:
             if st.button("Watchlist in Analyse laden", use_container_width=True, key="load_watchlist_into_analysis"):
                 joined = "\n".join(current_tickers)
@@ -3352,7 +3362,24 @@ with st.expander("Watchlisten verwalten", expanded=False):
                     st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
                     st.session_state.analysis_mode_run = "Mehrere Aktien vergleichen"
                     st.session_state.analysis_requested = True
+                    st.session_state.run_selected_watchlist_name = selected_watchlist_name
+                    st.session_state.run_selected_watchlist_type = selected_watchlist_type
+                    st.session_state.send_watchlist_alerts_after_run = False
                     st.success(f"Watchlist '{selected_watchlist_name}' wird jetzt analysiert.")
+                else:
+                    st.info("In dieser Watchlist sind noch keine Ticker.")
+        with act3:
+            if st.button("Watchlist analysieren + Telegram", use_container_width=True, key="run_watchlist_telegram"):
+                joined = "\n".join(current_tickers)
+                if joined.strip():
+                    st.session_state.batch_input = joined
+                    st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
+                    st.session_state.analysis_mode_run = "Mehrere Aktien vergleichen"
+                    st.session_state.analysis_requested = True
+                    st.session_state.run_selected_watchlist_name = selected_watchlist_name
+                    st.session_state.run_selected_watchlist_type = selected_watchlist_type
+                    st.session_state.send_watchlist_alerts_after_run = True
+                    st.success(f"Watchlist '{selected_watchlist_name}' wird jetzt analysiert und danach werden Telegram-Alerts geprüft.")
                 else:
                     st.info("In dieser Watchlist sind noch keine Ticker.")
 
@@ -3592,6 +3619,27 @@ if analysis_mode_run == "Einzelanalyse":
     st.caption("Aktiver Modus: Einzelanalyse")
 else:
     st.caption("Aktiver Modus: Mehrfach-Ranking")
+
+if st.session_state.get("run_selected_watchlist_name"):
+    st.caption(
+        f"Aktiver Watchlist-Run: {st.session_state.get('run_selected_watchlist_name')} "
+        f"({st.session_state.get('run_selected_watchlist_type', 'Watchlist')})"
+    )
+
+if st.session_state.get("send_watchlist_alerts_after_run", False):
+    ok, msg, sent_count = send_watchlist_alerts(
+        results,
+        st.session_state.get("run_selected_watchlist_name", "Watchlist"),
+        st.session_state.get("run_selected_watchlist_type", "Watchlist"),
+    )
+    if ok:
+        st.success(msg)
+    else:
+        if "Keine alert-relevanten Werte" in msg:
+            st.info(msg)
+        else:
+            st.error(msg)
+    st.session_state.send_watchlist_alerts_after_run = False
 
 ranking_df = build_ranking_table(results)
 results_map = {r["ticker"]: r for r in results}

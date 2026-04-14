@@ -25,9 +25,11 @@ from logging_utils import (
     create_watchlist,
     delete_watchlist,
     get_watchlist_alert_mode,
+    get_watchlist_check_frequency,
     load_watchlists_df,
     remove_ticker_from_watchlist,
     update_watchlist_alert_mode,
+    update_watchlist_check_frequency,
 )
 from telegram_utils import send_watchlist_alerts
 from ui_helpers import show_sheet_result
@@ -97,6 +99,9 @@ if "watchlist_bulk_add" not in st.session_state:
 
 if "selected_watchlist_alert_mode" not in st.session_state:
     st.session_state.selected_watchlist_alert_mode = "Standard"
+
+if "selected_watchlist_check_frequency" not in st.session_state:
+    st.session_state.selected_watchlist_check_frequency = "4x täglich"
 
 if "run_selected_watchlist_name" not in st.session_state:
     st.session_state.run_selected_watchlist_name = ""
@@ -3440,8 +3445,21 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
             )
             st.session_state.selected_watchlist_type = new_watchlist_type
 
+            freq_options = ["Nur manuell", "2x täglich", "3x täglich", "4x täglich"]
+            default_freq = "3x täglich" if new_watchlist_type == "Positions-Watchlist" else "4x täglich"
+            if st.session_state.selected_watchlist_check_frequency not in freq_options:
+                st.session_state.selected_watchlist_check_frequency = default_freq
+            new_check_frequency = st.selectbox(
+                "Prüf-Frequenz",
+                freq_options,
+                index=freq_options.index(st.session_state.selected_watchlist_check_frequency if st.session_state.selected_watchlist_check_frequency in freq_options else default_freq),
+                key="watchlist_check_frequency_widget"
+            )
+            st.session_state.selected_watchlist_check_frequency = new_check_frequency
+            st.caption("Vorschlag: Watchlist = 4x täglich · Positions-Watchlist = 3x täglich")
+
             if st.button("Watchlist erstellen", use_container_width=True, key="create_watchlist_btn"):
-                ok, msg = create_watchlist(new_watchlist_name, new_watchlist_type)
+                ok, msg = create_watchlist(new_watchlist_name, new_watchlist_type, check_frequency=new_check_frequency)
                 if ok:
                     st.success(msg)
                     st.session_state.selected_watchlist_name = new_watchlist_name
@@ -3473,8 +3491,10 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
 
                 selected_watchlist_type = filtered_catalog_df.loc[filtered_catalog_df["Watchlist_Name"] == selected_watchlist_name, "Watchlist_Type"].iloc[0]
                 current_alert_mode = get_watchlist_alert_mode(selected_watchlist_name)
+                current_check_frequency = get_watchlist_check_frequency(selected_watchlist_name)
                 st.session_state.selected_watchlist_alert_mode = current_alert_mode
-                st.caption(f"Typ: {selected_watchlist_type} · Alert-Modus: {current_alert_mode}")
+                st.session_state.selected_watchlist_check_frequency = current_check_frequency
+                st.caption(f"Typ: {selected_watchlist_type} · Alert-Modus: {current_alert_mode} · Prüf-Frequenz: {current_check_frequency}")
             else:
                 selected_watchlist_name = ""
                 selected_watchlist_type = default_type
@@ -3516,6 +3536,28 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     else:
                         st.error(msg)
 
+            st.markdown("**Prüf-Frequenz für diese Watchlist**")
+            fq1, fq2 = st.columns([1.6, 1.0])
+            with fq1:
+                frequency_options = ["Nur manuell", "2x täglich", "3x täglich", "4x täglich"]
+                selected_check_frequency = st.selectbox(
+                    "Automatische Prüf-Frequenz",
+                    options=frequency_options,
+                    index=frequency_options.index(st.session_state.selected_watchlist_check_frequency) if st.session_state.selected_watchlist_check_frequency in frequency_options else 3,
+                    key="selected_watchlist_check_frequency_widget"
+                )
+                st.caption("Geplante Zeitslots: 2x = 10:30 / 18:30 · 3x = 10:30 / 18:30 / 22:10 · 4x = 10:30 / 15:40 / 18:30 / 22:10")
+            with fq2:
+                st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                if st.button("Frequenz speichern", use_container_width=True, key="save_watchlist_frequency_btn"):
+                    ok, msg = update_watchlist_check_frequency(selected_watchlist_name, selected_check_frequency)
+                    if ok:
+                        st.session_state.selected_watchlist_check_frequency = selected_check_frequency
+                        st.success("Prüf-Frequenz gespeichert.")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
             st.markdown("**Ticker zur Watchlist hinzufügen**")
             add1, add2 = st.columns([2, 1])
 
@@ -3534,7 +3576,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 if st.button("Aktuellen Ticker hinzufügen", use_container_width=True, key="add_current_ticker_watchlist"):
                     current_to_add = st.session_state.get("selected_ticker", "").strip().upper()
                     if current_to_add:
-                        ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, [current_to_add])
+                        ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, [current_to_add], check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
                         if ok:
                             st.success(msg)
                         else:
@@ -3556,7 +3598,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                                 matches = search_tickers(entry, max_results=1)
                                 if matches:
                                     resolved_entries.append(matches[0]["symbol"])
-                        ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, resolved_entries)
+                        ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, resolved_entries, check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
                         if ok:
                             st.success(msg)
                             st.session_state.watchlist_bulk_add = ""

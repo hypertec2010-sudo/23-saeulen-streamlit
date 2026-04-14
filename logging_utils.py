@@ -39,13 +39,13 @@ def open_log_spreadsheet():
 def load_watchlists_df():
     sh, err = open_log_spreadsheet()
     if sh is None:
-        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode"]), err
+        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode", "Check_Frequency"]), err
 
     try:
         ws = get_or_create_worksheet(sh, "Watchlists", rows=2000, cols=10)
         values = ws.get_all_values()
         if not values:
-            headers = ["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode"]
+            headers = ["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode", "Check_Frequency"]
             ws.append_row(headers, value_input_option="USER_ENTERED")
             return pd.DataFrame(columns=headers), None
 
@@ -55,12 +55,12 @@ def load_watchlists_df():
             return pd.DataFrame(columns=headers), None
 
         df = pd.DataFrame(rows, columns=headers)
-        for col in ["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode"]:
+        for col in ["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode", "Check_Frequency"]:
             if col not in df.columns:
                 df[col] = ""
         return df, None
     except Exception as e:
-        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode"]), str(e)
+        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode", "Check_Frequency"]), str(e)
 
 
 def save_watchlists_df(df):
@@ -72,7 +72,7 @@ def save_watchlists_df(df):
         ws = get_or_create_worksheet(sh, "Watchlists", rows=max(2000, len(df) + 20), cols=10)
         ws.clear()
 
-        headers = ["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode"]
+        headers = ["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At", "Alert_Mode", "Check_Frequency"]
         ws.append_row(headers, value_input_option="USER_ENTERED")
 
         if df is not None and not df.empty:
@@ -84,9 +84,10 @@ def save_watchlists_df(df):
         return False, str(e)
 
 
-def create_watchlist(watchlist_name, watchlist_type):
+def create_watchlist(watchlist_name, watchlist_type, check_frequency=None):
     name = str(watchlist_name or "").strip()
     wl_type = str(watchlist_type or "").strip() or "Watchlist"
+    freq = str(check_frequency or "").strip() or ("4x täglich" if wl_type == "Watchlist" else "3x täglich")
     if not name:
         return False, "Bitte einen Watchlist-Namen eingeben."
 
@@ -108,7 +109,7 @@ def create_watchlist(watchlist_name, watchlist_type):
     return save_watchlists_df(df)
 
 
-def add_entries_to_watchlist(watchlist_name, watchlist_type, entries):
+def add_entries_to_watchlist(watchlist_name, watchlist_type, entries, check_frequency=None):
     name = str(watchlist_name or "").strip()
     if not name:
         return False, "Keine Watchlist ausgewählt."
@@ -118,7 +119,7 @@ def add_entries_to_watchlist(watchlist_name, watchlist_type, entries):
         return False, err
 
     if df.empty or name.lower() not in df["Watchlist_Name"].astype(str).str.strip().str.lower().tolist():
-        ok, msg = create_watchlist(name, watchlist_type)
+        ok, msg = create_watchlist(name, watchlist_type, check_frequency=check_frequency)
         if not ok:
             return False, msg
         df, err = load_watchlists_df()
@@ -126,11 +127,15 @@ def add_entries_to_watchlist(watchlist_name, watchlist_type, entries):
             return False, err
 
     wl_type = watchlist_type
+    freq = str(check_frequency or "").strip() or ("4x täglich" if wl_type == "Watchlist" else "3x täglich")
     existing_rows = df[df["Watchlist_Name"].astype(str).str.strip().str.lower() == name.lower()].copy()
     if not existing_rows.empty:
         non_empty_types = [x for x in existing_rows["Watchlist_Type"].astype(str).tolist() if str(x).strip()]
         if non_empty_types:
             wl_type = non_empty_types[0]
+        non_empty_freqs = [x for x in existing_rows["Check_Frequency"].astype(str).tolist() if str(x).strip()] if "Check_Frequency" in existing_rows.columns else []
+        if non_empty_freqs:
+            freq = non_empty_freqs[0]
 
     existing_tickers = {
         str(x).strip().upper()
@@ -154,6 +159,8 @@ def add_entries_to_watchlist(watchlist_name, watchlist_type, entries):
             "Ticker": ticker,
             "Added_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Alert_Mode": "Standard",
+            "Check_Frequency": "4x täglich",
+            "Check_Frequency": freq,
             "Alert_Mode": "Standard",
         }
         for ticker in cleaned
@@ -215,6 +222,47 @@ def delete_watchlist(watchlist_name):
     return False, msg
 
 
+
+
+
+def update_watchlist_check_frequency(watchlist_name, check_frequency):
+    name = str(watchlist_name or "").strip()
+    freq = str(check_frequency or "").strip() or "4x täglich"
+    if not name:
+        return False, "Keine Watchlist ausgewählt."
+
+    df, err = load_watchlists_df()
+    if err:
+        return False, err
+    if df.empty:
+        return False, "Keine Watchlists vorhanden."
+
+    mask = df["Watchlist_Name"].astype(str).str.strip().str.lower() == name.lower()
+    if mask.sum() == 0:
+        return False, "Watchlist nicht gefunden."
+
+    df.loc[mask, "Check_Frequency"] = freq
+    return save_watchlists_df(df)
+
+
+def get_watchlist_check_frequency(watchlist_name):
+    name = str(watchlist_name or "").strip()
+    df, err = load_watchlists_df()
+    if err or df.empty or not name:
+        return "4x täglich"
+
+    mask = df["Watchlist_Name"].astype(str).str.strip().str.lower() == name.lower()
+    subset = df.loc[mask]
+    if subset.empty or "Check_Frequency" not in subset.columns:
+        return "4x täglich"
+
+    vals = [str(x).strip() for x in subset["Check_Frequency"].tolist() if str(x).strip()]
+    if vals:
+        return vals[0]
+
+    wl_types = [str(x).strip() for x in subset["Watchlist_Type"].tolist() if str(x).strip()]
+    wl_type = wl_types[0] if wl_types else "Watchlist"
+    return "4x täglich" if wl_type == "Watchlist" else "3x täglich"
 
 
 def update_watchlist_alert_mode(watchlist_name, alert_mode):
@@ -316,20 +364,6 @@ def save_alert_history_df(df):
         return True, "Alert-History gespeichert"
     except Exception as e:
         return False, str(e)
-
-
-
-
-def has_any_alert_history_for_ticker(watchlist_name, ticker):
-    df, err = load_alert_history_df()
-    if err or df.empty:
-        return False
-
-    mask = (
-        (df["Watchlist_Name"].astype(str).str.strip().str.lower() == str(watchlist_name).strip().lower()) &
-        (df["Ticker"].astype(str).str.strip().str.upper() == str(ticker).strip().upper())
-    )
-    return bool(mask.sum() > 0)
 
 
 def get_alert_history_entry(watchlist_name, ticker, alert_type):

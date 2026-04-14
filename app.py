@@ -24,8 +24,12 @@ from logging_utils import (
     build_trigger_log_df,
     create_watchlist,
     delete_watchlist,
+    get_current_berlin_time,
+    get_current_schedule_slot,
+    get_due_watchlists_for_slot,
     get_watchlist_alert_mode,
     get_watchlist_check_frequency,
+    get_watchlist_tickers,
     load_watchlists_df,
     remove_ticker_from_watchlist,
     update_watchlist_alert_mode,
@@ -36,7 +40,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.11B.1"
+APP_VERSION = "v10.12B"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -102,6 +106,15 @@ if "selected_watchlist_alert_mode" not in st.session_state:
 
 if "selected_watchlist_check_frequency" not in st.session_state:
     st.session_state.selected_watchlist_check_frequency = "4x täglich"
+
+if "auto_run_requested" not in st.session_state:
+    st.session_state.auto_run_requested = False
+
+if "auto_run_slot_label" not in st.session_state:
+    st.session_state.auto_run_slot_label = ""
+
+if "auto_run_summary" not in st.session_state:
+    st.session_state.auto_run_summary = ""
 
 if "run_selected_watchlist_name" not in st.session_state:
     st.session_state.run_selected_watchlist_name = ""
@@ -3558,6 +3571,39 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     else:
                         st.error(msg)
 
+            st.markdown("**Auto-Run Vorbereitung**")
+            berlin_now = get_current_berlin_time()
+            current_slot_label = get_current_schedule_slot(berlin_now)
+            slot_options = ["10:30", "15:40", "18:30", "22:10"]
+            auto1, auto2 = st.columns([1.7, 1.0])
+            with auto1:
+                st.caption(f"Aktuelle Berlin-Zeit: {berlin_now.strftime('%d.%m.%Y %H:%M')} · Aktueller Slot: {current_slot_label if current_slot_label else 'noch keiner'}")
+                due_df, due_err = get_due_watchlists_for_slot(current_slot_label) if current_slot_label else (pd.DataFrame(), None)
+                if due_err:
+                    st.warning(f"Fällige Watchlisten konnten nicht geladen werden: {due_err}")
+                elif current_slot_label and due_df is not None and not due_df.empty:
+                    st.dataframe(
+                        due_df[["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency"]],
+                        hide_index=True,
+                        use_container_width=True,
+                        height=min(240, 45 * len(due_df) + 40),
+                    )
+                elif current_slot_label:
+                    st.info("Für den aktuellen Slot sind gerade keine Watchlisten fällig.")
+                else:
+                    st.info("Vor dem ersten Slot des Tages ist noch keine Watchlist automatisch fällig.")
+            with auto2:
+                selected_auto_slot = st.selectbox(
+                    "Auto-Run-Testslot",
+                    options=slot_options,
+                    index=slot_options.index(current_slot_label) if current_slot_label in slot_options else 0,
+                    key="selected_auto_run_slot_widget"
+                )
+                if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
+                    st.session_state.auto_run_requested = True
+                    st.session_state.auto_run_slot_label = selected_auto_slot
+                    st.rerun()
+
             st.markdown("**Ticker zur Watchlist hinzufügen**")
             add1, add2 = st.columns([2, 1])
 
@@ -3867,6 +3913,75 @@ if workspace_mode:
             st.session_state.analysis_ticker = ticker
         st.session_state.analysis_requested = True
         st.session_state.analysis_mode_run = analysis_mode
+# ---------- Auto-Run Slot Test ----------
+if st.session_state.get("auto_run_requested", False):
+    slot_label = st.session_state.get("auto_run_slot_label", "")
+    due_df, due_err = get_due_watchlists_for_slot(slot_label)
+    if due_err:
+        st.error(f"Auto-Run-Test fehlgeschlagen: {due_err}")
+        st.session_state.auto_run_requested = False
+        st.stop()
+
+    if due_df is None or due_df.empty:
+        st.info(f"Für den Slot {slot_label} sind aktuell keine Watchlisten fällig.")
+        st.session_state.auto_run_requested = False
+        st.stop()
+
+    st.subheader(f"Auto-Run-Test · Slot {slot_label}")
+    berlin_now = get_current_berlin_time()
+    st.caption(f"Simulierter Auto-Run auf Basis der gespeicherten Frequenzen · Berlin-Zeit jetzt: {berlin_now.strftime('%d.%m.%Y %H:%M')}")
+
+    auto_messages = []
+    total_sent = 0
+
+    for _, wl_row in due_df.iterrows():
+        wl_name = str(wl_row.get("Watchlist_Name", "")).strip()
+        wl_type = str(wl_row.get("Watchlist_Type", "Watchlist")).strip() or "Watchlist"
+        wl_alert_mode = str(wl_row.get("Alert_Mode", "Standard")).strip() or "Standard"
+
+        tickers, tick_err = get_watchlist_tickers(wl_name)
+        if tick_err:
+            auto_messages.append(f"{wl_name}: Fehler beim Laden der Ticker ({tick_err})")
+            continue
+        if not tickers:
+            auto_messages.append(f"{wl_name}: keine Ticker vorhanden")
+            continue
+
+        results = []
+        for tkr in tickers:
+            try:
+                result = analyze_stock(
+                    ticker=tkr,
+                    horizon="Swing (1-4 Wochen)",
+                    depot=10000,
+                    risk_pct=1.0,
+                    override=0.0,
+                    buy_in_override=0.0,
+                    smart_money_default=True,
+                    strict_mode=True
+                )
+                results.append(result)
+            except Exception as e:
+                auto_messages.append(f"{wl_name}: {tkr} konnte nicht analysiert werden ({e})")
+
+        if results:
+            ok, msg, sent_count = send_watchlist_alerts(results, wl_name, wl_type, wl_alert_mode)
+            auto_messages.append(f"{wl_name}: {msg}")
+            if ok:
+                total_sent += int(sent_count or 0)
+
+    if auto_messages:
+        for line in auto_messages:
+            st.write(f"• {line}")
+
+    if total_sent > 0:
+        st.success(f"Auto-Run-Test abgeschlossen. Insgesamt {total_sent} Telegram-Meldungen gesendet.")
+    else:
+        st.info("Auto-Run-Test abgeschlossen. Es wurden keine neuen Telegram-Meldungen gesendet.")
+
+    st.session_state.auto_run_requested = False
+    st.stop()
+
 # ---------- Batch / Ranking Run ----------
 if not st.session_state.get("analysis_requested", False):
     st.stop()

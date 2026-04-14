@@ -34,7 +34,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.11C"
+APP_VERSION = "v10.11B.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3513,7 +3513,6 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     if ok:
                         st.session_state.selected_watchlist_alert_mode = selected_alert_mode
                         st.success("Alert-Modus gespeichert.")
-                        st.rerun()
                     else:
                         st.error(msg)
 
@@ -3559,9 +3558,8 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                                     resolved_entries.append(matches[0]["symbol"])
                         ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, resolved_entries)
                         if ok:
-                            st.session_state.watchlist_bulk_add = ""
                             st.success(msg)
-                            st.rerun()
+                            st.session_state.watchlist_bulk_add = ""
                         else:
                             st.error(msg)
 
@@ -3579,7 +3577,6 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                         ok, msg = remove_ticker_from_watchlist(selected_watchlist_name, ticker_to_remove)
                         if ok:
                             st.success(msg)
-                            st.rerun()
                         else:
                             st.error(msg)
                 with rem3:
@@ -3587,9 +3584,8 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     if st.button("Watchlist löschen", use_container_width=True, key="delete_watchlist_btn"):
                         ok, msg = delete_watchlist(selected_watchlist_name)
                         if ok:
-                            st.session_state.selected_watchlist_name = ""
                             st.success(msg)
-                            st.rerun()
+                            st.session_state.selected_watchlist_name = ""
                         else:
                             st.error(msg)
             else:
@@ -4571,8 +4567,8 @@ with b3:
     )
 
 st.subheader("Kernbausteine")
-s1, s2, s3, s4 = st.columns(4)
-with s1:
+kb1, kb2, kb3, kb4 = st.columns(4)
+with kb1:
     st.markdown(
         f"""
         <div class="compact-panel" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
@@ -4583,7 +4579,7 @@ with s1:
         """,
         unsafe_allow_html=True,
     )
-with s2:
+with kb2:
     st.markdown(
         f"""
         <div class="compact-panel" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
@@ -4594,7 +4590,7 @@ with s2:
         """,
         unsafe_allow_html=True,
     )
-with s3:
+with kb3:
     st.markdown(
         f"""
         <div class="compact-panel" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
@@ -4605,7 +4601,7 @@ with s3:
         """,
         unsafe_allow_html=True,
     )
-with s4:
+with kb4:
     st.markdown(
         f"""
         <div class="compact-panel" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">

@@ -37,12 +37,12 @@ from logging_utils import (
     update_watchlist_alert_mode,
     update_watchlist_check_frequency,
 )
-from telegram_utils import send_watchlist_alerts
+from telegram_utils import send_telegram_message, send_watchlist_alerts
 from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.14A.1"
+APP_VERSION = "v10.14A.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",

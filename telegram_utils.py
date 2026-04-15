@@ -3,7 +3,7 @@ from datetime import datetime
 import requests
 import streamlit as st
 
-from logging_utils import get_alert_history_entry, upsert_alert_history_entry
+from logging_utils import get_alert_history_entry, has_any_alert_history_for_ticker, upsert_alert_history_entry
 
 
 def get_telegram_credentials():
@@ -138,6 +138,33 @@ def should_alert_for_watchlist_result(result, watchlist_type, alert_mode="Standa
 
 
 
+
+
+def build_new_watchlist_entry_text(result, watchlist_name, watchlist_type, alert_mode="Standard"):
+    ticker = result.get("ticker", "-")
+    name = result.get("name", "-")
+    trigger_status = result.get("trigger_status", "-")
+    priority = result.get("watchlist_priority", "-")
+    entry_score = result.get("trading_case_score", "n/a")
+    invest_score = result.get("investment_case_score", "n/a")
+    action = result.get("emp", result.get("position_action", "-"))
+
+    lines = [
+        "Capital Hill | Neue Watchlist-Aufnahme",
+        f"Watchlist: {watchlist_name}",
+        f"Typ: {watchlist_type}",
+        f"Alert-Modus: {alert_mode}",
+        f"{ticker} | {name}",
+        f"Handlung: {action}",
+        f"Trigger: {trigger_status}",
+        f"Priorität: {priority}",
+        f"Einstieg: {entry_score}/100",
+        f"Investment: {invest_score}/100",
+        "Hinweis: Neuer Wert in der Watchlist, aktuell noch kein harter Trigger-Alert.",
+    ]
+    return "\n".join(lines)
+
+
 def build_alert_signature(result, watchlist_type):
     if watchlist_type == "Positions-Watchlist":
         return "|".join([
@@ -184,12 +211,15 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
     sent = 0
     matched = 0
     suppressed = 0
+    info_sent = 0
     errors = []
 
     for result in results:
+        ticker = str(result.get("ticker", "-")).strip().upper()
+        has_any_history = has_any_alert_history_for_ticker(watchlist_name, ticker)
+
         if should_alert_for_watchlist_result(result, watchlist_type, alert_mode):
             matched += 1
-            ticker = str(result.get("ticker", "-")).strip().upper()
             alert_type = get_alert_type_label(result, watchlist_type)
             alert_signature = build_alert_signature(result, watchlist_type)
             history_entry = get_alert_history_entry(watchlist_name, ticker, alert_type)
@@ -220,15 +250,54 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
                     errors.append(f"History: {hist_err}")
             else:
                 errors.append(err)
+        else:
+            if not has_any_history and watchlist_type != "Positions-Watchlist":
+                alert_type = "Neue Watchlist-Aufnahme"
+                alert_signature = build_alert_signature(result, watchlist_type)
+                history_entry = get_alert_history_entry(watchlist_name, ticker, alert_type)
 
-    if matched == 0:
+                already_sent_today = False
+                same_signature = False
+                if history_entry:
+                    already_sent_today = str(history_entry.get("Last_Sent_Date", "")) == datetime.now().strftime("%Y-%m-%d")
+                    same_signature = str(history_entry.get("Alert_Signature", "")) == alert_signature
+
+                if already_sent_today and same_signature:
+                    suppressed += 1
+                    continue
+
+                msg = build_new_watchlist_entry_text(result, watchlist_name, watchlist_type, alert_mode)
+                ok, err = send_telegram_message(msg)
+                if ok:
+                    sent += 1
+                    info_sent += 1
+                    hist_ok, hist_err = upsert_alert_history_entry(
+                        watchlist_name,
+                        watchlist_type,
+                        alert_mode,
+                        ticker,
+                        alert_type,
+                        alert_signature,
+                    )
+                    if not hist_ok:
+                        errors.append(f"History: {hist_err}")
+                else:
+                    errors.append(err)
+
+    if matched == 0 and info_sent == 0:
         return False, "Keine alert-relevanten Werte in dieser Watchlist gefunden.", 0
     if sent > 0 and not errors:
+        parts = []
+        if sent - info_sent > 0:
+            parts.append(f"{sent - info_sent} neue Alerts")
+        if info_sent > 0:
+            parts.append(f"{info_sent} Erst-Checks")
+        msg = f"{', '.join(parts)} für '{watchlist_name}' gesendet."
         if suppressed > 0:
-            return True, f"{sent} neue Telegram-Alerts für '{watchlist_name}' gesendet, {suppressed} doppelte Alerts wurden unterdrückt.", sent
-        return True, f"{sent} neue Telegram-Alerts für '{watchlist_name}' gesendet.", sent
+            msg += f" {suppressed} doppelte Meldungen wurden unterdrückt."
+        return True, msg, sent
     if sent > 0:
-        return True, f"{sent} neue Alerts gesendet, einzelne Fehler: {' | '.join(errors[:2])}", sent
+        return True, f"{sent} Meldungen gesendet, einzelne Fehler: {' | '.join(errors[:2])}", sent
     if suppressed > 0:
-        return False, f"Keine neuen Alerts gesendet. {suppressed} doppelte Alerts wurden unterdrückt.", 0
+        return False, f"Keine neuen Alerts gesendet. {suppressed} doppelte Meldungen wurden unterdrückt.", 0
     return False, f"Telegram-Versand fehlgeschlagen: {' | '.join(errors[:2])}", 0

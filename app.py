@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.14A.3"
+APP_VERSION = "v10.14A.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -129,6 +129,17 @@ if "send_watchlist_alerts_after_run" not in st.session_state:
 
 if "workspace_mode" not in st.session_state:
     st.session_state.workspace_mode = ""
+
+if "ui_refresh_nonce" not in st.session_state:
+    st.session_state.ui_refresh_nonce = 0
+
+
+def trigger_ui_refresh(**state_updates):
+    for key, value in state_updates.items():
+        st.session_state[key] = value
+    st.session_state.ui_refresh_nonce += 1
+    st.rerun()
+
 
 
 
@@ -3386,7 +3397,7 @@ with st.expander("Anleitung / Hilfe", expanded=False):
     st.markdown(
         "- **Neue Chancen suchen**: Watchlist + Alert-Modus + Telegram.\n"
         "- **Bestehende Positionen überwachen**: Positions-Watchlist + 3x täglich.\n"
-        "- **Spontane Prüfung**: Sofortanalyse nutzen."
+        "- **Spontane Prüfung**: Sofortanalyse nutzen.\n- **Tipp bei Änderungen**: Nach Speichern, Hinzufügen oder Entfernen aktualisiert sich die Oberfläche jetzt direkt und behält Auswahlzustände stabil bei."
     )
 
 st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
@@ -3592,9 +3603,10 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     st.session_state.selected_watchlist_name = new_watchlist_name
                     st.session_state.selected_watchlist_type = new_watchlist_type
                     st.session_state.selected_watchlist_check_frequency = new_check_frequency
+                    st.session_state.watchlist_new_name = ""
                     st.session_state.workspace_mode = "Positionen" if new_watchlist_type == "Positions-Watchlist" else "Watchlisten"
                     st.success(msg)
-                    st.rerun()
+                    trigger_ui_refresh()
                 else:
                     st.error(msg)
 
@@ -3624,6 +3636,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 selected_watchlist_type = filtered_catalog_df.loc[filtered_catalog_df["Watchlist_Name"] == selected_watchlist_name, "Watchlist_Type"].iloc[0]
                 current_alert_mode = get_watchlist_alert_mode(selected_watchlist_name)
                 current_check_frequency = get_watchlist_check_frequency(selected_watchlist_name)
+                st.session_state.selected_watchlist_type = selected_watchlist_type
                 st.session_state.selected_watchlist_alert_mode = current_alert_mode
                 st.session_state.selected_watchlist_check_frequency = current_check_frequency
                 st.caption(f"Typ: {selected_watchlist_type} · Alert-Modus: {current_alert_mode} · Prüf-Frequenz: {current_check_frequency}")
@@ -3666,6 +3679,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     if ok:
                         st.session_state.selected_watchlist_alert_mode = selected_alert_mode
                         st.success("Alert-Modus gespeichert.")
+                        trigger_ui_refresh()
                     else:
                         st.error(msg)
 
@@ -3688,7 +3702,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     if ok:
                         st.session_state.selected_watchlist_check_frequency = selected_check_frequency
                         st.success("Prüf-Frequenz gespeichert.")
-                        st.rerun()
+                        trigger_ui_refresh()
                     else:
                         st.error(msg)
 
@@ -3713,6 +3727,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                         ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, [current_to_add], check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
                         if ok:
                             st.success(msg)
+                            trigger_ui_refresh()
                         else:
                             st.error(msg)
                     else:
@@ -3740,6 +3755,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                             st.error(msg)
 
             st.markdown("**Inhalt der aktuellen Watchlist**")
+            st.caption(f"Anzahl Werte: {len(current_tickers)}")
             if current_tickers:
                 preview_df = pd.DataFrame({"Ticker": current_tickers})
                 st.dataframe(preview_df, hide_index=True, use_container_width=True, height=min(320, 45 * len(preview_df) + 40))
@@ -3753,6 +3769,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                         ok, msg = remove_ticker_from_watchlist(selected_watchlist_name, ticker_to_remove)
                         if ok:
                             st.success(msg)
+                            trigger_ui_refresh()
                         else:
                             st.error(msg)
                 with rem3:
@@ -4225,6 +4242,8 @@ else:
 
 if selected_display_ticker not in results_map and not ranking_df.empty:
     selected_display_ticker = ranking_df.iloc[0]["Ticker"]
+
+st.session_state.selected_ranking_ticker = selected_display_ticker
 
 # ---------- Ranking Section ----------
 st.subheader("Ranking mehrerer Aktien")

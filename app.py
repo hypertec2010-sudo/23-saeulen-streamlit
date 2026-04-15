@@ -24,12 +24,8 @@ from logging_utils import (
     build_trigger_log_df,
     create_watchlist,
     delete_watchlist,
-    get_current_berlin_time,
-    get_current_schedule_slot,
-    get_due_watchlists_for_slot,
     get_watchlist_alert_mode,
     get_watchlist_check_frequency,
-    get_watchlist_tickers,
     load_watchlists_df,
     remove_ticker_from_watchlist,
     update_watchlist_alert_mode,
@@ -40,7 +36,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.12B"
+APP_VERSION = "v10.13"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -106,15 +102,6 @@ if "selected_watchlist_alert_mode" not in st.session_state:
 
 if "selected_watchlist_check_frequency" not in st.session_state:
     st.session_state.selected_watchlist_check_frequency = "4x täglich"
-
-if "auto_run_requested" not in st.session_state:
-    st.session_state.auto_run_requested = False
-
-if "auto_run_slot_label" not in st.session_state:
-    st.session_state.auto_run_slot_label = ""
-
-if "auto_run_summary" not in st.session_state:
-    st.session_state.auto_run_summary = ""
 
 if "run_selected_watchlist_name" not in st.session_state:
     st.session_state.run_selected_watchlist_name = ""
@@ -3330,6 +3317,63 @@ st.caption(
     "Mit Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement, Watchlisten und Telegram-Alerts."
 )
 
+with st.expander("Anleitung / Hilfe", expanded=False):
+    st.markdown("### 1) Die drei Arbeitsmodi")
+    st.markdown(
+        "- **Sofortanalyse**: für spontane Einzelanalysen oder Vergleiche mehrerer Aktien.\n"
+        "- **Watchlisten**: für neue Chancen, Trigger, Priorisierung und Telegram-Checks.\n"
+        "- **Positionen**: für bereits gehaltene Werte, Risiko, Stop, Teilgewinn und Maßnahmen."
+    )
+
+    st.markdown("### 2) Unterschied: Watchlist vs. Positions-Watchlist")
+    st.markdown(
+        "- **Watchlist** = Werte, die du noch nicht hältst oder neu beobachten willst. Fokus: Einstieg, Trigger, Priorität.\n"
+        "- **Positions-Watchlist** = Werte, die du bereits besitzt. Fokus: Risiko reduzieren, Stop prüfen, Teilgewinn, Maßnahmen."
+    )
+
+    st.markdown("### 3) Alert-Modus")
+    st.markdown(
+        "- **Konservativ**: nur stärkere Fälle.\n"
+        "- **Standard**: sinnvoller Mittelweg.\n"
+        "- **Früh**: meldet frühere Hinweise und mehr Beobachtungssituationen."
+    )
+
+    st.markdown("### 4) Prüf-Frequenz")
+    st.markdown(
+        "- **Nur manuell**: nur bei Button-Klick.\n"
+        "- **2x täglich**: 10:30 / 18:30\n"
+        "- **3x täglich**: 10:30 / 18:30 / 22:10\n"
+        "- **4x täglich**: 10:30 / 15:40 / 18:30 / 22:10"
+    )
+
+    st.markdown("### 5) Telegram")
+    st.markdown(
+        "- **Watchlist analysieren + Telegram** prüft die aktuelle Watchlist sofort.\n"
+        "- Telegram sendet nicht jede Analyse erneut, sondern nutzt Alert-History und unterdrückt doppelte Meldungen.\n"
+        "- Neue Watchlist-Werte können zusätzlich eine **Erst-Check-Info** auslösen."
+    )
+
+    st.markdown("### 6) Auto-Run-Test")
+    st.markdown(
+        "- Der **Auto-Run-Test** simuliert einen geplanten Slot direkt in der App.\n"
+        "- Dabei werden nur Watchlisten geprüft, deren gespeicherte Frequenz zu diesem Slot passt.\n"
+        "- Das ist die Vorstufe für spätere echte automatische Läufe."
+    )
+
+    st.markdown("### 7) Google Sheets")
+    st.markdown(
+        "- **Analysis_Log**: speichert Analysen als Verlauf und Backtesting-Basis.\n"
+        "- **Trigger_Log**: speichert Trigger-Kandidaten.\n"
+        "- **Alert_History**: merkt sich bereits gesendete Alerts, damit Telegram nicht dieselbe Meldung ständig wiederholt."
+    )
+
+    st.markdown("### 8) Typische Nutzung")
+    st.markdown(
+        "- **Neue Chancen suchen**: Watchlist + Alert-Modus + Telegram.\n"
+        "- **Bestehende Positionen überwachen**: Positions-Watchlist + 3x täglich.\n"
+        "- **Spontane Prüfung**: Sofortanalyse nutzen."
+    )
+
 st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
 st.markdown(
@@ -3439,6 +3483,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
 
         with wl1:
             st.markdown("**Neue Watchlist anlegen**")
+            st.caption("Watchlist = neue Chancen · Positions-Watchlist = bereits gehaltene Werte")
             new_watchlist_name = st.text_input(
                 "Name der Watchlist",
                 value=st.session_state.watchlist_new_name,
@@ -3539,6 +3584,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     key="selected_watchlist_alert_mode_widget"
                 )
                 st.caption("Konservativ = nur starke Fälle · Standard = sinnvoller Mittelweg · Früh = meldet früher.")
+                st.caption("Tipp: Für ruhige Qualitätslisten eher Konservativ/Standard, für Trading-Listen eher Standard/Früh.")
             with am2:
                 st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
                 if st.button("Alert-Modus speichern", use_container_width=True, key="save_watchlist_alert_mode_btn"):
@@ -3560,6 +3606,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     key="selected_watchlist_check_frequency_widget"
                 )
                 st.caption("Geplante Zeitslots: 2x = 10:30 / 18:30 · 3x = 10:30 / 18:30 / 22:10 · 4x = 10:30 / 15:40 / 18:30 / 22:10")
+                st.caption("Tipp: Watchlist meist 4x täglich, Positions-Watchlist meist 3x täglich.")
             with fq2:
                 st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
                 if st.button("Frequenz speichern", use_container_width=True, key="save_watchlist_frequency_btn"):
@@ -3570,39 +3617,6 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                         st.rerun()
                     else:
                         st.error(msg)
-
-            st.markdown("**Auto-Run Vorbereitung**")
-            berlin_now = get_current_berlin_time()
-            current_slot_label = get_current_schedule_slot(berlin_now)
-            slot_options = ["10:30", "15:40", "18:30", "22:10"]
-            auto1, auto2 = st.columns([1.7, 1.0])
-            with auto1:
-                st.caption(f"Aktuelle Berlin-Zeit: {berlin_now.strftime('%d.%m.%Y %H:%M')} · Aktueller Slot: {current_slot_label if current_slot_label else 'noch keiner'}")
-                due_df, due_err = get_due_watchlists_for_slot(current_slot_label) if current_slot_label else (pd.DataFrame(), None)
-                if due_err:
-                    st.warning(f"Fällige Watchlisten konnten nicht geladen werden: {due_err}")
-                elif current_slot_label and due_df is not None and not due_df.empty:
-                    st.dataframe(
-                        due_df[["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency"]],
-                        hide_index=True,
-                        use_container_width=True,
-                        height=min(240, 45 * len(due_df) + 40),
-                    )
-                elif current_slot_label:
-                    st.info("Für den aktuellen Slot sind gerade keine Watchlisten fällig.")
-                else:
-                    st.info("Vor dem ersten Slot des Tages ist noch keine Watchlist automatisch fällig.")
-            with auto2:
-                selected_auto_slot = st.selectbox(
-                    "Auto-Run-Testslot",
-                    options=slot_options,
-                    index=slot_options.index(current_slot_label) if current_slot_label in slot_options else 0,
-                    key="selected_auto_run_slot_widget"
-                )
-                if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
-                    st.session_state.auto_run_requested = True
-                    st.session_state.auto_run_slot_label = selected_auto_slot
-                    st.rerun()
 
             st.markdown("**Ticker zur Watchlist hinzufügen**")
             add1, add2 = st.columns([2, 1])
@@ -3913,75 +3927,6 @@ if workspace_mode:
             st.session_state.analysis_ticker = ticker
         st.session_state.analysis_requested = True
         st.session_state.analysis_mode_run = analysis_mode
-# ---------- Auto-Run Slot Test ----------
-if st.session_state.get("auto_run_requested", False):
-    slot_label = st.session_state.get("auto_run_slot_label", "")
-    due_df, due_err = get_due_watchlists_for_slot(slot_label)
-    if due_err:
-        st.error(f"Auto-Run-Test fehlgeschlagen: {due_err}")
-        st.session_state.auto_run_requested = False
-        st.stop()
-
-    if due_df is None or due_df.empty:
-        st.info(f"Für den Slot {slot_label} sind aktuell keine Watchlisten fällig.")
-        st.session_state.auto_run_requested = False
-        st.stop()
-
-    st.subheader(f"Auto-Run-Test · Slot {slot_label}")
-    berlin_now = get_current_berlin_time()
-    st.caption(f"Simulierter Auto-Run auf Basis der gespeicherten Frequenzen · Berlin-Zeit jetzt: {berlin_now.strftime('%d.%m.%Y %H:%M')}")
-
-    auto_messages = []
-    total_sent = 0
-
-    for _, wl_row in due_df.iterrows():
-        wl_name = str(wl_row.get("Watchlist_Name", "")).strip()
-        wl_type = str(wl_row.get("Watchlist_Type", "Watchlist")).strip() or "Watchlist"
-        wl_alert_mode = str(wl_row.get("Alert_Mode", "Standard")).strip() or "Standard"
-
-        tickers, tick_err = get_watchlist_tickers(wl_name)
-        if tick_err:
-            auto_messages.append(f"{wl_name}: Fehler beim Laden der Ticker ({tick_err})")
-            continue
-        if not tickers:
-            auto_messages.append(f"{wl_name}: keine Ticker vorhanden")
-            continue
-
-        results = []
-        for tkr in tickers:
-            try:
-                result = analyze_stock(
-                    ticker=tkr,
-                    horizon="Swing (1-4 Wochen)",
-                    depot=10000,
-                    risk_pct=1.0,
-                    override=0.0,
-                    buy_in_override=0.0,
-                    smart_money_default=True,
-                    strict_mode=True
-                )
-                results.append(result)
-            except Exception as e:
-                auto_messages.append(f"{wl_name}: {tkr} konnte nicht analysiert werden ({e})")
-
-        if results:
-            ok, msg, sent_count = send_watchlist_alerts(results, wl_name, wl_type, wl_alert_mode)
-            auto_messages.append(f"{wl_name}: {msg}")
-            if ok:
-                total_sent += int(sent_count or 0)
-
-    if auto_messages:
-        for line in auto_messages:
-            st.write(f"• {line}")
-
-    if total_sent > 0:
-        st.success(f"Auto-Run-Test abgeschlossen. Insgesamt {total_sent} Telegram-Meldungen gesendet.")
-    else:
-        st.info("Auto-Run-Test abgeschlossen. Es wurden keine neuen Telegram-Meldungen gesendet.")
-
-    st.session_state.auto_run_requested = False
-    st.stop()
-
 # ---------- Batch / Ranking Run ----------
 if not st.session_state.get("analysis_requested", False):
     st.stop()

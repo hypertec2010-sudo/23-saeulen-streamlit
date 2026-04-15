@@ -16,7 +16,8 @@ import streamlit as st
 import yfinance as yf
 from plotly.subplots import make_subplots
 
-from streamlit_cookies_manager import EncryptedCookieManager
+from st_cookies_manager import EncryptedCookieManager
+import time
 from logging_utils import (
     append_df_to_gsheet,
     add_entries_to_watchlist,

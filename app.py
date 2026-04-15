@@ -37,7 +37,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.13.2"
+APP_VERSION = "v10.13.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -45,7 +45,7 @@ st.set_page_config(
     layout="wide"
 )
 
-COOKIE_SECRET = st.secrets.get("COOKIES_PASSWORD", st.secrets.get("PASSWORD", "capital-hill-cookie-secret-change-me"))
+COOKIE_SECRET = st.secrets["COOKIES_PASSWORD"]
 
 cookies = EncryptedCookieManager(
     prefix="capital-hill/",
@@ -61,6 +61,7 @@ def logout():
     if "remember_login" in cookies:
         del cookies["remember_login"]
         cookies.save()
+        time.sleep(0.5)
     st.rerun()
 
 
@@ -82,6 +83,7 @@ def check_password():
             if remember_me:
                 cookies["remember_login"] = "true"
                 cookies.save()
+                time.sleep(0.5)
             st.rerun()
         else:
             st.error("Falsches Passwort")

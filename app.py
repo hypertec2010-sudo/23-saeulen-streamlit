@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.14A.2"
+APP_VERSION = "v10.14A.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3428,6 +3428,23 @@ with st.expander("Auto-Run Control Center", expanded=False):
             st.session_state.auto_run_requested = True
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
+
+test1, test2 = st.columns([1.2, 2.8])
+with test1:
+    if st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
+        test_message = (
+            f"Capital Hill Test\n"
+            f"Version: {APP_VERSION}\n"
+            f"Zeit: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"Status: Telegram-Versand funktioniert."
+        )
+        ok, msg = send_telegram_message(test_message)
+        if ok:
+            st.success("Telegram-Testnachricht wurde gesendet.")
+        else:
+            st.error(f"Telegram-Test fehlgeschlagen: {msg}")
+with test2:
+    st.caption("Damit prüfst du Telegram unabhängig von Watchlist, Alert-Schärfe, Alert-History und Marktlogik. Wenn diese Testnachricht ankommt, funktionieren Token und Chat-ID technisch korrekt.")
 
 st.markdown(
     """

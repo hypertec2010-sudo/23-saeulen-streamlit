@@ -5,4 +5,4 @@ numpy
 requests
 plotly
 gspread
-streamlit-cookies-manager
+st-cookies-manager

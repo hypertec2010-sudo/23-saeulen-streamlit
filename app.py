@@ -36,7 +36,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.13"
+APP_VERSION = "v10.13.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3519,8 +3519,12 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
             if st.button("Watchlist erstellen", use_container_width=True, key="create_watchlist_btn"):
                 ok, msg = create_watchlist(new_watchlist_name, new_watchlist_type, check_frequency=new_check_frequency)
                 if ok:
-                    st.success(msg)
                     st.session_state.selected_watchlist_name = new_watchlist_name
+                    st.session_state.selected_watchlist_type = new_watchlist_type
+                    st.session_state.selected_watchlist_check_frequency = new_check_frequency
+                    st.session_state.workspace_mode = "Positionen" if new_watchlist_type == "Positions-Watchlist" else "Watchlisten"
+                    st.success(msg)
+                    st.rerun()
                 else:
                     st.error(msg)
 

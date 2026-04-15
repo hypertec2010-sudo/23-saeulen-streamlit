@@ -16,22 +16,16 @@ import streamlit as st
 import yfinance as yf
 from plotly.subplots import make_subplots
 
-from auth_utils import check_password
+from streamlit_cookies_manager import EncryptedCookieManager
 from logging_utils import (
-    append_auto_run_log,
     append_df_to_gsheet,
     add_entries_to_watchlist,
     build_export_df,
     build_trigger_log_df,
     create_watchlist,
     delete_watchlist,
-    get_current_berlin_time,
-    get_current_schedule_slot,
-    get_due_watchlists_for_slot,
     get_watchlist_alert_mode,
-    get_watchlist_catalog_df,
     get_watchlist_check_frequency,
-    get_watchlist_tickers,
     load_watchlists_df,
     remove_ticker_from_watchlist,
     update_watchlist_alert_mode,
@@ -42,13 +36,56 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.14A"
+APP_VERSION = "v10.13.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
     page_icon="📊",
     layout="wide"
 )
+
+COOKIE_SECRET = st.secrets.get("COOKIES_PASSWORD", st.secrets.get("PASSWORD", "capital-hill-cookie-secret-change-me"))
+
+cookies = EncryptedCookieManager(
+    prefix="capital-hill/",
+    password=COOKIE_SECRET,
+)
+
+if not cookies.ready():
+    st.stop()
+
+
+def logout():
+    st.session_state["password_correct"] = False
+    if "remember_login" in cookies:
+        del cookies["remember_login"]
+        cookies.save()
+    st.rerun()
+
+
+def check_password():
+    if cookies.get("remember_login") == "true":
+        st.session_state["password_correct"] = True
+        return True
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.markdown("### Login")
+    entered_password = st.text_input("Passwort", type="password", key="password_input")
+    remember_me = st.checkbox("Auf diesem Browser merken", value=True, key="remember_me_checkbox")
+
+    if st.button("Anmelden", use_container_width=True, type="primary", key="login_button"):
+        if entered_password == st.secrets["PASSWORD"]:
+            st.session_state["password_correct"] = True
+            if remember_me:
+                cookies["remember_login"] = "true"
+                cookies.save()
+            st.rerun()
+        else:
+            st.error("Falsches Passwort")
+
+    return False
 
 
 if not check_password():
@@ -109,15 +146,6 @@ if "selected_watchlist_alert_mode" not in st.session_state:
 if "selected_watchlist_check_frequency" not in st.session_state:
     st.session_state.selected_watchlist_check_frequency = "4x täglich"
 
-if "auto_run_requested" not in st.session_state:
-    st.session_state.auto_run_requested = False
-
-if "auto_run_slot_label" not in st.session_state:
-    st.session_state.auto_run_slot_label = ""
-
-if "auto_run_summary" not in st.session_state:
-    st.session_state.auto_run_summary = ""
-
 if "run_selected_watchlist_name" not in st.session_state:
     st.session_state.run_selected_watchlist_name = ""
 
@@ -130,6 +158,9 @@ if "send_watchlist_alerts_after_run" not in st.session_state:
 if "workspace_mode" not in st.session_state:
     st.session_state.workspace_mode = ""
 
+with st.sidebar:
+    if st.button("Abmelden", use_container_width=True, key="logout_button"):
+        logout()
 
 
 # ---------- UI Theme / CSS ----------
@@ -3391,44 +3422,6 @@ with st.expander("Anleitung / Hilfe", expanded=False):
 
 st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
-with st.expander("Auto-Run Control Center", expanded=False):
-    berlin_now = get_current_berlin_time()
-    current_slot_label = get_current_schedule_slot(berlin_now)
-    slot_options = ["10:30", "15:40", "18:30", "22:10"]
-
-    st.caption(f"Aktuelle Berlin-Zeit: {berlin_now.strftime('%d.%m.%Y %H:%M')} · Aktueller Slot: {current_slot_label if current_slot_label else 'noch keiner'}")
-    st.caption("Hier wird vorbereitet, welche Watchlisten automatisch geprüft würden. Das ist der interne Auto-Run-Modus als Grundlage für spätere echte Zeitsteuerung.")
-
-    due_df, due_err = get_due_watchlists_for_slot(current_slot_label) if current_slot_label else (pd.DataFrame(), None)
-    if due_err:
-        st.warning(f"Fällige Watchlisten konnten nicht geladen werden: {due_err}")
-    elif current_slot_label and due_df is not None and not due_df.empty:
-        st.dataframe(
-            due_df[["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency"]],
-            hide_index=True,
-            use_container_width=True,
-            height=min(260, 45 * len(due_df) + 40),
-        )
-    elif current_slot_label:
-        st.info("Für den aktuellen Slot sind gerade keine Watchlisten fällig.")
-    else:
-        st.info("Vor dem ersten Slot des Tages ist noch keine Watchlist automatisch fällig.")
-
-    ar1, ar2 = st.columns([1.2, 1.0])
-    with ar1:
-        selected_auto_slot = st.selectbox(
-            "Auto-Run-Testslot",
-            options=slot_options,
-            index=slot_options.index(current_slot_label) if current_slot_label in slot_options else 0,
-            key="selected_auto_run_slot_widget"
-        )
-    with ar2:
-        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
-            st.session_state.auto_run_requested = True
-            st.session_state.auto_run_slot_label = selected_auto_slot
-            st.rerun()
-
 st.markdown(
     """
     <div class="workspace-shell">
@@ -3984,111 +3977,6 @@ if workspace_mode:
             st.session_state.analysis_ticker = ticker
         st.session_state.analysis_requested = True
         st.session_state.analysis_mode_run = analysis_mode
-# ---------- Internal Auto-Run Mode ----------
-if st.session_state.get("auto_run_requested", False):
-    slot_label = st.session_state.get("auto_run_slot_label", "")
-    berlin_now = get_current_berlin_time()
-    due_df, due_err = get_due_watchlists_for_slot(slot_label)
-
-    if due_err:
-        st.error(f"Auto-Run fehlgeschlagen: {due_err}")
-        st.session_state.auto_run_requested = False
-        st.stop()
-
-    if due_df is None or due_df.empty:
-        st.info(f"Für den Slot {slot_label} sind aktuell keine Watchlisten fällig.")
-        st.session_state.auto_run_requested = False
-        st.stop()
-
-    st.subheader(f"Auto-Run · Slot {slot_label}")
-    st.caption(f"Berlin-Zeit jetzt: {berlin_now.strftime('%d.%m.%Y %H:%M')}")
-
-    auto_run_rows = []
-    total_sent = 0
-
-    for _, wl_row in due_df.iterrows():
-        wl_name = str(wl_row.get("Watchlist_Name", "")).strip()
-        wl_type = str(wl_row.get("Watchlist_Type", "Watchlist")).strip() or "Watchlist"
-        wl_alert_mode = str(wl_row.get("Alert_Mode", "Standard")).strip() or "Standard"
-        wl_freq = str(wl_row.get("Check_Frequency", "4x täglich")).strip() or "4x täglich"
-
-        tickers, tick_err = get_watchlist_tickers(wl_name)
-        if tick_err:
-            st.error(f"{wl_name}: {tick_err}")
-            auto_run_rows.append({
-                "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
-                "Slot": slot_label,
-                "Watchlist_Name": wl_name,
-                "Watchlist_Type": wl_type,
-                "Alert_Mode": wl_alert_mode,
-                "Check_Frequency": wl_freq,
-                "Ticker_Count": 0,
-                "Analyzed_Count": 0,
-                "Sent_Count": 0,
-                "Status": "Fehler",
-                "Message": tick_err,
-            })
-            continue
-
-        results = []
-        analyze_errors = []
-        for tkr in tickers:
-            try:
-                result = analyze_stock(
-                    ticker=tkr,
-                    horizon="Swing (1-4 Wochen)",
-                    depot=10000,
-                    risk_pct=1.0,
-                    override=0.0,
-                    buy_in_override=0.0 if wl_type != "Positions-Watchlist" else 0.0,
-                    smart_money_default=True,
-                    strict_mode=True
-                )
-                results.append(result)
-            except Exception as e:
-                analyze_errors.append(f"{tkr}: {e}")
-
-        ok, msg, sent_count = send_watchlist_alerts(results, wl_name, wl_type, wl_alert_mode) if results else (False, "Keine auswertbaren Ergebnisse", 0)
-
-        if ok:
-            st.success(f"{wl_name}: {msg}")
-        else:
-            if "Keine" in msg or "unterdrückt" in msg:
-                st.info(f"{wl_name}: {msg}")
-            else:
-                st.error(f"{wl_name}: {msg}")
-
-        total_sent += int(sent_count or 0)
-        auto_run_rows.append({
-            "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
-            "Slot": slot_label,
-            "Watchlist_Name": wl_name,
-            "Watchlist_Type": wl_type,
-            "Alert_Mode": wl_alert_mode,
-            "Check_Frequency": wl_freq,
-            "Ticker_Count": len(tickers),
-            "Analyzed_Count": len(results),
-            "Sent_Count": int(sent_count or 0),
-            "Status": "OK" if ok else "Info",
-            "Message": msg + (f" | Analysefehler: {' ; '.join(analyze_errors[:2])}" if analyze_errors else ""),
-        })
-
-    log_ok, log_msg = append_auto_run_log(auto_run_rows)
-    if log_ok:
-        st.caption(log_msg)
-    else:
-        st.warning(f"Auto-Run-Logging fehlgeschlagen: {log_msg}")
-
-    if total_sent > 0:
-        st.success(f"Auto-Run abgeschlossen. Insgesamt {total_sent} Telegram-Meldungen gesendet.")
-    else:
-        st.info("Auto-Run abgeschlossen. Es wurden keine neuen Telegram-Meldungen gesendet.")
-
-    st.session_state.auto_run_requested = False
-    st.stop()
-
 # ---------- Batch / Ranking Run ----------
 if not st.session_state.get("analysis_requested", False):
     st.stop()

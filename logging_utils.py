@@ -303,6 +303,124 @@ def get_watchlist_alert_mode(watchlist_name):
 
 
 
+
+
+def get_watchlist_catalog_df():
+    cols = ["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency"]
+    df, err = load_watchlists_df()
+    if err:
+        return pd.DataFrame(columns=cols), err
+    if df is None or df.empty:
+        return pd.DataFrame(columns=cols), None
+
+    for col in cols:
+        if col not in df.columns:
+            df[col] = ""
+
+    catalog = (
+        df[cols]
+        .fillna("")
+        .astype(str)
+        .query("Watchlist_Name != ''")
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+    return catalog, None
+
+
+def get_schedule_slots_for_frequency(check_frequency):
+    freq = str(check_frequency or "").strip()
+    mapping = {
+        "Nur manuell": [],
+        "2x täglich": ["10:30", "18:30"],
+        "3x täglich": ["10:30", "18:30", "22:10"],
+        "4x täglich": ["10:30", "15:40", "18:30", "22:10"],
+    }
+    return mapping.get(freq, [])
+
+
+def get_current_berlin_time():
+    return datetime.now(ZoneInfo("Europe/Berlin"))
+
+
+def get_current_schedule_slot(now_dt=None):
+    now_dt = now_dt or get_current_berlin_time()
+    hhmm = now_dt.strftime("%H:%M")
+    slots = ["10:30", "15:40", "18:30", "22:10"]
+    eligible = [s for s in slots if hhmm >= s]
+    return eligible[-1] if eligible else None
+
+
+def get_due_watchlists_for_slot(slot_label):
+    cols = ["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency", "Due_Now"]
+    catalog, err = get_watchlist_catalog_df()
+    if err:
+        return pd.DataFrame(columns=cols), err
+    if catalog is None or catalog.empty:
+        return pd.DataFrame(columns=cols), None
+
+    catalog = catalog.copy()
+    catalog["Due_Now"] = catalog["Check_Frequency"].apply(lambda x: slot_label in get_schedule_slots_for_frequency(x))
+    return catalog[catalog["Due_Now"]].reset_index(drop=True), None
+
+
+def get_watchlist_tickers(watchlist_name):
+    df, err = load_watchlists_df()
+    if err:
+        return [], err
+    if df is None or df.empty:
+        return [], None
+
+    mask = df["Watchlist_Name"].astype(str).str.strip().str.lower() == str(watchlist_name).strip().lower()
+    subset = df.loc[mask]
+    if subset.empty:
+        return [], None
+
+    tickers = [str(x).strip().upper() for x in subset["Ticker"].astype(str).tolist() if str(x).strip()]
+    seen = set()
+    unique = []
+    for t in tickers:
+        if t not in seen:
+            seen.add(t)
+            unique.append(t)
+    return unique, None
+
+
+def append_auto_run_log(rows):
+    if not rows:
+        return False, "Keine Auto-Run-Log-Daten vorhanden."
+
+    sh, err = open_log_spreadsheet()
+    if sh is None:
+        return False, err
+
+    try:
+        ws = get_or_create_worksheet(sh, "Auto_Run_Log", rows=5000, cols=16)
+        existing = ws.get_all_values()
+        headers = [
+            "Run_Timestamp",
+            "Berlin_Time",
+            "Slot",
+            "Watchlist_Name",
+            "Watchlist_Type",
+            "Alert_Mode",
+            "Check_Frequency",
+            "Ticker_Count",
+            "Analyzed_Count",
+            "Sent_Count",
+            "Status",
+            "Message",
+        ]
+        if not existing:
+            ws.append_row(headers, value_input_option="USER_ENTERED")
+
+        for row in rows:
+            ws.append_row([row.get(h, "") for h in headers], value_input_option="USER_ENTERED")
+        return True, f"{len(rows)} Auto-Run-Logzeilen gespeichert."
+    except Exception as e:
+        return False, str(e)
+
+
 def load_alert_history_df():
     sh, err = open_log_spreadsheet()
     cols = [
@@ -429,102 +547,6 @@ def upsert_alert_history_entry(watchlist_name, watchlist_type, alert_mode, ticke
         df.loc[mask, "Last_Sent_Date"] = today
 
     return save_alert_history_df(df)
-
-
-
-
-def get_watchlist_catalog_df():
-    df, err = load_watchlists_df()
-    cols = ["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency"]
-    if err:
-        return pd.DataFrame(columns=cols), err
-    if df is None or df.empty:
-        return pd.DataFrame(columns=cols), None
-
-    for col in cols:
-        if col not in df.columns:
-            df[col] = ""
-
-    catalog = (
-        df[cols]
-        .fillna("")
-        .astype(str)
-        .query("Watchlist_Name != ''")
-        .drop_duplicates()
-        .reset_index(drop=True)
-    )
-    return catalog, None
-
-
-def get_schedule_slots_for_frequency(check_frequency):
-    freq = str(check_frequency or "").strip()
-    mapping = {
-        "Nur manuell": [],
-        "2x täglich": ["10:30", "18:30"],
-        "3x täglich": ["10:30", "18:30", "22:10"],
-        "4x täglich": ["10:30", "15:40", "18:30", "22:10"],
-    }
-    return mapping.get(freq, ["10:30", "15:40", "18:30", "22:10"])
-
-
-def get_current_berlin_time():
-    return datetime.now(ZoneInfo("Europe/Berlin"))
-
-
-def get_current_schedule_slot(now_dt=None):
-    now_dt = now_dt or get_current_berlin_time()
-    hhmm = now_dt.strftime("%H:%M")
-    slots = ["10:30", "15:40", "18:30", "22:10"]
-
-    if hhmm < "10:30":
-        return None
-    if hhmm >= "22:10":
-        return "22:10"
-
-    current = None
-    for slot in slots:
-        if hhmm >= slot:
-            current = slot
-    return current
-
-
-def get_due_watchlists_for_slot(slot_label):
-    catalog, err = get_watchlist_catalog_df()
-    if err:
-        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency", "Due_Now"]), err
-    if catalog.empty:
-        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency", "Due_Now"]), None
-
-    catalog = catalog.copy()
-    catalog["Due_Now"] = catalog["Check_Frequency"].apply(lambda x: slot_label in get_schedule_slots_for_frequency(x))
-    due_df = catalog[catalog["Due_Now"]].reset_index(drop=True)
-    return due_df, None
-
-
-def get_watchlist_tickers(watchlist_name):
-    df, err = load_watchlists_df()
-    if err:
-        return [], err
-    if df is None or df.empty:
-        return [], None
-
-    mask = df["Watchlist_Name"].astype(str).str.strip().str.lower() == str(watchlist_name).strip().lower()
-    subset = df.loc[mask].copy()
-    if subset.empty:
-        return [], None
-
-    tickers = [
-        str(x).strip().upper()
-        for x in subset["Ticker"].astype(str).tolist()
-        if str(x).strip()
-    ]
-    unique = []
-    seen = set()
-    for t in tickers:
-        if t not in seen:
-            unique.append(t)
-            seen.add(t)
-    return unique, None
 
 
 def build_export_row(result):

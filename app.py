@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15B"
+APP_VERSION = "v10.15B.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4324,25 +4324,32 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
         ranking_df = ranking_df[ranking_df["Setup-Typ"].isin(selected_setup_types)]
 
     if ranking_focus == "Trading-Ranking":
-        ranking_df = ranking_df.sort_values(
-            by=["Einstieg jetzt attraktiv?", "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence"],
-            ascending=False
-        ).reset_index(drop=True)
+        trading_sort_cols = [c for c in ["Einstieg jetzt attraktiv?", "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence"] if c in ranking_df.columns]
+        if trading_sort_cols:
+            ranking_df = ranking_df.sort_values(
+                by=trading_sort_cols,
+                ascending=[False] * len(trading_sort_cols)
+            ).reset_index(drop=True)
     elif ranking_focus == "Watchlist-Ranking":
         if "Watchlist-Priorität" in ranking_df.columns:
             priority_map = {"Hoch": 3, "Mittel": 2, "Niedrig": 1}
             ranking_df["_watchlist_sort"] = ranking_df["Watchlist-Priorität"].map(priority_map).fillna(0)
         else:
             ranking_df["_watchlist_sort"] = 0
-        ranking_df = ranking_df.sort_values(
-            by=["_watchlist_sort", "Einstieg jetzt attraktiv?", "Trade-Struktur", "Investment-Attraktivität"],
-            ascending=False
-        ).drop(columns=["_watchlist_sort"], errors="ignore").reset_index(drop=True)
+        watchlist_sort_cols = [c for c in ["_watchlist_sort", "Einstieg jetzt attraktiv?", "Trade-Struktur", "Investment-Attraktivität"] if c in ranking_df.columns]
+        if watchlist_sort_cols:
+            ranking_df = ranking_df.sort_values(
+                by=watchlist_sort_cols,
+                ascending=[False] * len(watchlist_sort_cols)
+            ).reset_index(drop=True)
+        ranking_df = ranking_df.drop(columns=["_watchlist_sort"], errors="ignore")
     else:
-        ranking_df = ranking_df.sort_values(
-            by=["Investment-Attraktivität", "Unternehmen", "Sicherheit"],
-            ascending=False
-        ).reset_index(drop=True)
+        investment_sort_cols = [c for c in ["Investment-Attraktivität", "Unternehmen", "Sicherheit"] if c in ranking_df.columns]
+        if investment_sort_cols:
+            ranking_df = ranking_df.sort_values(
+                by=investment_sort_cols,
+                ascending=[False] * len(investment_sort_cols)
+            ).reset_index(drop=True)
 
     if ranking_df.empty:
         st.warning("Nach den gesetzten Filtern bleiben aktuell keine Werte übrig.")

@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.14A.8"
+APP_VERSION = "v10.15A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3392,62 +3392,33 @@ st.caption(
     "Mit Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement, Watchlisten und Telegram-Alerts."
 )
 
-with st.expander("Anleitung / Hilfe", expanded=False):
-    st.markdown("### 1) Die drei Arbeitsmodi")
+with st.expander("Kurzanleitung", expanded=False):
     st.markdown(
-        "- **Sofortanalyse**: für spontane Einzelanalysen oder Vergleiche mehrerer Aktien.\n"
-        "- **Watchlisten**: für neue Chancen, Trigger, Priorisierung und Telegram-Checks.\n"
-        "- **Positionen**: für bereits gehaltene Werte, Risiko, Stop, Teilgewinn und Maßnahmen."
+        "- **Sofortanalyse**: spontane Einzelanalyse oder Vergleich mehrerer Aktien.\n"
+        "- **Watchlisten**: neue Chancen beobachten, priorisieren und bei Bedarf an Telegram senden.\n"
+        "- **Positionen**: bestehende Werte mit Fokus auf Risiko, Stop und Teilgewinn überwachen.\n"
+        "- **Alert-Modus**: Konservativ = selektiver, Standard = Mittelweg, Früh = mehr Hinweise.\n"
+        "- **Prüf-Frequenz**: steuert, in welchen Auto-Run-Slots eine Liste berücksichtigt wird."
     )
 
-    st.markdown("### 2) Unterschied: Watchlist vs. Positions-Watchlist")
-    st.markdown(
-        "- **Watchlist** = Werte, die du noch nicht hältst oder neu beobachten willst. Fokus: Einstieg, Trigger, Priorität.\n"
-        "- **Positions-Watchlist** = Werte, die du bereits besitzt. Fokus: Risiko reduzieren, Stop prüfen, Teilgewinn, Maßnahmen."
-    )
+    with st.expander("Ausführliche Hilfe", expanded=False):
+        st.markdown("### Unterschied: Watchlist vs. Positions-Watchlist")
+        st.markdown(
+            "- **Watchlist** = Werte, die du noch nicht hältst oder neu beobachten willst. Fokus: Einstieg, Trigger, Priorität.\n"
+            "- **Positions-Watchlist** = Werte, die du bereits besitzt. Fokus: Risiko reduzieren, Stop prüfen, Teilgewinn, Maßnahmen."
+        )
+        st.markdown("### Telegram")
+        st.markdown(
+            "- **Watchlist analysieren + Telegram** prüft die aktuelle Watchlist sofort.\n"
+            "- Telegram sendet nicht jede Analyse erneut, sondern nutzt Alert-History und unterdrückt doppelte Meldungen.\n"
+            "- Neue Watchlist-Werte können zusätzlich eine **Erst-Check-Info** auslösen."
+        )
+        st.markdown("### Auto-Run")
+        st.markdown(
+            "- Die gespeicherte Prüf-Frequenz bestimmt, in welchen Slots eine Watchlist automatisch fällig ist.\n"
+            "- Der Auto-Run-Bereich liegt bewusst im Technik-/Admin-Teil, damit die Hauptoberfläche ruhiger bleibt."
+        )
 
-    st.markdown("### 3) Alert-Modus")
-    st.markdown(
-        "- **Konservativ**: nur stärkere Fälle.\n"
-        "- **Standard**: sinnvoller Mittelweg.\n"
-        "- **Früh**: meldet frühere Hinweise und mehr Beobachtungssituationen."
-    )
-
-    st.markdown("### 4) Prüf-Frequenz")
-    st.markdown(
-        "- **Nur manuell**: nur bei Button-Klick.\n"
-        "- **2x täglich**: 10:30 / 18:30\n"
-        "- **3x täglich**: 10:30 / 18:30 / 22:10\n"
-        "- **4x täglich**: 10:30 / 15:40 / 18:30 / 22:10"
-    )
-
-    st.markdown("### 5) Telegram")
-    st.markdown(
-        "- **Watchlist analysieren + Telegram** prüft die aktuelle Watchlist sofort.\n"
-        "- Telegram sendet nicht jede Analyse erneut, sondern nutzt Alert-History und unterdrückt doppelte Meldungen.\n"
-        "- Neue Watchlist-Werte können zusätzlich eine **Erst-Check-Info** auslösen."
-    )
-
-    st.markdown("### 6) Auto-Run-Test")
-    st.markdown(
-        "- Der **Auto-Run-Test** simuliert einen geplanten Slot direkt in der App.\n"
-        "- Dabei werden nur Watchlisten geprüft, deren gespeicherte Frequenz zu diesem Slot passt.\n"
-        "- Das ist die Vorstufe für spätere echte automatische Läufe."
-    )
-
-    st.markdown("### 7) Google Sheets")
-    st.markdown(
-        "- **Analysis_Log**: speichert Analysen als Verlauf und Backtesting-Basis.\n"
-        "- **Trigger_Log**: speichert Trigger-Kandidaten.\n"
-        "- **Alert_History**: merkt sich bereits gesendete Alerts, damit Telegram nicht dieselbe Meldung ständig wiederholt."
-    )
-
-    st.markdown("### 8) Typische Nutzung")
-    st.markdown(
-        "- **Neue Chancen suchen**: Watchlist + Alert-Modus + Telegram.\n"
-        "- **Bestehende Positionen überwachen**: Positions-Watchlist + 3x täglich.\n"
-        "- **Spontane Prüfung**: Sofortanalyse nutzen.\n- **Tipp bei Änderungen**: Nach Speichern, Hinzufügen oder Entfernen aktualisiert sich die Oberfläche jetzt direkt und behält Auswahlzustände stabil bei."
-    )
 
 st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
@@ -3489,22 +3460,23 @@ with st.expander("Auto-Run Control Center", expanded=False):
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
 
-test1, test2 = st.columns([1.2, 2.8])
-with test1:
-    if st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
-        test_message = (
-            f"Capital Hill Test\n"
-            f"Version: {APP_VERSION}\n"
-            f"Zeit: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"Status: Telegram-Versand funktioniert."
-        )
-        ok, msg = send_telegram_message(test_message)
-        if ok:
-            st.success("Telegram-Testnachricht wurde gesendet.")
-        else:
-            st.error(f"Telegram-Test fehlgeschlagen: {msg}")
-with test2:
-    st.caption("Damit prüfst du Telegram unabhängig von Watchlist, Alert-Schärfe, Alert-History und Marktlogik. Wenn diese Testnachricht ankommt, funktionieren Token und Chat-ID technisch korrekt.")
+with st.expander("Technik / Admin", expanded=False):
+    test1, test2 = st.columns([1.2, 2.8])
+    with test1:
+        if st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
+            test_message = (
+                f"Capital Hill Test\n"
+                f"Version: {APP_VERSION}\n"
+                f"Zeit: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Status: Telegram-Versand funktioniert."
+            )
+            ok, msg = send_telegram_message(test_message)
+            if ok:
+                st.success("Telegram-Testnachricht wurde gesendet.")
+            else:
+                st.error(f"Telegram-Test fehlgeschlagen: {msg}")
+    with test2:
+        st.caption("Damit prüfst du Telegram unabhängig von Watchlist, Alert-Schärfe, Alert-History und Marktlogik. Wenn diese Testnachricht ankommt, funktionieren Token und Chat-ID technisch korrekt.")
 
 st.markdown(
     """
@@ -3587,8 +3559,8 @@ else:
 
 # ---------- Watchlisten direkt in der App ----------
 if workspace_mode in {"Watchlisten", "Positionen"}:
-    with st.expander("Watchlisten verwalten", expanded=True):
-        st.caption("Watchlisten werden direkt in der App gepflegt und im Hintergrund dauerhaft gespeichert. Du musst dafür nicht manuell in Google Sheets arbeiten. Für Telegram-Alerts werden normale Watchlisten und Positions-Watchlisten unterschiedlich behandelt.")
+    with st.expander("Watchlisten", expanded=True):
+        st.caption("Hier arbeitest du operativ mit bestehenden Listen. Erstellung, Pflege und technische Einstellungen findest du darunter gebündelt im Verwaltungsbereich.")
 
         watchlists_df, watchlists_err = load_watchlists_df()
         if watchlists_err:
@@ -3609,90 +3581,91 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
 
         default_type = "Positions-Watchlist" if workspace_mode == "Positionen" else "Watchlist"
 
-        wl1, wl2 = st.columns([1.2, 1.8])
+        with st.expander("Watchlist verwalten", expanded=False):
+                    wl1, wl2 = st.columns([1.2, 1.8])
 
-        with wl1:
-            st.markdown("**Neue Watchlist anlegen**")
-            st.caption("Watchlist = neue Chancen · Positions-Watchlist = bereits gehaltene Werte")
-            new_watchlist_name = st.text_input(
-                "Name der Watchlist",
-                value=st.session_state.watchlist_new_name,
-                placeholder="z. B. US Tech, Europa Qualität, Depot Kernpositionen",
-                key="watchlist_new_name_widget"
-            ).strip()
-            st.session_state.watchlist_new_name = new_watchlist_name
+                    with wl1:
+                        st.markdown("**Neue Watchlist anlegen**")
+                        st.caption("Watchlist = neue Chancen · Positions-Watchlist = bereits gehaltene Werte")
+                        new_watchlist_name = st.text_input(
+                            "Name der Watchlist",
+                            value=st.session_state.watchlist_new_name,
+                            placeholder="z. B. US Tech, Europa Qualität, Depot Kernpositionen",
+                            key="watchlist_new_name_widget"
+                        ).strip()
+                        st.session_state.watchlist_new_name = new_watchlist_name
 
-            type_options = ["Watchlist", "Positions-Watchlist"]
-            selected_type_for_create = st.session_state.selected_watchlist_type if st.session_state.selected_watchlist_type in type_options else default_type
-            default_type_idx = type_options.index(selected_type_for_create if workspace_mode == "Watchlisten" else "Positions-Watchlist")
-            new_watchlist_type = st.selectbox(
-                "Typ der Watchlist",
-                type_options,
-                index=default_type_idx,
-                key="watchlist_type_widget"
-            )
-            st.session_state.selected_watchlist_type = new_watchlist_type
+                        type_options = ["Watchlist", "Positions-Watchlist"]
+                        selected_type_for_create = st.session_state.selected_watchlist_type if st.session_state.selected_watchlist_type in type_options else default_type
+                        default_type_idx = type_options.index(selected_type_for_create if workspace_mode == "Watchlisten" else "Positions-Watchlist")
+                        new_watchlist_type = st.selectbox(
+                            "Typ der Watchlist",
+                            type_options,
+                            index=default_type_idx,
+                            key="watchlist_type_widget"
+                        )
+                        st.session_state.selected_watchlist_type = new_watchlist_type
 
-            freq_options = ["Nur manuell", "2x täglich", "3x täglich", "4x täglich"]
-            default_freq = "3x täglich" if new_watchlist_type == "Positions-Watchlist" else "4x täglich"
-            if st.session_state.selected_watchlist_check_frequency not in freq_options:
-                st.session_state.selected_watchlist_check_frequency = default_freq
-            new_check_frequency = st.selectbox(
-                "Prüf-Frequenz",
-                freq_options,
-                index=freq_options.index(st.session_state.selected_watchlist_check_frequency if st.session_state.selected_watchlist_check_frequency in freq_options else default_freq),
-                key="watchlist_check_frequency_widget"
-            )
-            st.session_state.selected_watchlist_check_frequency = new_check_frequency
-            st.caption("Vorschlag: Watchlist = 4x täglich · Positions-Watchlist = 3x täglich")
+                        freq_options = ["Nur manuell", "2x täglich", "3x täglich", "4x täglich"]
+                        default_freq = "3x täglich" if new_watchlist_type == "Positions-Watchlist" else "4x täglich"
+                        if st.session_state.selected_watchlist_check_frequency not in freq_options:
+                            st.session_state.selected_watchlist_check_frequency = default_freq
+                        new_check_frequency = st.selectbox(
+                            "Prüf-Frequenz",
+                            freq_options,
+                            index=freq_options.index(st.session_state.selected_watchlist_check_frequency if st.session_state.selected_watchlist_check_frequency in freq_options else default_freq),
+                            key="watchlist_check_frequency_widget"
+                        )
+                        st.session_state.selected_watchlist_check_frequency = new_check_frequency
+                        st.caption("Vorschlag: Watchlist = 4x täglich · Positions-Watchlist = 3x täglich")
 
-            if st.button("Watchlist erstellen", use_container_width=True, key="create_watchlist_btn"):
-                ok, msg = create_watchlist(new_watchlist_name, new_watchlist_type, check_frequency=new_check_frequency)
-                if ok:
-                    st.session_state.selected_watchlist_name = new_watchlist_name
-                    st.session_state.selected_watchlist_type = new_watchlist_type
-                    st.session_state.selected_watchlist_check_frequency = new_check_frequency
-                    st.session_state.watchlist_new_name = ""
-                    st.session_state.workspace_mode = "Positionen" if new_watchlist_type == "Positions-Watchlist" else "Watchlisten"
-                    st.success(msg)
-                    trigger_ui_refresh()
-                else:
-                    st.error(msg)
+                        if st.button("Watchlist erstellen", use_container_width=True, key="create_watchlist_btn"):
+                            ok, msg = create_watchlist(new_watchlist_name, new_watchlist_type, check_frequency=new_check_frequency)
+                            if ok:
+                                st.session_state.selected_watchlist_name = new_watchlist_name
+                                st.session_state.selected_watchlist_type = new_watchlist_type
+                                st.session_state.selected_watchlist_check_frequency = new_check_frequency
+                                st.session_state.watchlist_new_name = ""
+                                st.session_state.workspace_mode = "Positionen" if new_watchlist_type == "Positions-Watchlist" else "Watchlisten"
+                                st.success(msg)
+                                trigger_ui_refresh()
+                            else:
+                                st.error(msg)
 
-        with wl2:
-            st.markdown("**Bestehende Watchlist auswählen**")
-            watchlist_options = catalog_df["Watchlist_Name"].tolist() if not catalog_df.empty else []
+                    with wl2:
+                        st.markdown("**Bestehende Watchlist auswählen**")
+                        watchlist_options = catalog_df["Watchlist_Name"].tolist() if not catalog_df.empty else []
 
-            if workspace_mode == "Positionen" and not catalog_df.empty:
-                filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"] == "Positions-Watchlist"].copy()
-                watchlist_options = filtered_catalog_df["Watchlist_Name"].tolist()
-            elif workspace_mode == "Watchlisten" and not catalog_df.empty:
-                filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"] == "Watchlist"].copy()
-                watchlist_options = filtered_catalog_df["Watchlist_Name"].tolist()
-            else:
-                filtered_catalog_df = catalog_df.copy()
+                        if workspace_mode == "Positionen" and not catalog_df.empty:
+                            filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"] == "Positions-Watchlist"].copy()
+                            watchlist_options = filtered_catalog_df["Watchlist_Name"].tolist()
+                        elif workspace_mode == "Watchlisten" and not catalog_df.empty:
+                            filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"] == "Watchlist"].copy()
+                            watchlist_options = filtered_catalog_df["Watchlist_Name"].tolist()
+                        else:
+                            filtered_catalog_df = catalog_df.copy()
 
-            if watchlist_options:
-                default_idx = watchlist_options.index(st.session_state.selected_watchlist_name) if st.session_state.selected_watchlist_name in watchlist_options else 0
-                selected_watchlist_name = st.selectbox(
-                    "Watchlist",
-                    options=watchlist_options,
-                    index=default_idx,
-                    key="selected_watchlist_name_widget"
-                )
-                st.session_state.selected_watchlist_name = selected_watchlist_name
+                        if watchlist_options:
+                            default_idx = watchlist_options.index(st.session_state.selected_watchlist_name) if st.session_state.selected_watchlist_name in watchlist_options else 0
+                            selected_watchlist_name = st.selectbox(
+                                "Watchlist",
+                                options=watchlist_options,
+                                index=default_idx,
+                                key="selected_watchlist_name_widget"
+                            )
+                            st.session_state.selected_watchlist_name = selected_watchlist_name
 
-                selected_watchlist_type = filtered_catalog_df.loc[filtered_catalog_df["Watchlist_Name"] == selected_watchlist_name, "Watchlist_Type"].iloc[0]
-                current_alert_mode = get_watchlist_alert_mode(selected_watchlist_name)
-                current_check_frequency = get_watchlist_check_frequency(selected_watchlist_name)
-                st.session_state.selected_watchlist_type = selected_watchlist_type
-                st.session_state.selected_watchlist_alert_mode = current_alert_mode
-                st.session_state.selected_watchlist_check_frequency = current_check_frequency
-                st.caption(f"Typ: {selected_watchlist_type} · Alert-Modus: {current_alert_mode} · Prüf-Frequenz: {current_check_frequency}")
-            else:
-                selected_watchlist_name = ""
-                selected_watchlist_type = default_type
-                st.info("Noch keine passende Watchlist vorhanden. Lege links zuerst eine neue Watchlist an.")
+                            selected_watchlist_type = filtered_catalog_df.loc[filtered_catalog_df["Watchlist_Name"] == selected_watchlist_name, "Watchlist_Type"].iloc[0]
+                            current_alert_mode = get_watchlist_alert_mode(selected_watchlist_name)
+                            current_check_frequency = get_watchlist_check_frequency(selected_watchlist_name)
+                            st.session_state.selected_watchlist_type = selected_watchlist_type
+                            st.session_state.selected_watchlist_alert_mode = current_alert_mode
+                            st.session_state.selected_watchlist_check_frequency = current_check_frequency
+                            st.markdown(f"**Status:** Typ: {selected_watchlist_type} | Alert: {current_alert_mode} | Frequenz: {current_check_frequency}")
+                        else:
+                            selected_watchlist_name = ""
+                            selected_watchlist_type = default_type
+                            st.info("Noch keine passende Watchlist vorhanden. Lege links zuerst eine neue Watchlist an.")
 
         if selected_watchlist_name:
             watchlists_df, watchlists_err = load_watchlists_df()
@@ -3709,6 +3682,11 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 if str(x).strip()
             ]
 
+            st.markdown(f"**Ausgewählte Liste:** {selected_watchlist_name}")
+            st.caption(f"Typ: {selected_watchlist_type} | Alert: {st.session_state.selected_watchlist_alert_mode} | Frequenz: {st.session_state.selected_watchlist_check_frequency} | Werte: {len(current_tickers)}")
+
+            with st.expander("Einstellungen und Pflege dieser Watchlist", expanded=False):
+
             st.markdown("**Alert-Einstellungen für diese Watchlist**")
             am1, am2 = st.columns([1.6, 1.0])
             with am1:
@@ -3719,8 +3697,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     index=alert_mode_options.index(st.session_state.selected_watchlist_alert_mode) if st.session_state.selected_watchlist_alert_mode in alert_mode_options else 1,
                     key="selected_watchlist_alert_mode_widget"
                 )
-                st.caption("Konservativ = nur starke Fälle · Standard = sinnvoller Mittelweg · Früh = meldet früher.")
-                st.caption("Tipp: Für ruhige Qualitätslisten eher Konservativ/Standard, für Trading-Listen eher Standard/Früh.")
+                st.caption("Konservativ = selektiver · Standard = Mittelweg · Früh = meldet früher.")
             with am2:
                 st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
                 if st.button("Alert-Modus speichern", use_container_width=True, key="save_watchlist_alert_mode_btn"):
@@ -3742,8 +3719,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     index=frequency_options.index(st.session_state.selected_watchlist_check_frequency) if st.session_state.selected_watchlist_check_frequency in frequency_options else 3,
                     key="selected_watchlist_check_frequency_widget"
                 )
-                st.caption("Geplante Zeitslots: 2x = 10:30 / 18:30 · 3x = 10:30 / 18:30 / 22:10 · 4x = 10:30 / 15:40 / 18:30 / 22:10")
-                st.caption("Tipp: Watchlist meist 4x täglich, Positions-Watchlist meist 3x täglich.")
+                st.caption("Slots: 2x = 10:30/18:30 · 3x = 10:30/18:30/22:10 · 4x = 10:30/15:40/18:30/22:10")
             with fq2:
                 st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
                 if st.button("Frequenz speichern", use_container_width=True, key="save_watchlist_frequency_btn"):
@@ -3803,35 +3779,35 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                         else:
                             st.error(msg)
 
-            st.markdown("**Inhalt der aktuellen Watchlist**")
-            st.caption(f"Anzahl Werte: {len(current_tickers)}")
-            if current_tickers:
-                preview_df = pd.DataFrame({"Ticker": current_tickers})
-                st.dataframe(preview_df, hide_index=True, use_container_width=True, height=min(320, 45 * len(preview_df) + 40))
+                            st.markdown("**Inhalt der aktuellen Watchlist**")
+                            st.caption(f"Anzahl Werte: {len(current_tickers)}")
+                            if current_tickers:
+                                preview_df = pd.DataFrame({"Ticker": current_tickers})
+                                st.dataframe(preview_df, hide_index=True, use_container_width=True, height=min(320, 45 * len(preview_df) + 40))
 
-                rem1, rem2, rem3 = st.columns([1.4, 1.1, 1.2])
-                with rem1:
-                    ticker_to_remove = st.selectbox("Ticker entfernen", options=current_tickers, key="remove_watchlist_ticker_widget")
-                with rem2:
-                    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                    if st.button("Ticker entfernen", use_container_width=True, key="remove_watchlist_ticker_btn"):
-                        ok, msg = remove_ticker_from_watchlist(selected_watchlist_name, ticker_to_remove)
-                        if ok:
-                            st.success(msg)
-                            trigger_ui_refresh()
-                        else:
-                            st.error(msg)
-                with rem3:
-                    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                    if st.button("Watchlist löschen", use_container_width=True, key="delete_watchlist_btn"):
-                        ok, msg = delete_watchlist(selected_watchlist_name)
-                        if ok:
-                            st.success(msg)
-                            st.session_state.selected_watchlist_name = ""
-                        else:
-                            st.error(msg)
-            else:
-                st.info("Diese Watchlist hat aktuell noch keine Ticker.")
+                                rem1, rem2, rem3 = st.columns([1.4, 1.1, 1.2])
+                                with rem1:
+                                    ticker_to_remove = st.selectbox("Ticker entfernen", options=current_tickers, key="remove_watchlist_ticker_widget")
+                                with rem2:
+                                    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                                    if st.button("Ticker entfernen", use_container_width=True, key="remove_watchlist_ticker_btn"):
+                                        ok, msg = remove_ticker_from_watchlist(selected_watchlist_name, ticker_to_remove)
+                                        if ok:
+                                            st.success(msg)
+                                            trigger_ui_refresh()
+                                        else:
+                                            st.error(msg)
+                                with rem3:
+                                    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                                    if st.button("Watchlist löschen", use_container_width=True, key="delete_watchlist_btn"):
+                                        ok, msg = delete_watchlist(selected_watchlist_name)
+                                        if ok:
+                                            st.success(msg)
+                                            st.session_state.selected_watchlist_name = ""
+                                        else:
+                                            st.error(msg)
+                            else:
+                                st.info("Diese Watchlist hat aktuell noch keine Ticker.")
 
             act1, act2, act3 = st.columns(3)
             with act1:

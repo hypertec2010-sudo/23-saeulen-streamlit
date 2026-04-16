@@ -2,11 +2,12 @@
 """
 Headless Auto-Run for Capital Hill Score Modell.
 
-Runs in GitHub Actions (or locally), loads due watchlists for the current Berlin slot,
-analyzes their tickers, sends Telegram alerts, and writes Auto_Run_Log rows.
+Loads only imports + function/class definitions from app.py via AST,
+skipping all Streamlit UI execution and session-state dependent top-level code.
 """
 
 import argparse
+import ast
 import os
 import sys
 from datetime import datetime
@@ -52,28 +53,29 @@ def patch_streamlit_secrets() -> None:
 
 def load_analysis_namespace(app_path: Path) -> dict:
     """
-    Load only the function/helper section of app.py and skip the UI/main-flow section.
+    Load only safe code from app.py:
+    - imports
+    - function definitions
+    - class definitions
 
-    The Streamlit UI part of app.py references st.session_state and other runtime-only
-    objects. In GitHub Actions we run in bare mode, so we must not execute that part.
+    This avoids top-level Streamlit UI execution and session_state access.
     """
     source = app_path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(app_path))
 
-    cut_markers = [
-        "# ---------- Main App Flow ----------",
-        "# ---------- UI Theme / CSS ----------",
-    ]
-    cut_idx = None
-    for marker in cut_markers:
-        idx = source.find(marker)
-        if idx != -1:
-            cut_idx = idx if cut_idx is None else min(cut_idx, idx)
+    selected_nodes = []
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            selected_nodes.append(node)
 
-    if cut_idx is not None:
-        source = source[:cut_idx]
-
+    module = ast.Module(body=selected_nodes, type_ignores=[])
     namespace: dict = {}
-    exec(compile(source, filename=str(app_path), mode="exec"), namespace, namespace)
+    exec(compile(module, filename=str(app_path), mode="exec"), namespace, namespace)
+
+    if "analyze_stock" not in namespace:
+        available = sorted([k for k, v in namespace.items() if callable(v)])[:50]
+        raise RuntimeError(f"analyze_stock wurde in app.py nicht gefunden. Verfügbare Funktionen: {available}")
+
     return namespace
 
 

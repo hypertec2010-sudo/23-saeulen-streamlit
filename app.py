@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15B.1"
+APP_VERSION = "v10.15C"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3428,7 +3428,7 @@ with st.expander("Auto-Run Control Center", expanded=False):
     slot_options = ["10:30", "15:40", "18:30", "22:10"]
 
     st.caption(f"Aktuelle Berlin-Zeit: {berlin_now.strftime('%d.%m.%Y %H:%M')} · Aktueller Slot: {current_slot_label if current_slot_label else 'noch keiner'}")
-    st.caption("Hier wird vorbereitet, welche Watchlisten automatisch geprüft würden. Das ist der interne Auto-Run-Modus als Grundlage für spätere echte Zeitsteuerung.")
+    st.caption("Zeigt, welche Watchlisten im aktuellen Slot automatisch fällig wären.")
 
     due_df, due_err = get_due_watchlists_for_slot(current_slot_label) if current_slot_label else (pd.DataFrame(), None)
     if due_err:
@@ -3476,15 +3476,14 @@ with st.expander("Technik / Admin", expanded=False):
             else:
                 st.error(f"Telegram-Test fehlgeschlagen: {msg}")
     with test2:
-        st.caption("Damit prüfst du Telegram unabhängig von Watchlist, Alert-Schärfe, Alert-History und Marktlogik. Wenn diese Testnachricht ankommt, funktionieren Token und Chat-ID technisch korrekt.")
+        st.caption("Technischer Test unabhängig von Marktlogik, Alert-History und Watchlist-Regeln.")
 
 st.markdown(
     """
     <div class="workspace-shell">
         <div class="workspace-title">Was möchtest du heute tun?</div>
         <div class="workspace-sub">
-            Wähle zuerst deinen Arbeitsmodus. Danach zeigt die App nur den passenden Bereich an:
-            spontane Analysen, Beobachtungslisten oder bestehende Positionen.
+            Wähle deinen Arbeitsmodus: spontane Analyse, Watchlisten oder bestehende Positionen.
         </div>
     </div>
     """,
@@ -3560,7 +3559,7 @@ else:
 # ---------- Watchlisten direkt in der App ----------
 if workspace_mode in {"Watchlisten", "Positionen"}:
     with st.expander("Watchlisten", expanded=True):
-        st.caption("Hier arbeitest du operativ mit bestehenden Listen. Erstellung, Pflege und technische Einstellungen findest du darunter gebündelt im Verwaltungsbereich.")
+        st.caption("Oben operativ arbeiten, darunter optional verwalten.")
 
         watchlists_df, watchlists_err = load_watchlists_df()
         if watchlists_err:
@@ -3586,7 +3585,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
 
                     with wl1:
                         st.markdown("**Neue Watchlist anlegen**")
-                        st.caption("Watchlist = neue Chancen · Positions-Watchlist = bereits gehaltene Werte")
+                        st.markdown('<div class="compact-help">Watchlist = neue Chancen · Positions-Watchlist = bestehende Werte</div>', unsafe_allow_html=True)
                         new_watchlist_name = st.text_input(
                             "Name der Watchlist",
                             value=st.session_state.watchlist_new_name,
@@ -3617,7 +3616,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                             key="watchlist_check_frequency_widget"
                         )
                         st.session_state.selected_watchlist_check_frequency = new_check_frequency
-                        st.caption("Vorschlag: Watchlist = 4x täglich · Positions-Watchlist = 3x täglich")
+                        st.markdown('<div class="compact-help">Standard: Watchlist 4x täglich · Positionen 3x täglich</div>', unsafe_allow_html=True)
 
                         if st.button("Watchlist erstellen", use_container_width=True, key="create_watchlist_btn"):
                             ok, msg = create_watchlist(new_watchlist_name, new_watchlist_type, check_frequency=new_check_frequency)
@@ -3661,7 +3660,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                             st.session_state.selected_watchlist_type = selected_watchlist_type
                             st.session_state.selected_watchlist_alert_mode = current_alert_mode
                             st.session_state.selected_watchlist_check_frequency = current_check_frequency
-                            st.markdown(f"**Status:** Typ: {selected_watchlist_type} | Alert: {current_alert_mode} | Frequenz: {current_check_frequency}")
+                            st.markdown(f'<div class="compact-help"><strong>Status:</strong> Typ {selected_watchlist_type} | Alert {current_alert_mode} | Frequenz {current_check_frequency}</div>', unsafe_allow_html=True)
                         else:
                             selected_watchlist_name = ""
                             selected_watchlist_type = default_type
@@ -3682,8 +3681,10 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 if str(x).strip()
             ]
 
-            st.markdown(f"**Ausgewählte Liste:** {selected_watchlist_name}")
-            st.caption(f"Typ: {selected_watchlist_type} | Alert: {st.session_state.selected_watchlist_alert_mode} | Frequenz: {st.session_state.selected_watchlist_check_frequency} | Werte: {len(current_tickers)}")
+            st.markdown(
+                f'<div class="section-chip"><strong>Ausgewählte Liste:</strong> <span>{selected_watchlist_name} | Typ: {selected_watchlist_type} | Alert: {st.session_state.selected_watchlist_alert_mode} | Frequenz: {st.session_state.selected_watchlist_check_frequency} | Werte: {len(current_tickers)}</span></div>',
+                unsafe_allow_html=True
+            )
 
             with st.expander("Einstellungen und Pflege dieser Watchlist", expanded=False):
 
@@ -3697,7 +3698,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                         index=alert_mode_options.index(st.session_state.selected_watchlist_alert_mode) if st.session_state.selected_watchlist_alert_mode in alert_mode_options else 1,
                         key="selected_watchlist_alert_mode_widget"
                     )
-                    st.caption("Konservativ = selektiver · Standard = Mittelweg · Früh = meldet früher.")
+                    st.markdown('<div class="compact-help">Konservativ = selektiver · Standard = Mittelweg · Früh = mehr Hinweise</div>', unsafe_allow_html=True)
                 with am2:
                     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
                     if st.button("Alert-Modus speichern", use_container_width=True, key="save_watchlist_alert_mode_btn"):
@@ -3719,7 +3720,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                         index=frequency_options.index(st.session_state.selected_watchlist_check_frequency) if st.session_state.selected_watchlist_check_frequency in frequency_options else 3,
                         key="selected_watchlist_check_frequency_widget"
                     )
-                    st.caption("Slots: 2x = 10:30/18:30 · 3x = 10:30/18:30/22:10 · 4x = 10:30/15:40/18:30/22:10")
+                    st.markdown('<div class="compact-help">Slots: 2x 10:30/18:30 · 3x 10:30/18:30/22:10 · 4x 10:30/15:40/18:30/22:10</div>', unsafe_allow_html=True)
                 with fq2:
                     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
                     if st.button("Frequenz speichern", use_container_width=True, key="save_watchlist_frequency_btn"):
@@ -4282,8 +4283,7 @@ ranking_expanded_default = len(ranking_df) > 1
 with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
     st.subheader("Ranking mehrerer Aktien")
     st.caption(
-        "Ranking, Filter und Auswahl der aktuell angezeigten Detailanalyse. "
-        "Bei Einzelwerten kannst du diesen Block meist geschlossen lassen."
+        "Ranking, Filter und Auswahl der Detailanalyse. Bei Einzelwerten meist nur bei Bedarf öffnen."
     )
 
     ranking_focus = st.radio(
@@ -4878,7 +4878,7 @@ t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
 ])
 
 with t0:
-    st.subheader("Überblick & Chart")
+    st.subheader("Überblick")
 
     p1, p2, p3 = st.columns(3)
     p1.metric("Unternehmen", name)
@@ -4892,7 +4892,7 @@ with t0:
     summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
     st.write(summary_short)
 
-    with st.expander("Chart & Performance", expanded=True):
+    with st.expander("Chart & Performance", expanded=False):
         chart_range = st.selectbox(
             "Zeitraum",
             ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],

@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.14A.7"
+APP_VERSION = "v10.14A.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1267,9 +1267,22 @@ def build_red_flags(
         add_item("Cashflow-Risiko", "Operativer Cashflow negativ", 5)
     if pd.notna(debt_to_equity) and debt_to_equity > 180:
         add_item("Bilanz-Risiko", "Verschuldung sehr hoch", 8)
-    if pd.notna(current_ratio) and current_ratio < 1.0:
+
+    current_ratio_weak = pd.notna(current_ratio) and current_ratio < 1.0
+    quick_ratio_weak = pd.notna(quick_ratio) and quick_ratio < 0.8
+    cashflow_weak = (
+        (pd.notna(op_cf) and op_cf < 0)
+        or (pd.notna(fcf) and fcf < 0)
+    )
+    cashflow_strong = (
+        (pd.notna(op_cf) and op_cf > 0)
+        and (pd.notna(fcf) and fcf > 0)
+    )
+
+    if current_ratio_weak and (quick_ratio_weak or cashflow_weak):
         add_item("Bilanz-Risiko", "Liquidität schwach (Current Ratio < 1.0)", 5)
-    if pd.notna(quick_ratio) and quick_ratio < 0.8:
+
+    if quick_ratio_weak and not cashflow_strong:
         add_item("Bilanz-Risiko", "Quick Ratio schwach (< 0.8)", 4)
     if has_upcoming_earnings and pd.notna(days_earn) and days_earn <= 7:
         add_item("Event-Risiko", f"Earnings in {int(days_earn)} Tagen", 6)

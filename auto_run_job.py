@@ -7,15 +7,12 @@ analyzes their tickers, sends Telegram alerts, and writes Auto_Run_Log rows.
 """
 
 import argparse
-import ast
-import json
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import pandas as pd
 import streamlit as st
 
 
@@ -55,23 +52,28 @@ def patch_streamlit_secrets() -> None:
 
 def load_analysis_namespace(app_path: Path) -> dict:
     """
-    Loads imports, assignments and function definitions from app.py,
-    but skips top-level UI execution.
+    Load only the function/helper section of app.py and skip the UI/main-flow section.
+
+    The Streamlit UI part of app.py references st.session_state and other runtime-only
+    objects. In GitHub Actions we run in bare mode, so we must not execute that part.
     """
     source = app_path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(app_path))
 
-    selected_nodes = []
-    for node in tree.body:
-        if isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            selected_nodes.append(node)
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-            selected_nodes.append(node)
+    cut_markers = [
+        "# ---------- Main App Flow ----------",
+        "# ---------- UI Theme / CSS ----------",
+    ]
+    cut_idx = None
+    for marker in cut_markers:
+        idx = source.find(marker)
+        if idx != -1:
+            cut_idx = idx if cut_idx is None else min(cut_idx, idx)
 
-    module = ast.Module(body=selected_nodes, type_ignores=[])
-    code = compile(module, filename=str(app_path), mode="exec")
+    if cut_idx is not None:
+        source = source[:cut_idx]
+
     namespace: dict = {}
-    exec(code, namespace, namespace)
+    exec(compile(source, filename=str(app_path), mode="exec"), namespace, namespace)
     return namespace
 
 

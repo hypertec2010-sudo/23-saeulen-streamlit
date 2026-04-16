@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15C.1"
+APP_VERSION = "v10.15C.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4149,6 +4149,66 @@ if st.session_state.get("auto_run_requested", False):
     st.session_state.auto_run_requested = False
     st.stop()
 
+
+
+def style_ranking_table(df):
+    if df is None or df.empty:
+        return df
+
+    styled = df.style
+
+    gradient_cols = [c for c in [
+        "Investment-Attraktivität",
+        "Einstieg jetzt attraktiv?",
+        "Trade-Struktur",
+        "Kurzfrist-Timing",
+        "Setup-Confidence",
+    ] if c in df.columns]
+
+    if gradient_cols:
+        try:
+            styled = styled.background_gradient(subset=gradient_cols, cmap="RdYlGn")
+        except Exception:
+            pass
+
+    def style_valid(v):
+        s = str(v).strip().lower()
+        if s == "ja":
+            return "background-color: rgba(34,197,94,0.22); color: #eafff1; font-weight: 700;"
+        if s == "nein":
+            return "background-color: rgba(239,68,68,0.20); color: #ffecec; font-weight: 700;"
+        return ""
+
+    def style_priority(v):
+        s = str(v).strip().lower()
+        if s == "hoch":
+            return "background-color: rgba(239,68,68,0.18); color: #ffe5e5; font-weight: 700;"
+        if s == "mittel":
+            return "background-color: rgba(245,158,11,0.18); color: #fff4db; font-weight: 700;"
+        if s == "niedrig":
+            return "background-color: rgba(34,197,94,0.16); color: #e8fff0; font-weight: 700;"
+        return ""
+
+    def style_action(v):
+        s = str(v).strip().lower()
+        if any(x in s for x in ["kaufen", "aufbauen", "long", "beobachten"]):
+            return "background-color: rgba(34,197,94,0.14); color: #e8fff0; font-weight: 700;"
+        if any(x in s for x in ["halten", "abwarten"]):
+            return "background-color: rgba(245,158,11,0.15); color: #fff4db; font-weight: 700;"
+        if any(x in s for x in ["reduzieren", "verkaufen", "stop"]):
+            return "background-color: rgba(239,68,68,0.16); color: #ffe5e5; font-weight: 700;"
+        return "font-weight: 700;"
+
+    if "Valides Setup" in df.columns:
+        styled = styled.map(style_valid, subset=["Valides Setup"])
+    if "Watchlist-Priorität" in df.columns:
+        styled = styled.map(style_priority, subset=["Watchlist-Priorität"])
+    if "Handlung" in df.columns:
+        styled = styled.map(style_action, subset=["Handlung"])
+
+    return styled
+
+
 # ---------- Batch / Ranking Run ----------
 has_cached_results = (
     "ranking_df" in st.session_state
@@ -4362,7 +4422,13 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
             "Valides Setup", "Setup-Typ", "Watchlist-Priorität", "Handlung"
         ] if c in ranking_df.columns
     ]
-    st.dataframe(ranking_df[ranking_cols], hide_index=True, use_container_width=True, height=min(420, 45 * len(ranking_df) + 40))
+    ranking_display_df = ranking_df[ranking_cols].copy()
+    st.dataframe(
+        style_ranking_table(ranking_display_df),
+        hide_index=True,
+        use_container_width=True,
+        height=min(420, 45 * len(ranking_display_df) + 40)
+    )
 
     try:
         resolved_df = pd.DataFrame(resolved_input_rows)

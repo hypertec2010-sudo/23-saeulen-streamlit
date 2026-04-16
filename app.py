@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15C.2"
+APP_VERSION = "v10.15C.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4157,7 +4157,26 @@ def style_ranking_table(df):
 
     styled = df.style
 
-    gradient_cols = [c for c in [
+    def parse_num(v):
+        try:
+            s = str(v).strip().replace("%", "").replace(",", ".")
+            return float(s)
+        except Exception:
+            return None
+
+    def score_bg(v):
+        num = parse_num(v)
+        if num is None:
+            return ""
+        if num >= 80:
+            return "background-color: rgba(34,197,94,0.28); color: #f8fafc; font-weight: 700;"
+        if num >= 65:
+            return "background-color: rgba(132,204,22,0.22); color: #f8fafc; font-weight: 700;"
+        if num >= 50:
+            return "background-color: rgba(245,158,11,0.20); color: #f8fafc; font-weight: 700;"
+        return "background-color: rgba(239,68,68,0.20); color: #f8fafc; font-weight: 700;"
+
+    score_cols = [c for c in [
         "Investment-Attraktivität",
         "Einstieg jetzt attraktiv?",
         "Trade-Struktur",
@@ -4165,11 +4184,8 @@ def style_ranking_table(df):
         "Setup-Confidence",
     ] if c in df.columns]
 
-    if gradient_cols:
-        try:
-            styled = styled.background_gradient(subset=gradient_cols, cmap="RdYlGn")
-        except Exception:
-            pass
+    for col in score_cols:
+        styled = styled.map(score_bg, subset=[col])
 
     def style_valid(v):
         s = str(v).strip().lower()

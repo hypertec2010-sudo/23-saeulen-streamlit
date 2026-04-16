@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15C.5"
+APP_VERSION = "v10.15C.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4920,20 +4920,22 @@ with kb4:
         unsafe_allow_html=True,
     )
 
-se1, se2 = st.columns([1.2, 2.8])
-with se1:
+st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+st.markdown('<div class="compact-help">Export und Logging der aktuellen Einzelanalyse</div>', unsafe_allow_html=True)
+se_wrap1, se_wrap2, se_wrap3 = st.columns([0.9, 1.1, 2.2])
+with se_wrap1:
     st.download_button(
-        "Einzelanalyse als CSV exportieren",
+        "CSV exportieren",
         data=single_export_df.to_csv(index=False).encode("utf-8-sig"),
         file_name=f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
         mime="text/csv"
     )
-with se2:
-    if st.button("Einzelanalyse in Google Sheets speichern", use_container_width=True, key="log_single_sheet"):
+with se_wrap2:
+    if st.button("In Sheets schreiben", key="log_single_sheet"):
         ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
         show_sheet_result(ok, msg)
-
-st.caption("Die Hauptansicht bleibt bewusst kurz. Vertiefende Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.")
+with se_wrap3:
+    st.markdown('<div class="compact-action-note">Vertiefende Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div>', unsafe_allow_html=True)
 
 with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)

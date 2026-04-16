@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15A.1"
+APP_VERSION = "v10.15B"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4277,244 +4277,110 @@ if selected_display_ticker not in results_map and not ranking_df.empty:
 st.session_state.selected_ranking_ticker = selected_display_ticker
 
 # ---------- Ranking Section ----------
-st.subheader("Ranking mehrerer Aktien")
-st.caption(
-    "Ranking-Tabelle für Multi-Screening. In der Einzelanalyse wird automatisch nur ein Wert verarbeitet. "
-    "Red Flag und Kurzfazit stehen darunter in einer Kartenansicht vollständig und lesbar."
-)
+ranking_expanded_default = len(ranking_df) > 1
 
-ranking_focus = st.radio(
-    "Ranking-Modus",
-    ["Investment-Ranking", "Trading-Ranking", "Watchlist-Ranking"],
-    horizontal=True,
-    key="ranking_focus_mode"
-)
-
-filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-with filter_col1:
-    only_valid_setup = st.checkbox("Nur valide Setups", value=False, key="ranking_only_valid")
-with filter_col2:
-    min_investment_attr = st.slider("Min. Investment-Attraktivität", 0, 100, 0, 5, key="ranking_min_invest")
-with filter_col3:
-    min_entry_attr = st.slider("Min. Einstieg jetzt attraktiv?", 0, 100, 0, 5, key="ranking_min_entry")
-with filter_col4:
-    available_setup_types = sorted([str(x) for x in ranking_df.get("Setup-Typ", pd.Series(dtype=str)).dropna().unique().tolist()]) if not ranking_df.empty and "Setup-Typ" in ranking_df.columns else []
-    selected_setup_types = st.multiselect(
-        "Setup-Typen filtern",
-        options=available_setup_types,
-        default=available_setup_types,
-        key="ranking_setup_filter"
+with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
+    st.subheader("Ranking mehrerer Aktien")
+    st.caption(
+        "Ranking, Filter und Auswahl der aktuell angezeigten Detailanalyse. "
+        "Bei Einzelwerten kannst du diesen Block meist geschlossen lassen."
     )
 
-ranking_df = ranking_df.copy()
-
-if only_valid_setup and "Valides Setup" in ranking_df.columns:
-    ranking_df = ranking_df[ranking_df["Valides Setup"] == "Ja"]
-
-if "Investment-Attraktivität" in ranking_df.columns:
-    ranking_df = ranking_df[pd.to_numeric(ranking_df["Investment-Attraktivität"], errors="coerce").fillna(0) >= min_investment_attr]
-
-if "Einstieg jetzt attraktiv?" in ranking_df.columns:
-    ranking_df = ranking_df[pd.to_numeric(ranking_df["Einstieg jetzt attraktiv?"], errors="coerce").fillna(0) >= min_entry_attr]
-
-if selected_setup_types and "Setup-Typ" in ranking_df.columns:
-    ranking_df = ranking_df[ranking_df["Setup-Typ"].isin(selected_setup_types)]
-
-if ranking_focus == "Trading-Ranking":
-    ranking_df = ranking_df.sort_values(
-        by=["Einstieg jetzt attraktiv?", "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence"],
-        ascending=False
-    ).reset_index(drop=True)
-elif ranking_focus == "Watchlist-Ranking":
-    if "Watchlist-Priorität" in ranking_df.columns:
-        priority_map = {"Hoch": 3, "Mittel": 2, "Niedrig": 1}
-        ranking_df["_watchlist_sort"] = ranking_df["Watchlist-Priorität"].map(priority_map).fillna(0)
-    else:
-        ranking_df["_watchlist_sort"] = 0
-    ranking_df = ranking_df.sort_values(
-        by=["_watchlist_sort", "Trigger-Status", "Investment-Attraktivität", "Setup-Confidence", "Trade-Struktur", "Einstieg jetzt attraktiv?"],
-        ascending=[False, False, False, False, False, False]
-    ).drop(columns=["_watchlist_sort"], errors="ignore").reset_index(drop=True)
-else:
-    ranking_df = ranking_df.sort_values(
-        by=["Investment-Attraktivität", "Investment Score", "Company Quality", "Fundamental-Confidence"],
-        ascending=False
-    ).reset_index(drop=True)
-
-ranking_df.index = ranking_df.index + 1
-
-ranking_display_cols = [
-    "Ticker",
-    "Name",
-    "Setup-Typ",
-    "Valides Setup",
-    "Benchmark",
-    "Marktregime",
-    "Company Quality",
-    "Setup Quality",
-    "Investment Score",
-    "Investment-Attraktivität",
-    "Einstieg jetzt attraktiv?",
-    "Trade-Struktur",
-    "Setup-Confidence",
-    "Entry-Lage",
-    "Trigger-Status",
-    "Watchlist-Priorität",
-    "Kurzfrist-Timing",
-    "Fundamental-Confidence",
-]
-
-ranking_display_df = ranking_df.copy()
-
-if "Kurzfrist-Timing" not in ranking_display_df.columns and "TradingBoard Score" in ranking_display_df.columns:
-    ranking_display_df = ranking_display_df.rename(columns={"TradingBoard Score": "Kurzfrist-Timing"})
-
-available_ranking_cols = [c for c in ranking_display_cols if c in ranking_display_df.columns]
-ranking_display_df = ranking_display_df[available_ranking_cols].copy()
-
-ranking_column_config = {
-    "Ticker": st.column_config.TextColumn("Ticker", width="small"),
-    "Name": st.column_config.TextColumn("Name", width="medium"),
-    "Setup-Typ": st.column_config.TextColumn("Setup-Typ", width="medium"),
-    "Valides Setup": st.column_config.TextColumn("Valides Setup", width="small"),
-    "Benchmark": st.column_config.TextColumn("Benchmark", width="small"),
-    "Marktregime": st.column_config.TextColumn("Marktregime", width="medium"),
-    "Company Quality": st.column_config.NumberColumn("Company Quality", width="small", format="%.0f"),
-    "Setup Quality": st.column_config.NumberColumn("Setup Quality", width="small", format="%.0f"),
-    "Investment Score": st.column_config.NumberColumn("Investment Score", width="small", format="%.0f"),
-    "Investment-Attraktivität": st.column_config.NumberColumn("Investment-Attraktivität", width="small", format="%.0f"),
-    "Einstieg jetzt attraktiv?": st.column_config.NumberColumn("Einstieg jetzt attraktiv?", width="small", format="%.0f"),
-    "Trade-Struktur": st.column_config.NumberColumn("Trade-Struktur", width="small", format="%.0f"),
-    "Setup-Confidence": st.column_config.NumberColumn("Setup-Confidence", width="small", format="%.0f"),
-    "Entry-Lage": st.column_config.TextColumn("Entry-Lage", width="small"),
-    "Trigger-Status": st.column_config.TextColumn("Trigger-Status", width="medium"),
-    "Watchlist-Priorität": st.column_config.TextColumn("Watchlist-Priorität", width="small"),
-    "Kurzfrist-Timing": st.column_config.NumberColumn("Kurzfrist-Timing", width="small", format="%.0f"),
-    "Fundamental-Confidence": st.column_config.NumberColumn("Fundamental-Confidence", width="small", format="%.0f"),
-}
-ranking_column_config = {k: v for k, v in ranking_column_config.items() if k in ranking_display_df.columns}
-
-st.dataframe(
-    style_ranking_df(ranking_display_df),
-    hide_index=False,
-    use_container_width=True,
-    height=420,
-    column_config=ranking_column_config,
-)
-
-st.download_button(
-    "Ranking als CSV exportieren",
-    data=ranking_df.drop(columns=["_Top Red Flag Full", "_Kurzfazit Full"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
-    file_name=f"capital_hill_ranking_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-    mime="text/csv"
-)
-
-export_df = build_export_df(results)
-
-export_col1, export_col2 = st.columns(2)
-st.caption("Du kannst Ergebnisse als CSV exportieren oder direkt in Google Sheets als Verlauf und Backtesting-Basis speichern.")
-with export_col1:
-    st.download_button(
-        "Backtesting-Export für alle Ergebnisse",
-        data=export_df.to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"capital_hill_backtest_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv"
+    ranking_focus = st.radio(
+        "Ranking-Modus",
+        ["Investment-Ranking", "Trading-Ranking", "Watchlist-Ranking"],
+        horizontal=True,
+        key="ranking_focus_mode"
     )
-with export_col2:
-    if not export_df.empty:
-        st.metric("Export-Zeilen", len(export_df))
 
-gs1, gs2 = st.columns(2)
-with gs1:
-    if st.button("Gesamten Run in Google Sheets speichern", use_container_width=True, key="log_analysis_sheet"):
-        ok, msg = append_df_to_gsheet(export_df, worksheet_name="Analysis_Log")
-        show_sheet_result(ok, msg)
-with gs2:
-    trigger_log_df = build_trigger_log_df(results)
-    if st.button("Trigger-Kandidaten in Google Sheets speichern", use_container_width=True, key="log_trigger_sheet"):
-        ok, msg = append_df_to_gsheet(trigger_log_df, worksheet_name="Trigger_Log")
-        show_sheet_result(ok, msg, prefix_fail="Trigger-Logging fehlgeschlagen")
-
-with st.expander("Export-/Logging-Felder anzeigen", expanded=False):
-    st.caption("Diese Felder dienen als Verlaufsspeicher, Backtesting-Basis und zur späteren Qualitätskontrolle.")
-    st.dataframe(export_df, hide_index=True, use_container_width=True, height=260)
-    if trigger_log_df is not None and not trigger_log_df.empty:
-        st.markdown("**Trigger-Log Vorschau**")
-        st.dataframe(trigger_log_df, hide_index=True, use_container_width=True, height=180)
-
-if not ranking_df.empty:
-    st.markdown(f"**Ranking-Details – {ranking_focus}**")
-
-    card_df = ranking_df.copy()
-    if "_Top Red Flag Full" not in card_df.columns:
-        card_df["_Top Red Flag Full"] = card_df.get("Top Red Flag", "-")
-    if "_Kurzfazit Full" not in card_df.columns:
-        card_df["_Kurzfazit Full"] = card_df.get("Kurzfazit", "-")
-
-    for _, row in card_df.iterrows():
-        score_val = row.get("Investment Score", np.nan)
-        score_text, score_color = score_badge(score_val if pd.notna(score_val) else 0)
-        st.markdown(
-            f"""
-<div class="section-card" style="margin:12px 0;">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-    <div>
-      <div style="font-size:1.08rem;font-weight:800;color:#f8fafc;">{row.get("Ticker", "-")} — {row.get("Name", "-")}</div>
-      <div style="color:#94a3b8;font-size:0.90rem;margin-top:3px;">
-        Benchmark: {row.get("Benchmark", "-")} | Marktumfeld: {row.get("Marktregime", "-")}
-      </div>
-    </div>
-    <div style="background:{score_color};color:white;border-radius:999px;padding:7px 13px;font-weight:800;box-shadow:0 8px 18px rgba(0,0,0,0.18);">
-      {score_text}: {row.get("Investment Score", "n/a")}
-    </div>
-  </div>
-
-  <div style="margin-top:12px;color:#d1d5db;font-size:0.92rem;line-height:1.5;">
-    <b>Scores:</b>
-    Company {row.get("Company Quality", "n/a")} |
-    Setup {row.get("Setup Quality", "n/a")} |
-    Trade-Struktur {row.get("Trade-Struktur", "n/a")} |
-    Kurzfrist-Timing {row.get("Kurzfrist-Timing", row.get("TradingBoard Score", "n/a"))}
-  </div>
-
-  <div style="margin-top:14px;padding:12px 14px;border-radius:14px;background:#0b1220;border:1px solid #1f2937;">
-    <div style="font-weight:800;margin-bottom:5px;color:#f8fafc;">Red Flag</div>
-    <div style="color:#e5e7eb;line-height:1.5;">{row.get("_Top Red Flag Full", "-")}</div>
-  </div>
-
-  <div style="margin-top:12px;padding:12px 14px;border-radius:14px;background:#0b1220;border:1px solid #1f2937;">
-    <div style="font-weight:800;margin-bottom:5px;color:#f8fafc;">Kurzfazit</div>
-    <div style="color:#e5e7eb;line-height:1.5;">{row.get("_Kurzfazit Full", "-")}</div>
-  </div>
-</div>
-            """,
-            unsafe_allow_html=True,
+    filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+    with filter_col1:
+        only_valid_setup = st.checkbox("Nur valide Setups", value=False, key="ranking_only_valid")
+    with filter_col2:
+        min_investment_attr = st.slider("Min. Investment-Attraktivität", 0, 100, 0, 5, key="ranking_min_invest")
+    with filter_col3:
+        min_entry_attr = st.slider("Min. Einstieg jetzt attraktiv?", 0, 100, 0, 5, key="ranking_min_entry")
+    with filter_col4:
+        available_setup_types = sorted([str(x) for x in ranking_df.get("Setup-Typ", pd.Series(dtype=str)).dropna().unique().tolist()]) if not ranking_df.empty and "Setup-Typ" in ranking_df.columns else []
+        selected_setup_types = st.multiselect(
+            "Setup-Typen filtern",
+            options=available_setup_types,
+            default=available_setup_types,
+            key="ranking_setup_filter"
         )
 
-try:
-    resolved_df = pd.DataFrame(resolved_input_rows)
-    if not resolved_df.empty:
-        with st.expander("Aufgelöste Eingaben", expanded=False):
-            st.dataframe(resolved_df, hide_index=True, use_container_width=True)
-except Exception:
-    pass
+    ranking_df = ranking_df.copy()
 
-sel_col1, sel_col2 = st.columns([2, 1])
-with sel_col1:
-    selected_display_ticker = st.selectbox(
-        "Einzelanalyse aus Ranking auswählen",
-        options=ranking_df["Ticker"].tolist(),
-        index=ranking_df["Ticker"].tolist().index(selected_display_ticker),
-        key="selected_ranking_ticker_widget"
-    )
-    st.session_state.selected_ranking_ticker = selected_display_ticker
+    if only_valid_setup and "Valides Setup" in ranking_df.columns:
+        ranking_df = ranking_df[ranking_df["Valides Setup"] == "Ja"]
 
-with sel_col2:
-    st.metric("Analysierte Werte", len(results))
+    if "Investment-Attraktivität" in ranking_df.columns:
+        ranking_df = ranking_df[pd.to_numeric(ranking_df["Investment-Attraktivität"], errors="coerce").fillna(0) >= min_investment_attr]
 
-if errors:
-    with st.expander("Nicht analysierbare Eingaben", expanded=False):
-        st.dataframe(pd.DataFrame(errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
+    if "Einstieg jetzt attraktiv?" in ranking_df.columns:
+        ranking_df = ranking_df[pd.to_numeric(ranking_df["Einstieg jetzt attraktiv?"], errors="coerce").fillna(0) >= min_entry_attr]
+
+    if selected_setup_types and "Setup-Typ" in ranking_df.columns:
+        ranking_df = ranking_df[ranking_df["Setup-Typ"].isin(selected_setup_types)]
+
+    if ranking_focus == "Trading-Ranking":
+        ranking_df = ranking_df.sort_values(
+            by=["Einstieg jetzt attraktiv?", "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence"],
+            ascending=False
+        ).reset_index(drop=True)
+    elif ranking_focus == "Watchlist-Ranking":
+        if "Watchlist-Priorität" in ranking_df.columns:
+            priority_map = {"Hoch": 3, "Mittel": 2, "Niedrig": 1}
+            ranking_df["_watchlist_sort"] = ranking_df["Watchlist-Priorität"].map(priority_map).fillna(0)
+        else:
+            ranking_df["_watchlist_sort"] = 0
+        ranking_df = ranking_df.sort_values(
+            by=["_watchlist_sort", "Einstieg jetzt attraktiv?", "Trade-Struktur", "Investment-Attraktivität"],
+            ascending=False
+        ).drop(columns=["_watchlist_sort"], errors="ignore").reset_index(drop=True)
+    else:
+        ranking_df = ranking_df.sort_values(
+            by=["Investment-Attraktivität", "Unternehmen", "Sicherheit"],
+            ascending=False
+        ).reset_index(drop=True)
+
+    if ranking_df.empty:
+        st.warning("Nach den gesetzten Filtern bleiben aktuell keine Werte übrig.")
+        st.stop()
+
+    ranking_cols = [
+        c for c in [
+            "Ticker", "Name", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
+            "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence",
+            "Valides Setup", "Setup-Typ", "Watchlist-Priorität", "Handlung"
+        ] if c in ranking_df.columns
+    ]
+    st.dataframe(ranking_df[ranking_cols], hide_index=True, use_container_width=True, height=min(420, 45 * len(ranking_df) + 40))
+
+    try:
+        resolved_df = pd.DataFrame(resolved_input_rows)
+        if not resolved_df.empty:
+            with st.expander("Aufgelöste Eingaben", expanded=False):
+                st.dataframe(resolved_df, hide_index=True, use_container_width=True)
+    except Exception:
+        pass
+
+    sel_col1, sel_col2 = st.columns([2, 1])
+    with sel_col1:
+        selected_display_ticker = st.selectbox(
+            "Einzelanalyse aus Ranking auswählen",
+            options=ranking_df["Ticker"].tolist(),
+            index=ranking_df["Ticker"].tolist().index(selected_display_ticker),
+            key="selected_ranking_ticker_widget"
+        )
+        st.session_state.selected_ranking_ticker = selected_display_ticker
+
+    with sel_col2:
+        st.metric("Analysierte Werte", len(results))
+
+    if errors:
+        with st.expander("Nicht analysierbare Eingaben", expanded=False):
+            st.dataframe(pd.DataFrame(errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
 
 result = results_map[selected_display_ticker]
 single_export_df = build_export_df([result])
@@ -4994,12 +4860,12 @@ with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
 st.divider()
 t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
     "Überblick",
+    "Trade-Plan",
+    "Investment-Case",
     "Trading-Case",
     "Signalbild",
     "TradingBoard",
-    "Investment-Case",
     "Sicherheit & Checks",
-    "Trade-Plan",
     "Position",
     "Watchlist"
 ])
@@ -5012,33 +4878,33 @@ with t0:
     p2.metric("Sektor", sector if sector else "-")
     p3.metric("Industrie", industry if industry else "-")
 
+    st.markdown("**Kurzfazit**")
+    st.write(short_thesis)
+
     st.markdown("**Kurzbeschreibung**")
     summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
     st.write(summary_short)
 
-    st.markdown("**Chartverlauf**")
-    chart_range = st.selectbox(
-        "Zeitraum",
-        ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
-        index=2,
-        key="chart_range"
-    )
+    with st.expander("Chart & Performance", expanded=True):
+        chart_range = st.selectbox(
+            "Zeitraum",
+            ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
+            index=2,
+            key="chart_range"
+        )
 
-    chart_df = compute_chart_df(df, chart_range)
-    fig = build_candlestick_chart(chart_df, ticker, ccy)
-    st.plotly_chart(fig, use_container_width=True)
+        chart_df = compute_chart_df(df, chart_range)
+        fig = build_candlestick_chart(chart_df, ticker, ccy)
+        st.plotly_chart(fig, use_container_width=True)
 
-    perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
-    perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
-    perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
+        perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
+        perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
+        perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
 
-    p4, p5, p6 = st.columns(3)
-    p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
-    p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
-    p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
-
-    st.markdown("**Kurzfazit**")
-    st.write(short_thesis)
+        p4, p5, p6 = st.columns(3)
+        p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
+        p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
+        p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
 
 with t1:
     st.subheader("Trading-Case")

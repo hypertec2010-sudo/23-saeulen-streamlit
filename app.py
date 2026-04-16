@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15C.3"
+APP_VERSION = "v10.15C.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1458,12 +1458,19 @@ def build_candlestick_chart(chart_df, ticker, ccy):
     )
 
     fig.update_layout(
-        title=f"{ticker} Candlestick-Chart ({ccy})",
+        title=None,
         xaxis_rangeslider_visible=False,
         height=650,
         template="plotly_dark",
-        margin=dict(l=20, r=20, t=50, b=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0)
+        margin=dict(l=20, r=20, t=20, b=20),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            bgcolor="rgba(0,0,0,0)"
+        )
     )
     fig.update_yaxes(title_text=f"Kurs ({ccy})", row=1, col=1)
     fig.update_yaxes(title_text="Volumen", row=2, col=1)

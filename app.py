@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15A"
+APP_VERSION = "v10.15A.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3687,127 +3687,127 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
 
             with st.expander("Einstellungen und Pflege dieser Watchlist", expanded=False):
 
-            st.markdown("**Alert-Einstellungen für diese Watchlist**")
-            am1, am2 = st.columns([1.6, 1.0])
-            with am1:
-                alert_mode_options = ["Konservativ", "Standard", "Früh"]
-                selected_alert_mode = st.selectbox(
-                    "Alert-Schärfe",
-                    options=alert_mode_options,
-                    index=alert_mode_options.index(st.session_state.selected_watchlist_alert_mode) if st.session_state.selected_watchlist_alert_mode in alert_mode_options else 1,
-                    key="selected_watchlist_alert_mode_widget"
-                )
-                st.caption("Konservativ = selektiver · Standard = Mittelweg · Früh = meldet früher.")
-            with am2:
-                st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                if st.button("Alert-Modus speichern", use_container_width=True, key="save_watchlist_alert_mode_btn"):
-                    ok, msg = update_watchlist_alert_mode(selected_watchlist_name, selected_alert_mode)
-                    if ok:
-                        st.session_state.selected_watchlist_alert_mode = selected_alert_mode
-                        st.success("Alert-Modus gespeichert.")
-                        trigger_ui_refresh()
-                    else:
-                        st.error(msg)
-
-            st.markdown("**Prüf-Frequenz für diese Watchlist**")
-            fq1, fq2 = st.columns([1.6, 1.0])
-            with fq1:
-                frequency_options = ["Nur manuell", "2x täglich", "3x täglich", "4x täglich"]
-                selected_check_frequency = st.selectbox(
-                    "Automatische Prüf-Frequenz",
-                    options=frequency_options,
-                    index=frequency_options.index(st.session_state.selected_watchlist_check_frequency) if st.session_state.selected_watchlist_check_frequency in frequency_options else 3,
-                    key="selected_watchlist_check_frequency_widget"
-                )
-                st.caption("Slots: 2x = 10:30/18:30 · 3x = 10:30/18:30/22:10 · 4x = 10:30/15:40/18:30/22:10")
-            with fq2:
-                st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                if st.button("Frequenz speichern", use_container_width=True, key="save_watchlist_frequency_btn"):
-                    ok, msg = update_watchlist_check_frequency(selected_watchlist_name, selected_check_frequency)
-                    if ok:
-                        st.session_state.selected_watchlist_check_frequency = selected_check_frequency
-                        st.success("Prüf-Frequenz gespeichert.")
-                        trigger_ui_refresh()
-                    else:
-                        st.error(msg)
-
-            st.markdown("**Ticker zur Watchlist hinzufügen**")
-            add1, add2 = st.columns([2, 1])
-
-            with add1:
-                watchlist_bulk_add = st.text_area(
-                    "Ticker oder Firmennamen für diese Watchlist",
-                    value=st.session_state.watchlist_bulk_add,
-                    placeholder="Ein Wert pro Zeile oder mit Komma trennen",
-                    height=100,
-                    key="watchlist_bulk_add_widget"
-                ).strip()
-                st.session_state.watchlist_bulk_add = watchlist_bulk_add
-
-            with add2:
-                st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                if st.button("Aktuellen Ticker hinzufügen", use_container_width=True, key="add_current_ticker_watchlist"):
-                    current_to_add = st.session_state.get("selected_ticker", "").strip().upper()
-                    if current_to_add:
-                        ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, [current_to_add], check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
+                st.markdown("**Alert-Einstellungen für diese Watchlist**")
+                am1, am2 = st.columns([1.6, 1.0])
+                with am1:
+                    alert_mode_options = ["Konservativ", "Standard", "Früh"]
+                    selected_alert_mode = st.selectbox(
+                        "Alert-Schärfe",
+                        options=alert_mode_options,
+                        index=alert_mode_options.index(st.session_state.selected_watchlist_alert_mode) if st.session_state.selected_watchlist_alert_mode in alert_mode_options else 1,
+                        key="selected_watchlist_alert_mode_widget"
+                    )
+                    st.caption("Konservativ = selektiver · Standard = Mittelweg · Früh = meldet früher.")
+                with am2:
+                    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                    if st.button("Alert-Modus speichern", use_container_width=True, key="save_watchlist_alert_mode_btn"):
+                        ok, msg = update_watchlist_alert_mode(selected_watchlist_name, selected_alert_mode)
                         if ok:
-                            st.success(msg)
+                            st.session_state.selected_watchlist_alert_mode = selected_alert_mode
+                            st.success("Alert-Modus gespeichert.")
                             trigger_ui_refresh()
                         else:
                             st.error(msg)
-                    else:
-                        st.info("Aktuell ist noch kein Ticker ausgewählt.")
 
-                if st.button("Eingaben hinzufügen", use_container_width=True, key="add_bulk_watchlist"):
-                    raw_entries = [x.strip() for x in re.split(r"[\n,;]+", watchlist_bulk_add) if x.strip()]
-                    if not raw_entries:
-                        st.info("Bitte mindestens einen Wert eingeben.")
-                    else:
-                        resolved_entries = []
-                        for entry in raw_entries:
-                            looks_like_ticker = (" " not in entry and len(entry) <= 12 and entry.replace(".", "").replace("-", "").isalnum())
-                            if looks_like_ticker:
-                                resolved_entries.append(entry.upper())
-                            else:
-                                matches = search_tickers(entry, max_results=1)
-                                if matches:
-                                    resolved_entries.append(matches[0]["symbol"])
-                        ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, resolved_entries, check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
+                st.markdown("**Prüf-Frequenz für diese Watchlist**")
+                fq1, fq2 = st.columns([1.6, 1.0])
+                with fq1:
+                    frequency_options = ["Nur manuell", "2x täglich", "3x täglich", "4x täglich"]
+                    selected_check_frequency = st.selectbox(
+                        "Automatische Prüf-Frequenz",
+                        options=frequency_options,
+                        index=frequency_options.index(st.session_state.selected_watchlist_check_frequency) if st.session_state.selected_watchlist_check_frequency in frequency_options else 3,
+                        key="selected_watchlist_check_frequency_widget"
+                    )
+                    st.caption("Slots: 2x = 10:30/18:30 · 3x = 10:30/18:30/22:10 · 4x = 10:30/15:40/18:30/22:10")
+                with fq2:
+                    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                    if st.button("Frequenz speichern", use_container_width=True, key="save_watchlist_frequency_btn"):
+                        ok, msg = update_watchlist_check_frequency(selected_watchlist_name, selected_check_frequency)
                         if ok:
-                            st.success(msg)
-                            st.session_state.watchlist_bulk_add = ""
+                            st.session_state.selected_watchlist_check_frequency = selected_check_frequency
+                            st.success("Prüf-Frequenz gespeichert.")
+                            trigger_ui_refresh()
                         else:
                             st.error(msg)
 
-                            st.markdown("**Inhalt der aktuellen Watchlist**")
-                            st.caption(f"Anzahl Werte: {len(current_tickers)}")
-                            if current_tickers:
-                                preview_df = pd.DataFrame({"Ticker": current_tickers})
-                                st.dataframe(preview_df, hide_index=True, use_container_width=True, height=min(320, 45 * len(preview_df) + 40))
+                st.markdown("**Ticker zur Watchlist hinzufügen**")
+                add1, add2 = st.columns([2, 1])
 
-                                rem1, rem2, rem3 = st.columns([1.4, 1.1, 1.2])
-                                with rem1:
-                                    ticker_to_remove = st.selectbox("Ticker entfernen", options=current_tickers, key="remove_watchlist_ticker_widget")
-                                with rem2:
-                                    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                                    if st.button("Ticker entfernen", use_container_width=True, key="remove_watchlist_ticker_btn"):
-                                        ok, msg = remove_ticker_from_watchlist(selected_watchlist_name, ticker_to_remove)
-                                        if ok:
-                                            st.success(msg)
-                                            trigger_ui_refresh()
-                                        else:
-                                            st.error(msg)
-                                with rem3:
-                                    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                                    if st.button("Watchlist löschen", use_container_width=True, key="delete_watchlist_btn"):
-                                        ok, msg = delete_watchlist(selected_watchlist_name)
-                                        if ok:
-                                            st.success(msg)
-                                            st.session_state.selected_watchlist_name = ""
-                                        else:
-                                            st.error(msg)
+                with add1:
+                    watchlist_bulk_add = st.text_area(
+                        "Ticker oder Firmennamen für diese Watchlist",
+                        value=st.session_state.watchlist_bulk_add,
+                        placeholder="Ein Wert pro Zeile oder mit Komma trennen",
+                        height=100,
+                        key="watchlist_bulk_add_widget"
+                    ).strip()
+                    st.session_state.watchlist_bulk_add = watchlist_bulk_add
+
+                with add2:
+                    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                    if st.button("Aktuellen Ticker hinzufügen", use_container_width=True, key="add_current_ticker_watchlist"):
+                        current_to_add = st.session_state.get("selected_ticker", "").strip().upper()
+                        if current_to_add:
+                            ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, [current_to_add], check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
+                            if ok:
+                                st.success(msg)
+                                trigger_ui_refresh()
                             else:
-                                st.info("Diese Watchlist hat aktuell noch keine Ticker.")
+                                st.error(msg)
+                        else:
+                            st.info("Aktuell ist noch kein Ticker ausgewählt.")
+
+                    if st.button("Eingaben hinzufügen", use_container_width=True, key="add_bulk_watchlist"):
+                        raw_entries = [x.strip() for x in re.split(r"[\n,;]+", watchlist_bulk_add) if x.strip()]
+                        if not raw_entries:
+                            st.info("Bitte mindestens einen Wert eingeben.")
+                        else:
+                            resolved_entries = []
+                            for entry in raw_entries:
+                                looks_like_ticker = (" " not in entry and len(entry) <= 12 and entry.replace(".", "").replace("-", "").isalnum())
+                                if looks_like_ticker:
+                                    resolved_entries.append(entry.upper())
+                                else:
+                                    matches = search_tickers(entry, max_results=1)
+                                    if matches:
+                                        resolved_entries.append(matches[0]["symbol"])
+                            ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, resolved_entries, check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
+                            if ok:
+                                st.success(msg)
+                                st.session_state.watchlist_bulk_add = ""
+                            else:
+                                st.error(msg)
+
+                                st.markdown("**Inhalt der aktuellen Watchlist**")
+                                st.caption(f"Anzahl Werte: {len(current_tickers)}")
+                                if current_tickers:
+                                    preview_df = pd.DataFrame({"Ticker": current_tickers})
+                                    st.dataframe(preview_df, hide_index=True, use_container_width=True, height=min(320, 45 * len(preview_df) + 40))
+
+                                    rem1, rem2, rem3 = st.columns([1.4, 1.1, 1.2])
+                                    with rem1:
+                                        ticker_to_remove = st.selectbox("Ticker entfernen", options=current_tickers, key="remove_watchlist_ticker_widget")
+                                    with rem2:
+                                        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                                        if st.button("Ticker entfernen", use_container_width=True, key="remove_watchlist_ticker_btn"):
+                                            ok, msg = remove_ticker_from_watchlist(selected_watchlist_name, ticker_to_remove)
+                                            if ok:
+                                                st.success(msg)
+                                                trigger_ui_refresh()
+                                            else:
+                                                st.error(msg)
+                                    with rem3:
+                                        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                                        if st.button("Watchlist löschen", use_container_width=True, key="delete_watchlist_btn"):
+                                            ok, msg = delete_watchlist(selected_watchlist_name)
+                                            if ok:
+                                                st.success(msg)
+                                                st.session_state.selected_watchlist_name = ""
+                                            else:
+                                                st.error(msg)
+                                else:
+                                    st.info("Diese Watchlist hat aktuell noch keine Ticker.")
 
             act1, act2, act3 = st.columns(3)
             with act1:

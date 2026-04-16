@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15C"
+APP_VERSION = "v10.15C.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4867,12 +4867,12 @@ with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
 st.divider()
 t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
     "Überblick",
-    "Trade-Plan",
-    "Investment-Case",
     "Trading-Case",
     "Signalbild",
     "TradingBoard",
+    "Investment-Case",
     "Sicherheit & Checks",
+    "Trade-Plan",
     "Position",
     "Watchlist"
 ])
@@ -4892,26 +4892,26 @@ with t0:
     summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
     st.write(summary_short)
 
-    with st.expander("Chart & Performance", expanded=False):
-        chart_range = st.selectbox(
-            "Zeitraum",
-            ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
-            index=2,
-            key="chart_range"
-        )
+    st.markdown("**Chart & Performance**")
+    chart_range = st.selectbox(
+        "Zeitraum",
+        ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
+        index=2,
+        key="chart_range"
+    )
 
-        chart_df = compute_chart_df(df, chart_range)
-        fig = build_candlestick_chart(chart_df, ticker, ccy)
-        st.plotly_chart(fig, use_container_width=True)
+    chart_df = compute_chart_df(df, chart_range)
+    fig = build_candlestick_chart(chart_df, ticker, ccy)
+    st.plotly_chart(fig, use_container_width=True)
 
-        perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
-        perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
-        perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
+    perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
+    perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
+    perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
 
-        p4, p5, p6 = st.columns(3)
-        p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
-        p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
-        p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
+    p4, p5, p6 = st.columns(3)
+    p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
+    p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
+    p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
 
 with t1:
     st.subheader("Trading-Case")

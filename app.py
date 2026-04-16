@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.14A.6"
+APP_VERSION = "v10.14A.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1691,6 +1691,44 @@ def derive_fundamentals_from_statements(ticker_obj, info):
     return info
 
 
+
+
+def build_company_summary(info, ticker):
+    candidates = [
+        info.get("longBusinessSummary"),
+        info.get("businessSummary"),
+        info.get("description"),
+        info.get("longDescription"),
+    ]
+
+    for candidate in candidates:
+        if isinstance(candidate, str):
+            cleaned = " ".join(candidate.strip().split())
+            if cleaned:
+                return cleaned
+
+    company_name = info.get("longName") or info.get("shortName") or ticker
+    sector = info.get("sector")
+    industry = info.get("industry")
+    exchange = info.get("exchange")
+    country = info.get("country")
+
+    parts = []
+    if sector and sector != "-":
+        parts.append(f"Sektor: {sector}")
+    if industry and industry != "-":
+        parts.append(f"Branche: {industry}")
+    if country and country != "-":
+        parts.append(f"Land: {country}")
+    if exchange and exchange != "-":
+        parts.append(f"Börse: {exchange}")
+
+    if parts:
+        return f"{company_name} | " + " | ".join(parts)
+
+    return "Keine Unternehmensbeschreibung verfügbar."
+
+
 # ---------- IO ----------
 @st.cache_data(ttl=120, show_spinner=False)
 def load_data(ticker):
@@ -1990,9 +2028,7 @@ def analyze_stock(
     sector = info.get("sector", "-")
     industry = info.get("industry", "-")
 
-    company_summary = info.get("longBusinessSummary", "")
-    if not company_summary:
-        company_summary = "Keine Unternehmensbeschreibung verfügbar."
+    company_summary = build_company_summary(info, ticker)
 
     confidence_info = infer_data_source_flags(info)
 

@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15C.4"
+APP_VERSION = "v10.15C.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1458,7 +1458,7 @@ def build_candlestick_chart(chart_df, ticker, ccy):
     )
 
     fig.update_layout(
-        title=None,
+        title="",
         xaxis_rangeslider_visible=False,
         height=650,
         template="plotly_dark",
@@ -4981,7 +4981,7 @@ with t0:
     summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
     st.write(summary_short)
 
-    st.markdown("**Chart & Performance**")
+    st.markdown(f"**Chart & Performance · {ticker} ({ccy})**")
     chart_range = st.selectbox(
         "Zeitraum",
         ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],

@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.14A.5"
+APP_VERSION = "v10.14A.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4137,6 +4137,8 @@ if not st.session_state.get("analysis_requested", False) and not has_cached_resu
     st.stop()
 
 analysis_mode_run = st.session_state.get("analysis_mode_run", "Einzelanalyse")
+errors = []
+resolved_input_rows = []
 
 if st.session_state.get("analysis_requested", False):
     if analysis_mode_run == "Einzelanalyse":
@@ -4215,10 +4217,14 @@ if st.session_state.get("analysis_requested", False):
     results_map = {r["ticker"]: r for r in results}
     st.session_state.ranking_df = ranking_df
     st.session_state.ranking_results = results_map
+    st.session_state.last_analysis_errors = errors
+    st.session_state.last_resolved_input_rows = resolved_input_rows
 else:
     ranking_df = st.session_state.ranking_df.copy()
     results_map = st.session_state.ranking_results.copy()
     results = list(results_map.values())
+    errors = st.session_state.get("last_analysis_errors", [])
+    resolved_input_rows = st.session_state.get("last_resolved_input_rows", [])
 
 if analysis_mode_run == "Einzelanalyse":
     st.caption("Aktiver Modus: Einzelanalyse")

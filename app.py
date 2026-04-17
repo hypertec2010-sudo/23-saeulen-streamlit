@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3C.2"
+APP_VERSION = "v11.3C.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -250,7 +250,7 @@ pre{white-space:pre-wrap !important;}
     color:#f8fafc;text-align:center;
 }
 .hero-score-pill .pill-label{font-size:0.76rem;color:#9fb1c8;font-weight:800;text-transform:uppercase;}
-.hero-score-pill .pill-value{font-size:1.35rem;font-weight:900;margin-top:4px;}
+.hero-score-pill .pill-value{font-size:clamp(1.0rem, 1.25vw, 1.2rem);font-weight:900;margin-top:4px;white-space:normal;word-break:break-word;overflow-wrap:anywhere;}
 .exec-shell{
     background:linear-gradient(135deg,#0b1220 0%, #111827 55%, #172033 100%);
     border:1px solid #2c3a50;
@@ -328,10 +328,13 @@ pre{white-space:pre-wrap !important;}
 }
 .exec-score-value{
     color:#f8fafc;
-    font-size:1.4rem;
+    font-size:clamp(1.0rem, 1.3vw, 1.25rem);
     font-weight:900;
     margin-top:6px;
-    line-height:1.1;
+    line-height:1.2;
+    white-space:normal;
+    word-break:break-word;
+    overflow-wrap:anywhere;
 }
 .exec-score-sub{
     color:#cbd5e1;
@@ -430,6 +433,12 @@ pre{white-space:pre-wrap !important;}
 .decision-card:hover, .compact-panel:hover, .bullet-card:hover, .mobile-result-card:hover{
     transform:translateY(-1px);
     box-shadow:0 18px 34px rgba(0,0,0,0.22);
+}
+.decision-card, .compact-panel, .mobile-result-card{
+    min-height:auto;
+}
+.decision-card .dc-value, .compact-panel .cp-value, .mobile-result-card .mobile-result-value{
+    max-width:100%;
 }
 div[data-testid="stButton"] > button{
     letter-spacing:0.01em;
@@ -5566,7 +5575,7 @@ with ex3:
         f"""
         <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
             <div class="dc-label">Hauptgrund</div>
-            <div class="dc-value" style="font-size:1.35rem;">{exit_reason_top_display}</div>
+            <div class="dc-value" style="font-size:clamp(1.0rem, 1.15vw, 1.18rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exit_reason_top_display}</div>
             <div class="dc-sub">{' | '.join(exit_reason_extra_display[:2]) if exit_reason_extra_display else 'keine weiteren Exit-Hinweise'}</div>
             <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
         </div>

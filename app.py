@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.0.1"
+APP_VERSION = "v11.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -361,6 +361,56 @@ pre{white-space:pre-wrap !important;}
     color:#94a3b8;
     font-size:0.84rem;
     margin-top:4px;
+}
+
+.empty-state{
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+    border:1px dashed #334155;
+    border-radius:18px;
+    padding:16px 18px;
+    margin:10px 0 12px 0;
+    box-shadow:0 10px 24px rgba(0,0,0,0.12);
+}
+.empty-state-title{
+    color:#f8fafc;
+    font-size:0.96rem;
+    font-weight:800;
+    margin-bottom:6px;
+}
+.empty-state-text{
+    color:#cbd5e1;
+    font-size:0.90rem;
+    line-height:1.45;
+}
+.muted-meta{
+    color:#94a3b8;
+    font-size:0.84rem;
+    line-height:1.35;
+}
+.section-spacer{height:8px;}
+.stTabs [data-baseweb="tab-list"]{
+    box-shadow:0 10px 24px rgba(0,0,0,0.12);
+}
+.stTabs [data-baseweb="tab"]{
+    transition:all 0.18s ease;
+}
+.stTabs [data-baseweb="tab"]:hover{
+    border-color:#475569;
+    transform:translateY(-1px);
+}
+div[data-testid="stButton"] > button[kind="secondary"]{
+    opacity:0.96;
+}
+div[data-testid="stExpander"] details{
+    border-radius:16px;
+    border:1px solid #243042;
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+}
+div[data-testid="stExpander"] summary{
+    font-weight:800;
+}
+@media (max-width: 768px){
+    .empty-state{padding:14px 15px !important;}
 }
 @media (max-width: 768px){
     .exec-title{font-size:1.45rem !important;}
@@ -3789,7 +3839,10 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                         else:
                             selected_watchlist_name = ""
                             selected_watchlist_type = default_type
-                            st.info("Noch keine passende Watchlist vorhanden. Lege links zuerst eine neue Watchlist an.")
+                            st.markdown(
+                    '<div class="empty-state"><div class="empty-state-title">Noch keine passende Watchlist vorhanden</div><div class="empty-state-text">Lege im Verwaltungsbereich zuerst eine neue Liste an. Danach kannst du sie hier sofort operativ nutzen.</div></div>',
+                    unsafe_allow_html=True,
+                )
 
         if selected_watchlist_name:
             watchlists_df, watchlists_err = load_watchlists_df()
@@ -3882,12 +3935,18 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                             else:
                                 st.error(msg)
                         else:
-                            st.info("Aktuell ist noch kein Ticker ausgewählt.")
+                            st.markdown(
+                            '<div class="empty-state"><div class="empty-state-title">Noch kein aktiver Ticker</div><div class="empty-state-text">Wähle zuerst einen Wert in der Analyse oder füge Eingaben manuell zur Watchlist hinzu.</div></div>',
+                            unsafe_allow_html=True,
+                        )
 
                     if st.button("Eingaben hinzufügen", use_container_width=True, key="add_bulk_watchlist"):
                         raw_entries = [x.strip() for x in re.split(r"[\n,;]+", watchlist_bulk_add) if x.strip()]
                         if not raw_entries:
-                            st.info("Bitte mindestens einen Wert eingeben.")
+                            st.markdown(
+                            '<div class="empty-state"><div class="empty-state-title">Keine Eingaben erkannt</div><div class="empty-state-text">Gib mindestens einen Ticker oder Firmennamen ein, getrennt durch Zeilenumbruch oder Komma.</div></div>',
+                            unsafe_allow_html=True,
+                        )
                         else:
                             resolved_entries = []
                             for entry in raw_entries:
@@ -3933,7 +3992,10 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                                             else:
                                                 st.error(msg)
                                 else:
-                                    st.info("Diese Watchlist hat aktuell noch keine Ticker.")
+                                    st.markdown(
+                    '<div class="empty-state"><div class="empty-state-title">Diese Watchlist ist noch leer</div><div class="empty-state-text">Füge im Verwaltungsbereich Werte hinzu oder übernimm den aktuell ausgewählten Ticker.</div></div>',
+                    unsafe_allow_html=True,
+                )
 
             act1, act2, act3 = st.columns(3)
             with act1:
@@ -4481,6 +4543,7 @@ st.session_state.selected_ranking_ticker = selected_display_ticker
 # ---------- Ranking Section ----------
 ranking_expanded_default = len(ranking_df) > 1
 
+st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
     st.subheader("Ranking mehrerer Aktien")
     st.caption(
@@ -4553,7 +4616,10 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
             ).reset_index(drop=True)
 
     if ranking_df.empty:
-        st.warning("Nach den gesetzten Filtern bleiben aktuell keine Werte übrig.")
+        st.markdown(
+            '<div class="empty-state"><div class="empty-state-title">Keine Werte nach aktuellem Filter</div><div class="empty-state-text">Reduziere einzelne Filter oder öffne den Ranking-Block erneut, um mehr Ergebnisse sichtbar zu machen.</div></div>',
+            unsafe_allow_html=True,
+        )
         st.stop()
 
     ranking_cols = [
@@ -5102,7 +5168,7 @@ with kb4:
     )
 
 st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-st.markdown('<div class="compact-help">Export und Logging der aktuellen Einzelanalyse</div>', unsafe_allow_html=True)
+st.markdown('<div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div>', unsafe_allow_html=True)
 se_outer1, se_outer2, se_outer3 = st.columns([0.9, 1.0, 2.4])
 with se_outer1:
     st.download_button(
@@ -5137,6 +5203,7 @@ with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
         render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper", tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt.")
 
 # ---------- Tabs ----------
+st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 st.divider()
 t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
     "Überblick",

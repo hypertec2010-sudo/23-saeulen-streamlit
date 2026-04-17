@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.1.1"
+APP_VERSION = "v11.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -386,6 +386,69 @@ pre{white-space:pre-wrap !important;}
     color:#94a3b8;
     font-size:0.84rem;
     line-height:1.35;
+}
+
+.secondary-action-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-top:8px;
+    margin-bottom:2px;
+}
+.secondary-action-note{
+    color:#94a3b8;
+    font-size:0.83rem;
+    line-height:1.35;
+}
+.soft-divider{
+    height:1px;
+    background:linear-gradient(90deg, rgba(51,65,85,0) 0%, rgba(51,65,85,0.8) 18%, rgba(51,65,85,0.8) 82%, rgba(51,65,85,0) 100%);
+    margin:16px 0 14px 0;
+}
+.panel-caption{
+    color:#cbd5e1;
+    font-size:0.90rem;
+    line-height:1.45;
+}
+.stTabs [data-baseweb="tab-list"]{
+    padding:11px;
+    gap:10px;
+}
+.stTabs [data-baseweb="tab"]{
+    font-size:0.88rem;
+    letter-spacing:0.01em;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.02);
+}
+.stTabs [aria-selected="true"]{
+    box-shadow:0 12px 26px rgba(59,130,246,0.24);
+}
+.decision-card, .compact-panel, .bullet-card, .mobile-result-card{
+    transition:transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.decision-card:hover, .compact-panel:hover, .bullet-card:hover, .mobile-result-card:hover{
+    transform:translateY(-1px);
+    box-shadow:0 18px 34px rgba(0,0,0,0.22);
+}
+div[data-testid="stButton"] > button{
+    letter-spacing:0.01em;
+}
+div[data-testid="stButton"] > button[kind="secondary"]{
+    border-color:#334155;
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+}
+div[data-testid="stDownloadButton"] > button{
+    border-color:#334155;
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+}
+@media (max-width: 768px){
+    .secondary-action-row{gap:8px !important; margin-top:6px !important;}
+    .section-title{font-size:0.98rem !important;}
+    .section-meta-line{font-size:0.82rem !important;}
+    .decision-card, .compact-panel, .bullet-card, .mobile-result-card{
+        margin-bottom:4px !important;
+    }
 }
 .section-spacer{height:8px;}
 .stTabs [data-baseweb="tab-list"]{
@@ -5175,8 +5238,9 @@ with kb4:
     )
 
 st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-st.markdown('<div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div>', unsafe_allow_html=True)
-se_outer1, se_outer2, se_outer3 = st.columns([0.9, 1.0, 2.4])
+st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
+st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div></div>', unsafe_allow_html=True)
+se_outer1, se_outer2, se_outer3 = st.columns([0.75, 0.9, 2.65])
 with se_outer1:
     st.download_button(
         "CSV",
@@ -5190,7 +5254,7 @@ with se_outer2:
         ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
         show_sheet_result(ok, msg)
 with se_outer3:
-    st.markdown('<div class="action-row-note">Vertiefende Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div>', unsafe_allow_html=True)
+    st.markdown("", unsafe_allow_html=True)
 
 with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
@@ -5226,6 +5290,7 @@ t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
 
 with t0:
     st.subheader("Überblick")
+    st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
 
     p1, p2, p3 = st.columns(3)
     p1.metric("Unternehmen", name)
@@ -5262,6 +5327,7 @@ with t0:
 
 with t1:
     st.subheader("Trading-Case")
+    st.markdown('<div class="panel-caption">Technisches Setup, Momentum, Volumen und kurzfristige Struktur.</div>', unsafe_allow_html=True)
     st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_regime_label(market_info['regime'])}")
 
     cols = st.columns(2)
@@ -5347,6 +5413,7 @@ with t3:
 
 with t4:
     st.subheader("Investment-Case")
+    st.markdown('<div class="panel-caption">Fundamentale Qualität, Bewertung und mittelfristige Attraktivität.</div>', unsafe_allow_html=True)
     st.markdown(
         f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}% | Geladene Felder: {fund_fields_loaded}/21</div>",
         unsafe_allow_html=True
@@ -5426,6 +5493,7 @@ with t5:
 
 with t6:
     st.subheader("Trade-Plan")
+    st.markdown('<div class="panel-caption">Konkrete Ableitung von Entry, Stop, Zielen und Chance-Risiko-Verhältnis.</div>', unsafe_allow_html=True)
     if not valid_trade_setup:
         st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
         st.write(

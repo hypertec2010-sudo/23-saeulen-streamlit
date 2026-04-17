@@ -23,6 +23,52 @@ def _b(label, value):
     return f"<b>{_esc(label)}</b> {_esc(value)}"
 
 
+def _fmt_trade_value(value, suffix=""):
+    if value is None:
+        return "-"
+    try:
+        if str(value).strip() == "":
+            return "-"
+        num = float(value)
+        if abs(num) >= 100:
+            return f"{num:.2f}{suffix}"
+        return f"{num:.2f}{suffix}"
+    except Exception:
+        return f"{value}{suffix}" if suffix and str(value) != "-" else str(value)
+
+
+
+def _should_show_trade_plan(result, watchlist_type):
+    if watchlist_type == "Positions-Watchlist":
+        position_action = str(result.get("position_action", "")).lower()
+        add_on_action = str(result.get("add_on_action", "")).lower()
+        positive_terms = ["nachkauf", "aufstock", "aufbauen", "zukauf", "add"]
+        negative_terms = ["verkauf", "reduzier", "risiko", "stop", "teilgewinn", "abbauen"]
+
+        if any(term in position_action for term in negative_terms):
+            return False
+        if any(term in add_on_action for term in positive_terms):
+            return True
+        if any(term in position_action for term in positive_terms):
+            return True
+        return False
+
+    action = str(result.get("emp", "")).lower()
+    trigger = str(result.get("trigger_status", "")).lower()
+    positive_terms = ["kauf", "aufbau", "einstieg", "beobachten", "long"]
+    negative_terms = ["verkauf", "warn", "stop", "risiko", "reduzier"]
+
+    if any(term in action for term in negative_terms):
+        return False
+    if any(term in action for term in positive_terms):
+        return True
+    if any(term in trigger for term in ["aktiv", "bestätigt", "breakout", "retest"]):
+        return True
+    return False
+
+
+
+
 def get_telegram_credentials():
     try:
         token = st.secrets.get("TELEGRAM_TOKEN")
@@ -235,8 +281,13 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_
             _b("📌 Priorität:", result.get('watchlist_priority', '-')),
             _b("📈 Einstieg:", f"{result.get('trading_case_score', 'n/a')}/100"),
             _b("🏛️ Investment:", f"{result.get('investment_case_score', 'n/a')}/100"),
-            _b("🎯 Entry-Zone:", result.get('suggested_entry_zone', '-')),
         ])
+        if _should_show_trade_plan(result, watchlist_type):
+            lines.extend([
+                _b("🎯 Entry-Zone:", result.get('suggested_entry_zone', '-')),
+                _b("🛡️ Stop-Loss:", _fmt_trade_value(result.get('stop_current', result.get('stop', '-')), "")),
+                _b("⚖️ CRV:", _fmt_trade_value(result.get('rr', result.get('crv', '-')), ":1")),
+            ])
 
     if red_flag and red_flag != "-":
         lines.append(_b("⛔ Red Flag:", red_flag))

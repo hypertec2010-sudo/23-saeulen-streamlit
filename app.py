@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.2.1"
+APP_VERSION = "v11.3A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3419,6 +3419,151 @@ def analyze_stock(
     top_red_flag = red_flag_items[0]["Detail"] if red_flag_items else "-"
     short_thesis = build_short_thesis(investment, tb_score, market_info["regime"], top_red_flag, position_mode)
 
+
+    # ---------- Exit / Verkaufssystem ----------
+    avg_cost = normalize_missing(override) if "override" in locals() else np.nan
+    if not pd.notna(avg_cost) or avg_cost <= 0:
+        avg_cost = np.nan
+
+    position_pnl_pct = ((price / avg_cost) - 1) * 100 if pd.notna(avg_cost) and avg_cost > 0 and pd.notna(price) else np.nan
+
+    trend_break_score = 0
+    if pd.notna(price) and pd.notna(ma20) and price < ma20:
+        trend_break_score += 8
+    if pd.notna(price) and pd.notna(ma50) and price < ma50:
+        trend_break_score += 14
+    if pd.notna(price) and pd.notna(ma200) and price < ma200:
+        trend_break_score += 18
+    if pd.notna(ma20) and pd.notna(ma50) and ma20 < ma50:
+        trend_break_score += 10
+    if pd.notna(ma50) and pd.notna(ma200) and ma50 < ma200:
+        trend_break_score += 12
+    swing_low_20 = safe_last(close.shift(1).rolling(20).min(), np.nan)
+    if pd.notna(price) and pd.notna(swing_low_20) and price < swing_low_20:
+        trend_break_score += 10
+    trend_break_score = min(100, trend_break_score)
+
+    momentum_collapse_score = 0
+    if pd.notna(rsi) and rsi < 50:
+        momentum_collapse_score += 6
+    if pd.notna(rsi) and rsi < 45:
+        momentum_collapse_score += 10
+    if pd.notna(rsi) and rsi < 40:
+        momentum_collapse_score += 14
+    if pd.notna(macd_v) and pd.notna(signal_v) and macd_v < signal_v:
+        momentum_collapse_score += 8
+    if pd.notna(macd_hist_current) and macd_hist_current < 0:
+        momentum_collapse_score += 6
+    if pd.notna(roc20) and roc20 < 0:
+        momentum_collapse_score += 8
+    if pd.notna(roc20) and roc20 < -5:
+        momentum_collapse_score += 12
+    if pd.notna(adx) and adx < 18 and pd.notna(roc20) and roc20 < 0:
+        momentum_collapse_score += 6
+    momentum_collapse_score = min(100, momentum_collapse_score)
+
+    relative_weakness_score = 0
+    if pd.notna(rs_score) and rs_score < 50:
+        relative_weakness_score += 8
+    if pd.notna(rs_score) and rs_score < 40:
+        relative_weakness_score += 12
+    if pd.notna(rs_vs_benchmark_21) and rs_vs_benchmark_21 < 0:
+        relative_weakness_score += 8
+    if pd.notna(rs_vs_benchmark_63) and rs_vs_benchmark_63 < 0:
+        relative_weakness_score += 10
+    if pd.notna(rs_vs_benchmark_126) and rs_vs_benchmark_126 < 0:
+        relative_weakness_score += 8
+    if pd.notna(rs_composite) and rs_composite < 45:
+        relative_weakness_score += 10
+    relative_weakness_score = min(100, relative_weakness_score)
+
+    vol_ma20 = safe_last(volume.rolling(20).mean(), np.nan)
+    prev_close = safe_last(close.shift(1), np.nan)
+    ret1 = safe_last(close.pct_change(1) * 100, np.nan)
+    ret2 = safe_last(close.shift(1).pct_change(1) * 100, np.nan)
+    vol = safe_last(volume, np.nan)
+    vol_prev = safe_last(volume.shift(1), np.nan)
+    down_day = pd.notna(price) and pd.notna(prev_close) and price < prev_close
+    high_volume = pd.notna(vol) and pd.notna(vol_ma20) and vol > 1.3 * vol_ma20
+
+    distribution_score = 0
+    if down_day and high_volume:
+        distribution_score += 10
+    dist_day_1 = (
+        pd.notna(ret1) and ret1 < -1.5 and
+        pd.notna(vol) and pd.notna(vol_ma20) and vol > 1.2 * vol_ma20
+    )
+    dist_day_prev = (
+        pd.notna(ret2) and ret2 < -1.5 and
+        pd.notna(vol_prev) and pd.notna(vol_ma20) and vol_prev > 1.2 * vol_ma20
+    )
+    if dist_day_1:
+        distribution_score += 8
+    if dist_day_1 and dist_day_prev:
+        distribution_score += 12
+    if pd.notna(ret21) and ret21 < 0 and down_day and high_volume:
+        distribution_score += 8
+    distribution_score = min(100, distribution_score)
+
+    exit_trigger_score = 0
+    if pd.notna(stop_used) and pd.notna(price) and price < stop_used:
+        exit_trigger_score += 30
+    if pd.notna(days_earn) and days_earn <= 7 and pd.notna(trading_case_score) and trading_case_score < 55:
+        exit_trigger_score += 10
+    if pd.notna(setup_confidence) and setup_confidence < 40:
+        exit_trigger_score += 8
+    if red_flag_penalty_total >= 12:
+        exit_trigger_score += 8
+    gap_down_pct = ((price / prev_close) - 1) * 100 if pd.notna(price) and pd.notna(prev_close) and prev_close != 0 else np.nan
+    if pd.notna(gap_down_pct) and gap_down_pct <= -4:
+        exit_trigger_score += 15
+    exit_trigger_score = min(100, exit_trigger_score)
+
+    exit_score = round(clamp(
+        trend_break_score * 0.30
+        + momentum_collapse_score * 0.20
+        + relative_weakness_score * 0.18
+        + distribution_score * 0.15
+        + exit_trigger_score * 0.17
+    ))
+
+    if pd.notna(position_pnl_pct):
+        if position_pnl_pct > 10:
+            exit_score = max(0, exit_score - 5)
+        elif position_pnl_pct < -5:
+            exit_score = min(100, exit_score + 6)
+
+    if horizon == "Swing (1-4 Wochen)":
+        exit_score = min(100, exit_score + 5)
+    elif horizon == "Langfristig (6-24 Monate)":
+        exit_score = max(0, exit_score - 4)
+
+    exit_score_text = exit_score_label(exit_score)
+    exit_action = derive_exit_action(exit_score, position_pnl_pct, price, stop_used)
+
+    exit_reason_list = []
+    if pd.notna(price) and pd.notna(ma50) and price < ma50:
+        exit_reason_list.append("Kurs unter MA50")
+    if pd.notna(price) and pd.notna(ma200) and price < ma200:
+        exit_reason_list.append("Kurs unter MA200")
+    if pd.notna(ma20) and pd.notna(ma50) and ma20 < ma50:
+        exit_reason_list.append("MA20 unter MA50")
+    if pd.notna(rsi) and rsi < 45:
+        exit_reason_list.append("RSI unter 45")
+    if pd.notna(macd_v) and pd.notna(signal_v) and macd_v < signal_v:
+        exit_reason_list.append("MACD unter Signal")
+    if pd.notna(roc20) and roc20 < 0:
+        exit_reason_list.append("ROC20 negativ")
+    if pd.notna(rs_vs_benchmark_21) and rs_vs_benchmark_21 < 0:
+        exit_reason_list.append("Relative Schwäche vs Benchmark")
+    if pd.notna(stop_used) and pd.notna(price) and price < stop_used:
+        exit_reason_list.append("Stop unterschritten")
+    if pd.notna(gap_down_pct) and gap_down_pct <= -4:
+        exit_reason_list.append("deutlicher Gap-down")
+    if dist_day_1:
+        exit_reason_list.append("Distributionstag")
+    exit_reason_top = exit_reason_list[0] if exit_reason_list else "kein akuter Exit-Grund"
+
     return {
         "ticker": ticker,
         "df": df,
@@ -3467,6 +3612,17 @@ def analyze_stock(
         "tb_score_100": tb_score_100,
         "tb_timing_text": tb_timing_text,
         "position_action": position_action,
+        "exit_score": exit_score,
+        "exit_score_text": exit_score_text,
+        "trend_break_score": trend_break_score,
+        "momentum_collapse_score": momentum_collapse_score,
+        "relative_weakness_score": relative_weakness_score,
+        "distribution_score": distribution_score,
+        "exit_trigger_score": exit_trigger_score,
+        "exit_action": exit_action,
+        "exit_reason_top": exit_reason_top,
+        "exit_reason_list": exit_reason_list,
+        "position_pnl_pct": position_pnl_pct,
         "add_on_action": add_on_action,
         "partial_profit_action": partial_profit_action,
         "stop_action": stop_action,
@@ -5044,6 +5200,41 @@ def ui_safe_metric_text(value, digits=1, suffix=""):
 
 
 
+def exit_score_label(score):
+    if score >= 80:
+        return "klarer Exit-Druck"
+    if score >= 65:
+        return "Verkaufsdruck erhöht"
+    if score >= 45:
+        return "Gewinne absichern"
+    if score >= 25:
+        return "erste Schwäche"
+    return "stabil"
+
+
+def derive_exit_action(exit_score, position_pnl_pct, price, stop_used):
+    try:
+        if pd.notna(stop_used) and pd.notna(price) and price < stop_used:
+            return "Verkaufen"
+    except Exception:
+        pass
+    if exit_score >= 80:
+        return "Verkaufen"
+    if exit_score >= 65:
+        return "Risiko reduzieren"
+    if exit_score >= 45:
+        try:
+            if pd.notna(position_pnl_pct) and position_pnl_pct > 8:
+                return "Teilgewinn prüfen"
+        except Exception:
+            pass
+        return "Risiko reduzieren"
+    if exit_score >= 25:
+        return "Beobachten"
+    return "Halten"
+
+
+
 
 main_action_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
 top_strengths = strengths[:3] if strengths else []
@@ -5072,6 +5263,7 @@ st.markdown(
                     <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
                     <div class="status-chip purple">🧩 Setup: {setup_type}</div>
                     <div class="status-chip blue">⚖️ CRV: {ui_safe_metric_text(crv_value,1,":1")}</div>
+                    <div class="status-chip {ui_chip_class_from_score(100 - exit_score)}">🚪 Exit: {exit_action}</div>
                 </div>
             </div>
             <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
@@ -5128,6 +5320,55 @@ with d3:
             <div class="dc-value">{main_action_label}</div>
             <div class="dc-sub">{market_regime_label(market_info["regime"])}</div>
             <div class="dc-note">Was jetzt praktisch am ehesten sinnvoll ist.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+st.markdown(
+    f"""
+    <div class="section-head">
+        <div class="section-title">Exit-Sicht für Positionen</div>
+        <div class="section-meta-line">Frühe Verkaufssignale aus Trendbruch, Momentum, relativer Schwäche, Distributionsdruck und harten Exit-Triggern.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+ex1, ex2, ex3 = st.columns(3)
+with ex1:
+    st.markdown(
+        f"""
+        <div class="decision-card action" title="Verdichteter Verkaufsdruck für die aktuelle Situation.">
+            <div class="dc-label">Exit-Score</div>
+            <div class="dc-value">{exit_score}/100</div>
+            <div class="dc-sub">{exit_score_text}</div>
+            <div class="dc-note">Je höher, desto stärker der Verkaufsdruck.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with ex2:
+    st.markdown(
+        f"""
+        <div class="decision-card entry" title="Operative Exit-Aktion für die aktuelle Lage.">
+            <div class="dc-label">Exit-Aktion</div>
+            <div class="dc-value">{exit_action}</div>
+            <div class="dc-sub">Gewinnschutz, De-Risking oder Exit</div>
+            <div class="dc-note">Ergänzt die bestehende Kauf-/Aufbaulogik um ein eigenes Verkaufssystem.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with ex3:
+    st.markdown(
+        f"""
+        <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
+            <div class="dc-label">Hauptgrund</div>
+            <div class="dc-value" style="font-size:1.35rem;">{exit_reason_top}</div>
+            <div class="dc-sub">{' | '.join(exit_reason_list[:2]) if exit_reason_list else 'kein akuter Exit-Grund'}</div>
+            <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -5545,6 +5786,14 @@ with t6:
         td2.metric("Sekundärziel aus Setup", fmt_num(technical_target_2, 2, f" {ccy}"))
 
 with t7:
+    st.subheader("Position")
+    st.markdown('<div class="panel-caption">Positionssicht mit Exit-Score, Exit-Aktion und den wichtigsten Verkaufsgründen.</div>', unsafe_allow_html=True)
+
+    px1, px2, px3 = st.columns(3)
+    px1.metric("Exit-Score", f"{exit_score}/100")
+    px2.metric("Exit-Aktion", exit_action)
+    px3.metric("Hauptgrund", exit_reason_top)
+
     st.subheader("Position")
     if not position_mode:
         st.info("Dieser Bereich ist nur relevant, wenn ein Buy-in gesetzt ist und damit der Positionsmodus aktiv ist.")

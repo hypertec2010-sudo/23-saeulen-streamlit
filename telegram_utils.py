@@ -104,11 +104,16 @@ def get_telegram_credentials():
 def get_alert_type_label(result, watchlist_type):
     if watchlist_type == "Positions-Watchlist":
         position_action = str(result.get("position_action", "")).lower()
+        exit_action = str(result.get("exit_action", "")).lower()
         partial_profit = str(result.get("partial_profit_action", "")).lower()
-        if "risiko reduzieren" in position_action:
+        if "verkaufen" in exit_action or "verkaufen" in position_action:
+            return "Exit-Alert"
+        if "risiko reduzieren" in exit_action or "risiko reduzieren" in position_action:
             return "Risiko-Alert"
-        if partial_profit.startswith("ja"):
+        if "teilgewinn" in exit_action or partial_profit.startswith("ja"):
             return "Teilgewinn-Alert"
+        if "beobachten" in exit_action:
+            return "Exit-Warnung"
         return "Positions-Info"
 
     trigger_status = str(result.get("trigger_status", "")).lower()
@@ -128,6 +133,9 @@ def build_alert_signature(result, watchlist_type):
     if watchlist_type == "Positions-Watchlist":
         return "|".join([
             str(result.get("position_action", "-")),
+            str(result.get("exit_action", "-")),
+            str(result.get("exit_score", "-")),
+            str(result.get("exit_reason_top", "-")),
             str(result.get("partial_profit_action", "-")),
             str(result.get("stop_action", "-")),
             str(result.get("risk_note", "-")),
@@ -147,7 +155,7 @@ def build_alert_signature(result, watchlist_type):
 def _parse_signature(signature, watchlist_type):
     parts = str(signature or "").split("|")
     if watchlist_type == "Positions-Watchlist":
-        fields = ["position_action", "partial_profit_action", "stop_action", "risk_note", "setup_confidence"]
+        fields = ["position_action", "exit_action", "exit_score", "exit_reason_top", "partial_profit_action", "stop_action", "risk_note", "setup_confidence"]
     else:
         fields = ["trigger_status", "watchlist_priority", "emp", "trading_case_score", "investment_case_score", "entry_quality", "setup_confidence"]
 
@@ -231,6 +239,9 @@ def _build_change_lines(result, previous_signature, watchlist_type):
     if watchlist_type == "Positions-Watchlist":
         checks = [
             ("⚠️ Positions-Aktion", prev.get("position_action", "-"), result.get("position_action", "-"), False),
+            ("🚪 Exit-Aktion", prev.get("exit_action", "-"), result.get("exit_action", "-"), False),
+            ("📊 Exit-Score", prev.get("exit_score", "-"), result.get("exit_score", "-"), True),
+            ("🧭 Exit-Grund", prev.get("exit_reason_top", "-"), result.get("exit_reason_top", "-"), False),
             ("💰 Teilgewinn", prev.get("partial_profit_action", "-"), result.get("partial_profit_action", "-"), False),
             ("🛡️ Stop", prev.get("stop_action", "-"), result.get("stop_action", "-"), False),
             ("🚨 Risiko", prev.get("risk_note", "-"), result.get("risk_note", "-"), False),
@@ -291,6 +302,9 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_
     if watchlist_type == "Positions-Watchlist":
         lines.extend([
             _b("⚠️ Positions-Aktion:", result.get('position_action', '-')),
+            _b("🚪 Exit-Aktion:", result.get('exit_action', '-')),
+            _b("📊 Exit-Score:", f"{result.get('exit_score', '-')}/100"),
+            _b("🧭 Exit-Hauptgrund:", result.get('exit_reason_top', '-')),
             _b("💰 Teilgewinn:", result.get('partial_profit_action', '-')),
             _b("🛡️ Stop:", result.get('stop_action', '-')),
             _b("🚨 Risiko-Hinweis:", result.get('risk_note', '-')),
@@ -338,27 +352,37 @@ def should_alert_for_watchlist_result(result, watchlist_type, alert_mode="Standa
 
     if watchlist_type == "Positions-Watchlist":
         position_action = str(result.get("position_action", "")).lower()
+        exit_action = str(result.get("exit_action", "")).lower()
         partial_profit = str(result.get("partial_profit_action", "")).lower()
         risk_note = str(result.get("risk_note", "")).lower()
         setup_conf = float(result.get("setup_confidence", 0) or 0)
+        exit_score = float(result.get("exit_score", 0) or 0)
 
         if mode == "Konservativ":
             return (
-                "risiko reduzieren" in position_action
+                "verkaufen" in exit_action
+                or "risiko reduzieren" in exit_action
                 or partial_profit.startswith("ja")
-                or "verlustposition" in risk_note
+                or exit_score >= 65
             )
         if mode == "Früh":
             return (
-                "risiko reduzieren" in position_action
+                "verkaufen" in exit_action
+                or "risiko reduzieren" in exit_action
+                or "beobachten" in exit_action
                 or partial_profit.startswith("ja")
                 or "stop enger" in str(result.get("stop_action", "")).lower()
                 or setup_conf < 45
+                or exit_score >= 45
             )
         return (
-            "risiko reduzieren" in position_action
+            "verkaufen" in exit_action
+            or "risiko reduzieren" in exit_action
             or partial_profit.startswith("ja")
             or "stop enger" in str(result.get("stop_action", "")).lower()
+            or exit_score >= 55
+            or "risiko reduzieren" in position_action
+            or "verkaufen" in position_action
         )
 
     trigger_status = str(result.get("trigger_status", "")).lower()

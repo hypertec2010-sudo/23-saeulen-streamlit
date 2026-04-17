@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3A.2"
+APP_VERSION = "v11.3A.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5267,6 +5267,9 @@ investment_chip_class = ui_chip_class_from_score(investment_case_score)
 priority_chip_class = ui_priority_chip_class(watchlist_priority)
 crv_value = result.get("crv", rr if "rr" in locals() else result.get("rr", "-"))
 trigger_label = trigger_status if trigger_status not in ["", None] else entry_quality
+exit_score_display = result.get("exit_score", 0)
+exit_action_display = result.get("exit_action", "Halten")
+exit_chip_class = ui_chip_class_from_score(100 - float(exit_score_display)) if str(exit_score_display).strip() not in {"", "-", "n/a"} else "blue"
 
 st.markdown(
     f"""
@@ -5284,7 +5287,7 @@ st.markdown(
                     <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
                     <div class="status-chip purple">🧩 Setup: {setup_type}</div>
                     <div class="status-chip blue">⚖️ CRV: {ui_safe_metric_text(crv_value,1,":1")}</div>
-                    <div class="status-chip {ui_chip_class_from_score(100 - exit_score)}">🚪 Exit: {exit_action}</div>
+                    <div class="status-chip {exit_chip_class}">🚪 Exit: {exit_action_display}</div>
                 </div>
             </div>
             <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">

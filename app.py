@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.2"
+APP_VERSION = "v11.2.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5053,7 +5053,7 @@ action_chip_class = ui_action_chip_class(main_action_label)
 entry_chip_class = ui_chip_class_from_score(trading_case_score)
 investment_chip_class = ui_chip_class_from_score(investment_case_score)
 priority_chip_class = ui_priority_chip_class(watchlist_priority)
-crv_value = rr if "rr" in locals() else result.get("rr", "-")
+crv_value = result.get("crv", rr if "rr" in locals() else result.get("rr", "-"))
 trigger_label = trigger_status if trigger_status not in ["", None] else entry_quality
 
 st.markdown(

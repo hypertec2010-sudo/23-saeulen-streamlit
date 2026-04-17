@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3A.5"
+APP_VERSION = "v11.3B"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3220,6 +3220,7 @@ def analyze_stock(
         stop_action = "Beibehalten"
         risk_note = "Keine Auffälligkeit"
         position_action = "Halten"
+        legacy_position_action = "Halten"
 
         if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
             risk_note = "Earnings-Risiko kurzfristig erhöht"
@@ -3237,13 +3238,13 @@ def analyze_stock(
             add_on_action = "Ja, selektiv möglich"
 
         if trading_case_score < 48 or market_info["regime"] == "NEGATIV" or setup_confidence < 45:
-            position_action = "Risiko reduzieren"
+            legacy_position_action = "Risiko reduzieren"
         elif trading_case_score < 60 or setup_confidence < 60 or entry_quality == "früh":
-            position_action = "Halten / eng beobachten"
+            legacy_position_action = "Halten / eng beobachten"
         elif investment_case_score >= 75 and trading_case_score >= 68 and setup_confidence >= 60:
-            position_action = "Halten / ggf. ausbauen"
+            legacy_position_action = "Halten / ggf. ausbauen"
         else:
-            position_action = "Halten"
+            legacy_position_action = "Halten"
 
         if pd.notna(stop_used) and price > 0:
             if pd.notna(tb_perf) and tb_perf >= 15 and pd.notna(tp1) and price >= tp1:
@@ -3562,6 +3563,34 @@ def analyze_stock(
     else:
         exit_action = "Halten"
 
+    pnl_bucket, horizon_label = derive_position_context(position_pnl_pct, horizon)
+    if position_mode:
+        position_action = combine_position_action(
+            exit_action,
+            legacy_position_action if "legacy_position_action" in locals() else position_action,
+            add_on_action,
+            partial_profit_action,
+            position_pnl_pct,
+        )
+
+        if exit_action == "Verkaufen":
+            partial_profit_action = "Nein"
+            add_on_action = "Nein"
+            risk_note = f"Exit-Modell: klarer Verkaufsdruck | {pnl_bucket}"
+        elif exit_action == "Risiko reduzieren":
+            add_on_action = "Nein"
+            risk_note = f"Exit-Modell: Risikoabbau sinnvoll | {pnl_bucket}"
+        elif exit_action == "Teilgewinn prüfen":
+            partial_profit_action = "Ja, Teilgewinn prüfen"
+            risk_note = f"Gewinnsicherung sinnvoll | {pnl_bucket}"
+        elif exit_action == "Beobachten":
+            risk_note = f"Erste Exit-Schwäche | {pnl_bucket}"
+        elif str(add_on_action).lower().startswith("ja"):
+            risk_note = f"Konstruktive Lage trotz Positionsmodus | {pnl_bucket}"
+
+        if pd.notna(days_earn) and days_earn <= 7 and exit_score >= 45:
+            risk_note = f"Earnings-Risiko bei erhöhter Exit-Schwäche | {pnl_bucket}"
+
     exit_reason_list = []
     if pd.notna(price) and pd.notna(ma50) and price < ma50:
         exit_reason_list.append("Kurs unter MA50")
@@ -3644,6 +3673,8 @@ def analyze_stock(
         "exit_reason_top": exit_reason_top,
         "exit_reason_list": exit_reason_list,
         "position_pnl_pct": position_pnl_pct,
+        "pnl_bucket": pnl_bucket,
+        "horizon_label": horizon_label,
         "add_on_action": add_on_action,
         "partial_profit_action": partial_profit_action,
         "stop_action": stop_action,
@@ -5270,6 +5301,41 @@ def derive_exit_action(exit_score, position_pnl_pct, price, stop_used):
 
 
 
+def derive_position_context(position_pnl_pct, horizon):
+    if pd.notna(position_pnl_pct):
+        if position_pnl_pct >= 15:
+            pnl_bucket = "starker Gewinner"
+        elif position_pnl_pct >= 5:
+            pnl_bucket = "Gewinner"
+        elif position_pnl_pct <= -8:
+            pnl_bucket = "klarer Verlierer"
+        elif position_pnl_pct < 0:
+            pnl_bucket = "leichter Verlierer"
+        else:
+            pnl_bucket = "nahe Einstand"
+    else:
+        pnl_bucket = "ohne Einstandsdaten"
+
+    horizon_label = str(horizon or "").strip() or "unbekannt"
+    return pnl_bucket, horizon_label
+
+
+def combine_position_action(exit_action, legacy_position_action, add_on_action, partial_profit_action, position_pnl_pct):
+    if exit_action in {"Verkaufen", "Risiko reduzieren"}:
+        return exit_action
+    if exit_action == "Teilgewinn prüfen":
+        return "Teilgewinn prüfen"
+    if exit_action == "Beobachten":
+        return "Halten / eng beobachten"
+
+    if str(add_on_action).lower().startswith("ja"):
+        return "Halten / ggf. ausbauen"
+    if str(partial_profit_action).lower().startswith("ja") and pd.notna(position_pnl_pct) and position_pnl_pct > 10:
+        return "Teilgewinn prüfen"
+    return legacy_position_action
+
+
+
 
 main_action_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
 top_strengths = strengths[:3] if strengths else []
@@ -5828,12 +5894,20 @@ with t6:
 
 with t7:
     st.subheader("Position")
-    st.markdown('<div class="panel-caption">Positionssicht mit Exit-Score, Exit-Aktion und den wichtigsten Verkaufsgründen.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-caption">Positionssicht mit Exit-Score, Exit-Aktion, Kontext und den wichtigsten Verkaufsgründen.</div>', unsafe_allow_html=True)
 
-    px1, px2, px3 = st.columns(3)
+    px1, px2, px3, px4 = st.columns(4)
     px1.metric("Exit-Score", f"{exit_score_display}/100")
     px2.metric("Exit-Aktion", exit_action_display)
     px3.metric("Hauptgrund", exit_reason_top_display)
+    px4.metric("P&L-Kontext", result.get("pnl_bucket", "-"))
+
+    exs1, exs2, exs3, exs4, exs5 = st.columns(5)
+    exs1.metric("Trendbruch", f"{result.get('trend_break_score', 0)}/100")
+    exs2.metric("Momentum", f"{result.get('momentum_collapse_score', 0)}/100")
+    exs3.metric("Rel. Schwäche", f"{result.get('relative_weakness_score', 0)}/100")
+    exs4.metric("Distribution", f"{result.get('distribution_score', 0)}/100")
+    exs5.metric("Trigger", f"{result.get('exit_trigger_score', 0)}/100")
 
     st.subheader("Position")
     if not position_mode:

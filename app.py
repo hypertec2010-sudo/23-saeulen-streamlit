@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3C.4"
+APP_VERSION = "v11.3C.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3620,6 +3620,28 @@ def analyze_stock(
         exit_score = min(100, exit_score + 5)
     elif horizon == "Langfristig (6-24 Monate)":
         exit_score = max(0, exit_score - 4)
+
+    # Mindest-Score, wenn bereits echte Exit-Gründe vorliegen
+    structural_exit_reasons = 0
+    if pd.notna(ma20) and pd.notna(ma50) and ma20 < ma50:
+        structural_exit_reasons += 1
+    if pd.notna(rs_vs_benchmark_21) and rs_vs_benchmark_21 < 0:
+        structural_exit_reasons += 1
+    if pd.notna(price) and pd.notna(ma50) and price < ma50:
+        structural_exit_reasons += 1
+    if pd.notna(rsi) and rsi < 45:
+        structural_exit_reasons += 1
+    if pd.notna(macd_v) and pd.notna(signal_v) and macd_v < signal_v:
+        structural_exit_reasons += 1
+    if stop_broken:
+        structural_exit_reasons += 2
+
+    if structural_exit_reasons >= 3:
+        exit_score = max(exit_score, 35)
+    elif structural_exit_reasons == 2:
+        exit_score = max(exit_score, 24)
+    elif structural_exit_reasons == 1:
+        exit_score = max(exit_score, 12)
 
     near_tp1 = pd.notna(tp1) and pd.notna(price) and price >= tp1 * 0.98
     near_tp2 = pd.notna(tp2) and pd.notna(price) and price >= tp2 * 0.96

@@ -3,7 +3,13 @@ from datetime import datetime
 import requests
 import streamlit as st
 
-from logging_utils import get_alert_history_entry, has_any_alert_history_for_ticker, upsert_alert_history_entry
+from logging_utils import get_alert_history_entry, upsert_alert_history_entry
+
+try:
+    from logging_utils import has_any_alert_history_for_ticker
+except Exception:
+    def has_any_alert_history_for_ticker(watchlist_name, ticker):
+        return False
 
 
 def get_telegram_credentials():
@@ -26,36 +32,129 @@ def get_alert_type_label(result, watchlist_type):
             return "Teilgewinn-Alert"
         return "Positions-Info"
 
+    trigger_status = str(result.get("trigger_status", "")).lower()
+    priority = str(result.get("watchlist_priority", "")).lower()
+    action = str(result.get("emp", "")).lower()
 
-def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_mode="Standard"):
-    ticker = result.get("ticker", "-")
-    name = result.get("name", "-")
+    if "aktiv" in trigger_status or "bestätigt" in trigger_status or "breakout" in trigger_status:
+        return "Trigger-Alert"
+    if priority == "hoch":
+        return "Prioritäts-Alert"
+    if "kauf" in action or "aufbau" in action:
+        return "Handlungs-Alert"
+    return "Watchlist-Info"
+
+
+def build_alert_signature(result, watchlist_type):
+    if watchlist_type == "Positions-Watchlist":
+        return "|".join([
+            str(result.get("position_action", "-")),
+            str(result.get("partial_profit_action", "-")),
+            str(result.get("stop_action", "-")),
+            str(result.get("risk_note", "-")),
+            str(result.get("setup_confidence", "-")),
+        ])
+    return "|".join([
+        str(result.get("trigger_status", "-")),
+        str(result.get("watchlist_priority", "-")),
+        str(result.get("emp", "-")),
+        str(result.get("trading_case_score", "-")),
+        str(result.get("investment_case_score", "-")),
+        str(result.get("entry_quality", "-")),
+        str(result.get("setup_confidence", "-")),
+    ])
+
+
+def _parse_signature(signature, watchlist_type):
+    parts = str(signature or "").split("|")
+    if watchlist_type == "Positions-Watchlist":
+        fields = ["position_action", "partial_profit_action", "stop_action", "risk_note", "setup_confidence"]
+    else:
+        fields = ["trigger_status", "watchlist_priority", "emp", "trading_case_score", "investment_case_score", "entry_quality", "setup_confidence"]
+
+    while len(parts) < len(fields):
+        parts.append("-")
+    return {field: parts[i] for i, field in enumerate(fields)}
+
+
+def _format_num_change(old_value, new_value):
+    try:
+        old_num = float(str(old_value).replace("%", "").replace(",", "."))
+        new_num = float(str(new_value).replace("%", "").replace(",", "."))
+        if abs(old_num - new_num) < 0.01:
+            return None
+        return f"{int(round(old_num))} -> {int(round(new_num))}"
+    except Exception:
+        if str(old_value) == str(new_value):
+            return None
+        return f"{old_value} -> {new_value}"
+
+
+def _build_change_lines(result, previous_signature, watchlist_type):
+    if not previous_signature:
+        return []
+
+    prev = _parse_signature(previous_signature, watchlist_type)
+    lines = []
 
     if watchlist_type == "Positions-Watchlist":
-        action = result.get("position_action", "-")
+        checks = [
+            ("⚠️ Positions-Aktion", prev.get("position_action", "-"), result.get("position_action", "-"), False),
+            ("💰 Teilgewinn", prev.get("partial_profit_action", "-"), result.get("partial_profit_action", "-"), False),
+            ("🛡️ Stop", prev.get("stop_action", "-"), result.get("stop_action", "-"), False),
+            ("🚨 Risiko", prev.get("risk_note", "-"), result.get("risk_note", "-"), False),
+            ("📊 Setup-Confidence", prev.get("setup_confidence", "-"), result.get("setup_confidence", "-"), True),
+        ]
     else:
-        action = result.get("emp", "-")
+        checks = [
+            ("🔔 Trigger", prev.get("trigger_status", "-"), result.get("trigger_status", "-"), False),
+            ("📌 Priorität", prev.get("watchlist_priority", "-"), result.get("watchlist_priority", "-"), False),
+            ("⚡ Handlung", prev.get("emp", "-"), result.get("emp", "-"), False),
+            ("📈 Einstieg", prev.get("trading_case_score", "-"), result.get("trading_case_score", "-"), True),
+            ("🏛️ Investment", prev.get("investment_case_score", "-"), result.get("investment_case_score", "-"), True),
+            ("🧭 Lage", prev.get("entry_quality", "-"), result.get("entry_quality", "-"), False),
+            ("📊 Setup-Confidence", prev.get("setup_confidence", "-"), result.get("setup_confidence", "-"), True),
+        ]
 
+    for label, old_value, new_value, numeric in checks:
+        old_str = str(old_value)
+        new_str = str(new_value)
+        if numeric:
+            diff_text = _format_num_change(old_str, new_str)
+            if diff_text:
+                lines.append(f"{label}: {diff_text}")
+        else:
+            if old_str != new_str:
+                lines.append(f"{label}: {old_str} -> {new_str}")
+
+    return lines
+
+
+def _headline_lines(result, watchlist_name, watchlist_type, alert_mode, prefix_title):
+    ticker = str(result.get("ticker", "-")).strip().upper()
+    name = result.get("name", "-")
+    alert_type = get_alert_type_label(result, watchlist_type)
+
+    return [
+        f"{prefix_title}",
+        f"WERT: {ticker} | {name}",
+        f"WATCHLIST: {watchlist_name} | {watchlist_type}",
+        f"ALERT: {alert_type} | MODUS: {alert_mode}",
+    ]
+
+
+def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_mode="Standard", previous_signature=None):
     setup_type = result.get("setup_type", "-")
-    trigger_status = result.get("trigger_status", "-")
-    priority = result.get("watchlist_priority", "-")
-    entry_score = result.get("trading_case_score", "n/a")
-    invest_score = result.get("investment_case_score", "n/a")
-    entry_zone = result.get("suggested_entry_zone", "-")
     red_flag = result.get("top_red_flag", "-")
     mode = result.get("mode_label", "-")
+    lines = _headline_lines(result, watchlist_name, watchlist_type, alert_mode, "Capital Hill | Alert Update")
 
-    alert_type = get_alert_type_label(result, watchlist_type)
-    lines = [
-        f"Capital Hill | {alert_type}",
-        f"Watchlist: {watchlist_name}",
-        f"Typ: {watchlist_type}",
-        f"Alert-Modus: {alert_mode}",
-        f"{ticker} | {name}",
-        f"Modus: {mode}",
-        f"Handlung: {action}",
-        f"Setup: {setup_type}",
-    ]
+    change_lines = _build_change_lines(result, previous_signature, watchlist_type)
+    if change_lines:
+        lines.extend(["", "WAS HAT SICH GEÄNDERT:"])
+        lines.extend(change_lines)
+
+    lines.extend(["", "AKTUELLER STAND:", f"Modus: {mode}", f"Setup: {setup_type}"])
 
     if watchlist_type == "Positions-Watchlist":
         lines.extend([
@@ -63,19 +162,36 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_
             f"Teilgewinn: {result.get('partial_profit_action', '-')}",
             f"Stop: {result.get('stop_action', '-')}",
             f"Risiko-Hinweis: {result.get('risk_note', '-')}",
+            f"Setup-Confidence: {result.get('setup_confidence', '-')}/100",
         ])
     else:
         lines.extend([
-            f"Trigger: {trigger_status}",
-            f"Priorität: {priority}",
-            f"Einstieg: {entry_score}/100",
-            f"Investment: {invest_score}/100",
-            f"Entry-Zone: {entry_zone}",
+            f"Handlung: {result.get('emp', '-')}",
+            f"Trigger: {result.get('trigger_status', '-')}",
+            f"Priorität: {result.get('watchlist_priority', '-')}",
+            f"Einstieg: {result.get('trading_case_score', 'n/a')}/100",
+            f"Investment: {result.get('investment_case_score', 'n/a')}/100",
+            f"Entry-Zone: {result.get('suggested_entry_zone', '-')}",
         ])
 
     if red_flag and red_flag != "-":
         lines.append(f"Red Flag: {red_flag}")
 
+    return "\n".join(lines)
+
+
+def build_new_watchlist_entry_text(result, watchlist_name, watchlist_type, alert_mode="Standard"):
+    lines = _headline_lines(result, watchlist_name, watchlist_type, alert_mode, "Capital Hill | Erst-Check")
+    lines.extend([
+        "",
+        "AKTUELLER STAND:",
+        f"Handlung: {result.get('emp', result.get('position_action', '-'))}",
+        f"Trigger: {result.get('trigger_status', '-')}",
+        f"Priorität: {result.get('watchlist_priority', '-')}",
+        f"Einstieg: {result.get('trading_case_score', 'n/a')}/100",
+        f"Investment: {result.get('investment_case_score', 'n/a')}/100",
+        "Hinweis: Neuer Wert in der Watchlist, aktuell noch kein harter Trigger-Alert.",
+    ])
     return "\n".join(lines)
 
 
@@ -98,91 +214,41 @@ def should_alert_for_watchlist_result(result, watchlist_type, alert_mode="Standa
             return (
                 "risiko reduzieren" in position_action
                 or partial_profit.startswith("ja")
-                or "erhöht" in risk_note
-                or "verlustposition" in risk_note
-                or ("eng beobachten" in position_action and setup_conf < 60)
+                or "stop enger" in str(result.get("stop_action", "")).lower()
+                or setup_conf < 45
             )
         return (
             "risiko reduzieren" in position_action
             or partial_profit.startswith("ja")
-            or "erhöht" in risk_note
-            or "verlustposition" in risk_note
-            or ("eng beobachten" in position_action and setup_conf < 55)
+            or "stop enger" in str(result.get("stop_action", "")).lower()
         )
 
-    trigger_status = str(result.get("trigger_status", ""))
-    priority = str(result.get("watchlist_priority", ""))
+    trigger_status = str(result.get("trigger_status", "")).lower()
+    priority = str(result.get("watchlist_priority", "")).lower()
     entry_score = float(result.get("trading_case_score", 0) or 0)
-    invest_score = float(result.get("investment_case_score", 0) or 0)
-    setup_conf = float(result.get("setup_confidence", 0) or 0)
-    entry_quality = str(result.get("entry_quality", ""))
-    emp = str(result.get("emp", ""))
+    action = str(result.get("emp", "")).lower()
 
     if mode == "Konservativ":
         return (
-            (trigger_status == "Aktiv" and entry_score >= 72 and setup_conf >= 62 and invest_score >= 68)
-            or (priority == "Hoch" and entry_score >= 78 and invest_score >= 70 and setup_conf >= 60 and "EINSTIEG PRÜFEN" in emp)
+            ("aktiv" in trigger_status or "bestätigt" in trigger_status or "breakout" in trigger_status)
+            and priority == "hoch"
+            and entry_score >= 70
         )
     if mode == "Früh":
         return (
-            (trigger_status == "Aktiv" and entry_score >= 64 and setup_conf >= 52)
-            or (priority == "Hoch" and entry_score >= 68 and invest_score >= 62 and setup_conf >= 50)
-            or (trigger_status == "Nahe dran" and entry_quality in {"gut", "abwarten"} and entry_score >= 70)
+            priority in ["hoch", "mittel"]
+            or entry_score >= 60
+            or "kauf" in action
+            or "aufbau" in action
+            or "aktiv" in trigger_status
         )
     return (
-        (trigger_status == "Aktiv" and entry_score >= 68 and setup_conf >= 58)
-        or (priority == "Hoch" and entry_score >= 72 and invest_score >= 65 and setup_conf >= 55)
-        or (trigger_status == "Nahe dran" and entry_quality in {"gut", "abwarten"} and entry_score >= 74 and "EINSTIEG PRÜFEN" in emp)
+        priority == "hoch"
+        or entry_score >= 68
+        or "aktiv" in trigger_status
+        or "kauf" in action
+        or "aufbau" in action
     )
-
-
-
-
-
-
-def build_new_watchlist_entry_text(result, watchlist_name, watchlist_type, alert_mode="Standard"):
-    ticker = result.get("ticker", "-")
-    name = result.get("name", "-")
-    trigger_status = result.get("trigger_status", "-")
-    priority = result.get("watchlist_priority", "-")
-    entry_score = result.get("trading_case_score", "n/a")
-    invest_score = result.get("investment_case_score", "n/a")
-    action = result.get("emp", result.get("position_action", "-"))
-
-    lines = [
-        "Capital Hill | Neue Watchlist-Aufnahme",
-        f"Watchlist: {watchlist_name}",
-        f"Typ: {watchlist_type}",
-        f"Alert-Modus: {alert_mode}",
-        f"{ticker} | {name}",
-        f"Handlung: {action}",
-        f"Trigger: {trigger_status}",
-        f"Priorität: {priority}",
-        f"Einstieg: {entry_score}/100",
-        f"Investment: {invest_score}/100",
-        "Hinweis: Neuer Wert in der Watchlist, aktuell noch kein harter Trigger-Alert.",
-    ]
-    return "\n".join(lines)
-
-
-def build_alert_signature(result, watchlist_type):
-    if watchlist_type == "Positions-Watchlist":
-        return "|".join([
-            str(result.get("position_action", "-")),
-            str(result.get("partial_profit_action", "-")),
-            str(result.get("stop_action", "-")),
-            str(result.get("risk_note", "-")),
-            str(result.get("setup_confidence", "-")),
-        ])
-    return "|".join([
-        str(result.get("trigger_status", "-")),
-        str(result.get("watchlist_priority", "-")),
-        str(result.get("emp", "-")),
-        str(result.get("trading_case_score", "-")),
-        str(result.get("investment_case_score", "-")),
-        str(result.get("entry_quality", "-")),
-        str(result.get("setup_confidence", "-")),
-    ])
 
 
 def send_telegram_message(message_text):
@@ -216,7 +282,7 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
 
     for result in results:
         ticker = str(result.get("ticker", "-")).strip().upper()
-        has_any_history = has_any_alert_history_for_ticker(watchlist_name, ticker)
+        previous_any = has_any_alert_history_for_ticker(watchlist_name, ticker)
 
         if should_alert_for_watchlist_result(result, watchlist_type, alert_mode):
             matched += 1
@@ -226,15 +292,23 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
 
             same_day = False
             same_signature = False
+            previous_signature = None
             if history_entry:
                 same_day = str(history_entry.get("Last_Sent_Date", "")) == datetime.now().strftime("%Y-%m-%d")
                 same_signature = str(history_entry.get("Alert_Signature", "")) == alert_signature
+                previous_signature = history_entry.get("Alert_Signature")
 
             if same_day and same_signature:
                 suppressed += 1
                 continue
 
-            msg = build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_mode)
+            msg = build_watchlist_telegram_text(
+                result,
+                watchlist_name,
+                watchlist_type,
+                alert_mode,
+                previous_signature=previous_signature,
+            )
             ok, err = send_telegram_message(msg)
             if ok:
                 sent += 1
@@ -250,8 +324,9 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
                     errors.append(f"History: {hist_err}")
             else:
                 errors.append(err)
+
         else:
-            if not has_any_history and watchlist_type != "Positions-Watchlist":
+            if not previous_any and watchlist_type != "Positions-Watchlist":
                 alert_type = "Neue Watchlist-Aufnahme"
                 alert_signature = build_alert_signature(result, watchlist_type)
                 history_entry = get_alert_history_entry(watchlist_name, ticker, alert_type)
@@ -289,7 +364,7 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
     if sent > 0 and not errors:
         parts = []
         if sent - info_sent > 0:
-            parts.append(f"{sent - info_sent} neue Alerts")
+            parts.append(f"{sent - info_sent} Alerts")
         if info_sent > 0:
             parts.append(f"{info_sent} Erst-Checks")
         msg = f"{', '.join(parts)} für '{watchlist_name}' gesendet."

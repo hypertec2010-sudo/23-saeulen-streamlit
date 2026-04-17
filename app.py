@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3B.1"
+APP_VERSION = "v11.3B.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5286,6 +5286,19 @@ def ui_safe_metric_text(value, digits=1, suffix=""):
 
 
 
+def ui_target_text(value, ccy="", missing_text="kein sauberes Setup-Ziel ableitbar"):
+    try:
+        if value is None or (isinstance(value, str) and value.strip().lower() in {"", "-", "n/a", "none"}):
+            return missing_text
+        if pd.isna(value):
+            return missing_text
+        return f"{float(value):.2f} {ccy}".strip()
+    except Exception:
+        s = str(value).strip()
+        return s if s else missing_text
+
+
+
 def exit_score_label(score):
     if score >= 80:
         return "klarer Exit-Druck"
@@ -5862,6 +5875,7 @@ with t5:
 with t6:
     st.subheader("Trade-Plan")
     st.markdown('<div class="panel-caption">Konkrete Ableitung von Entry, Stop, Zielen und Chance-Risiko-Verhältnis.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="muted-meta">Setup-Ziele werden nur gezeigt, wenn aus dem konkreten Muster ein belastbares Primär- oder Sekundärziel ableitbar ist.</div>', unsafe_allow_html=True)
     if not valid_trade_setup:
         st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
         st.write(

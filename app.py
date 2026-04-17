@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.1"
+APP_VERSION = "v11.1.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4338,6 +4338,7 @@ if st.session_state.get("auto_run_requested", False):
 
 
 
+
 def style_ranking_table(df):
     if df is None or df.empty:
         return df
@@ -4355,13 +4356,19 @@ def style_ranking_table(df):
         num = parse_num(v)
         if num is None:
             return ""
-        if num >= 80:
-            return "background-color: rgba(34,197,94,0.28); color: #f8fafc; font-weight: 700;"
+        if num >= 85:
+            return "background-color: #00c853; color: #ffffff; font-weight: 800;"
+        if num >= 75:
+            return "background-color: #2eeb70; color: #08130b; font-weight: 800;"
         if num >= 65:
-            return "background-color: rgba(132,204,22,0.22); color: #f8fafc; font-weight: 700;"
-        if num >= 50:
-            return "background-color: rgba(245,158,11,0.20); color: #f8fafc; font-weight: 700;"
-        return "background-color: rgba(239,68,68,0.20); color: #f8fafc; font-weight: 700;"
+            return "background-color: #b2ff59; color: #18240a; font-weight: 800;"
+        if num >= 55:
+            return "background-color: #fff176; color: #2b2200; font-weight: 800;"
+        if num >= 45:
+            return "background-color: #ffd54f; color: #2b1700; font-weight: 800;"
+        if num >= 35:
+            return "background-color: #ff8a65; color: #2b0f08; font-weight: 800;"
+        return "background-color: #ff1744; color: #ffffff; font-weight: 800;"
 
     score_cols = [c for c in [
         "Investment-Attraktivität",
@@ -4377,30 +4384,30 @@ def style_ranking_table(df):
     def style_valid(v):
         s = str(v).strip().lower()
         if s == "ja":
-            return "background-color: rgba(34,197,94,0.22); color: #eafff1; font-weight: 700;"
+            return "background-color: #00c853; color: #ffffff; font-weight: 800;"
         if s == "nein":
-            return "background-color: rgba(239,68,68,0.20); color: #ffecec; font-weight: 700;"
+            return "background-color: #ff1744; color: #ffffff; font-weight: 800;"
         return ""
 
     def style_priority(v):
         s = str(v).strip().lower()
         if s == "hoch":
-            return "background-color: rgba(239,68,68,0.18); color: #ffe5e5; font-weight: 700;"
+            return "background-color: #ff1744; color: #ffffff; font-weight: 800;"
         if s == "mittel":
-            return "background-color: rgba(245,158,11,0.18); color: #fff4db; font-weight: 700;"
+            return "background-color: #ffd54f; color: #2b1700; font-weight: 800;"
         if s == "niedrig":
-            return "background-color: rgba(34,197,94,0.16); color: #e8fff0; font-weight: 700;"
+            return "background-color: #00c853; color: #ffffff; font-weight: 800;"
         return ""
 
     def style_action(v):
         s = str(v).strip().lower()
         if any(x in s for x in ["kaufen", "aufbauen", "long", "beobachten"]):
-            return "background-color: rgba(34,197,94,0.14); color: #e8fff0; font-weight: 700;"
+            return "background-color: #00c853; color: #ffffff; font-weight: 800;"
         if any(x in s for x in ["halten", "abwarten"]):
-            return "background-color: rgba(245,158,11,0.15); color: #fff4db; font-weight: 700;"
-        if any(x in s for x in ["reduzieren", "verkaufen", "stop"]):
-            return "background-color: rgba(239,68,68,0.16); color: #ffe5e5; font-weight: 700;"
-        return "font-weight: 700;"
+            return "background-color: #ffd54f; color: #2b1700; font-weight: 800;"
+        if any(x in s for x in ["reduzieren", "verkaufen", "stop", "risiko"]):
+            return "background-color: #ff1744; color: #ffffff; font-weight: 800;"
+        return "font-weight: 800;"
 
     if "Valides Setup" in df.columns:
         styled = styled.map(style_valid, subset=["Valides Setup"])

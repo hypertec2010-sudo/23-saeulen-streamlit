@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3C"
+APP_VERSION = "v11.3C.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3667,6 +3667,17 @@ def analyze_stock(
         exit_reason_list.append("Distributionstag")
     if de_risk_gain_zone and not exit_reason_list:
         exit_reason_list.append("Gewinnzone erreicht, Teilgewinn sinnvoll")
+
+    # Doppelte Exit-Gründe entfernen, Reihenfolge aber beibehalten
+    deduped_exit_reason_list = []
+    seen_exit_reasons = set()
+    for reason in exit_reason_list:
+        reason_key = str(reason).strip()
+        if reason_key and reason_key not in seen_exit_reasons:
+            deduped_exit_reason_list.append(reason_key)
+            seen_exit_reasons.add(reason_key)
+    exit_reason_list = deduped_exit_reason_list
+
     exit_reason_top = exit_reason_list[0] if exit_reason_list else "kein akuter Exit-Grund"
 
     return {

@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3A.4"
+APP_VERSION = "v11.3A.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4616,6 +4616,7 @@ def style_ranking_table(df):
         "Trade-Struktur",
         "Kurzfrist-Timing",
         "Setup-Confidence",
+        "Exit-Score",
     ] if c in df.columns]
 
     for col in score_cols:
@@ -4655,6 +4656,8 @@ def style_ranking_table(df):
         styled = styled.map(style_priority, subset=["Watchlist-Priorität"])
     if "Handlung" in df.columns:
         styled = styled.map(style_action, subset=["Handlung"])
+    if "Exit-Aktion" in df.columns:
+        styled = styled.map(style_action, subset=["Exit-Aktion"])
 
     return styled
 
@@ -4750,6 +4753,11 @@ if st.session_state.get("analysis_requested", False):
         st.session_state.send_watchlist_alerts_after_run = False
 
     ranking_df = build_ranking_table(results)
+    if not ranking_df.empty:
+        exit_score_map = {str(r.get("ticker", "")): r.get("exit_score", np.nan) for r in results}
+        exit_action_map = {str(r.get("ticker", "")): r.get("exit_action", "-") for r in results}
+        ranking_df["Exit-Score"] = ranking_df["Ticker"].astype(str).map(exit_score_map)
+        ranking_df["Exit-Aktion"] = ranking_df["Ticker"].astype(str).map(exit_action_map)
     results_map = {r["ticker"]: r for r in results}
     st.session_state.ranking_df = ranking_df
     st.session_state.ranking_results = results_map
@@ -4761,6 +4769,11 @@ else:
     results = list(results_map.values())
     errors = st.session_state.get("last_analysis_errors", [])
     resolved_input_rows = st.session_state.get("last_resolved_input_rows", [])
+    if not ranking_df.empty and results_map:
+        exit_score_map = {str(k): v.get("exit_score", np.nan) for k, v in results_map.items()}
+        exit_action_map = {str(k): v.get("exit_action", "-") for k, v in results_map.items()}
+        ranking_df["Exit-Score"] = ranking_df["Ticker"].astype(str).map(exit_score_map)
+        ranking_df["Exit-Aktion"] = ranking_df["Ticker"].astype(str).map(exit_action_map)
 
 if analysis_mode_run == "Einzelanalyse":
     st.caption("Aktiver Modus: Einzelanalyse")
@@ -4872,6 +4885,7 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
     ranking_cols = [
         c for c in [
             "Ticker", "Name", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
+            "Exit-Score", "Exit-Aktion",
             "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence",
             "Valides Setup", "Setup-Typ", "Watchlist-Priorität", "Handlung"
         ] if c in ranking_df.columns

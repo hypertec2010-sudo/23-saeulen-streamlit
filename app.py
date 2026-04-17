@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3C.5"
+APP_VERSION = "v11.3D"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3043,11 +3043,61 @@ def analyze_stock(
         pos_size = 0
         time_stop = "-"
 
-    short_term_score = round(clamp(s4 * 0.45 + s5 * 0.28 + s6 * 0.17 + rs_score * 0.10))
-    swing_score = round(clamp(s3 * 0.26 + s4 * 0.28 + s5 * 0.16 + s6 * 0.10 + rs_score * 0.12 + w52 * 0.08))
-    mid_term_score = round(clamp(setup_adj * 0.55 + company * 0.45))
-    long_term_score = round(clamp(company * 0.50 + growth_score * 0.15 + growth_quality * 0.10 + quality_score * 0.15 + valuation_score * 0.10))
-    very_long_term_score = round(clamp(company * 0.40 + quality_score * 0.20 + growth_score * 0.15 + growth_quality * 0.10 + valuation_score * 0.15))
+    short_term_raw = round(clamp(s4 * 0.45 + s5 * 0.28 + s6 * 0.17 + rs_score * 0.10))
+    swing_raw = round(clamp(s3 * 0.26 + s4 * 0.28 + s5 * 0.16 + s6 * 0.10 + rs_score * 0.12 + w52 * 0.08))
+    mid_term_raw = round(clamp(setup_adj * 0.55 + company * 0.45))
+    long_term_raw = round(clamp(company * 0.50 + growth_score * 0.15 + growth_quality * 0.10 + quality_score * 0.15 + valuation_score * 0.10))
+    very_long_term_raw = round(clamp(company * 0.40 + quality_score * 0.20 + growth_score * 0.15 + growth_quality * 0.10 + valuation_score * 0.15))
+
+    market_hmap_adj = 6 if market_info["regime"] == "POSITIV" else (-8 if market_info["regime"] == "NEGATIV" else 0)
+    red_flag_hmap_penalty = min(red_flag_penalty_total * 2, 18)
+
+    short_term_score = round(clamp(
+        short_term_raw * 0.55
+        + trading_case_score * 0.35
+        + setup_confidence * 0.10
+        + market_hmap_adj
+        - red_flag_hmap_penalty * 0.35
+    ))
+    swing_score = round(clamp(
+        swing_raw * 0.45
+        + trading_case_score * 0.35
+        + investment_case_score * 0.10
+        + setup_confidence * 0.10
+        + market_hmap_adj
+        - red_flag_hmap_penalty * 0.30
+    ))
+    mid_term_score = round(clamp(
+        mid_term_raw * 0.40
+        + investment_case_score * 0.35
+        + trading_case_score * 0.15
+        + company * 0.10
+        + market_hmap_adj * 0.7
+        - red_flag_hmap_penalty * 0.45
+    ))
+    long_term_score = round(clamp(
+        long_term_raw * 0.45
+        + investment_case_score * 0.35
+        + company * 0.10
+        + quality_score * 0.10
+        + market_hmap_adj * 0.35
+        - red_flag_hmap_penalty * 0.55
+    ))
+    very_long_term_score = round(clamp(
+        very_long_term_raw * 0.45
+        + investment_case_score * 0.30
+        + company * 0.15
+        + quality_score * 0.10
+        + market_hmap_adj * 0.20
+        - red_flag_hmap_penalty * 0.60
+    ))
+
+    # Zeithorizonte sollen nicht deutlich positiver wirken als die Gesamtsicht
+    short_term_score = min(short_term_score, max(trading_case_score + 8, 0))
+    swing_score = min(swing_score, max(trading_case_score + 10, 0))
+    mid_term_score = min(mid_term_score, max(investment_case_score + 10, 0))
+    long_term_score = min(long_term_score, max(investment_case_score + 8, 0))
+    very_long_term_score = min(very_long_term_score, max(investment_case_score + 6, 0))
 
     hmap = {
         "Kurzfrist": short_term_score,
@@ -3744,6 +3794,19 @@ def analyze_stock(
     exit_reason_list = deduped_exit_reason_list
 
     exit_reason_top = exit_reason_list[0] if exit_reason_list else "kein akuter Exit-Grund"
+
+    if position_mode:
+        if exit_score >= 80:
+            hmap["Kurzfrist"] = min(hmap["Kurzfrist"], 25)
+            hmap["Swing"] = min(hmap["Swing"], 22)
+            hmap["Mittelfrist"] = min(hmap["Mittelfrist"], 28)
+        elif exit_score >= 65:
+            hmap["Kurzfrist"] = min(hmap["Kurzfrist"], 35)
+            hmap["Swing"] = min(hmap["Swing"], 32)
+            hmap["Mittelfrist"] = min(hmap["Mittelfrist"], 40)
+        elif exit_score >= 45:
+            hmap["Kurzfrist"] = min(hmap["Kurzfrist"], 48)
+            hmap["Swing"] = min(hmap["Swing"], 50)
 
     return {
         "ticker": ticker,

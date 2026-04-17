@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3B.3"
+APP_VERSION = "v11.3C"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3428,13 +3428,40 @@ def analyze_stock(
 
     position_pnl_pct = ((price / avg_cost) - 1) * 100 if pd.notna(avg_cost) and avg_cost > 0 and pd.notna(price) else np.nan
 
+    # Kontext für Gewinner / Verlierer / Korrektur
+    if pd.notna(position_pnl_pct):
+        if position_pnl_pct >= 20:
+            pnl_bucket = "starker Gewinner"
+        elif position_pnl_pct >= 8:
+            pnl_bucket = "Gewinner"
+        elif position_pnl_pct <= -10:
+            pnl_bucket = "klarer Verlierer"
+        elif position_pnl_pct < 0:
+            pnl_bucket = "leichter Verlierer"
+        else:
+            pnl_bucket = "nahe Einstand"
+    else:
+        pnl_bucket = "ohne Einstandsdaten"
+    horizon_label = str(horizon or "").strip() or "unbekannt"
+
+    healthy_trend_context = (
+        pd.notna(price) and pd.notna(ma50) and price >= ma50
+        and market_info["regime"] == "POSITIV"
+        and pd.notna(setup_confidence) and setup_confidence >= 55
+        and pd.notna(rs_vs_benchmark_63) and rs_vs_benchmark_63 >= 0
+    )
+
+    winner_context = pd.notna(position_pnl_pct) and position_pnl_pct >= 8
+    strong_winner_context = pd.notna(position_pnl_pct) and position_pnl_pct >= 18
+    loser_context = pd.notna(position_pnl_pct) and position_pnl_pct <= -5
+
     trend_break_score = 0
     if pd.notna(price) and pd.notna(ma20) and price < ma20:
-        trend_break_score += 8
+        trend_break_score += 5 if healthy_trend_context else 8
     if pd.notna(price) and pd.notna(ma50) and price < ma50:
-        trend_break_score += 14
+        trend_break_score += 16
     if pd.notna(price) and pd.notna(ma200) and price < ma200:
-        trend_break_score += 18
+        trend_break_score += 22
     if pd.notna(ma20) and pd.notna(ma50) and ma20 < ma50:
         trend_break_score += 10
     if pd.notna(ma50) and pd.notna(ma200) and ma50 < ma200:
@@ -3442,13 +3469,15 @@ def analyze_stock(
     swing_low_20 = safe_last(close.shift(1).rolling(20).min(), np.nan)
     if pd.notna(price) and pd.notna(swing_low_20) and price < swing_low_20:
         trend_break_score += 10
+    if healthy_trend_context and pd.notna(price) and pd.notna(ma50) and price >= ma50:
+        trend_break_score = max(0, trend_break_score - 6)
     trend_break_score = min(100, trend_break_score)
 
     momentum_collapse_score = 0
     if pd.notna(rsi) and rsi < 50:
-        momentum_collapse_score += 6
+        momentum_collapse_score += 5
     if pd.notna(rsi) and rsi < 45:
-        momentum_collapse_score += 10
+        momentum_collapse_score += 9
     if pd.notna(rsi) and rsi < 40:
         momentum_collapse_score += 14
     if pd.notna(macd_v) and pd.notna(signal_v) and macd_v < signal_v:
@@ -3456,26 +3485,30 @@ def analyze_stock(
     if pd.notna(macd_hist_current) and macd_hist_current < 0:
         momentum_collapse_score += 6
     if pd.notna(roc20) and roc20 < 0:
-        momentum_collapse_score += 8
+        momentum_collapse_score += 7
     if pd.notna(roc20) and roc20 < -5:
         momentum_collapse_score += 12
     if pd.notna(adx) and adx < 18 and pd.notna(roc20) and roc20 < 0:
-        momentum_collapse_score += 6
+        momentum_collapse_score += 5
+    if healthy_trend_context and pd.notna(rsi) and rsi >= 45:
+        momentum_collapse_score = max(0, momentum_collapse_score - 5)
     momentum_collapse_score = min(100, momentum_collapse_score)
 
     relative_weakness_score = 0
     if pd.notna(rs_score) and rs_score < 50:
-        relative_weakness_score += 8
+        relative_weakness_score += 7
     if pd.notna(rs_score) and rs_score < 40:
-        relative_weakness_score += 12
+        relative_weakness_score += 11
     if pd.notna(rs_vs_benchmark_21) and rs_vs_benchmark_21 < 0:
-        relative_weakness_score += 8
+        relative_weakness_score += 6
     if pd.notna(rs_vs_benchmark_63) and rs_vs_benchmark_63 < 0:
         relative_weakness_score += 10
     if pd.notna(rs_vs_benchmark_126) and rs_vs_benchmark_126 < 0:
-        relative_weakness_score += 8
+        relative_weakness_score += 7
     if pd.notna(rs_composite) and rs_composite < 45:
         relative_weakness_score += 10
+    if healthy_trend_context and pd.notna(rs_vs_benchmark_63) and rs_vs_benchmark_63 > 3:
+        relative_weakness_score = max(0, relative_weakness_score - 6)
     relative_weakness_score = min(100, relative_weakness_score)
 
     vol_ma20 = safe_last(vol.rolling(20).mean(), np.nan)
@@ -3504,11 +3537,14 @@ def analyze_stock(
         distribution_score += 12
     if pd.notna(ret21) and ret21 < 0 and down_day and high_volume:
         distribution_score += 8
+    if healthy_trend_context and not dist_day_1:
+        distribution_score = max(0, distribution_score - 4)
     distribution_score = min(100, distribution_score)
 
     exit_trigger_score = 0
-    if pd.notna(stop_used) and pd.notna(price) and price < stop_used:
-        exit_trigger_score += 30
+    stop_broken = pd.notna(stop_used) and pd.notna(price) and price < stop_used
+    if stop_broken:
+        exit_trigger_score += 32
     if pd.notna(days_earn) and days_earn <= 7 and pd.notna(trading_case_score) and trading_case_score < 55:
         exit_trigger_score += 10
     if pd.notna(setup_confidence) and setup_confidence < 40:
@@ -3518,26 +3554,33 @@ def analyze_stock(
     gap_down_pct = ((price / prev_close) - 1) * 100 if pd.notna(price) and pd.notna(prev_close) and prev_close != 0 else np.nan
     if pd.notna(gap_down_pct) and gap_down_pct <= -4:
         exit_trigger_score += 15
+    if stop_broken and market_info["regime"] == "NEGATIV":
+        exit_trigger_score += 8
     exit_trigger_score = min(100, exit_trigger_score)
 
     exit_score = round(clamp(
-        trend_break_score * 0.30
+        trend_break_score * 0.31
         + momentum_collapse_score * 0.20
         + relative_weakness_score * 0.18
-        + distribution_score * 0.15
-        + exit_trigger_score * 0.17
+        + distribution_score * 0.13
+        + exit_trigger_score * 0.18
     ))
 
-    if pd.notna(position_pnl_pct):
-        if position_pnl_pct > 10:
-            exit_score = max(0, exit_score - 5)
-        elif position_pnl_pct < -5:
-            exit_score = min(100, exit_score + 6)
+    if strong_winner_context and healthy_trend_context:
+        exit_score = max(0, exit_score - 10)
+    elif winner_context and healthy_trend_context:
+        exit_score = max(0, exit_score - 6)
+    elif loser_context:
+        exit_score = min(100, exit_score + 8)
 
     if horizon == "Swing (1-4 Wochen)":
         exit_score = min(100, exit_score + 5)
     elif horizon == "Langfristig (6-24 Monate)":
         exit_score = max(0, exit_score - 4)
+
+    near_tp1 = pd.notna(tp1) and pd.notna(price) and price >= tp1 * 0.98
+    near_tp2 = pd.notna(tp2) and pd.notna(price) and price >= tp2 * 0.96
+    de_risk_gain_zone = winner_context and (near_tp1 or near_tp2)
 
     if exit_score >= 80:
         exit_score_text = "klarer Exit-Druck"
@@ -3550,33 +3593,21 @@ def analyze_stock(
     else:
         exit_score_text = "stabil"
 
-    if pd.notna(stop_used) and pd.notna(price) and price < stop_used:
+    if stop_broken:
         exit_action = "Verkaufen"
     elif exit_score >= 80:
         exit_action = "Verkaufen"
     elif exit_score >= 65:
         exit_action = "Risiko reduzieren"
     elif exit_score >= 45:
-        exit_action = "Teilgewinn prüfen" if pd.notna(position_pnl_pct) and position_pnl_pct > 8 else "Risiko reduzieren"
+        if winner_context or de_risk_gain_zone:
+            exit_action = "Teilgewinn prüfen"
+        else:
+            exit_action = "Risiko reduzieren"
     elif exit_score >= 25:
         exit_action = "Beobachten"
     else:
         exit_action = "Halten"
-
-    if pd.notna(position_pnl_pct):
-        if position_pnl_pct >= 15:
-            pnl_bucket = "starker Gewinner"
-        elif position_pnl_pct >= 5:
-            pnl_bucket = "Gewinner"
-        elif position_pnl_pct <= -8:
-            pnl_bucket = "klarer Verlierer"
-        elif position_pnl_pct < 0:
-            pnl_bucket = "leichter Verlierer"
-        else:
-            pnl_bucket = "nahe Einstand"
-    else:
-        pnl_bucket = "ohne Einstandsdaten"
-    horizon_label = str(horizon or "").strip() or "unbekannt"
 
     if position_mode:
         legacy_action_for_merge = legacy_position_action if "legacy_position_action" in locals() else position_action
@@ -3586,14 +3617,16 @@ def analyze_stock(
             position_action = "Teilgewinn prüfen"
         elif exit_action == "Beobachten":
             position_action = "Halten / eng beobachten"
-        elif str(add_on_action).lower().startswith("ja"):
+        elif str(add_on_action).lower().startswith("ja") and exit_score < 25:
             position_action = "Halten / ggf. ausbauen"
-        elif str(partial_profit_action).lower().startswith("ja") and pd.notna(position_pnl_pct) and position_pnl_pct > 10:
+        elif str(partial_profit_action).lower().startswith("ja") and winner_context:
             position_action = "Teilgewinn prüfen"
         else:
             position_action = legacy_action_for_merge
 
-        if exit_action == "Verkaufen":
+        if de_risk_gain_zone and exit_action in {"Teilgewinn prüfen", "Beobachten"}:
+            partial_profit_action = "Ja, Teilgewinn prüfen"
+        elif exit_action == "Verkaufen":
             partial_profit_action = "Nein"
             add_on_action = "Nein"
             risk_note = f"Exit-Modell: klarer Verkaufsdruck | {pnl_bucket}"
@@ -3626,12 +3659,14 @@ def analyze_stock(
         exit_reason_list.append("ROC20 negativ")
     if pd.notna(rs_vs_benchmark_21) and rs_vs_benchmark_21 < 0:
         exit_reason_list.append("Relative Schwäche vs Benchmark")
-    if pd.notna(stop_used) and pd.notna(price) and price < stop_used:
+    if stop_broken:
         exit_reason_list.append("Stop unterschritten")
     if pd.notna(gap_down_pct) and gap_down_pct <= -4:
         exit_reason_list.append("deutlicher Gap-down")
     if dist_day_1:
         exit_reason_list.append("Distributionstag")
+    if de_risk_gain_zone and not exit_reason_list:
+        exit_reason_list.append("Gewinnzone erreicht, Teilgewinn sinnvoll")
     exit_reason_top = exit_reason_list[0] if exit_reason_list else "kein akuter Exit-Grund"
 
     return {

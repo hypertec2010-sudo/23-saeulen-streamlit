@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3A.1"
+APP_VERSION = "v11.3A.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3538,8 +3538,29 @@ def analyze_stock(
     elif horizon == "Langfristig (6-24 Monate)":
         exit_score = max(0, exit_score - 4)
 
-    exit_score_text = exit_score_label(exit_score)
-    exit_action = derive_exit_action(exit_score, position_pnl_pct, price, stop_used)
+    if exit_score >= 80:
+        exit_score_text = "klarer Exit-Druck"
+    elif exit_score >= 65:
+        exit_score_text = "Verkaufsdruck erhöht"
+    elif exit_score >= 45:
+        exit_score_text = "Gewinne absichern"
+    elif exit_score >= 25:
+        exit_score_text = "erste Schwäche"
+    else:
+        exit_score_text = "stabil"
+
+    if pd.notna(stop_used) and pd.notna(price) and price < stop_used:
+        exit_action = "Verkaufen"
+    elif exit_score >= 80:
+        exit_action = "Verkaufen"
+    elif exit_score >= 65:
+        exit_action = "Risiko reduzieren"
+    elif exit_score >= 45:
+        exit_action = "Teilgewinn prüfen" if pd.notna(position_pnl_pct) and position_pnl_pct > 8 else "Risiko reduzieren"
+    elif exit_score >= 25:
+        exit_action = "Beobachten"
+    else:
+        exit_action = "Halten"
 
     exit_reason_list = []
     if pd.notna(price) and pd.notna(ma50) and price < ma50:

@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.0"
+APP_VERSION = "v11.0.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4895,6 +4895,19 @@ def ui_priority_chip_class(priority_text):
     return "blue"
 
 
+def ui_safe_metric_text(value, digits=1, suffix=""):
+    try:
+        if value in [None, "", "-"]:
+            return "n/a"
+        return fmt_num(float(value), digits, suffix)
+    except Exception:
+        try:
+            return fmt_num(value, digits, suffix)
+        except Exception:
+            return str(value) if str(value).strip() else "n/a"
+
+
+
 
 main_action_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
 top_strengths = strengths[:3] if strengths else []
@@ -4922,7 +4935,7 @@ st.markdown(
                     <div class="status-chip {priority_chip_class}">📌 Priorität: {watchlist_priority}</div>
                     <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
                     <div class="status-chip purple">🧩 Setup: {setup_type}</div>
-                    <div class="status-chip blue">⚖️ CRV: {fmt_num(crv_value,1,":1")}</div>
+                    <div class="status-chip blue">⚖️ CRV: {ui_safe_metric_text(crv_value,1,":1")}</div>
                 </div>
             </div>
             <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">

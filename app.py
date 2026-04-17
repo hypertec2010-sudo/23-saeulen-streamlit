@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3A.3"
+APP_VERSION = "v11.3A.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5270,6 +5270,9 @@ trigger_label = trigger_status if trigger_status not in ["", None] else entry_qu
 exit_score_display = result.get("exit_score", 0)
 exit_action_display = result.get("exit_action", "Halten")
 exit_chip_class = ui_chip_class_from_score(100 - float(exit_score_display)) if str(exit_score_display).strip() not in {"", "-", "n/a"} else "blue"
+exit_score_text_display = result.get("exit_score_text", "stabil")
+exit_reason_top_display = result.get("exit_reason_top", "kein akuter Exit-Grund")
+exit_reason_list_display = result.get("exit_reason_list", []) or []
 
 st.markdown(
     f"""
@@ -5366,8 +5369,8 @@ with ex1:
         f"""
         <div class="decision-card action" title="Verdichteter Verkaufsdruck für die aktuelle Situation.">
             <div class="dc-label">Exit-Score</div>
-            <div class="dc-value">{exit_score}/100</div>
-            <div class="dc-sub">{exit_score_text}</div>
+            <div class="dc-value">{exit_score_display}/100</div>
+            <div class="dc-sub">{exit_score_text_display}</div>
             <div class="dc-note">Je höher, desto stärker der Verkaufsdruck.</div>
         </div>
         """,
@@ -5378,7 +5381,7 @@ with ex2:
         f"""
         <div class="decision-card entry" title="Operative Exit-Aktion für die aktuelle Lage.">
             <div class="dc-label">Exit-Aktion</div>
-            <div class="dc-value">{exit_action}</div>
+            <div class="dc-value">{exit_action_display}</div>
             <div class="dc-sub">Gewinnschutz, De-Risking oder Exit</div>
             <div class="dc-note">Ergänzt die bestehende Kauf-/Aufbaulogik um ein eigenes Verkaufssystem.</div>
         </div>
@@ -5390,8 +5393,8 @@ with ex3:
         f"""
         <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
             <div class="dc-label">Hauptgrund</div>
-            <div class="dc-value" style="font-size:1.35rem;">{exit_reason_top}</div>
-            <div class="dc-sub">{' | '.join(exit_reason_list[:2]) if exit_reason_list else 'kein akuter Exit-Grund'}</div>
+            <div class="dc-value" style="font-size:1.35rem;">{exit_reason_top_display}</div>
+            <div class="dc-sub">{' | '.join(exit_reason_list_display[:2]) if exit_reason_list_display else 'kein akuter Exit-Grund'}</div>
             <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
         </div>
         """,
@@ -5814,9 +5817,9 @@ with t7:
     st.markdown('<div class="panel-caption">Positionssicht mit Exit-Score, Exit-Aktion und den wichtigsten Verkaufsgründen.</div>', unsafe_allow_html=True)
 
     px1, px2, px3 = st.columns(3)
-    px1.metric("Exit-Score", f"{exit_score}/100")
-    px2.metric("Exit-Aktion", exit_action)
-    px3.metric("Hauptgrund", exit_reason_top)
+    px1.metric("Exit-Score", f"{exit_score_display}/100")
+    px2.metric("Exit-Aktion", exit_action_display)
+    px3.metric("Hauptgrund", exit_reason_top_display)
 
     st.subheader("Position")
     if not position_mode:

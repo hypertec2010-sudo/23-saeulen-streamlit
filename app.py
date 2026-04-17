@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3A"
+APP_VERSION = "v11.3A.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3477,21 +3477,21 @@ def analyze_stock(
         relative_weakness_score += 10
     relative_weakness_score = min(100, relative_weakness_score)
 
-    vol_ma20 = safe_last(volume.rolling(20).mean(), np.nan)
+    vol_ma20 = safe_last(vol.rolling(20).mean(), np.nan)
     prev_close = safe_last(close.shift(1), np.nan)
     ret1 = safe_last(close.pct_change(1) * 100, np.nan)
     ret2 = safe_last(close.shift(1).pct_change(1) * 100, np.nan)
-    vol = safe_last(volume, np.nan)
-    vol_prev = safe_last(volume.shift(1), np.nan)
+    vol_now = safe_last(vol, np.nan)
+    vol_prev = safe_last(vol.shift(1), np.nan)
     down_day = pd.notna(price) and pd.notna(prev_close) and price < prev_close
-    high_volume = pd.notna(vol) and pd.notna(vol_ma20) and vol > 1.3 * vol_ma20
+    high_volume = pd.notna(vol_now) and pd.notna(vol_ma20) and vol_now > 1.3 * vol_ma20
 
     distribution_score = 0
     if down_day and high_volume:
         distribution_score += 10
     dist_day_1 = (
         pd.notna(ret1) and ret1 < -1.5 and
-        pd.notna(vol) and pd.notna(vol_ma20) and vol > 1.2 * vol_ma20
+        pd.notna(vol_now) and pd.notna(vol_ma20) and vol_now > 1.2 * vol_ma20
     )
     dist_day_prev = (
         pd.notna(ret2) and ret2 < -1.5 and

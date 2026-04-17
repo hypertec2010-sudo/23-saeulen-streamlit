@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3B.2"
+APP_VERSION = "v11.3B.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5923,8 +5923,8 @@ with t6:
         st.write(f"• TP3: {tp3_source}")
 
         td1, td2 = st.columns(2)
-        td1.metric("Primärziel aus Setup", fmt_num(technical_target_1, 2, f" {ccy}"))
-        td2.metric("Sekundärziel aus Setup", fmt_num(technical_target_2, 2, f" {ccy}"))
+        td1.metric("Primärziel aus Setup", ui_target_text(technical_target_1, ccy))
+        td2.metric("Sekundärziel aus Setup", ui_target_text(technical_target_2, ccy, "kein zweites Setup-Ziel"))
 
 with t7:
     st.subheader("Position")

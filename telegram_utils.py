@@ -90,12 +90,64 @@ def _format_num_change(old_value, new_value):
         return f"{old_value} -> {new_value}"
 
 
+def _rank_priority(value):
+    mapping = {"niedrig": 1, "mittel": 2, "hoch": 3}
+    return mapping.get(str(value).strip().lower(), 0)
+
+
+def _classify_change(label, old_value, new_value, watchlist_type, numeric=False):
+    old_str = str(old_value)
+    new_str = str(new_value)
+
+    if numeric:
+        try:
+            old_num = float(str(old_value).replace("%", "").replace(",", "."))
+            new_num = float(str(new_value).replace("%", "").replace(",", "."))
+            if abs(old_num - new_num) < 0.01:
+                return None, None
+            direction = "🟢 verbessert" if new_num > old_num else "🔴 schwächer"
+            return direction, f"{label}: {int(round(old_num))} -> {int(round(new_num))}"
+        except Exception:
+            if old_str == new_str:
+                return None, None
+            return "🟡 geändert", f"{label}: {old_str} -> {new_str}"
+
+    if label == "📌 Priorität":
+        old_rank = _rank_priority(old_str)
+        new_rank = _rank_priority(new_str)
+        if old_rank == new_rank:
+            return None, None
+        direction = "🟢 verbessert" if new_rank > old_rank else "🔴 schwächer"
+        return direction, f"{label}: {old_str} -> {new_str}"
+
+    positive_terms = ["aktiv", "bestätigt", "breakout", "hoch", "kaufen", "aufbauen", "beobachten", "ja"]
+    negative_terms = ["stop", "verkaufen", "reduzieren", "verlust", "schwach", "nein", "abbauen"]
+
+    if watchlist_type == "Positions-Watchlist":
+        if label in ["⚠️ Positions-Aktion", "🚨 Risiko", "🛡️ Stop"]:
+            if old_str == new_str:
+                return None, None
+            if any(x in new_str.lower() for x in ["reduzieren", "verkaufen", "enger", "verlust", "risiko"]):
+                return "🔴 verschärft", f"{label}: {old_str} -> {new_str}"
+            if any(x in new_str.lower() for x in ["halten", "stabil"]):
+                return "🟢 entspannt", f"{label}: {old_str} -> {new_str}"
+            return "🟡 geändert", f"{label}: {old_str} -> {new_str}"
+
+    if old_str == new_str:
+        return None, None
+    if any(x in new_str.lower() for x in positive_terms) and not any(x in new_str.lower() for x in negative_terms):
+        return "🟢 verbessert", f"{label}: {old_str} -> {new_str}"
+    if any(x in new_str.lower() for x in negative_terms):
+        return "🔴 schwächer", f"{label}: {old_str} -> {new_str}"
+    return "🟡 geändert", f"{label}: {old_str} -> {new_str}"
+
+
 def _build_change_lines(result, previous_signature, watchlist_type):
     if not previous_signature:
         return []
 
     prev = _parse_signature(previous_signature, watchlist_type)
-    lines = []
+    grouped = {"🟢": [], "🔴": [], "🟡": []}
 
     if watchlist_type == "Positions-Watchlist":
         checks = [
@@ -117,17 +169,18 @@ def _build_change_lines(result, previous_signature, watchlist_type):
         ]
 
     for label, old_value, new_value, numeric in checks:
-        old_str = str(old_value)
-        new_str = str(new_value)
-        if numeric:
-            diff_text = _format_num_change(old_str, new_str)
-            if diff_text:
-                lines.append(f"{label}: {diff_text}")
+        kind, line = _classify_change(label, old_value, new_value, watchlist_type, numeric=numeric)
+        if not line:
+            continue
+        if kind.startswith("🟢"):
+            grouped["🟢"].append(f"{kind}: {line}")
+        elif kind.startswith("🔴"):
+            grouped["🔴"].append(f"{kind}: {line}")
         else:
-            if old_str != new_str:
-                lines.append(f"{label}: {old_str} -> {new_str}")
+            grouped["🟡"].append(f"{kind}: {line}")
 
-    return lines
+    ordered = grouped["🟢"] + grouped["🔴"] + grouped["🟡"]
+    return ordered
 
 
 def _headline_lines(result, watchlist_name, watchlist_type, alert_mode, prefix_title):
@@ -137,9 +190,9 @@ def _headline_lines(result, watchlist_name, watchlist_type, alert_mode, prefix_t
 
     return [
         f"{prefix_title}",
-        f"WERT: {ticker} | {name}",
-        f"WATCHLIST: {watchlist_name} | {watchlist_type}",
-        f"ALERT: {alert_type} | MODUS: {alert_mode}",
+        f"📌 WERT: {ticker} | {name}",
+        f"📋 WATCHLIST: {watchlist_name} | {watchlist_type}",
+        f"🚨 ALERT: {alert_type} | MODUS: {alert_mode}",
     ]
 
 
@@ -147,49 +200,49 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_
     setup_type = result.get("setup_type", "-")
     red_flag = result.get("top_red_flag", "-")
     mode = result.get("mode_label", "-")
-    lines = _headline_lines(result, watchlist_name, watchlist_type, alert_mode, "Capital Hill | Alert Update")
+    lines = _headline_lines(result, watchlist_name, watchlist_type, alert_mode, "🚨 Capital Hill | Alert Update")
 
     change_lines = _build_change_lines(result, previous_signature, watchlist_type)
     if change_lines:
-        lines.extend(["", "WAS HAT SICH GEÄNDERT:"])
+        lines.extend(["", "🔄 WAS HAT SICH GEÄNDERT:"])
         lines.extend(change_lines)
 
-    lines.extend(["", "AKTUELLER STAND:", f"Modus: {mode}", f"Setup: {setup_type}"])
+    lines.extend(["", "📊 AKTUELLER STAND:", f"Modus: {mode}", f"Setup: {setup_type}"])
 
     if watchlist_type == "Positions-Watchlist":
         lines.extend([
-            f"Positions-Aktion: {result.get('position_action', '-')}",
-            f"Teilgewinn: {result.get('partial_profit_action', '-')}",
-            f"Stop: {result.get('stop_action', '-')}",
-            f"Risiko-Hinweis: {result.get('risk_note', '-')}",
+            f"⚠️ Positions-Aktion: {result.get('position_action', '-')}",
+            f"💰 Teilgewinn: {result.get('partial_profit_action', '-')}",
+            f"🛡️ Stop: {result.get('stop_action', '-')}",
+            f"🚨 Risiko-Hinweis: {result.get('risk_note', '-')}",
             f"Setup-Confidence: {result.get('setup_confidence', '-')}/100",
         ])
     else:
         lines.extend([
-            f"Handlung: {result.get('emp', '-')}",
-            f"Trigger: {result.get('trigger_status', '-')}",
-            f"Priorität: {result.get('watchlist_priority', '-')}",
-            f"Einstieg: {result.get('trading_case_score', 'n/a')}/100",
-            f"Investment: {result.get('investment_case_score', 'n/a')}/100",
-            f"Entry-Zone: {result.get('suggested_entry_zone', '-')}",
+            f"⚡ Handlung: {result.get('emp', '-')}",
+            f"🔔 Trigger: {result.get('trigger_status', '-')}",
+            f"📌 Priorität: {result.get('watchlist_priority', '-')}",
+            f"📈 Einstieg: {result.get('trading_case_score', 'n/a')}/100",
+            f"🏛️ Investment: {result.get('investment_case_score', 'n/a')}/100",
+            f"🎯 Entry-Zone: {result.get('suggested_entry_zone', '-')}",
         ])
 
     if red_flag and red_flag != "-":
-        lines.append(f"Red Flag: {red_flag}")
+        lines.append(f"⛔ Red Flag: {red_flag}")
 
     return "\n".join(lines)
 
 
 def build_new_watchlist_entry_text(result, watchlist_name, watchlist_type, alert_mode="Standard"):
-    lines = _headline_lines(result, watchlist_name, watchlist_type, alert_mode, "Capital Hill | Erst-Check")
+    lines = _headline_lines(result, watchlist_name, watchlist_type, alert_mode, "🆕 Capital Hill | Erst-Check")
     lines.extend([
         "",
-        "AKTUELLER STAND:",
-        f"Handlung: {result.get('emp', result.get('position_action', '-'))}",
-        f"Trigger: {result.get('trigger_status', '-')}",
-        f"Priorität: {result.get('watchlist_priority', '-')}",
-        f"Einstieg: {result.get('trading_case_score', 'n/a')}/100",
-        f"Investment: {result.get('investment_case_score', 'n/a')}/100",
+        "📊 AKTUELLER STAND:",
+        f"⚡ Handlung: {result.get('emp', result.get('position_action', '-'))}",
+        f"🔔 Trigger: {result.get('trigger_status', '-')}",
+        f"📌 Priorität: {result.get('watchlist_priority', '-')}",
+        f"📈 Einstieg: {result.get('trading_case_score', 'n/a')}/100",
+        f"🏛️ Investment: {result.get('investment_case_score', 'n/a')}/100",
         "Hinweis: Neuer Wert in der Watchlist, aktuell noch kein harter Trigger-Alert.",
     ])
     return "\n".join(lines)

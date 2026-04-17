@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3C.1"
+APP_VERSION = "v11.3C.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5432,6 +5432,20 @@ exit_chip_class = ui_chip_class_from_score(100 - float(exit_score_display)) if s
 exit_score_text_display = result.get("exit_score_text", "stabil")
 exit_reason_top_display = result.get("exit_reason_top", "kein akuter Exit-Grund")
 exit_reason_list_display = result.get("exit_reason_list", []) or []
+exit_reason_extra_display = [x for x in exit_reason_list_display if str(x).strip() and str(x).strip() != str(exit_reason_top_display).strip()]
+
+if str(exit_action_display).strip().lower() == "halten":
+    exit_action_sub_display = "Kein akuter Verkaufsdruck"
+elif str(exit_action_display).strip().lower() == "beobachten":
+    exit_action_sub_display = "Frühe Schwäche, eng beobachten"
+elif str(exit_action_display).strip().lower() == "teilgewinn prüfen":
+    exit_action_sub_display = "Gewinnschutz und De-Risking"
+elif str(exit_action_display).strip().lower() == "risiko reduzieren":
+    exit_action_sub_display = "Verkaufsdruck erhöht"
+elif str(exit_action_display).strip().lower() == "verkaufen":
+    exit_action_sub_display = "Klarer Exit-Druck"
+else:
+    exit_action_sub_display = "Exit-Einordnung der aktuellen Lage"
 
 st.markdown(
     f"""
@@ -5541,7 +5555,7 @@ with ex2:
         <div class="decision-card entry" title="Operative Exit-Aktion für die aktuelle Lage.">
             <div class="dc-label">Exit-Aktion</div>
             <div class="dc-value">{exit_action_display}</div>
-            <div class="dc-sub">Gewinnschutz, De-Risking oder Exit</div>
+            <div class="dc-sub">{exit_action_sub_display}</div>
             <div class="dc-note">Ergänzt die bestehende Kauf-/Aufbaulogik um ein eigenes Verkaufssystem.</div>
         </div>
         """,
@@ -5553,7 +5567,7 @@ with ex3:
         <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
             <div class="dc-label">Hauptgrund</div>
             <div class="dc-value" style="font-size:1.35rem;">{exit_reason_top_display}</div>
-            <div class="dc-sub">{' | '.join(exit_reason_list_display[:2]) if exit_reason_list_display else 'kein akuter Exit-Grund'}</div>
+            <div class="dc-sub">{' | '.join(exit_reason_extra_display[:2]) if exit_reason_extra_display else 'keine weiteren Exit-Hinweise'}</div>
             <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
         </div>
         """,

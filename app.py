@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v10.15C.6"
+APP_VERSION = "v11.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -251,6 +251,124 @@ pre{white-space:pre-wrap !important;}
 }
 .hero-score-pill .pill-label{font-size:0.76rem;color:#9fb1c8;font-weight:800;text-transform:uppercase;}
 .hero-score-pill .pill-value{font-size:1.35rem;font-weight:900;margin-top:4px;}
+.exec-shell{
+    background:linear-gradient(135deg,#0b1220 0%, #111827 55%, #172033 100%);
+    border:1px solid #2c3a50;
+    border-radius:26px;
+    padding:18px 20px;
+    box-shadow:0 18px 42px rgba(0,0,0,0.24);
+    margin:14px 0 18px 0;
+}
+.exec-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:18px;
+    flex-wrap:wrap;
+}
+.exec-kicker{
+    font-size:0.78rem;
+    color:#93c5fd;
+    font-weight:800;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+}
+.exec-title{
+    font-size:1.85rem;
+    color:#f8fafc;
+    font-weight:900;
+    line-height:1.08;
+    margin-top:6px;
+}
+.exec-sub{
+    color:#cbd5e1;
+    font-size:0.95rem;
+    line-height:1.45;
+    margin-top:8px;
+    max-width:920px;
+}
+.exec-meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:14px;
+}
+.status-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:7px 11px;
+    border-radius:999px;
+    border:1px solid #334155;
+    background:#0b1220;
+    color:#e5e7eb;
+    font-size:0.84rem;
+    font-weight:800;
+    line-height:1.2;
+}
+.status-chip.green{background:rgba(34,197,94,0.16); color:#dcfce7; border-color:rgba(34,197,94,0.28);}
+.status-chip.amber{background:rgba(245,158,11,0.16); color:#fef3c7; border-color:rgba(245,158,11,0.26);}
+.status-chip.red{background:rgba(239,68,68,0.16); color:#fee2e2; border-color:rgba(239,68,68,0.26);}
+.status-chip.blue{background:rgba(59,130,246,0.16); color:#dbeafe; border-color:rgba(59,130,246,0.26);}
+.status-chip.purple{background:rgba(139,92,246,0.16); color:#ede9fe; border-color:rgba(139,92,246,0.26);}
+.exec-score-box{
+    min-width:180px;
+    background:linear-gradient(180deg,#0b1220 0%, #10192a 100%);
+    border:1px solid #334155;
+    border-radius:18px;
+    padding:12px 14px;
+    text-align:center;
+}
+.exec-score-label{
+    color:#9fb1c8;
+    font-size:0.77rem;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+}
+.exec-score-value{
+    color:#f8fafc;
+    font-size:1.4rem;
+    font-weight:900;
+    margin-top:6px;
+    line-height:1.1;
+}
+.exec-score-sub{
+    color:#cbd5e1;
+    font-size:0.84rem;
+    margin-top:6px;
+}
+.section-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+    margin:6px 0 10px 0;
+}
+.section-title{
+    color:#f8fafc;
+    font-size:1.02rem;
+    font-weight:900;
+    letter-spacing:0.01em;
+}
+.section-meta-line{
+    color:#94a3b8;
+    font-size:0.86rem;
+    line-height:1.35;
+}
+.action-row-note{
+    color:#94a3b8;
+    font-size:0.84rem;
+    margin-top:4px;
+}
+@media (max-width: 768px){
+    .exec-title{font-size:1.45rem !important;}
+    .exec-sub{font-size:0.90rem !important;}
+    .exec-shell{padding:16px 16px !important;}
+    .exec-score-box{min-width:150px !important; width:100%;}
+}
+
 .decision-card{
     background:linear-gradient(180deg,#111827 0%,#0b1220 100%);
     border:1px solid #243042;border-radius:22px;padding:16px 16px 14px 16px;min-height:150px;
@@ -4740,62 +4858,94 @@ if red_flag_items:
 
 # ---------- Scores ----------
 # ---------- v10.0B Overview ----------
+
+def ui_chip_class_from_score(score):
+    try:
+        value = float(score)
+    except Exception:
+        value = None
+    if value is None:
+        return "blue"
+    if value >= 75:
+        return "green"
+    if value >= 55:
+        return "amber"
+    return "red"
+
+
+def ui_action_chip_class(action_text):
+    s = str(action_text).strip().lower()
+    if any(x in s for x in ["kauf", "aufbau", "nachkauf", "long"]):
+        return "green"
+    if any(x in s for x in ["verkauf", "reduzier", "risiko", "stop"]):
+        return "red"
+    if any(x in s for x in ["abwarten", "beobacht", "halten"]):
+        return "amber"
+    return "purple"
+
+
+def ui_priority_chip_class(priority_text):
+    s = str(priority_text).strip().lower()
+    if s == "hoch":
+        return "green"
+    if s == "mittel":
+        return "amber"
+    if s == "niedrig":
+        return "blue"
+    return "blue"
+
+
+
 main_action_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
 top_strengths = strengths[:3] if strengths else []
 top_weaknesses = weaknesses[:3] if weaknesses else []
 
+action_chip_class = ui_action_chip_class(main_action_label)
+entry_chip_class = ui_chip_class_from_score(trading_case_score)
+investment_chip_class = ui_chip_class_from_score(investment_case_score)
+priority_chip_class = ui_priority_chip_class(watchlist_priority)
+crv_value = rr if "rr" in locals() else result.get("rr", "-")
+trigger_label = trigger_status if trigger_status not in ["", None] else entry_quality
+
 st.markdown(
     f"""
-    <div class="hero-shell">
-        <div class="hero-head">
+    <div class="exec-shell">
+        <div class="exec-top">
             <div>
-                <div class="hero-kicker">Capital Hill Entscheidungsansicht</div>
-                <div class="hero-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
-                <div class="hero-sub">{shorten_text(short_thesis, 190)}</div>
+                <div class="exec-kicker">Capital Hill Executive Summary</div>
+                <div class="exec-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
+                <div class="exec-sub">{shorten_text(short_thesis, 210)}</div>
+                <div class="exec-meta">
+                    <div class="status-chip {action_chip_class}">⚡ Handlung: {main_action_label}</div>
+                    <div class="status-chip {entry_chip_class}">📈 Einstieg: {trading_case_score}/100</div>
+                    <div class="status-chip {investment_chip_class}">🏛️ Investment: {investment_case_score}/100</div>
+                    <div class="status-chip {priority_chip_class}">📌 Priorität: {watchlist_priority}</div>
+                    <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
+                    <div class="status-chip purple">🧩 Setup: {setup_type}</div>
+                    <div class="status-chip blue">⚖️ CRV: {fmt_num(crv_value,1,":1")}</div>
+                </div>
             </div>
-            <div class="hero-score-pill" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
-                <div class="pill-label">Hauptsignal</div>
-                <div class="pill-value">{main_action_label}</div>
+            <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
+                <div class="exec-score-label">Hauptsignal</div>
+                <div class="exec-score-value">{main_action_label}</div>
+                <div class="exec-score-sub">{market_regime_label(market_info["regime"])} · {display_mode_label(mode_label)}</div>
             </div>
-        </div>
-        <div class="hero-chip-row">
-            <div class="hero-chip">Setup: {setup_type}</div>
-            <div class="hero-chip">Marktumfeld: {market_regime_label(market_info["regime"])}</div>
-            <div class="hero-chip">Modus: {display_mode_label(mode_label)}</div>
-            <div class="hero-chip">Entry: {entry_quality}</div>
-            <div class="hero-chip">Red Flag: {shorten_text(top_red_flag, 34)}</div>
         </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-st.subheader("Kompaktansicht")
-m1, m2 = st.columns(2)
-with m1:
-    st.markdown(
-        f"""
-        <div class="mobile-result-card" title="Verdichtete Hauptaussage für die aktuelle Situation.">
-            <div class="mobile-result-label">Hauptsignal</div>
-            <div class="mobile-result-value">{main_action_label}</div>
-            <div class="mobile-result-sub">{market_regime_label(market_info["regime"])} · Setup: {setup_type}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with m2:
-    st.markdown(
-        f"""
-        <div class="mobile-result-card" title="Die zwei wichtigsten numerischen Aussagen auf einen Blick.">
-            <div class="mobile-result-label">Investment / Einstieg</div>
-            <div class="mobile-result-value">{investment_case_score}/100 · {trading_case_score}/100</div>
-            <div class="mobile-result-sub">{investment_case_text} · {trading_case_text}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+st.markdown(
+    f"""
+    <div class="section-head">
+        <div class="section-title">Entscheidung auf einen Blick</div>
+        <div class="section-meta-line">Marktumfeld: {market_regime_label(market_info["regime"])} | Entry-Lage: {entry_quality} | Red Flag: {shorten_text(top_red_flag, 42)}</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-st.subheader("Entscheidung auf einen Blick")
 d1, d2, d3 = st.columns(3)
 with d1:
     st.markdown(
@@ -4834,7 +4984,16 @@ with d3:
         unsafe_allow_html=True,
     )
 
-st.subheader("Die wichtigsten Begründungen")
+st.markdown(
+    """
+    <div class="section-head">
+        <div class="section-title">Die wichtigsten Begründungen</div>
+        <div class="section-meta-line">Die App trennt jetzt klarer zwischen Kernaussage, operativer Ausführung und Diagnose.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 b1, b2, b3 = st.columns(3)
 with b1:
     strengths_html = "".join([f"<li>{s}</li>" for s in top_strengths]) if top_strengths else "<li>Keine klaren Stärken identifiziert.</li>"
@@ -4873,7 +5032,16 @@ with b3:
         unsafe_allow_html=True,
     )
 
-st.subheader("Kernbausteine")
+st.markdown(
+    """
+    <div class="section-head">
+        <div class="section-title">Kernbausteine</div>
+        <div class="section-meta-line">Operative Subscores für Struktur, Confidence und Qualitätsbild.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 kb1, kb2, kb3, kb4 = st.columns(4)
 with kb1:
     st.markdown(
@@ -4922,20 +5090,21 @@ with kb4:
 
 st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 st.markdown('<div class="compact-help">Export und Logging der aktuellen Einzelanalyse</div>', unsafe_allow_html=True)
-se_wrap1, se_wrap2, se_wrap3 = st.columns([0.9, 1.1, 2.2])
-with se_wrap1:
+se_outer1, se_outer2, se_outer3 = st.columns([0.9, 1.0, 2.4])
+with se_outer1:
     st.download_button(
-        "CSV exportieren",
+        "CSV",
         data=single_export_df.to_csv(index=False).encode("utf-8-sig"),
         file_name=f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv"
+        mime="text/csv",
+        use_container_width=False
     )
-with se_wrap2:
-    if st.button("In Sheets schreiben", key="log_single_sheet"):
+with se_outer2:
+    if st.button("Sheets", key="log_single_sheet", use_container_width=False):
         ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
         show_sheet_result(ok, msg)
-with se_wrap3:
-    st.markdown('<div class="compact-action-note">Vertiefende Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div>', unsafe_allow_html=True)
+with se_outer3:
+    st.markdown('<div class="action-row-note">Vertiefende Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div>', unsafe_allow_html=True)
 
 with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)

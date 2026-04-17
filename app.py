@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3B"
+APP_VERSION = "v11.3B.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3563,15 +3563,35 @@ def analyze_stock(
     else:
         exit_action = "Halten"
 
-    pnl_bucket, horizon_label = derive_position_context(position_pnl_pct, horizon)
+    if pd.notna(position_pnl_pct):
+        if position_pnl_pct >= 15:
+            pnl_bucket = "starker Gewinner"
+        elif position_pnl_pct >= 5:
+            pnl_bucket = "Gewinner"
+        elif position_pnl_pct <= -8:
+            pnl_bucket = "klarer Verlierer"
+        elif position_pnl_pct < 0:
+            pnl_bucket = "leichter Verlierer"
+        else:
+            pnl_bucket = "nahe Einstand"
+    else:
+        pnl_bucket = "ohne Einstandsdaten"
+    horizon_label = str(horizon or "").strip() or "unbekannt"
+
     if position_mode:
-        position_action = combine_position_action(
-            exit_action,
-            legacy_position_action if "legacy_position_action" in locals() else position_action,
-            add_on_action,
-            partial_profit_action,
-            position_pnl_pct,
-        )
+        legacy_action_for_merge = legacy_position_action if "legacy_position_action" in locals() else position_action
+        if exit_action in {"Verkaufen", "Risiko reduzieren"}:
+            position_action = exit_action
+        elif exit_action == "Teilgewinn prüfen":
+            position_action = "Teilgewinn prüfen"
+        elif exit_action == "Beobachten":
+            position_action = "Halten / eng beobachten"
+        elif str(add_on_action).lower().startswith("ja"):
+            position_action = "Halten / ggf. ausbauen"
+        elif str(partial_profit_action).lower().startswith("ja") and pd.notna(position_pnl_pct) and position_pnl_pct > 10:
+            position_action = "Teilgewinn prüfen"
+        else:
+            position_action = legacy_action_for_merge
 
         if exit_action == "Verkaufen":
             partial_profit_action = "Nein"

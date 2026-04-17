@@ -1,4 +1,5 @@
 from datetime import datetime
+import html
 
 import requests
 import streamlit as st
@@ -10,6 +11,16 @@ try:
 except Exception:
     def has_any_alert_history_for_ticker(watchlist_name, ticker):
         return False
+
+
+
+
+def _esc(value):
+    return html.escape(str(value if value is not None else "-"))
+
+
+def _b(label, value):
+    return f"<b>{_esc(label)}</b> {_esc(value)}"
 
 
 def get_telegram_credentials():
@@ -110,7 +121,7 @@ def _classify_change(label, old_value, new_value, watchlist_type, numeric=False)
         except Exception:
             if old_str == new_str:
                 return None, None
-            return "🟡 geändert", f"{label}: {old_str} -> {new_str}"
+            return "🟡 geändert", f"<b>{_esc(label)}</b> {_esc(old_str)} -&gt; {_esc(new_str)}"
 
     if label == "📌 Priorität":
         old_rank = _rank_priority(old_str)
@@ -118,7 +129,7 @@ def _classify_change(label, old_value, new_value, watchlist_type, numeric=False)
         if old_rank == new_rank:
             return None, None
         direction = "🟢 verbessert" if new_rank > old_rank else "🔴 schwächer"
-        return direction, f"{label}: {old_str} -> {new_str}"
+        return direction, f"<b>{_esc(label)}</b> {_esc(old_str)} -&gt; {_esc(new_str)}"
 
     positive_terms = ["aktiv", "bestätigt", "breakout", "hoch", "kaufen", "aufbauen", "beobachten", "ja"]
     negative_terms = ["stop", "verkaufen", "reduzieren", "verlust", "schwach", "nein", "abbauen"]
@@ -128,10 +139,10 @@ def _classify_change(label, old_value, new_value, watchlist_type, numeric=False)
             if old_str == new_str:
                 return None, None
             if any(x in new_str.lower() for x in ["reduzieren", "verkaufen", "enger", "verlust", "risiko"]):
-                return "🔴 verschärft", f"{label}: {old_str} -> {new_str}"
+                return "🔴 verschärft", f"<b>{_esc(label)}</b> {_esc(old_str)} -&gt; {_esc(new_str)}"
             if any(x in new_str.lower() for x in ["halten", "stabil"]):
-                return "🟢 entspannt", f"{label}: {old_str} -> {new_str}"
-            return "🟡 geändert", f"{label}: {old_str} -> {new_str}"
+                return "🟢 entspannt", f"<b>{_esc(label)}</b> {_esc(old_str)} -&gt; {_esc(new_str)}"
+            return "🟡 geändert", f"<b>{_esc(label)}</b> {_esc(old_str)} -&gt; {_esc(new_str)}"
 
     if old_str == new_str:
         return None, None
@@ -139,7 +150,7 @@ def _classify_change(label, old_value, new_value, watchlist_type, numeric=False)
         return "🟢 verbessert", f"{label}: {old_str} -> {new_str}"
     if any(x in new_str.lower() for x in negative_terms):
         return "🔴 schwächer", f"{label}: {old_str} -> {new_str}"
-    return "🟡 geändert", f"{label}: {old_str} -> {new_str}"
+    return "🟡 geändert", f"<b>{_esc(label)}</b> {_esc(old_str)} -&gt; {_esc(new_str)}"
 
 
 def _build_change_lines(result, previous_signature, watchlist_type):
@@ -189,10 +200,10 @@ def _headline_lines(result, watchlist_name, watchlist_type, alert_mode, prefix_t
     alert_type = get_alert_type_label(result, watchlist_type)
 
     return [
-        f"{prefix_title}",
-        f"📌 WERT: {ticker} | {name}",
-        f"📋 WATCHLIST: {watchlist_name} | {watchlist_type}",
-        f"🚨 ALERT: {alert_type} | MODUS: {alert_mode}",
+        f"<b>{_esc(prefix_title)}</b>",
+        f"📌 <b>WERT:</b> {_esc(ticker)} | {_esc(name)}",
+        f"📋 <b>WATCHLIST:</b> {_esc(watchlist_name)} | {_esc(watchlist_type)}",
+        f"🚨 <b>ALERT:</b> {_esc(alert_type)} | <b>MODUS:</b> {_esc(alert_mode)}",
     ]
 
 
@@ -204,31 +215,31 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_
 
     change_lines = _build_change_lines(result, previous_signature, watchlist_type)
     if change_lines:
-        lines.extend(["", "🔄 WAS HAT SICH GEÄNDERT:"])
+        lines.extend(["", "<b>🔄 WAS HAT SICH GEÄNDERT</b>"])
         lines.extend(change_lines)
 
-    lines.extend(["", "📊 AKTUELLER STAND:", f"Modus: {mode}", f"Setup: {setup_type}"])
+    lines.extend(["", "<b>📊 AKTUELLER STAND</b>", _b("Modus:", mode), _b("Setup:", setup_type)])
 
     if watchlist_type == "Positions-Watchlist":
         lines.extend([
-            f"⚠️ Positions-Aktion: {result.get('position_action', '-')}",
-            f"💰 Teilgewinn: {result.get('partial_profit_action', '-')}",
-            f"🛡️ Stop: {result.get('stop_action', '-')}",
-            f"🚨 Risiko-Hinweis: {result.get('risk_note', '-')}",
-            f"Setup-Confidence: {result.get('setup_confidence', '-')}/100",
+            _b("⚠️ Positions-Aktion:", result.get('position_action', '-')),
+            _b("💰 Teilgewinn:", result.get('partial_profit_action', '-')),
+            _b("🛡️ Stop:", result.get('stop_action', '-')),
+            _b("🚨 Risiko-Hinweis:", result.get('risk_note', '-')),
+            _b("📊 Setup-Confidence:", f"{result.get('setup_confidence', '-')}/100"),
         ])
     else:
         lines.extend([
-            f"⚡ Handlung: {result.get('emp', '-')}",
-            f"🔔 Trigger: {result.get('trigger_status', '-')}",
-            f"📌 Priorität: {result.get('watchlist_priority', '-')}",
-            f"📈 Einstieg: {result.get('trading_case_score', 'n/a')}/100",
-            f"🏛️ Investment: {result.get('investment_case_score', 'n/a')}/100",
-            f"🎯 Entry-Zone: {result.get('suggested_entry_zone', '-')}",
+            _b("⚡ Handlung:", result.get('emp', '-')),
+            _b("🔔 Trigger:", result.get('trigger_status', '-')),
+            _b("📌 Priorität:", result.get('watchlist_priority', '-')),
+            _b("📈 Einstieg:", f"{result.get('trading_case_score', 'n/a')}/100"),
+            _b("🏛️ Investment:", f"{result.get('investment_case_score', 'n/a')}/100"),
+            _b("🎯 Entry-Zone:", result.get('suggested_entry_zone', '-')),
         ])
 
     if red_flag and red_flag != "-":
-        lines.append(f"⛔ Red Flag: {red_flag}")
+        lines.append(_b("⛔ Red Flag:", red_flag))
 
     return "\n".join(lines)
 
@@ -237,12 +248,12 @@ def build_new_watchlist_entry_text(result, watchlist_name, watchlist_type, alert
     lines = _headline_lines(result, watchlist_name, watchlist_type, alert_mode, "🆕 Capital Hill | Erst-Check")
     lines.extend([
         "",
-        "📊 AKTUELLER STAND:",
+        "<b>📊 AKTUELLER STAND</b>",
         f"⚡ Handlung: {result.get('emp', result.get('position_action', '-'))}",
-        f"🔔 Trigger: {result.get('trigger_status', '-')}",
-        f"📌 Priorität: {result.get('watchlist_priority', '-')}",
-        f"📈 Einstieg: {result.get('trading_case_score', 'n/a')}/100",
-        f"🏛️ Investment: {result.get('investment_case_score', 'n/a')}/100",
+        _b("🔔 Trigger:", result.get('trigger_status', '-')),
+        _b("📌 Priorität:", result.get('watchlist_priority', '-')),
+        _b("📈 Einstieg:", f"{result.get('trading_case_score', 'n/a')}/100"),
+        _b("🏛️ Investment:", f"{result.get('investment_case_score', 'n/a')}/100"),
         "Hinweis: Neuer Wert in der Watchlist, aktuell noch kein harter Trigger-Alert.",
     ])
     return "\n".join(lines)
@@ -313,7 +324,7 @@ def send_telegram_message(message_text):
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         response = requests.post(
             url,
-            json={"chat_id": chat_id, "text": message_text},
+            json={"chat_id": chat_id, "text": message_text, "parse_mode": "HTML", "disable_web_page_preview": True},
             timeout=20,
         )
         if response.status_code == 200:

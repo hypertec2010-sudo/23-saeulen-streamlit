@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3C.3"
+APP_VERSION = "v11.3C.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -227,6 +227,40 @@ pre{white-space:pre-wrap !important;}
     font-size:0.88rem;
     margin-top:8px;
     line-height:1.2;
+}
+.wrap-metric-card{
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+    border:1px solid #243042;
+    border-radius:18px;
+    padding:14px 16px;
+    min-height:112px;
+    box-shadow:0 10px 24px rgba(0,0,0,0.18);
+}
+.wrap-metric-label{
+    color:#94a3b8;
+    font-size:0.80rem;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    line-height:1.2;
+    margin-bottom:10px;
+}
+.wrap-metric-value{
+    color:#f8fafc;
+    font-size:clamp(1.0rem, 1.2vw, 1.18rem);
+    font-weight:800;
+    line-height:1.2;
+    white-space:normal;
+    word-break:break-word;
+    overflow-wrap:anywhere;
+}
+.wrap-metric-sub{
+    color:#cbd5e1;
+    font-size:0.90rem;
+    line-height:1.3;
+    margin-top:8px;
+    white-space:normal;
+    word-break:break-word;
+    overflow-wrap:anywhere;
 }
 .hero-shell{
     background:linear-gradient(135deg,#0f172a 0%, #111827 55%, #0b1220 100%);
@@ -5824,11 +5858,31 @@ with t1:
 
 with t2:
     st.subheader("Kurzfristiges Signalbild")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4 = st.columns([1.0, 1.0, 1.15, 1.15])
     c1.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
     c2.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
-    c3.metric("Core Fokus", "Momentum und Volumen")
-    c4.metric("Board Fokus", "Einzelne Handelssignale")
+    with c3:
+        st.markdown(
+            """
+            <div class="wrap-metric-card">
+                <div class="wrap-metric-label">Core Fokus</div>
+                <div class="wrap-metric-value">Momentum und Volumen</div>
+                <div class="wrap-metric-sub">Die Kernsignale für kurzfristige Stärke.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c4:
+        st.markdown(
+            """
+            <div class="wrap-metric-card">
+                <div class="wrap-metric-label">Board Fokus</div>
+                <div class="wrap-metric-value">Einzelne Handelssignale</div>
+                <div class="wrap-metric-sub">Additive Trigger aus dem Hilfsboard.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.dataframe(
         pd.DataFrame({

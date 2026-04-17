@@ -27,22 +27,44 @@ def _fmt_trade_value(value, suffix=""):
     if value is None:
         return "-"
     try:
-        if str(value).strip() == "":
+        raw = str(value).strip()
+        if raw in {"", "-", "n/a", "None"}:
             return "-"
-        num = float(value)
-        if abs(num) >= 100:
-            return f"{num:.2f}{suffix}"
+        num = float(raw)
         return f"{num:.2f}{suffix}"
     except Exception:
-        return f"{value}{suffix}" if suffix and str(value) != "-" else str(value)
+        raw = str(value).strip()
+        if raw in {"", "-", "n/a", "None"}:
+            return "-"
+        return f"{raw}{suffix}" if suffix and not raw.endswith(suffix) else raw
 
+
+
+
+
+def _get_trade_plan_fields(result):
+    entry_zone = result.get("suggested_entry_zone", "-")
+    stop_value = result.get("stop_used", result.get("stop_current", result.get("stop", result.get("atr_stop", "-"))))
+    crv_value = result.get("crv", result.get("rr", result.get("crv_value", "-")))
+    return entry_zone, stop_value, crv_value
 
 
 def _should_show_trade_plan(result, watchlist_type):
+    # Show trade-plan details when the message is constructive and actual trade-plan fields exist.
+    entry_zone = str(result.get("suggested_entry_zone", "")).strip()
+    stop_value = result.get("stop_used", result.get("stop_current", result.get("stop", None)))
+    crv_value = result.get("crv", result.get("rr", result.get("crv_value", None)))
+
+    has_trade_fields = (
+        entry_zone not in {"", "-", "n/a", "None"}
+        or str(stop_value).strip() not in {"", "-", "n/a", "None"}
+        or str(crv_value).strip() not in {"", "-", "n/a", "None"}
+    )
+
     if watchlist_type == "Positions-Watchlist":
         position_action = str(result.get("position_action", "")).lower()
         add_on_action = str(result.get("add_on_action", "")).lower()
-        positive_terms = ["nachkauf", "aufstock", "aufbauen", "zukauf", "add"]
+        positive_terms = ["nachkauf", "aufstock", "aufbauen", "zukauf", "add", "kauf"]
         negative_terms = ["verkauf", "reduzier", "risiko", "stop", "teilgewinn", "abbauen"]
 
         if any(term in position_action for term in negative_terms):
@@ -51,11 +73,11 @@ def _should_show_trade_plan(result, watchlist_type):
             return True
         if any(term in position_action for term in positive_terms):
             return True
-        return False
+        return has_trade_fields and ("beobacht" not in position_action)
 
     action = str(result.get("emp", "")).lower()
     trigger = str(result.get("trigger_status", "")).lower()
-    positive_terms = ["kauf", "aufbau", "einstieg", "beobachten", "long"]
+    positive_terms = ["kauf", "aufbau", "einstieg", "nachkauf", "long"]
     negative_terms = ["verkauf", "warn", "stop", "risiko", "reduzier"]
 
     if any(term in action for term in negative_terms):
@@ -63,7 +85,7 @@ def _should_show_trade_plan(result, watchlist_type):
     if any(term in action for term in positive_terms):
         return True
     if any(term in trigger for term in ["aktiv", "bestätigt", "breakout", "retest"]):
-        return True
+        return has_trade_fields
     return False
 
 
@@ -283,10 +305,11 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_
             _b("🏛️ Investment:", f"{result.get('investment_case_score', 'n/a')}/100"),
         ])
         if _should_show_trade_plan(result, watchlist_type):
+            entry_zone, stop_value, crv_value = _get_trade_plan_fields(result)
             lines.extend([
-                _b("🎯 Entry-Zone:", result.get('suggested_entry_zone', '-')),
-                _b("🛡️ Stop-Loss:", _fmt_trade_value(result.get('stop_current', result.get('stop', '-')), "")),
-                _b("⚖️ CRV:", _fmt_trade_value(result.get('rr', result.get('crv', '-')), ":1")),
+                _b("🎯 Entry-Zone:", entry_zone),
+                _b("🛡️ Stop-Loss:", _fmt_trade_value(stop_value, "")),
+                _b("⚖️ CRV:", _fmt_trade_value(crv_value, ":1")),
             ])
 
     if red_flag and red_flag != "-":

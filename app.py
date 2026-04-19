@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.4A.4"
+APP_VERSION = "v11.4A.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -496,19 +496,19 @@ pre{white-space:pre-wrap !important;}
     line-height:1.35;
 }
 .export-btn-wrap{
-    display:flex;
-    justify-content:flex-start;
-    align-items:stretch;
+    display:block;
+    width:100%;
 }
-.export-btn-wrap > div{
-    width:auto !important;
+.export-btn-wrap div[data-testid="stButton"],
+.export-btn-wrap div[data-testid="stDownloadButton"]{
+    width:100% !important;
 }
 .export-btn-wrap div[data-testid="stButton"] > button,
 .export-btn-wrap div[data-testid="stDownloadButton"] > button,
 .export-btn-wrap button{
-    width:9.25rem !important;
-    min-width:9.25rem !important;
-    max-width:9.25rem !important;
+    width:100% !important;
+    min-width:100% !important;
+    max-width:100% !important;
     min-height:2.95rem !important;
     height:2.95rem !important;
     border-radius:14px !important;
@@ -518,6 +518,10 @@ pre{white-space:pre-wrap !important;}
     font-weight:800 !important;
     box-shadow:0 12px 24px rgba(30,58,138,0.24) !important;
     padding:0.48rem 0.95rem !important;
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    line-height:1 !important;
 }
 .export-btn-wrap div[data-testid="stButton"] > button p,
 .export-btn-wrap div[data-testid="stButton"] > button span,
@@ -530,6 +534,8 @@ pre{white-space:pre-wrap !important;}
 .export-btn-wrap button div{
     color:#f8fafc !important;
     font-weight:800 !important;
+    line-height:1 !important;
+    margin:0 !important;
 }
 .export-btn-wrap div[data-testid="stButton"] > button:hover,
 .export-btn-wrap div[data-testid="stDownloadButton"] > button:hover,
@@ -537,15 +543,15 @@ pre{white-space:pre-wrap !important;}
     border-color:#60a5fa !important;
     box-shadow:0 16px 30px rgba(59,130,246,0.28) !important;
 }
-.export-btn-wrap div[data-testid="stDownloadButton"]{
-    width:auto !important;
+div[data-testid="stDownloadButton"]{
+    width:100% !important;
 }
 div[data-testid="stDownloadButton"] > button,
 div[data-testid="stDownloadButton"] button,
 div[data-testid="stDownloadButton"] a{
-    width:9.25rem !important;
-    min-width:9.25rem !important;
-    max-width:9.25rem !important;
+    width:100% !important;
+    min-width:100% !important;
+    max-width:100% !important;
     min-height:2.95rem !important;
     height:2.95rem !important;
     border-radius:14px !important;
@@ -555,6 +561,10 @@ div[data-testid="stDownloadButton"] a{
     font-weight:800 !important;
     box-shadow:0 12px 24px rgba(30,58,138,0.24) !important;
     padding:0.48rem 0.95rem !important;
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    line-height:1 !important;
 }
 div[data-testid="stDownloadButton"] > button p,
 div[data-testid="stDownloadButton"] > button span,
@@ -567,6 +577,8 @@ div[data-testid="stDownloadButton"] a span,
 div[data-testid="stDownloadButton"] a div{
     color:#f8fafc !important;
     font-weight:800 !important;
+    line-height:1 !important;
+    margin:0 !important;
 }
 .soft-divider{
     height:1px;
@@ -6338,12 +6350,12 @@ with se_outer1:
         data=single_export_df.to_csv(index=False).encode("utf-8-sig"),
         file_name=f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
         mime="text/csv",
-        use_container_width=False
+        use_container_width=True
     )
     st.markdown('</div>', unsafe_allow_html=True)
 with se_outer2:
     st.markdown('<div class="export-btn-wrap">', unsafe_allow_html=True)
-    if st.button("Sheets", key="log_single_sheet", use_container_width=False):
+    if st.button("Sheets", key="log_single_sheet", use_container_width=True):
         ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
         show_sheet_result(ok, msg)
     st.markdown('</div>', unsafe_allow_html=True)

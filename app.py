@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.4A.6"
+APP_VERSION = "v11.4A.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1010,6 +1010,29 @@ div.stButton > button[kind="secondary"]{
 }
 @media (max-width: 768px){
     .horizon-card{min-height:128px !important; padding:12px 12px 10px 12px !important;}
+}
+
+
+/* Finale Angleichung Export-Zeile: Sheets an native CSV-Höhe annähern */
+.export-btn-wrap div[data-testid="stButton"] > button{
+    min-height:2.30rem !important;
+    height:2.30rem !important;
+    padding:0.20rem 0.90rem !important;
+    line-height:1 !important;
+}
+.export-btn-wrap div[data-testid="stButton"] > button > div,
+.export-btn-wrap div[data-testid="stButton"] > button > div > p,
+.export-btn-wrap div[data-testid="stButton"] > button p,
+.export-btn-wrap div[data-testid="stButton"] > button span,
+.export-btn-wrap div[data-testid="stButton"] > button div{
+    min-height:2.30rem !important;
+    height:2.30rem !important;
+    line-height:1 !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    padding:0 !important;
+    margin:0 !important;
 }
 
 </style>

@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.4A.2"
+APP_VERSION = "v11.4A.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -534,6 +534,35 @@ pre{white-space:pre-wrap !important;}
 .export-btn-wrap button:hover{
     border-color:#60a5fa !important;
     box-shadow:0 16px 30px rgba(59,130,246,0.28) !important;
+}
+.export-btn-wrap div[data-testid="stDownloadButton"]{
+    width:100% !important;
+}
+div[data-testid="stDownloadButton"] > button,
+div[data-testid="stDownloadButton"] button,
+div[data-testid="stDownloadButton"] a{
+    width:100% !important;
+    min-height:2.95rem !important;
+    height:2.95rem !important;
+    border-radius:14px !important;
+    border:1px solid #3b82f6 !important;
+    background:linear-gradient(180deg,#1e3a8a 0%, #111827 100%) !important;
+    color:#f8fafc !important;
+    font-weight:800 !important;
+    box-shadow:0 12px 24px rgba(30,58,138,0.24) !important;
+    padding:0.48rem 0.95rem !important;
+}
+div[data-testid="stDownloadButton"] > button p,
+div[data-testid="stDownloadButton"] > button span,
+div[data-testid="stDownloadButton"] > button div,
+div[data-testid="stDownloadButton"] button p,
+div[data-testid="stDownloadButton"] button span,
+div[data-testid="stDownloadButton"] button div,
+div[data-testid="stDownloadButton"] a p,
+div[data-testid="stDownloadButton"] a span,
+div[data-testid="stDownloadButton"] a div{
+    color:#f8fafc !important;
+    font-weight:800 !important;
 }
 .soft-divider{
     height:1px;

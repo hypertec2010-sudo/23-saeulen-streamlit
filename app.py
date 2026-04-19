@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.4A.1"
+APP_VERSION = "v11.4A.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -504,29 +504,36 @@ pre{white-space:pre-wrap !important;}
     width:100%;
 }
 .export-btn-wrap div[data-testid="stButton"] > button,
-.export-btn-wrap div[data-testid="stDownloadButton"] > button{
+.export-btn-wrap div[data-testid="stDownloadButton"] > button,
+.export-btn-wrap button{
     width:100% !important;
-    min-height:2.85rem !important;
-    height:2.85rem !important;
+    min-height:2.95rem !important;
+    height:2.95rem !important;
     border-radius:14px !important;
-    border:1px solid #334155 !important;
-    background:linear-gradient(180deg,#0f172a 0%, #111827 100%) !important;
+    border:1px solid #3b82f6 !important;
+    background:linear-gradient(180deg,#1e3a8a 0%, #111827 100%) !important;
     color:#f8fafc !important;
     font-weight:800 !important;
-    box-shadow:0 10px 22px rgba(0,0,0,0.16) !important;
-    padding:0.45rem 0.9rem !important;
+    box-shadow:0 12px 24px rgba(30,58,138,0.24) !important;
+    padding:0.48rem 0.95rem !important;
 }
 .export-btn-wrap div[data-testid="stButton"] > button p,
 .export-btn-wrap div[data-testid="stButton"] > button span,
+.export-btn-wrap div[data-testid="stButton"] > button div,
 .export-btn-wrap div[data-testid="stDownloadButton"] > button p,
-.export-btn-wrap div[data-testid="stDownloadButton"] > button span{
+.export-btn-wrap div[data-testid="stDownloadButton"] > button span,
+.export-btn-wrap div[data-testid="stDownloadButton"] > button div,
+.export-btn-wrap button p,
+.export-btn-wrap button span,
+.export-btn-wrap button div{
     color:#f8fafc !important;
     font-weight:800 !important;
 }
 .export-btn-wrap div[data-testid="stButton"] > button:hover,
-.export-btn-wrap div[data-testid="stDownloadButton"] > button:hover{
-    border-color:#475569 !important;
-    box-shadow:0 14px 28px rgba(0,0,0,0.20) !important;
+.export-btn-wrap div[data-testid="stDownloadButton"] > button:hover,
+.export-btn-wrap button:hover{
+    border-color:#60a5fa !important;
+    box-shadow:0 16px 30px rgba(59,130,246,0.28) !important;
 }
 .soft-divider{
     height:1px;

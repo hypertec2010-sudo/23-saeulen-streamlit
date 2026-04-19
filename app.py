@@ -3,6 +3,7 @@
 import os
 import re
 import json
+import base64
 import warnings
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
@@ -42,7 +43,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.4A.7"
+APP_VERSION = "v11.4A.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1033,6 +1034,37 @@ div.stButton > button[kind="secondary"]{
     justify-content:center !important;
     padding:0 !important;
     margin:0 !important;
+}
+
+
+.export-action-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    min-height:2.85rem;
+    height:2.85rem;
+    border-radius:14px;
+    border:1px solid #3b82f6;
+    background:linear-gradient(180deg,#1e3a8a 0%, #111827 100%);
+    color:#f8fafc !important;
+    font-weight:800;
+    text-decoration:none !important;
+    box-shadow:0 12px 24px rgba(30,58,138,0.24);
+    padding:0.40rem 0.95rem;
+    line-height:1;
+    text-align:center;
+}
+.export-action-btn:hover{
+    border-color:#60a5fa;
+    box-shadow:0 16px 30px rgba(59,130,246,0.28);
+    color:#ffffff !important;
+    text-decoration:none !important;
+}
+.export-action-btn span{
+    color:#f8fafc !important;
+    font-weight:800;
+    line-height:1;
 }
 
 </style>
@@ -5712,7 +5744,29 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
 
 result = results_map[selected_display_ticker]
 single_export_df = build_export_df([result])
+
+sheet_log_triggered = False
+try:
+    qp = st.query_params
+    if str(qp.get("sheet_log", "0")) == "1":
+        sheet_log_triggered = True
+except Exception:
+    sheet_log_triggered = False
+
 ticker = result["ticker"]
+csv_filename = f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+csv_payload = single_export_df.to_csv(index=False).encode("utf-8-sig")
+csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
+csv_href = f"data:text/csv;base64,{csv_b64}"
+
+if sheet_log_triggered:
+    ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
+    show_sheet_result(ok, msg)
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
 df = result["df"]
 info = result["info"]
 name = result["name"]
@@ -6381,22 +6435,17 @@ st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
 st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div></div>', unsafe_allow_html=True)
 se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
+sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 with se_outer1:
-    st.markdown('<div class="export-btn-wrap">', unsafe_allow_html=True)
-    st.download_button(
-        "CSV",
-        data=single_export_df.to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        use_container_width=True
+    st.markdown(
+        f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
+        unsafe_allow_html=True
     )
-    st.markdown('</div>', unsafe_allow_html=True)
 with se_outer2:
-    st.markdown('<div class="export-btn-wrap">', unsafe_allow_html=True)
-    if st.button("Sheets", key="log_single_sheet", use_container_width=True):
-        ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
-        show_sheet_result(ok, msg)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<a class="export-action-btn" href="{sheet_href}"><span>Sheets</span></a>',
+        unsafe_allow_html=True
+    )
 with se_outer3:
     st.markdown("", unsafe_allow_html=True)
 

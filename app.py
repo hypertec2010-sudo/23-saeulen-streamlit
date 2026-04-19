@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3D.2"
+APP_VERSION = "v11.3D.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -146,6 +146,34 @@ def trigger_ui_refresh(**state_updates):
 # ---------- UI Theme / CSS ----------
 st.markdown("""
 <style>
+
+/* Bessere Lesbarkeit für Formulare, Labels und Radio-Gruppen */
+label, .stRadio label, .stSelectbox label, .stTextInput label, .stTextArea label,
+[data-testid="stWidgetLabel"], [data-testid="stMarkdownContainer"] p,
+[data-baseweb="radio"] label, [role="radiogroup"] label,
+div[role="radiogroup"] label, div[role="radiogroup"] p,
+div[data-testid="stRadio"] label, div[data-testid="stRadio"] p {
+    color:#f1f5f9 !important;
+}
+div[data-testid="stRadio"] [data-baseweb="radio"] > div {
+    color:#f8fafc !important;
+}
+div[data-testid="stRadio"] [data-baseweb="radio"] label > div,
+div[data-testid="stRadio"] [data-baseweb="radio"] label span,
+div[data-testid="stRadio"] [data-baseweb="radio"] label p {
+    color:#f8fafc !important;
+    font-weight:700 !important;
+}
+div[data-testid="stRadio"] [aria-checked="true"] {
+    color:#ffffff !important;
+}
+.small-note, .mobile-note, .compact-help, .muted-meta, .panel-caption, .workspace-sub {
+    color:#dbeafe !important;
+}
+.stCaptionContainer, [data-testid="stCaptionContainer"] {
+    color:#d1d5db !important;
+}
+
 
 :root{
     color-scheme: dark;

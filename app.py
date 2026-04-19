@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3D.3"
+APP_VERSION = "v11.3D.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -494,6 +494,39 @@ pre{white-space:pre-wrap !important;}
     color:#94a3b8;
     font-size:0.83rem;
     line-height:1.35;
+}
+.export-btn-wrap{
+    display:flex;
+    justify-content:flex-start;
+    align-items:stretch;
+}
+.export-btn-wrap > div{
+    width:100%;
+}
+.export-btn-wrap div[data-testid="stButton"] > button,
+.export-btn-wrap div[data-testid="stDownloadButton"] > button{
+    width:100% !important;
+    min-height:2.85rem !important;
+    height:2.85rem !important;
+    border-radius:14px !important;
+    border:1px solid #334155 !important;
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%) !important;
+    color:#f8fafc !important;
+    font-weight:800 !important;
+    box-shadow:0 10px 22px rgba(0,0,0,0.16) !important;
+    padding:0.45rem 0.9rem !important;
+}
+.export-btn-wrap div[data-testid="stButton"] > button p,
+.export-btn-wrap div[data-testid="stButton"] > button span,
+.export-btn-wrap div[data-testid="stDownloadButton"] > button p,
+.export-btn-wrap div[data-testid="stDownloadButton"] > button span{
+    color:#f8fafc !important;
+    font-weight:800 !important;
+}
+.export-btn-wrap div[data-testid="stButton"] > button:hover,
+.export-btn-wrap div[data-testid="stDownloadButton"] > button:hover{
+    border-color:#475569 !important;
+    box-shadow:0 14px 28px rgba(0,0,0,0.20) !important;
 }
 .soft-divider{
     height:1px;
@@ -5973,19 +6006,23 @@ with kb4:
 st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
 st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div></div>', unsafe_allow_html=True)
-se_outer1, se_outer2, se_outer3 = st.columns([0.75, 0.9, 2.65])
+se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
 with se_outer1:
+    st.markdown('<div class="export-btn-wrap">', unsafe_allow_html=True)
     st.download_button(
         "CSV",
         data=single_export_df.to_csv(index=False).encode("utf-8-sig"),
         file_name=f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
         mime="text/csv",
-        use_container_width=False
+        use_container_width=True
     )
+    st.markdown('</div>', unsafe_allow_html=True)
 with se_outer2:
-    if st.button("Sheets", key="log_single_sheet", use_container_width=False):
+    st.markdown('<div class="export-btn-wrap">', unsafe_allow_html=True)
+    if st.button("Sheets", key="log_single_sheet", use_container_width=True):
         ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
         show_sheet_result(ok, msg)
+    st.markdown('</div>', unsafe_allow_html=True)
 with se_outer3:
     st.markdown("", unsafe_allow_html=True)
 

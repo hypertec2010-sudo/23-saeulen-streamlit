@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3D"
+APP_VERSION = "v11.3D.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -803,6 +803,59 @@ div.stButton > button[kind="secondary"]{
     font-weight:600;
     display:inline-block;
 }
+
+.horizon-card{
+    background:linear-gradient(180deg,#0f172a 0%, #111827 100%);
+    border:1px solid #243042;
+    border-radius:18px;
+    padding:14px 14px 12px 14px;
+    min-height:142px;
+    box-shadow:0 10px 24px rgba(0,0,0,0.18);
+}
+.horizon-card.green{border-left:4px solid #22c55e; box-shadow:0 12px 26px rgba(34,197,94,0.16);}
+.horizon-card.amber{border-left:4px solid #f59e0b; box-shadow:0 12px 26px rgba(245,158,11,0.14);}
+.horizon-card.red{border-left:4px solid #ef4444; box-shadow:0 12px 26px rgba(239,68,68,0.14);}
+.horizon-card.blue{border-left:4px solid #3b82f6; box-shadow:0 12px 26px rgba(59,130,246,0.14);}
+.horizon-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+}
+.horizon-label{
+    color:#94a3b8;
+    font-size:0.78rem;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    line-height:1.2;
+}
+.horizon-icon{
+    font-size:1.1rem;
+    line-height:1;
+}
+.horizon-value{
+    color:#f8fafc;
+    font-size:clamp(1.05rem, 1.25vw, 1.2rem);
+    font-weight:900;
+    line-height:1.15;
+    margin-top:12px;
+}
+.horizon-score{
+    color:#e2e8f0;
+    font-size:0.98rem;
+    font-weight:800;
+    margin-top:6px;
+}
+.horizon-sub{
+    color:#cbd5e1;
+    font-size:0.84rem;
+    line-height:1.35;
+    margin-top:8px;
+}
+@media (max-width: 768px){
+    .horizon-card{min-height:128px !important; padding:12px 12px 10px 12px !important;}
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -1062,6 +1115,36 @@ def display_stb_label(signal):
         "SHORT": "Schwach / defensiv",
     }
     return mapping.get(str(signal or ""), str(signal or "-"))
+
+
+
+
+def horizon_status_meta(score):
+    try:
+        s = float(score)
+    except Exception:
+        return ("blue", "n/a", "keine belastbare Einschätzung")
+    if s >= 75:
+        return ("green", "stark", "spricht klar für diesen Horizont")
+    if s >= 60:
+        return ("blue", "konstruktiv", "insgesamt brauchbar bis positiv")
+    if s >= 45:
+        return ("amber", "gemischt", "brauchbar, aber nicht überzeugend")
+    return ("red", "schwach", "der Horizont wirkt aktuell belastet")
+
+
+def horizon_icon(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "•"
+    if s >= 75:
+        return "🟢"
+    if s >= 60:
+        return "🔵"
+    if s >= 45:
+        return "🟠"
+    return "🔴"
 
 
 def render_score_card(label, value, subtitle="", variant="company", tooltip=""):
@@ -6203,11 +6286,23 @@ with t8:
 st.divider()
 with st.expander("Zeithorizonte anzeigen", expanded=False):
     st.subheader("5 Zeithorizont-Ampeln")
+    st.markdown('<div class="panel-caption">Verdichtete Eignung je Anlagehorizont. Die Werte sind enger an Trading-Case, Investment-Case, Marktregime, Red Flags und bei Positionen auch an die Exit-Sicht gekoppelt.</div>', unsafe_allow_html=True)
     cols = st.columns(5)
     for col, (lab, scv) in zip(cols, hmap.items()):
+        tone, status_word, status_text = horizon_status_meta(scv)
+        icon = horizon_icon(scv)
         col.markdown(
-            f"<div style='text-align:center'><div style='font-size:2rem'>{ampel(scv)}</div>"
-            f"<small>{lab}<br><b>{scv}/100</b></small></div>",
+            f"""
+            <div class="horizon-card {tone}">
+                <div class="horizon-top">
+                    <div class="horizon-label">{lab}</div>
+                    <div class="horizon-icon">{icon}</div>
+                </div>
+                <div class="horizon-value">{status_word}</div>
+                <div class="horizon-score">{scv}/100</div>
+                <div class="horizon-sub">{status_text}</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 

@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.4A"
+APP_VERSION = "v11.4A.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6033,6 +6033,15 @@ exit_score_text_display = result.get("exit_score_text", "stabil")
 exit_reason_top_display = result.get("exit_reason_top", "kein akuter Exit-Grund")
 exit_reason_list_display = result.get("exit_reason_list", []) or []
 exit_reason_extra_display = [x for x in exit_reason_list_display if str(x).strip() and str(x).strip() != str(exit_reason_top_display).strip()]
+leadership_score_display = result.get("leadership_score", np.nan)
+leadership_status_display = result.get("leadership_status", "-")
+sector_strength_display = result.get("sector_strength_score", np.nan)
+industry_strength_display = result.get("industry_strength_score", np.nan)
+rs_acceleration_display = result.get("rs_acceleration_score", np.nan)
+sector_label_display = result.get("sector_label", sector if 'sector' in locals() else "-")
+industry_label_display = result.get("industry_label", industry if 'industry' in locals() else "-")
+sector_trend_text_display = result.get("sector_trend_text", "nicht belastbar")
+industry_trend_text_display = result.get("industry_trend_text", "nicht belastbar")
 
 if str(exit_action_display).strip().lower() == "halten":
     exit_action_sub_display = "Kein akuter Verkaufsdruck"
@@ -6352,18 +6361,18 @@ with t0:
         unsafe_allow_html=True,
     )
     l1, l2, l3, l4 = st.columns(4)
-    l1.metric("Leadership", f"{leadership_score}/100", leadership_status)
-    l2.metric("Sektor-Stärke", f"{fmt_num(sector_strength_score,0)}/100", sector_label)
-    l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_score,0)}/100", industry_label)
-    l4.metric("RS-Beschleunigung", f"{rs_acceleration_score}/100")
+    l1.metric("Leadership", f"{fmt_num(leadership_score_display,0)}/100", leadership_status_display)
+    l2.metric("Sektor-Stärke", f"{fmt_num(sector_strength_display,0)}/100", sector_label_display)
+    l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
+    l4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
 
     st.markdown(
         f"""
         <div class="section-card">
             <div class="premium-title">Einordnung</div>
-            <div class="premium-value">Leadership-Status: {leadership_status}</div>
+            <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
             <div class="premium-sub">
-                Sektor wirkt {sector_trend_text}, Industrie wirkt {industry_trend_text}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
+                Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
             </div>
         </div>
         """,

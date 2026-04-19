@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3D.1"
+APP_VERSION = "v11.3D.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -146,6 +146,34 @@ def trigger_ui_refresh(**state_updates):
 # ---------- UI Theme / CSS ----------
 st.markdown("""
 <style>
+
+:root{
+    color-scheme: dark;
+}
+html, body, [class*="css"]{
+    background-color:#0b1220;
+    color:#f8fafc;
+}
+body{
+    background:linear-gradient(180deg,#0b1220 0%, #0f172a 35%, #111827 100%);
+}
+[data-testid="stAppViewContainer"]{
+    background:linear-gradient(180deg,#0b1220 0%, #0f172a 35%, #111827 100%) !important;
+    color:#f8fafc !important;
+}
+[data-testid="stHeader"]{
+    background:rgba(11,18,32,0.88) !important;
+}
+[data-testid="stMainBlockContainer"]{
+    color:#f8fafc !important;
+}
+[data-testid="stSidebar"]{
+    background:linear-gradient(180deg,#0b1220 0%, #0f172a 100%) !important;
+}
+[data-testid="stMarkdownContainer"], [data-testid="stText"], p, label, span, div{
+    color:inherit;
+}
+
 .metric-card{
     background:linear-gradient(180deg,#111827 0%, #0f172a 100%);
     border-radius:16px;
@@ -4217,10 +4245,26 @@ st.markdown(
     """
     <style>
     div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
-        white-space: pre-line;
-        line-height: 1.35;
-        font-weight: 800;
-        border-radius: 20px;
+        white-space: pre-line !important;
+        line-height: 1.35 !important;
+        font-weight: 800 !important;
+        border-radius: 20px !important;
+        min-height: 5.25rem !important;
+        background: linear-gradient(180deg, #1e3a8a 0%, #111827 100%) !important;
+        color: #f8fafc !important;
+        border: 1px solid #3b82f6 !important;
+        box-shadow: 0 14px 28px rgba(30,58,138,0.25) !important;
+        text-shadow: none !important;
+    }
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button p,
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button span,
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button div {
+        color: #f8fafc !important;
+    }
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button:hover {
+        border-color: #60a5fa !important;
+        box-shadow: 0 18px 34px rgba(59,130,246,0.28) !important;
+        transform: translateY(-1px);
     }
     </style>
     """,
@@ -4259,6 +4303,15 @@ st.markdown(
         line-height: 1.15;
         padding-top: 0.35rem;
         padding-bottom: 0.35rem;
+        color: #f8fafc !important;
+    }
+    div[data-testid="stButton"] > button p,
+    div[data-testid="stButton"] > button span,
+    div[data-testid="stButton"] > button div {
+        color: #f8fafc !important;
+    }
+    div[data-testid="stDownloadButton"] > button {
+        color: #f8fafc !important;
     }
     </style>
     """,

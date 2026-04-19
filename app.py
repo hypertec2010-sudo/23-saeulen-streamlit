@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.4A.3"
+APP_VERSION = "v11.4A.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -501,12 +501,14 @@ pre{white-space:pre-wrap !important;}
     align-items:stretch;
 }
 .export-btn-wrap > div{
-    width:100%;
+    width:auto !important;
 }
 .export-btn-wrap div[data-testid="stButton"] > button,
 .export-btn-wrap div[data-testid="stDownloadButton"] > button,
 .export-btn-wrap button{
-    width:100% !important;
+    width:9.25rem !important;
+    min-width:9.25rem !important;
+    max-width:9.25rem !important;
     min-height:2.95rem !important;
     height:2.95rem !important;
     border-radius:14px !important;
@@ -536,12 +538,14 @@ pre{white-space:pre-wrap !important;}
     box-shadow:0 16px 30px rgba(59,130,246,0.28) !important;
 }
 .export-btn-wrap div[data-testid="stDownloadButton"]{
-    width:100% !important;
+    width:auto !important;
 }
 div[data-testid="stDownloadButton"] > button,
 div[data-testid="stDownloadButton"] button,
 div[data-testid="stDownloadButton"] a{
-    width:100% !important;
+    width:9.25rem !important;
+    min-width:9.25rem !important;
+    max-width:9.25rem !important;
     min-height:2.95rem !important;
     height:2.95rem !important;
     border-radius:14px !important;
@@ -6334,12 +6338,12 @@ with se_outer1:
         data=single_export_df.to_csv(index=False).encode("utf-8-sig"),
         file_name=f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
         mime="text/csv",
-        use_container_width=True
+        use_container_width=False
     )
     st.markdown('</div>', unsafe_allow_html=True)
 with se_outer2:
     st.markdown('<div class="export-btn-wrap">', unsafe_allow_html=True)
-    if st.button("Sheets", key="log_single_sheet", use_container_width=True):
+    if st.button("Sheets", key="log_single_sheet", use_container_width=False):
         ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
         show_sheet_result(ok, msg)
     st.markdown('</div>', unsafe_allow_html=True)

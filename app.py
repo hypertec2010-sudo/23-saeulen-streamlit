@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.4A.5"
+APP_VERSION = "v11.4A.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -578,6 +578,21 @@ div[data-testid="stDownloadButton"] a div{
     color:#f8fafc !important;
     font-weight:800 !important;
     line-height:1 !important;
+    margin:0 !important;
+}
+.export-btn-wrap div[data-testid="stButton"] > button > div,
+.export-btn-wrap div[data-testid="stButton"] > button > div > p,
+.export-btn-wrap div[data-testid="stDownloadButton"] > button > div,
+.export-btn-wrap div[data-testid="stDownloadButton"] > button > div > p,
+.export-btn-wrap div[data-testid="stDownloadButton"] button > div,
+.export-btn-wrap div[data-testid="stDownloadButton"] button > div > p{
+    min-height:2.95rem !important;
+    height:2.95rem !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    line-height:1 !important;
+    padding:0 !important;
     margin:0 !important;
 }
 .soft-divider{

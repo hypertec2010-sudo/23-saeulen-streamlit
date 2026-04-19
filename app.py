@@ -42,7 +42,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.3D.4"
+APP_VERSION = "v11.4A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1234,6 +1234,194 @@ def horizon_icon(score):
     if s >= 45:
         return "🟠"
     return "🔴"
+
+
+
+
+SECTOR_ETF_MAP = {
+    "Technology": "XLK",
+    "Financial Services": "XLF",
+    "Financial": "XLF",
+    "Healthcare": "XLV",
+    "Consumer Cyclical": "XLY",
+    "Consumer Defensive": "XLP",
+    "Industrials": "XLI",
+    "Energy": "XLE",
+    "Basic Materials": "XLB",
+    "Materials": "XLB",
+    "Real Estate": "XLRE",
+    "Utilities": "XLU",
+    "Communication Services": "XLC",
+}
+
+
+def get_sector_etf_symbol(sector):
+    if not sector:
+        return None
+    return SECTOR_ETF_MAP.get(str(sector).strip())
+
+
+@st.cache_data(show_spinner=False, ttl=60 * 60)
+def load_sector_context(symbol):
+    if not symbol:
+        return None
+    try:
+        df = yf.download(symbol, period="2y", auto_adjust=True, progress=False)
+        if df is None or df.empty or len(df) < 120:
+            return None
+        close = df["Close"]
+        ma50 = close.rolling(50).mean()
+        ma200 = close.rolling(200).mean()
+        sector_rsi_series = rsi14(close)
+        return {
+            "symbol": symbol,
+            "price": float(close.iloc[-1]) if pd.notna(close.iloc[-1]) else np.nan,
+            "ma50": float(ma50.iloc[-1]) if pd.notna(ma50.iloc[-1]) else np.nan,
+            "ma200": float(ma200.iloc[-1]) if pd.notna(ma200.iloc[-1]) else np.nan,
+            "ret21": float(close.pct_change(21).iloc[-1] * 100) if pd.notna(close.pct_change(21).iloc[-1]) else np.nan,
+            "ret63": float(close.pct_change(63).iloc[-1] * 100) if pd.notna(close.pct_change(63).iloc[-1]) else np.nan,
+            "rsi": float(sector_rsi_series.iloc[-1]) if pd.notna(sector_rsi_series.iloc[-1]) else np.nan,
+        }
+    except Exception:
+        return None
+
+
+def calc_sector_strength_score(sector_ctx):
+    if not sector_ctx:
+        return np.nan
+    score = 0
+    sector_ret21 = sector_ctx.get("ret21", np.nan)
+    sector_ret63 = sector_ctx.get("ret63", np.nan)
+    sector_price = sector_ctx.get("price", np.nan)
+    sector_ma50 = sector_ctx.get("ma50", np.nan)
+    sector_ma200 = sector_ctx.get("ma200", np.nan)
+    sector_rsi = sector_ctx.get("rsi", np.nan)
+
+    if pd.notna(sector_ret21):
+        if sector_ret21 > 5:
+            score += 25
+        elif sector_ret21 > 0:
+            score += 15
+        elif sector_ret21 > -5:
+            score += 8
+    if pd.notna(sector_ret63):
+        if sector_ret63 > 10:
+            score += 25
+        elif sector_ret63 > 0:
+            score += 15
+        elif sector_ret63 > -8:
+            score += 8
+    if pd.notna(sector_price) and pd.notna(sector_ma50) and sector_price > sector_ma50:
+        score += 20
+    if pd.notna(sector_price) and pd.notna(sector_ma200) and sector_price > sector_ma200:
+        score += 20
+    if pd.notna(sector_rsi):
+        if 50 <= sector_rsi <= 70:
+            score += 10
+        elif 40 <= sector_rsi < 50:
+            score += 5
+    return round(min(100, score))
+
+
+def calc_rs_benchmark_score(rs21, rs63, rs126):
+    score = 0
+    if pd.notna(rs21):
+        if rs21 > 8:
+            score += 30
+        elif rs21 > 3:
+            score += 20
+        elif rs21 > 0:
+            score += 12
+        elif rs21 > -5:
+            score += 6
+    if pd.notna(rs63):
+        if rs63 > 12:
+            score += 35
+        elif rs63 > 5:
+            score += 24
+        elif rs63 > 0:
+            score += 14
+        elif rs63 > -6:
+            score += 7
+    if pd.notna(rs126):
+        if rs126 > 15:
+            score += 35
+        elif rs126 > 5:
+            score += 22
+        elif rs126 > 0:
+            score += 12
+        elif rs126 > -8:
+            score += 6
+    return round(min(100, score))
+
+
+def calc_rs_acceleration_score(rs21, rs63, rs126):
+    score = 50
+    if pd.notna(rs21) and pd.notna(rs63):
+        if rs21 > rs63 + 3:
+            score += 20
+        elif rs21 > rs63:
+            score += 10
+        elif rs21 < rs63 - 3:
+            score -= 18
+        elif rs21 < rs63:
+            score -= 8
+    if pd.notna(rs63) and pd.notna(rs126):
+        if rs63 > rs126 + 4:
+            score += 18
+        elif rs63 < rs126 - 4:
+            score -= 15
+    return round(clamp(score))
+
+
+def calc_industry_strength_score(sector_strength_score, rs_score, company_score):
+    if pd.isna(sector_strength_score):
+        sector_strength_score = 50
+    if pd.isna(rs_score):
+        rs_score = 50
+    if pd.isna(company_score):
+        company_score = 50
+    return round(clamp(
+        sector_strength_score * 0.60
+        + rs_score * 0.25
+        + company_score * 0.15
+    ))
+
+
+def calc_leadership_score(sector_strength_score, industry_strength_score, rs_benchmark_score, rs_acceleration_score, rs_score):
+    return round(clamp(
+        sector_strength_score * 0.22
+        + industry_strength_score * 0.13
+        + rs_benchmark_score * 0.40
+        + rs_acceleration_score * 0.15
+        + rs_score * 0.10
+    ))
+
+
+def get_leadership_status(score, accel_score):
+    if pd.isna(score):
+        return "-"
+    if score >= 80 and accel_score >= 60:
+        return "Leader"
+    if score >= 68:
+        return "Stark"
+    if score >= 55:
+        return "Solide"
+    if score >= 40:
+        return "Mitläufer"
+    return "Schwach"
+
+
+def strength_text(score):
+    if pd.isna(score):
+        return "nicht belastbar"
+    if score >= 75:
+        return "stark"
+    if score >= 60:
+        return "konstruktiv"
+    if score >= 45:
+        return "gemischt"
+    return "schwach"
 
 
 def render_score_card(label, value, subtitle="", variant="company", tooltip=""):
@@ -3279,6 +3467,36 @@ def analyze_stock(
         "Sehr langfristig": very_long_term_score,
     }
 
+    # ---------- Leadership / Marktbreite ----------
+    sector_label = sector if pd.notna(sector) and sector not in ["", "-", None] else "Unbekannt"
+    industry_label = industry if pd.notna(industry) and industry not in ["", "-", None] else "Unbekannt"
+    sector_etf_symbol = get_sector_etf_symbol(sector_label)
+    sector_ctx = load_sector_context(sector_etf_symbol) if sector_etf_symbol else None
+
+    sector_strength_score = calc_sector_strength_score(sector_ctx)
+    rs_benchmark_score = calc_rs_benchmark_score(rs_vs_benchmark_21, rs_vs_benchmark_63, rs_vs_benchmark_126)
+    rs_acceleration_score = calc_rs_acceleration_score(rs_vs_benchmark_21, rs_vs_benchmark_63, rs_vs_benchmark_126)
+    industry_strength_score = calc_industry_strength_score(
+        sector_strength_score if pd.notna(sector_strength_score) else 50,
+        rs_score if pd.notna(rs_score) else 50,
+        company if pd.notna(company) else 50,
+    )
+    leadership_score = calc_leadership_score(
+        sector_strength_score if pd.notna(sector_strength_score) else 50,
+        industry_strength_score,
+        rs_benchmark_score,
+        rs_acceleration_score,
+        rs_score if pd.notna(rs_score) else 50,
+    )
+    leadership_status = get_leadership_status(leadership_score, rs_acceleration_score)
+    sector_trend_text = strength_text(sector_strength_score)
+    industry_trend_text = strength_text(industry_strength_score)
+
+    trading_case_score = round(clamp(trading_case_score * 0.88 + leadership_score * 0.12))
+    investment_case_score = round(clamp(investment_case_score * 0.90 + leadership_score * 0.10))
+    trading_case_text = trading_case_label(trading_case_score)
+    investment_case_text = investment_case_label(investment_case_score)
+
     position_mode = buy_in_override > 0
 
     # ---------- Recommendations ----------
@@ -4048,6 +4266,17 @@ def analyze_stock(
         "trigger_status": trigger_status,
         "watchlist_priority": watchlist_priority,
         "watchlist_priority_score": watchlist_priority_score,
+        "sector_strength_score": sector_strength_score,
+        "industry_strength_score": industry_strength_score,
+        "rs_benchmark_score": rs_benchmark_score,
+        "rs_acceleration_score": rs_acceleration_score,
+        "leadership_score": leadership_score,
+        "leadership_status": leadership_status,
+        "sector_label": sector_label,
+        "industry_label": industry_label,
+        "sector_trend_text": sector_trend_text,
+        "industry_trend_text": industry_trend_text,
+        "sector_etf_symbol": sector_etf_symbol if sector_etf_symbol else "-",
         "next_trigger": next_trigger,
         "trigger_reason": trigger_reason,
         "tb_signal": tb_signal,
@@ -5039,6 +5268,11 @@ def style_ranking_table(df):
         "Kurzfrist-Timing",
         "Setup-Confidence",
         "Exit-Score",
+        "Leadership",
+        "Sektor-Stärke",
+        "Industrie-Stärke",
+        "RS-Benchmark-Score",
+        "RS-Beschleunigung",
     ] if c in df.columns]
 
     for col in score_cols:
@@ -5076,10 +5310,26 @@ def style_ranking_table(df):
         styled = styled.map(style_valid, subset=["Valides Setup"])
     if "Watchlist-Priorität" in df.columns:
         styled = styled.map(style_priority, subset=["Watchlist-Priorität"])
+    def style_leadership_status(v):
+        s = str(v).strip().lower()
+        if s == "leader":
+            return "background-color: #00c853; color: #ffffff; font-weight: 800;"
+        if s == "stark":
+            return "background-color: #2eeb70; color: #08130b; font-weight: 800;"
+        if s == "solide":
+            return "background-color: #ffd54f; color: #2b1700; font-weight: 800;"
+        if s == "mitläufer":
+            return "background-color: #ff8a65; color: #2b0f08; font-weight: 800;"
+        if s == "schwach":
+            return "background-color: #ff1744; color: #ffffff; font-weight: 800;"
+        return ""
+
     if "Handlung" in df.columns:
         styled = styled.map(style_action, subset=["Handlung"])
     if "Exit-Aktion" in df.columns:
         styled = styled.map(style_action, subset=["Exit-Aktion"])
+    if "Leadership-Status" in df.columns:
+        styled = styled.map(style_leadership_status, subset=["Leadership-Status"])
 
     return styled
 
@@ -5178,8 +5428,20 @@ if st.session_state.get("analysis_requested", False):
     if not ranking_df.empty:
         exit_score_map = {str(r.get("ticker", "")): r.get("exit_score", np.nan) for r in results}
         exit_action_map = {str(r.get("ticker", "")): r.get("exit_action", "-") for r in results}
+        leadership_map = {str(r.get("ticker", "")): r.get("leadership_score", np.nan) for r in results}
+        leadership_status_map = {str(r.get("ticker", "")): r.get("leadership_status", "-") for r in results}
+        sector_strength_map = {str(r.get("ticker", "")): r.get("sector_strength_score", np.nan) for r in results}
+        industry_strength_map = {str(r.get("ticker", "")): r.get("industry_strength_score", np.nan) for r in results}
+        rs_benchmark_map = {str(r.get("ticker", "")): r.get("rs_benchmark_score", np.nan) for r in results}
+        rs_accel_map = {str(r.get("ticker", "")): r.get("rs_acceleration_score", np.nan) for r in results}
         ranking_df["Exit-Score"] = ranking_df["Ticker"].astype(str).map(exit_score_map)
         ranking_df["Exit-Aktion"] = ranking_df["Ticker"].astype(str).map(exit_action_map)
+        ranking_df["Leadership"] = ranking_df["Ticker"].astype(str).map(leadership_map)
+        ranking_df["Leadership-Status"] = ranking_df["Ticker"].astype(str).map(leadership_status_map)
+        ranking_df["Sektor-Stärke"] = ranking_df["Ticker"].astype(str).map(sector_strength_map)
+        ranking_df["Industrie-Stärke"] = ranking_df["Ticker"].astype(str).map(industry_strength_map)
+        ranking_df["RS-Benchmark-Score"] = ranking_df["Ticker"].astype(str).map(rs_benchmark_map)
+        ranking_df["RS-Beschleunigung"] = ranking_df["Ticker"].astype(str).map(rs_accel_map)
     results_map = {r["ticker"]: r for r in results}
     st.session_state.ranking_df = ranking_df
     st.session_state.ranking_results = results_map
@@ -5194,8 +5456,20 @@ else:
     if not ranking_df.empty and results_map:
         exit_score_map = {str(k): v.get("exit_score", np.nan) for k, v in results_map.items()}
         exit_action_map = {str(k): v.get("exit_action", "-") for k, v in results_map.items()}
+        leadership_map = {str(k): v.get("leadership_score", np.nan) for k, v in results_map.items()}
+        leadership_status_map = {str(k): v.get("leadership_status", "-") for k, v in results_map.items()}
+        sector_strength_map = {str(k): v.get("sector_strength_score", np.nan) for k, v in results_map.items()}
+        industry_strength_map = {str(k): v.get("industry_strength_score", np.nan) for k, v in results_map.items()}
+        rs_benchmark_map = {str(k): v.get("rs_benchmark_score", np.nan) for k, v in results_map.items()}
+        rs_accel_map = {str(k): v.get("rs_acceleration_score", np.nan) for k, v in results_map.items()}
         ranking_df["Exit-Score"] = ranking_df["Ticker"].astype(str).map(exit_score_map)
         ranking_df["Exit-Aktion"] = ranking_df["Ticker"].astype(str).map(exit_action_map)
+        ranking_df["Leadership"] = ranking_df["Ticker"].astype(str).map(leadership_map)
+        ranking_df["Leadership-Status"] = ranking_df["Ticker"].astype(str).map(leadership_status_map)
+        ranking_df["Sektor-Stärke"] = ranking_df["Ticker"].astype(str).map(sector_strength_map)
+        ranking_df["Industrie-Stärke"] = ranking_df["Ticker"].astype(str).map(industry_strength_map)
+        ranking_df["RS-Benchmark-Score"] = ranking_df["Ticker"].astype(str).map(rs_benchmark_map)
+        ranking_df["RS-Beschleunigung"] = ranking_df["Ticker"].astype(str).map(rs_accel_map)
 
 if analysis_mode_run == "Einzelanalyse":
     st.caption("Aktiver Modus: Einzelanalyse")
@@ -5307,6 +5581,7 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
     ranking_cols = [
         c for c in [
             "Ticker", "Name", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
+            "Leadership", "Leadership-Status", "Sektor-Stärke", "Industrie-Stärke",
             "Exit-Score", "Exit-Aktion",
             "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence",
             "Valides Setup", "Setup-Typ", "Watchlist-Priorität", "Handlung"
@@ -6066,6 +6341,34 @@ with t0:
     p1.metric("Unternehmen", name)
     p2.metric("Sektor", sector if sector else "-")
     p3.metric("Industrie", industry if industry else "-")
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Leadership & Marktbreite</div>
+            <div class="section-meta-line">Bewertet, ob die Aktie in einem starken Umfeld selbst als Leader auftritt oder eher nur mitläuft.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    l1, l2, l3, l4 = st.columns(4)
+    l1.metric("Leadership", f"{leadership_score}/100", leadership_status)
+    l2.metric("Sektor-Stärke", f"{fmt_num(sector_strength_score,0)}/100", sector_label)
+    l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_score,0)}/100", industry_label)
+    l4.metric("RS-Beschleunigung", f"{rs_acceleration_score}/100")
+
+    st.markdown(
+        f"""
+        <div class="section-card">
+            <div class="premium-title">Einordnung</div>
+            <div class="premium-value">Leadership-Status: {leadership_status}</div>
+            <div class="premium-sub">
+                Sektor wirkt {sector_trend_text}, Industrie wirkt {industry_trend_text}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("**Kurzfazit**")
     st.write(short_thesis)

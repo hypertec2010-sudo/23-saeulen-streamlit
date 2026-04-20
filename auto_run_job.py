@@ -2,18 +2,20 @@
 """
 Headless Auto-Run for Capital Hill Score Modell.
 
-Loads only imports + function/class definitions from app.py via AST,
-skipping all Streamlit UI execution and session-state dependent top-level code.
+Runs in GitHub Actions (or locally), loads due watchlists for the current Berlin slot,
+analyzes their tickers, sends Telegram alerts, and writes Auto_Run_Log rows.
 """
 
 import argparse
 import ast
+import json
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import streamlit as st
 
 
@@ -53,12 +55,8 @@ def patch_streamlit_secrets() -> None:
 
 def load_analysis_namespace(app_path: Path) -> dict:
     """
-    Load only safe code from app.py:
-    - imports
-    - function definitions
-    - class definitions
-
-    This avoids top-level Streamlit UI execution and session_state access.
+    Loads imports, assignments and function definitions from app.py,
+    but skips top-level UI execution.
     """
     source = app_path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(app_path))
@@ -67,15 +65,13 @@ def load_analysis_namespace(app_path: Path) -> dict:
     for node in tree.body:
         if isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             selected_nodes.append(node)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            selected_nodes.append(node)
 
     module = ast.Module(body=selected_nodes, type_ignores=[])
+    code = compile(module, filename=str(app_path), mode="exec")
     namespace: dict = {}
-    exec(compile(module, filename=str(app_path), mode="exec"), namespace, namespace)
-
-    if "analyze_stock" not in namespace:
-        available = sorted([k for k, v in namespace.items() if callable(v)])[:50]
-        raise RuntimeError(f"analyze_stock wurde in app.py nicht gefunden. Verfügbare Funktionen: {available}")
-
+    exec(code, namespace, namespace)
     return namespace
 
 
@@ -180,14 +176,43 @@ def main() -> int:
             except Exception as exc:
                 analyze_errors.append(f"{ticker}: {exc}")
 
-        ok, msg, sent_count = send_watchlist_alerts(results, wl_name, wl_type, wl_alert_mode) if results else (False, "Keine auswertbaren Ergebnisse", 0)
+        if results:
+            ok, msg, sent_count, alert_diag = send_watchlist_alerts(
+                results,
+                wl_name,
+                wl_type,
+                wl_alert_mode,
+                return_diagnostics=True,
+            )
+        else:
+            ok, msg, sent_count, alert_diag = (
+                False,
+                "Keine auswertbaren Ergebnisse",
+                0,
+                {
+                    "matched": 0,
+                    "suppressed": 0,
+                    "info_sent": 0,
+                    "sent": 0,
+                    "errors": [],
+                    "reason": "Keine auswertbaren Ergebnisse",
+                },
+            )
+
         total_sent += int(sent_count or 0)
 
         full_msg = msg
         if analyze_errors:
             full_msg += " | Analysefehler: " + " ; ".join(analyze_errors[:2])
 
-        print(f"[{wl_name}] {full_msg}")
+        diag_summary = (
+            f"matched={int(alert_diag.get('matched', 0))}, "
+            f"suppressed={int(alert_diag.get('suppressed', 0))}, "
+            f"info_sent={int(alert_diag.get('info_sent', 0))}, "
+            f"sent={int(alert_diag.get('sent', 0))}, "
+            f"reason={alert_diag.get('reason', '-')}"
+        )
+        print(f"[{wl_name}] {full_msg} | {diag_summary}")
 
         log_rows.append({
             "Run_Timestamp": run_ts,
@@ -199,8 +224,12 @@ def main() -> int:
             "Check_Frequency": wl_freq,
             "Ticker_Count": len(tickers),
             "Analyzed_Count": len(results),
+            "Matched_Count": int(alert_diag.get("matched", 0)),
+            "Suppressed_Count": int(alert_diag.get("suppressed", 0)),
+            "Info_Sent_Count": int(alert_diag.get("info_sent", 0)),
             "Sent_Count": int(sent_count or 0),
             "Status": "OK" if ok else "Info",
+            "Reason": str(alert_diag.get("reason", "-")),
             "Message": full_msg,
         })
 

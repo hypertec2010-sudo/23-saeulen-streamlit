@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C"
+APP_VERSION = "v12.6C.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7574,7 +7574,7 @@ with why_col:
 with risk_col:
     render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
 
-if analysis_view_mode == "Expertenmodus":
+if analysis_view_mode in ["Profi", "Expertenmodus"]:
     with st.expander("Setup & Timing", expanded=False):
         render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
     with st.expander("Volumen & Akkumulation", expanded=False):
@@ -8296,7 +8296,7 @@ elif analysis_view_mode == "Profi":
         """
         <div class="section-head">
             <div class="section-title">Profi-Diagnose aktiv</div>
-            <div class="section-meta-line">Die strukturierte Diagnose oben bleibt sichtbar. Die alten Detailtabs und Rohansichten erscheinen nur im Expertenmodus, damit nichts doppelt verwirrt.</div>
+            <div class="section-meta-line">Die strukturierte Diagnose oben ist aktiv. Klassische Detailtabs, Rohansichten und zusätzliche Tiefenblöcke erscheinen nur im Expertenmodus, damit nichts doppelt verwirrt.</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -8314,121 +8314,122 @@ else:
     )
 
 
-# ---------- Horizon lamps ----------
-st.divider()
-with st.expander("Zeithorizonte anzeigen", expanded=False):
-    st.subheader("5 Zeithorizont-Ampeln")
-    st.markdown('<div class="panel-caption">Verdichtete Eignung je Anlagehorizont. Die Werte sind enger an Trading-Case, Investment-Case, Marktregime, Red Flags und bei Positionen auch an die Exit-Sicht gekoppelt.</div>', unsafe_allow_html=True)
-    cols = st.columns(5)
-    for col, (lab, scv) in zip(cols, hmap.items()):
-        tone, status_word, status_text = horizon_status_meta(scv)
-        icon = horizon_icon(scv)
-        col.markdown(
-            f"""
-            <div class="horizon-card {tone}">
-                <div class="horizon-top">
-                    <div class="horizon-label">{lab}</div>
-                    <div class="horizon-icon">{icon}</div>
-                </div>
-                <div class="horizon-value">{status_word}</div>
-                <div class="horizon-score">{scv}/100</div>
-                <div class="horizon-sub">{status_text}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-# ---------- Recommendation + Why block ----------
-st.divider()
-with st.expander("Erweiterte Entscheidungsansicht", expanded=False):
-    st.subheader("Handlungsempfehlung")
-    c1, c2, c3, c4, c5 = st.columns(5)
-
-    with c1:
-        st.markdown(
-            f"""
-            <div class="reco-card context">
-                <div>
-                    <div class="reco-top">
-                        <div class="reco-label">Analysekontext</div>
-                        <div class="reco-icon">🧭</div>
+if analysis_view_mode == "Expertenmodus":
+    # ---------- Horizon lamps ----------
+    st.divider()
+    with st.expander("Zeithorizonte anzeigen", expanded=False):
+        st.subheader("5 Zeithorizont-Ampeln")
+        st.markdown('<div class="panel-caption">Verdichtete Eignung je Anlagehorizont. Die Werte sind enger an Trading-Case, Investment-Case, Marktregime, Red Flags und bei Positionen auch an die Exit-Sicht gekoppelt.</div>', unsafe_allow_html=True)
+        cols = st.columns(5)
+        for col, (lab, scv) in zip(cols, hmap.items()):
+            tone, status_word, status_text = horizon_status_meta(scv)
+            icon = horizon_icon(scv)
+            col.markdown(
+                f"""
+                <div class="horizon-card {tone}">
+                    <div class="horizon-top">
+                        <div class="horizon-label">{lab}</div>
+                        <div class="horizon-icon">{icon}</div>
                     </div>
-                    <div class="reco-value">{display_mode_label(mode_label)}</div>
+                    <div class="horizon-value">{status_word}</div>
+                    <div class="horizon-score">{scv}/100</div>
+                    <div class="horizon-sub">{status_text}</div>
                 </div>
-                <div class="reco-chip">Aktueller Rahmen</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
 
-    with c2:
-        main_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
-        main_chip = "Positions-Aktion" if position_mode else "Zentrale Aussage"
-        st.markdown(
-            f"""
-            <div class="reco-card main">
-                <div>
-                    <div class="reco-top">
-                        <div class="reco-label">Haupteinschätzung</div>
-                        <div class="reco-icon">🎯</div>
+    # ---------- Recommendation + Why block ----------
+    st.divider()
+    with st.expander("Erweiterte Entscheidungsansicht", expanded=False):
+        st.subheader("Handlungsempfehlung")
+        c1, c2, c3, c4, c5 = st.columns(5)
+
+        with c1:
+            st.markdown(
+                f"""
+                <div class="reco-card context">
+                    <div>
+                        <div class="reco-top">
+                            <div class="reco-label">Analysekontext</div>
+                            <div class="reco-icon">🧭</div>
+                        </div>
+                        <div class="reco-value">{display_mode_label(mode_label)}</div>
                     </div>
-                    <div class="reco-value">{main_label}</div>
+                    <div class="reco-chip">Aktueller Rahmen</div>
                 </div>
-                <div class="reco-chip">{main_chip}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
 
-    with c3:
-        st.markdown(
-            f"""
-            <div class="reco-card conviction">
-                <div>
-                    <div class="reco-top">
-                        <div class="reco-label">Überzeugungsgrad</div>
-                        <div class="reco-icon">📌</div>
+        with c2:
+            main_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
+            main_chip = "Positions-Aktion" if position_mode else "Zentrale Aussage"
+            st.markdown(
+                f"""
+                <div class="reco-card main">
+                    <div>
+                        <div class="reco-top">
+                            <div class="reco-label">Haupteinschätzung</div>
+                            <div class="reco-icon">🎯</div>
+                        </div>
+                        <div class="reco-value">{main_label}</div>
                     </div>
-                    <div class="reco-value">{display_conv_label(result.get("conv", "-"))}</div>
+                    <div class="reco-chip">{main_chip}</div>
                 </div>
-                <div class="reco-chip">Vertrauen ins Setup</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
 
-    with c4:
-        st.markdown(
-            f"""
-            <div class="reco-card signal">
-                <div>
-                    <div class="reco-top">
-                        <div class="reco-label">Kurzfristsignal</div>
-                        <div class="reco-icon">⚡</div>
+        with c3:
+            st.markdown(
+                f"""
+                <div class="reco-card conviction">
+                    <div>
+                        <div class="reco-top">
+                            <div class="reco-label">Überzeugungsgrad</div>
+                            <div class="reco-icon">📌</div>
+                        </div>
+                        <div class="reco-value">{display_conv_label(result.get("conv", "-"))}</div>
                     </div>
-                    <div class="reco-value">{display_stb_label(stb_signal)}</div>
+                    <div class="reco-chip">Vertrauen ins Setup</div>
                 </div>
-                <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
 
-    with c5:
-        st.markdown(
-            f"""
-            <div class="reco-card market">
-                <div>
-                    <div class="reco-top">
-                        <div class="reco-label">Marktumfeld</div>
-                        <div class="reco-icon">🌍</div>
+        with c4:
+            st.markdown(
+                f"""
+                <div class="reco-card signal">
+                    <div>
+                        <div class="reco-top">
+                            <div class="reco-label">Kurzfristsignal</div>
+                            <div class="reco-icon">⚡</div>
+                        </div>
+                        <div class="reco-value">{display_stb_label(stb_signal)}</div>
                     </div>
-                    <div class="reco-value">{market_regime_label(market_info["regime"])}</div>
+                    <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
                 </div>
-                <div class="reco-delta">{market_info["ampel"]}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
 
-    st.caption("Diese erweiterte Sicht zeigt die zusätzlichen Diagnose- und Einordnungsbausteine der Entscheidung.")
+        with c5:
+            st.markdown(
+                f"""
+                <div class="reco-card market">
+                    <div>
+                        <div class="reco-top">
+                            <div class="reco-label">Marktumfeld</div>
+                            <div class="reco-icon">🌍</div>
+                        </div>
+                        <div class="reco-value">{market_regime_label(market_info["regime"])}</div>
+                    </div>
+                    <div class="reco-delta">{market_info["ampel"]}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        st.caption("Diese erweiterte Sicht zeigt die zusätzlichen Diagnose- und Einordnungsbausteine der Entscheidung.")

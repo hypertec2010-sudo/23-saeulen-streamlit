@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.6"
+APP_VERSION = "v12.6C.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7876,9 +7876,8 @@ if is_pro_mode or is_expert_mode:
             l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
             l4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
 
-        with st.expander("Einordnung bis Kurzfazit anzeigen", expanded=False):
-                st.markdown(
-                    f"""
+        st.markdown(
+                f"""
                     <div class="section-card">
                         <div class="premium-title">Einordnung</div>
                         <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
@@ -7890,6 +7889,7 @@ if is_pro_mode or is_expert_mode:
                     unsafe_allow_html=True,
                 )
 
+        with st.expander("Details zwischen Einordnung und Kurzfazit anzeigen", expanded=False):
                 st.markdown(
                     """
                     <div class="section-head">

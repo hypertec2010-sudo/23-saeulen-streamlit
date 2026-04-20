@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.12"
+APP_VERSION = "v12.6C.13"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6990,7 +6990,10 @@ try:
     result = results_map[selected_display_ticker]
 except Exception:
     result = None
-single_export_df = build_export_df([result])
+try:
+    single_export_df = build_export_df([result]) if result is not None else pd.DataFrame()
+except Exception:
+    single_export_df = pd.DataFrame()
 
 sheet_log_triggered = False
 try:

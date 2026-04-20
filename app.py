@@ -43,7 +43,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v11.4A.8"
+APP_VERSION = "v12"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1360,27 +1360,69 @@ def horizon_icon(score):
 
 
 
+
 SECTOR_ETF_MAP = {
-    "Technology": "XLK",
-    "Financial Services": "XLF",
-    "Financial": "XLF",
-    "Healthcare": "XLV",
-    "Consumer Cyclical": "XLY",
-    "Consumer Defensive": "XLP",
-    "Industrials": "XLI",
-    "Energy": "XLE",
-    "Basic Materials": "XLB",
-    "Materials": "XLB",
-    "Real Estate": "XLRE",
-    "Utilities": "XLU",
-    "Communication Services": "XLC",
+    "technology": "XLK",
+    "information technology": "XLK",
+    "financial services": "XLF",
+    "financial": "XLF",
+    "financials": "XLF",
+    "healthcare": "XLV",
+    "health care": "XLV",
+    "consumer cyclical": "XLY",
+    "consumer discretionary": "XLY",
+    "consumer defensive": "XLP",
+    "consumer staples": "XLP",
+    "industrials": "XLI",
+    "industrial": "XLI",
+    "energy": "XLE",
+    "basic materials": "XLB",
+    "materials": "XLB",
+    "real estate": "XLRE",
+    "utilities": "XLU",
+    "communication services": "XLC",
+    "communication": "XLC",
 }
 
 
-def get_sector_etf_symbol(sector):
+def normalize_sector_name(sector):
     if not sector:
+        return ""
+    s = str(sector).strip().lower()
+    s = s.replace("&", "and")
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def get_sector_etf_symbol(sector):
+    s = normalize_sector_name(sector)
+    if not s:
         return None
-    return SECTOR_ETF_MAP.get(str(sector).strip())
+    if s in SECTOR_ETF_MAP:
+        return SECTOR_ETF_MAP[s]
+    if "technology" in s:
+        return "XLK"
+    if "financial" in s:
+        return "XLF"
+    if "health" in s:
+        return "XLV"
+    if "consumer discretionary" in s or "cyclical" in s:
+        return "XLY"
+    if "consumer staples" in s or "defensive" in s:
+        return "XLP"
+    if "industrial" in s:
+        return "XLI"
+    if "energy" in s:
+        return "XLE"
+    if "material" in s:
+        return "XLB"
+    if "real estate" in s:
+        return "XLRE"
+    if "utilit" in s:
+        return "XLU"
+    if "communication" in s:
+        return "XLC"
+    return None
 
 
 @st.cache_data(show_spinner=False, ttl=60 * 60)
@@ -1418,7 +1460,6 @@ def calc_sector_strength_score(sector_ctx):
     sector_ma50 = sector_ctx.get("ma50", np.nan)
     sector_ma200 = sector_ctx.get("ma200", np.nan)
     sector_rsi = sector_ctx.get("rsi", np.nan)
-
     if pd.notna(sector_ret21):
         if sector_ret21 > 5:
             score += 25
@@ -1544,6 +1585,294 @@ def strength_text(score):
     if score >= 45:
         return "gemischt"
     return "schwach"
+
+
+def score_or_unavailable_text(score):
+    if pd.isna(score):
+        return "nicht verfügbar"
+    return f"{int(round(float(score)))}/100"
+
+
+def calc_slope_pct(series, lookback=20):
+    try:
+        series = series.dropna()
+        if series is None or len(series) < lookback + 1:
+            return np.nan
+        latest = float(series.iloc[-1])
+        prev = float(series.iloc[-lookback])
+        if prev == 0:
+            return np.nan
+        return ((latest / prev) - 1) * 100
+    except Exception:
+        return np.nan
+
+
+def calc_higher_lows_score(close, low):
+    try:
+        if len(close) < 80 or len(low) < 80:
+            return np.nan
+        recent_low_1 = float(low.iloc[-20:].min())
+        recent_low_2 = float(low.iloc[-40:-20].min())
+        recent_low_3 = float(low.iloc[-60:-40].min())
+        score = 50
+        if recent_low_1 > recent_low_2:
+            score += 20
+        else:
+            score -= 12
+        if recent_low_2 > recent_low_3:
+            score += 20
+        else:
+            score -= 12
+        if float(close.iloc[-1]) > recent_low_1:
+            score += 10
+        return round(clamp(score))
+    except Exception:
+        return np.nan
+
+
+def calc_trend_quality_score(price, ma20, ma50, ma200, ma20_slope, ma50_slope, ma200_slope, higher_lows_score):
+    score = 0
+    if pd.notna(price) and pd.notna(ma20) and price > ma20:
+        score += 10
+    if pd.notna(price) and pd.notna(ma50) and price > ma50:
+        score += 15
+    if pd.notna(price) and pd.notna(ma200) and price > ma200:
+        score += 15
+    if pd.notna(ma20) and pd.notna(ma50) and ma20 > ma50:
+        score += 12
+    if pd.notna(ma50) and pd.notna(ma200) and ma50 > ma200:
+        score += 12
+    if pd.notna(ma20_slope) and ma20_slope > 0:
+        score += 10
+    if pd.notna(ma50_slope) and ma50_slope > 0:
+        score += 10
+    if pd.notna(ma200_slope) and ma200_slope > 0:
+        score += 6
+    if pd.notna(higher_lows_score):
+        if higher_lows_score >= 70:
+            score += 10
+        elif higher_lows_score >= 55:
+            score += 6
+    if pd.notna(price) and pd.notna(ma20):
+        dist_to_ma20 = abs((price / ma20 - 1) * 100)
+        if dist_to_ma20 < 8:
+            score += 5
+    if pd.notna(price) and pd.notna(ma50):
+        dist_to_ma50 = abs((price / ma50 - 1) * 100)
+        if dist_to_ma50 < 15:
+            score += 5
+    return round(clamp(score))
+
+
+def calc_base_length_days(close, ma20):
+    try:
+        if len(close) < 80 or pd.isna(ma20):
+            return np.nan
+        recent = close.tail(60)
+        recent_max = float(recent.max())
+        recent_min = float(recent.min())
+        if recent_min <= 0:
+            return np.nan
+        range_pct = ((recent_max / recent_min) - 1) * 100
+        if range_pct <= 18:
+            return 60
+        if range_pct <= 25:
+            return 40
+        if range_pct <= 35:
+            return 20
+        return 10
+    except Exception:
+        return np.nan
+
+
+def calc_correction_depth_pct(close):
+    try:
+        if len(close) < 80:
+            return np.nan
+        recent = close.tail(60)
+        peak = float(recent.max())
+        trough = float(recent.min())
+        if peak <= 0:
+            return np.nan
+        return ((peak - trough) / peak) * 100
+    except Exception:
+        return np.nan
+
+
+def calc_range_tightness_score(close):
+    try:
+        if len(close) < 40:
+            return np.nan
+        recent = close.tail(20)
+        rmax = float(recent.max())
+        rmin = float(recent.min())
+        if rmin <= 0:
+            return np.nan
+        range_pct = ((rmax / rmin) - 1) * 100
+        if range_pct <= 4:
+            return 90
+        if range_pct <= 7:
+            return 75
+        if range_pct <= 10:
+            return 60
+        if range_pct <= 15:
+            return 45
+        return 25
+    except Exception:
+        return np.nan
+
+
+def calc_volatility_contraction_score(atr_pct_series, bb_width_s):
+    try:
+        score = 50
+        if atr_pct_series is not None and len(atr_pct_series.dropna()) >= 40:
+            atr_recent = float(atr_pct_series.tail(10).mean())
+            atr_past = float(atr_pct_series.iloc[-40:-20].mean())
+            if pd.notna(atr_recent) and pd.notna(atr_past):
+                if atr_recent < atr_past * 0.75:
+                    score += 25
+                elif atr_recent < atr_past * 0.90:
+                    score += 12
+                elif atr_recent > atr_past * 1.15:
+                    score -= 15
+        if bb_width_s is not None and len(bb_width_s.dropna()) >= 40:
+            bb_recent = float(bb_width_s.tail(10).mean())
+            bb_past = float(bb_width_s.iloc[-40:-20].mean())
+            if pd.notna(bb_recent) and pd.notna(bb_past):
+                if bb_recent < bb_past * 0.75:
+                    score += 25
+                elif bb_recent < bb_past * 0.90:
+                    score += 12
+                elif bb_recent > bb_past * 1.15:
+                    score -= 15
+        return round(clamp(score))
+    except Exception:
+        return np.nan
+
+
+def calc_pullback_quality_score(price, ma20, ma50, rsi, atr_pct, ret20):
+    score = 50
+    if pd.notna(price) and pd.notna(ma20):
+        dist20 = abs((price / ma20 - 1) * 100)
+        if dist20 <= 4:
+            score += 18
+        elif dist20 <= 8:
+            score += 10
+    if pd.notna(price) and pd.notna(ma50):
+        dist50 = abs((price / ma50 - 1) * 100)
+        if dist50 <= 6:
+            score += 14
+        elif dist50 <= 12:
+            score += 7
+    if pd.notna(rsi):
+        if 45 <= rsi <= 60:
+            score += 10
+        elif 38 <= rsi < 45:
+            score += 6
+        elif rsi < 30:
+            score -= 10
+    if pd.notna(atr_pct):
+        if atr_pct <= 4:
+            score += 10
+        elif atr_pct > 8:
+            score -= 10
+    if pd.notna(ret20):
+        if -8 <= ret20 <= 8:
+            score += 8
+        elif ret20 < -15:
+            score -= 12
+    return round(clamp(score))
+
+
+def calc_base_quality_score(base_length_days, correction_depth_pct, range_tightness_score, volatility_contraction_score, pullback_quality_score):
+    score = 0
+    if pd.notna(base_length_days):
+        if 15 <= base_length_days <= 60:
+            score += 20
+        elif 8 <= base_length_days < 15:
+            score += 10
+    if pd.notna(correction_depth_pct):
+        if 8 <= correction_depth_pct <= 22:
+            score += 20
+        elif 5 <= correction_depth_pct < 8 or 22 < correction_depth_pct <= 30:
+            score += 10
+    if pd.notna(range_tightness_score):
+        if range_tightness_score >= 70:
+            score += 20
+        elif range_tightness_score >= 55:
+            score += 12
+    if pd.notna(volatility_contraction_score):
+        if volatility_contraction_score >= 65:
+            score += 20
+        elif volatility_contraction_score >= 50:
+            score += 10
+    if pd.notna(pullback_quality_score):
+        if pullback_quality_score >= 65:
+            score += 20
+        elif pullback_quality_score >= 50:
+            score += 10
+    return round(clamp(score))
+
+
+def calc_volume_quality_proxy(vol_ratio, obv_trend):
+    score = 50
+    if pd.notna(vol_ratio):
+        if 0.9 <= vol_ratio <= 1.4:
+            score += 15
+        elif vol_ratio > 1.4:
+            score += 10
+        elif vol_ratio < 0.7:
+            score -= 10
+    if str(obv_trend).strip().lower() == "steigend":
+        score += 15
+    elif str(obv_trend).strip().lower() == "fallend":
+        score -= 10
+    return round(clamp(score))
+
+
+def calc_setup_type_quality_score(setup_type, base_quality_score, volume_quality_proxy, rs_score, trend_quality_score, setup_confidence, pullback_quality_score):
+    setup_type = str(setup_type or "").strip()
+    if setup_type in ["Breakout", "Range-Breakout", "Breakout-Retest"]:
+        score = (
+            base_quality_score * 0.35
+            + volume_quality_proxy * 0.20
+            + rs_score * 0.20
+            + trend_quality_score * 0.15
+            + setup_confidence * 0.10
+        )
+    elif setup_type in ["Pullback an MA20", "Pullback an MA50", "Trendfolge"]:
+        score = (
+            trend_quality_score * 0.35
+            + pullback_quality_score * 0.25
+            + rs_score * 0.15
+            + setup_confidence * 0.15
+            + base_quality_score * 0.10
+        )
+    elif setup_type == "Rebound":
+        score = (
+            pullback_quality_score * 0.30
+            + trend_quality_score * 0.20
+            + setup_confidence * 0.20
+            + rs_score * 0.15
+            + base_quality_score * 0.15
+        )
+    else:
+        score = (
+            setup_confidence * 0.50
+            + trend_quality_score * 0.25
+            + base_quality_score * 0.25
+        )
+    return round(clamp(score))
+
+
+def calc_setup_priority_score(setup_type_quality_score, leadership_score, trend_quality_score, base_quality_score, trading_case_score):
+    return round(clamp(
+        setup_type_quality_score * 0.45
+        + leadership_score * 0.20
+        + trend_quality_score * 0.15
+        + base_quality_score * 0.10
+        + trading_case_score * 0.10
+    ))
 
 
 def render_score_card(label, value, subtitle="", variant="company", tooltip=""):
@@ -2872,6 +3201,29 @@ def analyze_stock(
     macd_hist_prev = safe_last(macd_hist_series.shift(1), 0)
     macd_bull_cross = macd_v > signal_v and macd_hist_current > 0 and macd_hist_prev < 0
 
+    # ---------- Trendqualität / Base ----------
+    ma20_slope = calc_slope_pct(ma20_series, lookback=20)
+    ma50_slope = calc_slope_pct(ma50_series, lookback=20)
+    ma200_slope = calc_slope_pct(ma200_series, lookback=20)
+    higher_lows_score = calc_higher_lows_score(close, low)
+    trend_quality_score = calc_trend_quality_score(
+        price, ma20, ma50, ma200, ma20_slope, ma50_slope, ma200_slope, higher_lows_score
+    )
+    base_length_days = calc_base_length_days(close, ma20)
+    correction_depth_pct = calc_correction_depth_pct(close)
+    range_tightness_score = calc_range_tightness_score(close)
+    atr_pct_series = (tr.rolling(14).mean() / close) * 100
+    volatility_contraction_score = calc_volatility_contraction_score(atr_pct_series, bb_width_s)
+    pullback_quality_score = calc_pullback_quality_score(price, ma20, ma50, rsi, atr_pct, ret20)
+    base_quality_score = calc_base_quality_score(
+        base_length_days,
+        correction_depth_pct,
+        range_tightness_score,
+        volatility_contraction_score,
+        pullback_quality_score
+    )
+    volume_quality_proxy = calc_volume_quality_proxy(vol_ratio, obv_trend)
+
     # ---------- Fundamentals ----------
     target = info.get("targetMeanPrice", np.nan)
     upside = ((target / price - 1) * 100) if pd.notna(target) and price else np.nan
@@ -3596,6 +3948,7 @@ def analyze_stock(
     sector_ctx = load_sector_context(sector_etf_symbol) if sector_etf_symbol else None
 
     sector_strength_score = calc_sector_strength_score(sector_ctx)
+    sector_strength_available = pd.notna(sector_strength_score)
     rs_benchmark_score = calc_rs_benchmark_score(rs_vs_benchmark_21, rs_vs_benchmark_63, rs_vs_benchmark_126)
     rs_acceleration_score = calc_rs_acceleration_score(rs_vs_benchmark_21, rs_vs_benchmark_63, rs_vs_benchmark_126)
     industry_strength_score = calc_industry_strength_score(
@@ -3614,10 +3967,29 @@ def analyze_stock(
     sector_trend_text = strength_text(sector_strength_score)
     industry_trend_text = strength_text(industry_strength_score)
 
-    trading_case_score = round(clamp(trading_case_score * 0.88 + leadership_score * 0.12))
+    setup_type_quality_score = calc_setup_type_quality_score(
+        setup_type,
+        base_quality_score,
+        volume_quality_proxy,
+        rs_score if pd.notna(rs_score) else 50,
+        trend_quality_score,
+        setup_confidence if pd.notna(setup_confidence) else 50,
+        pullback_quality_score
+    )
+    setup_priority_score = calc_setup_priority_score(
+        setup_type_quality_score,
+        leadership_score,
+        trend_quality_score,
+        base_quality_score,
+        trading_case_score
+    )
+
+    trading_case_score = round(clamp(trading_case_score * 0.78 + trend_quality_score * 0.08 + base_quality_score * 0.07 + setup_type_quality_score * 0.07))
     investment_case_score = round(clamp(investment_case_score * 0.90 + leadership_score * 0.10))
+    tradeability_score = round(clamp(tradeability_score * 0.82 + trend_quality_score * 0.08 + base_quality_score * 0.05 + setup_priority_score * 0.05))
     trading_case_text = trading_case_label(trading_case_score)
     investment_case_text = investment_case_label(investment_case_score)
+    tradeability_text = tradeability_label(tradeability_score)
 
     position_mode = buy_in_override > 0
 
@@ -4398,6 +4770,21 @@ def analyze_stock(
         "industry_label": industry_label,
         "sector_trend_text": sector_trend_text,
         "industry_trend_text": industry_trend_text,
+        "trend_quality_score": trend_quality_score,
+        "ma20_slope": ma20_slope,
+        "ma50_slope": ma50_slope,
+        "ma200_slope": ma200_slope,
+        "higher_lows_score": higher_lows_score,
+        "base_quality_score": base_quality_score,
+        "base_length_days": base_length_days,
+        "correction_depth_pct": correction_depth_pct,
+        "range_tightness_score": range_tightness_score,
+        "volatility_contraction_score": volatility_contraction_score,
+        "pullback_quality_score": pullback_quality_score,
+        "volume_quality_proxy": volume_quality_proxy,
+        "setup_type_quality_score": setup_type_quality_score,
+        "setup_priority_score": setup_priority_score,
+        "sector_strength_available": sector_strength_available,
         "sector_etf_symbol": sector_etf_symbol if sector_etf_symbol else "-",
         "next_trigger": next_trigger,
         "trigger_reason": trigger_reason,
@@ -5395,6 +5782,10 @@ def style_ranking_table(df):
         "Industrie-Stärke",
         "RS-Benchmark-Score",
         "RS-Beschleunigung",
+        "Trendqualität",
+        "Base-Qualität",
+        "Setup-Typ-Qualität",
+        "Setup-Priorität",
     ] if c in df.columns]
 
     for col in score_cols:
@@ -5558,12 +5949,28 @@ if st.session_state.get("analysis_requested", False):
         rs_accel_map = {str(r.get("ticker", "")): r.get("rs_acceleration_score", np.nan) for r in results}
         ranking_df["Exit-Score"] = ranking_df["Ticker"].astype(str).map(exit_score_map)
         ranking_df["Exit-Aktion"] = ranking_df["Ticker"].astype(str).map(exit_action_map)
+        trend_quality_map = {str(r.get("ticker", "")): r.get("trend_quality_score", np.nan) for r in results}
+        base_quality_map = {str(r.get("ticker", "")): r.get("base_quality_score", np.nan) for r in results}
+        setup_type_quality_map = {str(r.get("ticker", "")): r.get("setup_type_quality_score", np.nan) for r in results}
+        setup_priority_map = {str(r.get("ticker", "")): r.get("setup_priority_score", np.nan) for r in results}
+        trend_quality_map = {str(k): v.get("trend_quality_score", np.nan) for k, v in results_map.items()}
+        base_quality_map = {str(k): v.get("base_quality_score", np.nan) for k, v in results_map.items()}
+        setup_type_quality_map = {str(k): v.get("setup_type_quality_score", np.nan) for k, v in results_map.items()}
+        setup_priority_map = {str(k): v.get("setup_priority_score", np.nan) for k, v in results_map.items()}
         ranking_df["Leadership"] = ranking_df["Ticker"].astype(str).map(leadership_map)
         ranking_df["Leadership-Status"] = ranking_df["Ticker"].astype(str).map(leadership_status_map)
         ranking_df["Sektor-Stärke"] = ranking_df["Ticker"].astype(str).map(sector_strength_map)
         ranking_df["Industrie-Stärke"] = ranking_df["Ticker"].astype(str).map(industry_strength_map)
         ranking_df["RS-Benchmark-Score"] = ranking_df["Ticker"].astype(str).map(rs_benchmark_map)
         ranking_df["RS-Beschleunigung"] = ranking_df["Ticker"].astype(str).map(rs_accel_map)
+        ranking_df["Trendqualität"] = ranking_df["Ticker"].astype(str).map(trend_quality_map)
+        ranking_df["Base-Qualität"] = ranking_df["Ticker"].astype(str).map(base_quality_map)
+        ranking_df["Setup-Typ-Qualität"] = ranking_df["Ticker"].astype(str).map(setup_type_quality_map)
+        ranking_df["Setup-Priorität"] = ranking_df["Ticker"].astype(str).map(setup_priority_map)
+        ranking_df["Trendqualität"] = ranking_df["Ticker"].astype(str).map(trend_quality_map)
+        ranking_df["Base-Qualität"] = ranking_df["Ticker"].astype(str).map(base_quality_map)
+        ranking_df["Setup-Typ-Qualität"] = ranking_df["Ticker"].astype(str).map(setup_type_quality_map)
+        ranking_df["Setup-Priorität"] = ranking_df["Ticker"].astype(str).map(setup_priority_map)
     results_map = {r["ticker"]: r for r in results}
     st.session_state.ranking_df = ranking_df
     st.session_state.ranking_results = results_map
@@ -5703,7 +6110,8 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
     ranking_cols = [
         c for c in [
             "Ticker", "Name", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
-            "Leadership", "Leadership-Status", "Sektor-Stärke", "Industrie-Stärke",
+            "Leadership", "Leadership-Status", "Sektor-Stärke",
+            "Trendqualität", "Base-Qualität", "Setup-Priorität",
             "Exit-Score", "Exit-Aktion",
             "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence",
             "Valides Setup", "Setup-Typ", "Watchlist-Priorität", "Handlung"
@@ -6186,6 +6594,18 @@ sector_label_display = result.get("sector_label", sector if 'sector' in locals()
 industry_label_display = result.get("industry_label", industry if 'industry' in locals() else "-")
 sector_trend_text_display = result.get("sector_trend_text", "nicht belastbar")
 industry_trend_text_display = result.get("industry_trend_text", "nicht belastbar")
+sector_strength_text_display = score_or_unavailable_text(sector_strength_display)
+sector_etf_display = result.get("sector_etf_symbol", "-")
+sector_delta_display = f"{sector_label_display} | ETF: {sector_etf_display}" if sector_etf_display not in ["", "-", None] else sector_label_display
+trend_quality_display = result.get("trend_quality_score", np.nan)
+base_quality_display = result.get("base_quality_score", np.nan)
+setup_type_quality_display = result.get("setup_type_quality_score", np.nan)
+setup_priority_display = result.get("setup_priority_score", np.nan)
+base_length_display = result.get("base_length_days", np.nan)
+correction_depth_display = result.get("correction_depth_pct", np.nan)
+range_tightness_display = result.get("range_tightness_score", np.nan)
+volatility_contraction_display = result.get("volatility_contraction_score", np.nan)
+pullback_quality_display = result.get("pullback_quality_score", np.nan)
 
 if str(exit_action_display).strip().lower() == "halten":
     exit_action_sub_display = "Kein akuter Verkaufsdruck"
@@ -6501,7 +6921,7 @@ with t0:
     )
     l1, l2, l3, l4 = st.columns(4)
     l1.metric("Leadership", f"{fmt_num(leadership_score_display,0)}/100", leadership_status_display)
-    l2.metric("Sektor-Stärke", f"{fmt_num(sector_strength_display,0)}/100", sector_label_display)
+    l2.metric("Sektor-Stärke", sector_strength_text_display, sector_delta_display)
     l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
     l4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
 
@@ -6517,6 +6937,28 @@ with t0:
         """,
         unsafe_allow_html=True,
     )
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Setup-Qualität & Trendstruktur</div>
+            <div class="section-meta-line">Bewertet, wie sauber Trend, Base und konkreter Setup-Typ wirklich aufgebaut sind.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric("Trendqualität", f"{fmt_num(trend_quality_display,0)}/100")
+    q2.metric("Base-Qualität", f"{fmt_num(base_quality_display,0)}/100")
+    q3.metric("Setup-Typ-Qualität", f"{fmt_num(setup_type_quality_display,0)}/100", setup_type)
+    q4.metric("Setup-Priorität", f"{fmt_num(setup_priority_display,0)}/100")
+
+    d1, d2, d3, d4, d5 = st.columns(5)
+    d1.metric("Base-Länge", fmt_num(base_length_display, 0))
+    d2.metric("Korrekturtiefe %", fmt_num(correction_depth_display, 1, "%"))
+    d3.metric("Range-Tightness", f"{fmt_num(range_tightness_display,0)}/100")
+    d4.metric("Volatility Contraction", f"{fmt_num(volatility_contraction_display,0)}/100")
+    d5.metric("Pullback-Qualität", f"{fmt_num(pullback_quality_display,0)}/100")
 
     st.markdown("**Kurzfazit**")
     st.write(short_thesis)

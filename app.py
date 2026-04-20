@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.1"
+APP_VERSION = "v12.6C.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7496,6 +7496,10 @@ analysis_view_mode = st.radio(
     key="analysis_view_mode_126a"
 )
 
+is_simple_mode = analysis_view_mode == "Einfach"
+is_pro_mode = analysis_view_mode == "Profi"
+is_expert_mode = analysis_view_mode == "Expertenmodus"
+
 driver_summary = build_driver_summary(result)
 diag_items_126a = build_diagnostic_impacts(result)
 diag_sections_126a = {}
@@ -7516,35 +7520,36 @@ elif str(exit_action_display).strip().lower() == "verkaufen":
 else:
     exit_action_sub_display = "Exit-Einordnung der aktuellen Lage"
 
-st.markdown(
-    f"""
-    <div class="exec-shell">
-        <div class="exec-top">
-            <div>
-                <div class="exec-kicker">Capital Hill Executive Summary</div>
-                <div class="exec-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
-                <div class="exec-sub">{shorten_text(short_thesis, 210)}</div>
-                <div class="exec-meta">
-                    <div class="status-chip {action_chip_class}">⚡ Handlung: {main_action_label}</div>
-                    <div class="status-chip {entry_chip_class}">📈 Einstieg: {trading_case_score}/100</div>
-                    <div class="status-chip {investment_chip_class}">🏛️ Investment: {investment_case_score}/100</div>
-                    <div class="status-chip {priority_chip_class}">📌 Priorität: {watchlist_priority}</div>
-                    <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
-                    <div class="status-chip purple">🧩 Setup: {setup_type}</div>
-                    <div class="status-chip blue">⚖️ CRV: {ui_safe_metric_text(crv_value,1,":1")}</div>
-                    <div class="status-chip {exit_chip_class}">🚪 Exit: {exit_action_display}</div>
+if is_expert_mode:
+    st.markdown(
+        f"""
+        <div class="exec-shell">
+            <div class="exec-top">
+                <div>
+                    <div class="exec-kicker">Capital Hill Executive Summary</div>
+                    <div class="exec-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
+                    <div class="exec-sub">{shorten_text(short_thesis, 210)}</div>
+                    <div class="exec-meta">
+                        <div class="status-chip {action_chip_class}">⚡ Handlung: {main_action_label}</div>
+                        <div class="status-chip {entry_chip_class}">📈 Einstieg: {trading_case_score}/100</div>
+                        <div class="status-chip {investment_chip_class}">🏛️ Investment: {investment_case_score}/100</div>
+                        <div class="status-chip {priority_chip_class}">📌 Priorität: {watchlist_priority}</div>
+                        <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
+                        <div class="status-chip purple">🧩 Setup: {setup_type}</div>
+                        <div class="status-chip blue">⚖️ CRV: {ui_safe_metric_text(crv_value,1,":1")}</div>
+                        <div class="status-chip {exit_chip_class}">🚪 Exit: {exit_action_display}</div>
+                    </div>
+                </div>
+                <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
+                    <div class="exec-score-label">Hauptsignal</div>
+                    <div class="exec-score-value">{main_action_label}</div>
+                    <div class="exec-score-sub">{market_regime_label(market_info["regime"])} · {display_mode_label(mode_label)}</div>
                 </div>
             </div>
-            <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
-                <div class="exec-score-label">Hauptsignal</div>
-                <div class="exec-score-value">{main_action_label}</div>
-                <div class="exec-score-sub">{market_regime_label(market_info["regime"])} · {display_mode_label(mode_label)}</div>
-            </div>
         </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+        """,
+        unsafe_allow_html=True,
+    )
 
 compact_cols = st.columns(6)
 compact_data = [
@@ -7574,7 +7579,7 @@ with why_col:
 with risk_col:
     render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
 
-if analysis_view_mode in ["Profi", "Expertenmodus"]:
+if is_pro_mode or is_expert_mode:
     with st.expander("Setup & Timing", expanded=False):
         render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
     with st.expander("Volumen & Akkumulation", expanded=False):
@@ -7588,246 +7593,247 @@ if analysis_view_mode in ["Profi", "Expertenmodus"]:
     with st.expander("Exit & Risiko", expanded=False):
         render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
 
-st.markdown(
-    f"""
-    <div class="section-head">
-        <div class="section-title">Entscheidung auf einen Blick</div>
-        <div class="section-meta-line">Marktumfeld: {market_regime_label(market_info["regime"])} | Entry-Lage: {entry_quality} | Red Flag: {shorten_text(top_red_flag, 42)}</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-d1, d2, d3 = st.columns(3)
-with d1:
+if is_expert_mode:
     st.markdown(
         f"""
-        <div class="decision-card invest" title="Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.">
-            <div class="dc-label">Investment-Attraktivität</div>
-            <div class="dc-value">{investment_case_score}/100</div>
-            <div class="dc-sub">{investment_case_text}</div>
-            <div class="dc-note">Grundqualität und Investment-Case.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with d2:
-    st.markdown(
-        f"""
-        <div class="decision-card entry" title="Wie attraktiv ein Einstieg genau jetzt gerade ist.">
-            <div class="dc-label">Einstieg jetzt attraktiv?</div>
-            <div class="dc-value">{trading_case_score}/100</div>
-            <div class="dc-sub">{trading_case_text}</div>
-            <div class="dc-note">Timing, Setup und Entry-Lage.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with d3:
-    st.markdown(
-        f"""
-        <div class="decision-card action" title="Verdichtete Handlungsempfehlung für Watchlist oder Position.">
-            <div class="dc-label">Handlung</div>
-            <div class="dc-value">{main_action_label}</div>
-            <div class="dc-sub">{market_regime_label(market_info["regime"])}</div>
-            <div class="dc-note">Was jetzt praktisch am ehesten sinnvoll ist.</div>
+        <div class="section-head">
+            <div class="section-title">Entscheidung auf einen Blick</div>
+            <div class="section-meta-line">Marktumfeld: {market_regime_label(market_info["regime"])} | Entry-Lage: {entry_quality} | Red Flag: {shorten_text(top_red_flag, 42)}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        st.markdown(
+            f"""
+            <div class="decision-card invest" title="Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.">
+                <div class="dc-label">Investment-Attraktivität</div>
+                <div class="dc-value">{investment_case_score}/100</div>
+                <div class="dc-sub">{investment_case_text}</div>
+                <div class="dc-note">Grundqualität und Investment-Case.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with d2:
+        st.markdown(
+            f"""
+            <div class="decision-card entry" title="Wie attraktiv ein Einstieg genau jetzt gerade ist.">
+                <div class="dc-label">Einstieg jetzt attraktiv?</div>
+                <div class="dc-value">{trading_case_score}/100</div>
+                <div class="dc-sub">{trading_case_text}</div>
+                <div class="dc-note">Timing, Setup und Entry-Lage.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with d3:
+        st.markdown(
+            f"""
+            <div class="decision-card action" title="Verdichtete Handlungsempfehlung für Watchlist oder Position.">
+                <div class="dc-label">Handlung</div>
+                <div class="dc-value">{main_action_label}</div>
+                <div class="dc-sub">{market_regime_label(market_info["regime"])}</div>
+                <div class="dc-note">Was jetzt praktisch am ehesten sinnvoll ist.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-st.markdown(
-    f"""
-    <div class="section-head">
-        <div class="section-title">Exit-Sicht für Positionen</div>
-        <div class="section-meta-line">Frühe Verkaufssignale aus Trendbruch, Momentum, relativer Schwäche, Distributionsdruck und harten Exit-Triggern.</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
-ex1, ex2, ex3 = st.columns(3)
-with ex1:
     st.markdown(
         f"""
-        <div class="decision-card action" title="Verdichteter Verkaufsdruck für die aktuelle Situation.">
-            <div class="dc-label">Exit-Score</div>
-            <div class="dc-value">{exit_score_display}/100</div>
-            <div class="dc-sub">{exit_score_text_display}</div>
-            <div class="dc-note">Je höher, desto stärker der Verkaufsdruck.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with ex2:
-    st.markdown(
-        f"""
-        <div class="decision-card entry" title="Operative Exit-Aktion für die aktuelle Lage.">
-            <div class="dc-label">Exit-Aktion</div>
-            <div class="dc-value">{exit_action_display}</div>
-            <div class="dc-sub">{exit_action_sub_display}</div>
-            <div class="dc-note">Ergänzt die bestehende Kauf-/Aufbaulogik um ein eigenes Verkaufssystem.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with ex3:
-    st.markdown(
-        f"""
-        <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
-            <div class="dc-label">Hauptgrund</div>
-            <div class="dc-value" style="font-size:clamp(1.0rem, 1.15vw, 1.18rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exit_reason_top_display}</div>
-            <div class="dc-sub">{' | '.join(exit_reason_extra_display[:2]) if exit_reason_extra_display else 'keine weiteren Exit-Hinweise'}</div>
-            <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-st.markdown(
-    """
-    <div class="section-head">
-        <div class="section-title">Die wichtigsten Begründungen</div>
-        <div class="section-meta-line">Die App trennt jetzt klarer zwischen Kernaussage, operativer Ausführung und Diagnose.</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-b1, b2, b3 = st.columns(3)
-with b1:
-    strengths_html = "".join([f"<li>{s}</li>" for s in top_strengths]) if top_strengths else "<li>Keine klaren Stärken identifiziert.</li>"
-    st.markdown(
-        f"""
-        <div class="bullet-card">
-            <h4>Pro</h4>
-            <ul>{strengths_html}</ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with b2:
-    weaknesses_html = "".join([f"<li>{w}</li>" for w in top_weaknesses]) if top_weaknesses else "<li>Keine wesentlichen Schwächen identifiziert.</li>"
-    st.markdown(
-        f"""
-        <div class="bullet-card">
-            <h4>Contra</h4>
-            <ul>{weaknesses_html}</ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with b3:
-    st.markdown(
-        f"""
-        <div class="bullet-card">
-            <h4>Kurzfazit</h4>
-            <ul>
-                <li>{shorten_text(decision_summary, 170)}</li>
-                <li>Setup-Typ: {setup_type}</li>
-                <li>Trigger / Lage: {entry_quality}</li>
-            </ul>
+        <div class="section-head">
+            <div class="section-title">Exit-Sicht für Positionen</div>
+            <div class="section-meta-line">Frühe Verkaufssignale aus Trendbruch, Momentum, relativer Schwäche, Distributionsdruck und harten Exit-Triggern.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-st.markdown(
-    """
-    <div class="section-head">
-        <div class="section-title">Kernbausteine</div>
-        <div class="section-meta-line">Operative Subscores für Struktur, Confidence und Qualitätsbild.</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+    ex1, ex2, ex3 = st.columns(3)
+    with ex1:
+        st.markdown(
+            f"""
+            <div class="decision-card action" title="Verdichteter Verkaufsdruck für die aktuelle Situation.">
+                <div class="dc-label">Exit-Score</div>
+                <div class="dc-value">{exit_score_display}/100</div>
+                <div class="dc-sub">{exit_score_text_display}</div>
+                <div class="dc-note">Je höher, desto stärker der Verkaufsdruck.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with ex2:
+        st.markdown(
+            f"""
+            <div class="decision-card entry" title="Operative Exit-Aktion für die aktuelle Lage.">
+                <div class="dc-label">Exit-Aktion</div>
+                <div class="dc-value">{exit_action_display}</div>
+                <div class="dc-sub">{exit_action_sub_display}</div>
+                <div class="dc-note">Ergänzt die bestehende Kauf-/Aufbaulogik um ein eigenes Verkaufssystem.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with ex3:
+        st.markdown(
+            f"""
+            <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
+                <div class="dc-label">Hauptgrund</div>
+                <div class="dc-value" style="font-size:clamp(1.0rem, 1.15vw, 1.18rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exit_reason_top_display}</div>
+                <div class="dc-sub">{' | '.join(exit_reason_extra_display[:2]) if exit_reason_extra_display else 'keine weiteren Exit-Hinweise'}</div>
+                <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-kb1, kb2, kb3, kb4 = st.columns(4)
-with kb1:
     st.markdown(
-        f"""
-        <div class="compact-panel" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
-            <div class="cp-label">Trade-Struktur</div>
-            <div class="cp-value">{fmt_num(tradeability_score,0)}/100</div>
-            <div class="cp-sub">{tradeability_text}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with kb2:
-    st.markdown(
-        f"""
-        <div class="compact-panel" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
-            <div class="cp-label">Setup-Confidence</div>
-            <div class="cp-value">{fmt_num(setup_confidence,0)}/100</div>
-            <div class="cp-sub">{setup_confidence_text}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with kb3:
-    st.markdown(
-        f"""
-        <div class="compact-panel" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
-            <div class="cp-label">Company Quality</div>
-            <div class="cp-value">{company}/100</div>
-            <div class="cp-sub">{ampel(company)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with kb4:
-    st.markdown(
-        f"""
-        <div class="compact-panel" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
-            <div class="cp-label">Investment Score</div>
-            <div class="cp-value">{investment}/100</div>
-            <div class="cp-sub">{ampel(investment)}</div>
+        """
+        <div class="section-head">
+            <div class="section-title">Die wichtigsten Begründungen</div>
+            <div class="section-meta-line">Die App trennt jetzt klarer zwischen Kernaussage, operativer Ausführung und Diagnose.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
-st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div></div>', unsafe_allow_html=True)
-se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
-sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
-with se_outer1:
-    st.markdown(
-        f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
-        unsafe_allow_html=True
-    )
-with se_outer2:
-    st.markdown(
-        f'<a class="export-action-btn" href="{sheet_href}"><span>Sheets</span></a>',
-        unsafe_allow_html=True
-    )
-with se_outer3:
-    st.markdown("", unsafe_allow_html=True)
+    b1, b2, b3 = st.columns(3)
+    with b1:
+        strengths_html = "".join([f"<li>{s}</li>" for s in top_strengths]) if top_strengths else "<li>Keine klaren Stärken identifiziert.</li>"
+        st.markdown(
+            f"""
+            <div class="bullet-card">
+                <h4>Pro</h4>
+                <ul>{strengths_html}</ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with b2:
+        weaknesses_html = "".join([f"<li>{w}</li>" for w in top_weaknesses]) if top_weaknesses else "<li>Keine wesentlichen Schwächen identifiziert.</li>"
+        st.markdown(
+            f"""
+            <div class="bullet-card">
+                <h4>Contra</h4>
+                <ul>{weaknesses_html}</ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with b3:
+        st.markdown(
+            f"""
+            <div class="bullet-card">
+                <h4>Kurzfazit</h4>
+                <ul>
+                    <li>{shorten_text(decision_summary, 170)}</li>
+                    <li>Setup-Typ: {setup_type}</li>
+                    <li>Trigger / Lage: {entry_quality}</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-    with c1:
-        render_score_card("Company Quality", f"{company}/100", ampel(company), "company", tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens.")
-    with c2:
-        render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup", tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter.")
-    with c3:
-        render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment", tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität.")
-    with c4:
-        render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}/100", tradeability_text, "kb", tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.")
-    with c5:
-        render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board", tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard.")
-    with c6:
-        render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short", tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke.")
-    with c7:
-        render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper", tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt.")
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Kernbausteine</div>
+            <div class="section-meta-line">Operative Subscores für Struktur, Confidence und Qualitätsbild.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    kb1, kb2, kb3, kb4 = st.columns(4)
+    with kb1:
+        st.markdown(
+            f"""
+            <div class="compact-panel" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
+                <div class="cp-label">Trade-Struktur</div>
+                <div class="cp-value">{fmt_num(tradeability_score,0)}/100</div>
+                <div class="cp-sub">{tradeability_text}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with kb2:
+        st.markdown(
+            f"""
+            <div class="compact-panel" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
+                <div class="cp-label">Setup-Confidence</div>
+                <div class="cp-value">{fmt_num(setup_confidence,0)}/100</div>
+                <div class="cp-sub">{setup_confidence_text}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with kb3:
+        st.markdown(
+            f"""
+            <div class="compact-panel" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
+                <div class="cp-label">Company Quality</div>
+                <div class="cp-value">{company}/100</div>
+                <div class="cp-sub">{ampel(company)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with kb4:
+        st.markdown(
+            f"""
+            <div class="compact-panel" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
+                <div class="cp-label">Investment Score</div>
+                <div class="cp-value">{investment}/100</div>
+                <div class="cp-sub">{ampel(investment)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+    st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div></div>', unsafe_allow_html=True)
+    se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
+    sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+    with se_outer1:
+        st.markdown(
+            f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
+            unsafe_allow_html=True
+        )
+    with se_outer2:
+        st.markdown(
+            f'<a class="export-action-btn" href="{sheet_href}"><span>Sheets</span></a>',
+            unsafe_allow_html=True
+        )
+    with se_outer3:
+        st.markdown("", unsafe_allow_html=True)
+
+    with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
+        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+        with c1:
+            render_score_card("Company Quality", f"{company}/100", ampel(company), "company", tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens.")
+        with c2:
+            render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup", tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter.")
+        with c3:
+            render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment", tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität.")
+        with c4:
+            render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}/100", tradeability_text, "kb", tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.")
+        with c5:
+            render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board", tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard.")
+        with c6:
+            render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short", tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke.")
+        with c7:
+            render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper", tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt.")
 
 # ---------- Tabs ----------
 st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 st.divider()
-if analysis_view_mode == "Profi":
+if is_expert_mode:
     t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
         "Überblick",
         "Trading-Case",
@@ -7842,8 +7848,8 @@ if analysis_view_mode == "Profi":
 
     with t0:
         st.subheader("Überblick")
-        if analysis_view_mode == "Einfach":
-            st.info("Du nutzt die einfache Ansicht. Die wichtigsten Treiber und Bremsen stehen bereits oben; tiefere Diagnoseeinblicke erscheinen nur im Profi-Modus.")
+        if is_simple_mode:
+            st.info("Du nutzt die einfache Ansicht. Sichtbar sind nur die kompakte Summary sowie Treiber und Bremsfaktoren.")
         st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
 
         p1, p2, p3 = st.columns(3)
@@ -8291,7 +8297,7 @@ if analysis_view_mode == "Profi":
             )
 
 
-elif analysis_view_mode == "Profi":
+elif is_pro_mode:
     st.markdown(
         """
         <div class="section-head">
@@ -8306,15 +8312,15 @@ else:
     st.markdown(
         """
         <div class="section-head">
-            <div class="section-title">Vertiefung</div>
-            <div class="section-meta-line">Im einfachen Modus bleiben die klassischen Detailtabs und Rohansichten ausgeblendet. Wechsle auf Profi für strukturierte Diagnose oder auf Expertenmodus für das vollständige Analyseboard.</div>
+            <div class="section-title">Kompakte Ansicht aktiv</div>
+            <div class="section-meta-line">Einfach zeigt nur die kompakten Kernaussagen. Wechsle auf Profi für geordnete Diagnose oder auf Expertenmodus für alle Roh- und Detailbereiche.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-if analysis_view_mode == "Expertenmodus":
+if is_expert_mode:
     # ---------- Horizon lamps ----------
     st.divider()
     with st.expander("Zeithorizonte anzeigen", expanded=False):

@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.13"
+APP_VERSION = "v12.6C.14"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7003,1431 +7003,1432 @@ try:
 except Exception:
     sheet_log_triggered = False
 
-ticker = result["ticker"]
-csv_filename = f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-csv_payload = single_export_df.to_csv(index=False).encode("utf-8-sig")
-csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
-csv_href = f"data:text/csv;base64,{csv_b64}"
+if result is not None:
+    ticker = result["ticker"]
+    csv_filename = f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    csv_payload = single_export_df.to_csv(index=False).encode("utf-8-sig")
+    csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
+    csv_href = f"data:text/csv;base64,{csv_b64}"
 
-if sheet_log_triggered:
-    ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
-    show_sheet_result(ok, msg)
-    try:
-        st.query_params.clear()
-    except Exception:
-        pass
-
-df = result["df"]
-info = result["info"]
-name = result["name"]
-ccy = result["ccy"]
-exch = result["exch"]
-ts = result["ts"]
-sector = result["sector"]
-industry = result["industry"]
-company_summary = result["company_summary"]
-confidence_info = result["confidence_info"]
-benchmark_label = result["benchmark_label"]
-benchmark_symbol = result["benchmark_symbol"]
-market_info = result["market_info"]
-price = result["price"]
-target = result["target"]
-upside = result["upside"]
-regime = result["regime"]
-reg_amp = result["reg_amp"]
-sg_earn = result["sg_earn"]
-sg_earn_txt = result["sg_earn_txt"]
-days_earn = result["days_earn"]
-has_upcoming_earnings = result["has_upcoming_earnings"]
-has_past_earnings = result["has_past_earnings"]
-fund_cov = result["fund_cov"]
-fund_fields_loaded = result["fund_fields_loaded"]
-fund_data_warning = result["fund_data_warning"]
-red_flag_items = result["red_flag_items"]
-red_flags_df = result["red_flags_df"]
-red_flag_notes = result["red_flag_notes"]
-red_flag_penalty_total = result["red_flag_penalty_total"]
-quality_score = result["quality_score"]
-growth_score = result["growth_score"]
-growth_quality = result["growth_quality"]
-valuation_score = result["valuation_score"]
-balance_score = result["balance_score"]
-sentiment_score = result["sentiment_score"]
-risk_score = result["risk_score"]
-company = result["company"]
-setup_adj = result["setup_adj"]
-investment = result["investment"]
-tb_score = result["tb_score"]
-tb_score_100 = result["tb_score_100"]
-tb_timing_text = result["tb_timing_text"]
-position_action = result["position_action"]
-add_on_action = result["add_on_action"]
-partial_profit_action = result["partial_profit_action"]
-stop_action = result["stop_action"]
-risk_note = result["risk_note"]
-trigger_status = result["trigger_status"]
-watchlist_priority = result["watchlist_priority"]
-watchlist_priority_score = result["watchlist_priority_score"]
-next_trigger = result["next_trigger"]
-trigger_reason = result["trigger_reason"]
-tb_signal = result["tb_signal"]
-tb_empf = result["tb_empf"]
-tb_df = result["tb_df"]
-tb_details = result["tb_details"]
-tb_context = result["tb_context"]
-stb_score = result["stb_score"]
-stb_signal = result["stb_signal"]
-stb_empf = result["stb_empf"]
-stb_text = result["stb_text"]
-kb = result["kb"]
-strengths = result["strengths"]
-weaknesses = result["weaknesses"]
-decision_summary = result["decision_summary"]
-mode_label = result["mode_label"]
-stock_style = result["stock_style"]
-hmap = result["hmap"]
-atr_stop = result["atr_stop"]
-stop_used = result["stop_used"]
-stop_dist = result["stop_dist"]
-tp1 = result["tp1"]
-tp2 = result["tp2"]
-tp3 = result["tp3"]
-tp1_source = result["tp1_source"]
-tp2_source = result["tp2_source"]
-tp3_source = result["tp3_source"]
-technical_target_1 = result["technical_target_1"]
-technical_target_2 = result["technical_target_2"]
-stop_source = result["stop_source"]
-suggested_entry_zone = result["suggested_entry_zone"]
-entry_source = result["entry_source"]
-entry_quality = result["entry_quality"]
-tradeability_score = result["tradeability_score"]
-tradeability_text = result["tradeability_text"]
-investment_case_score = result["investment_case_score"]
-investment_case_text = result["investment_case_text"]
-trading_case_score = result["trading_case_score"]
-trading_case_text = result["trading_case_text"]
-setup_type = result["setup_type"]
-preferred_entry = result["preferred_entry"]
-setup_confidence = result["setup_confidence"]
-setup_confidence_text = result["setup_confidence_text"]
-trade_crv_score = result["trade_crv_score"]
-trade_stop_score = result["trade_stop_score"]
-trade_entry_score = result["trade_entry_score"]
-trade_timing_score = result["trade_timing_score"]
-trade_market_score = result["trade_market_score"]
-crv = result["crv"]
-pos_size = result["pos_size"]
-risk_eur = result["risk_eur"]
-time_stop = result["time_stop"]
-valid_trade_setup = result["valid_trade_setup"]
-short_term_score = result["short_term_score"]
-s3 = result["s3"]
-s3a = result["s3a"]
-s3t = result["s3t"]
-s4 = result["s4"]
-s4a = result["s4a"]
-s4t = result["s4t"]
-s5 = result["s5"]
-s5a = result["s5a"]
-s5t = result["s5t"]
-s6 = result["s6"]
-s6a = result["s6a"]
-s6t = result["s6t"]
-w52 = result["w52"]
-dist52 = result["dist52"]
-rs_score = result["rs_score"]
-rs_composite = result["rs_composite"]
-ret21 = result["ret21"]
-ret63 = result["ret63"]
-ret126 = result["ret126"]
-bench_ret21 = result["bench_ret21"]
-bench_ret63 = result["bench_ret63"]
-bench_ret126 = result["bench_ret126"]
-rs_vs_benchmark_21 = result["rs_vs_benchmark_21"]
-rs_vs_benchmark_63 = result["rs_vs_benchmark_63"]
-rs_vs_benchmark_126 = result["rs_vs_benchmark_126"]
-ma20 = result["ma20"]
-ma50 = result["ma50"]
-ma150 = result["ma150"]
-ma200 = result["ma200"]
-rsi = result["rsi"]
-macd_v = result["macd_v"]
-signal_v = result["signal_v"]
-macd_hist_current = result["macd_hist_current"]
-adx = result["adx"]
-atr = result["atr"]
-atr_pct = result["atr_pct"]
-stoch_k_v = result["stoch_k_v"]
-stoch_d_v = result["stoch_d_v"]
-willr_v = result["willr_v"]
-roc20 = result["roc20"]
-roc60 = result["roc60"]
-high52 = result["high52"]
-low52 = result["low52"]
-profit_margin = result["profit_margin"]
-oper_margin = result["oper_margin"]
-gross_margin = result["gross_margin"]
-roe = result["roe"]
-revenue_growth = result["revenue_growth"]
-earnings_growth = result["earnings_growth"]
-current_ratio = result["current_ratio"]
-quick_ratio = result["quick_ratio"]
-debt_to_equity = result["debt_to_equity"]
-pe = result["pe"]
-peg = result["peg"]
-ps = result["ps"]
-pb = result["pb"]
-rec_label = result["rec_label"]
-analysts = result["analysts"]
-rec_mean = result["rec_mean"]
-beta = result["beta"]
-short_pct = result["short_pct"]
-market_cap = result["market_cap"]
-short_thesis = result["short_thesis"]
-top_red_flag = result["top_red_flag"]
-
-# ---------- Header ----------
-st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")
-st.markdown(
-    f"<div class='small-note'>Sektor: {sector} | Industrie: {industry} | Stil: {stock_style} | "
-    f"Kontext: {display_mode_label(mode_label)} | Benchmark: {benchmark_label} | Marktumfeld: {market_regime_label(market_info['regime'])} | "
-    f"Top Red Flag: {top_red_flag}</div>",
-    unsafe_allow_html=True
-)
-
-c1, c2, c3, c4, c5 = st.columns(5)
-with c1:
-    st.markdown(
-        f"""
-        <div class="premium-card">
-            <div class="premium-title">Kurs (Adj. Close)</div>
-            <div class="premium-value">{price:.2f} {ccy}</div>
-            <div class="premium-sub">{ts}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with c2:
-    st.markdown(
-        f"""
-        <div class="premium-card">
-            <div class="premium-title">Trend-Regime</div>
-            <div class="premium-value">{regime}</div>
-            <div class="premium-sub">{reg_amp}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with c3:
-    st.markdown(
-        f"""
-        <div class="premium-card">
-            <div class="premium-title">Earnings-Datum</div>
-            <div class="premium-value">{sg_earn_txt}</div>
-            <div class="premium-sub">{sg_earn}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with c4:
-    if has_upcoming_earnings:
-        countdown_value = f"{int(days_earn)}d"
-    elif has_past_earnings:
-        countdown_value = "vorbei"
-    else:
-        countdown_value = "kein Datum"
-    st.markdown(
-        f"""
-        <div class="premium-card">
-            <div class="premium-title">Earnings-Countdown</div>
-            <div class="premium-value">{countdown_value}</div>
-            <div class="premium-sub">{sg_earn}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with c5:
-    st.markdown(
-        f"""
-        <div class="premium-card">
-            <div class="premium-title">Analysten-Target</div>
-            <div class="premium-value">{fmt_num(target, 2, f" {ccy}")}</div>
-            <div class="premium-sub">{fmt_num(upside, 1, "%")}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-st.divider()
-
-if fund_data_warning:
-    st.warning(
-        f"Fundamentaldaten nur teilweise geladen ({fund_cov*100:.0f}% Abdeckung, {fund_fields_loaded}/21 Felder). "
-        "Der Company Quality Score kann dadurch zu niedrig ausfallen."
-    )
-elif fund_cov < 0.55:
-    st.info(
-        f"Fundamentaldaten teilweise vorhanden ({fund_cov*100:.0f}% Abdeckung, {fund_fields_loaded}/21 Felder)."
-    )
-
-if red_flag_items:
-    st.warning("Red Flags erkannt: " + " | ".join(red_flag_notes[:4]))
-
-# ---------- Scores ----------
-# ---------- v10.0B Overview ----------
-
-def ui_chip_class_from_score(score):
-    try:
-        value = float(score)
-    except Exception:
-        value = None
-    if value is None:
-        return "blue"
-    if value >= 75:
-        return "green"
-    if value >= 55:
-        return "amber"
-    return "red"
-
-
-def ui_action_chip_class(action_text):
-    s = str(action_text).strip().lower()
-    if any(x in s for x in ["kauf", "aufbau", "nachkauf", "long"]):
-        return "green"
-    if any(x in s for x in ["verkauf", "reduzier", "risiko", "stop"]):
-        return "red"
-    if any(x in s for x in ["abwarten", "beobacht", "halten"]):
-        return "amber"
-    return "purple"
-
-
-def ui_priority_chip_class(priority_text):
-    s = str(priority_text).strip().lower()
-    if s == "hoch":
-        return "green"
-    if s == "mittel":
-        return "amber"
-    if s == "niedrig":
-        return "blue"
-    return "blue"
-
-
-def ui_safe_metric_text(value, digits=1, suffix=""):
-    try:
-        if value in [None, "", "-"]:
-            return "n/a"
-        return fmt_num(float(value), digits, suffix)
-    except Exception:
+    if sheet_log_triggered:
+        ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
+        show_sheet_result(ok, msg)
         try:
-            return fmt_num(value, digits, suffix)
-        except Exception:
-            return str(value) if str(value).strip() else "n/a"
-
-
-
-def ui_target_text(value, ccy="", missing_text="kein sauberes Setup-Ziel ableitbar"):
-    try:
-        if value is None or (isinstance(value, str) and value.strip().lower() in {"", "-", "n/a", "none"}):
-            return missing_text
-        if pd.isna(value):
-            return missing_text
-        return f"{float(value):.2f} {ccy}".strip()
-    except Exception:
-        s = str(value).strip()
-        return s if s else missing_text
-
-
-
-def exit_score_label(score):
-    if score >= 80:
-        return "klarer Exit-Druck"
-    if score >= 65:
-        return "Verkaufsdruck erhöht"
-    if score >= 45:
-        return "Gewinne absichern"
-    if score >= 25:
-        return "erste Schwäche"
-    return "stabil"
-
-
-def derive_exit_action(exit_score, position_pnl_pct, price, stop_used):
-    try:
-        if pd.notna(stop_used) and pd.notna(price) and price < stop_used:
-            return "Verkaufen"
-    except Exception:
-        pass
-    if exit_score >= 80:
-        return "Verkaufen"
-    if exit_score >= 65:
-        return "Risiko reduzieren"
-    if exit_score >= 45:
-        try:
-            if pd.notna(position_pnl_pct) and position_pnl_pct > 8:
-                return "Teilgewinn prüfen"
+            st.query_params.clear()
         except Exception:
             pass
-        return "Risiko reduzieren"
-    if exit_score >= 25:
-        return "Beobachten"
-    return "Halten"
 
+    df = result["df"]
+    info = result["info"]
+    name = result["name"]
+    ccy = result["ccy"]
+    exch = result["exch"]
+    ts = result["ts"]
+    sector = result["sector"]
+    industry = result["industry"]
+    company_summary = result["company_summary"]
+    confidence_info = result["confidence_info"]
+    benchmark_label = result["benchmark_label"]
+    benchmark_symbol = result["benchmark_symbol"]
+    market_info = result["market_info"]
+    price = result["price"]
+    target = result["target"]
+    upside = result["upside"]
+    regime = result["regime"]
+    reg_amp = result["reg_amp"]
+    sg_earn = result["sg_earn"]
+    sg_earn_txt = result["sg_earn_txt"]
+    days_earn = result["days_earn"]
+    has_upcoming_earnings = result["has_upcoming_earnings"]
+    has_past_earnings = result["has_past_earnings"]
+    fund_cov = result["fund_cov"]
+    fund_fields_loaded = result["fund_fields_loaded"]
+    fund_data_warning = result["fund_data_warning"]
+    red_flag_items = result["red_flag_items"]
+    red_flags_df = result["red_flags_df"]
+    red_flag_notes = result["red_flag_notes"]
+    red_flag_penalty_total = result["red_flag_penalty_total"]
+    quality_score = result["quality_score"]
+    growth_score = result["growth_score"]
+    growth_quality = result["growth_quality"]
+    valuation_score = result["valuation_score"]
+    balance_score = result["balance_score"]
+    sentiment_score = result["sentiment_score"]
+    risk_score = result["risk_score"]
+    company = result["company"]
+    setup_adj = result["setup_adj"]
+    investment = result["investment"]
+    tb_score = result["tb_score"]
+    tb_score_100 = result["tb_score_100"]
+    tb_timing_text = result["tb_timing_text"]
+    position_action = result["position_action"]
+    add_on_action = result["add_on_action"]
+    partial_profit_action = result["partial_profit_action"]
+    stop_action = result["stop_action"]
+    risk_note = result["risk_note"]
+    trigger_status = result["trigger_status"]
+    watchlist_priority = result["watchlist_priority"]
+    watchlist_priority_score = result["watchlist_priority_score"]
+    next_trigger = result["next_trigger"]
+    trigger_reason = result["trigger_reason"]
+    tb_signal = result["tb_signal"]
+    tb_empf = result["tb_empf"]
+    tb_df = result["tb_df"]
+    tb_details = result["tb_details"]
+    tb_context = result["tb_context"]
+    stb_score = result["stb_score"]
+    stb_signal = result["stb_signal"]
+    stb_empf = result["stb_empf"]
+    stb_text = result["stb_text"]
+    kb = result["kb"]
+    strengths = result["strengths"]
+    weaknesses = result["weaknesses"]
+    decision_summary = result["decision_summary"]
+    mode_label = result["mode_label"]
+    stock_style = result["stock_style"]
+    hmap = result["hmap"]
+    atr_stop = result["atr_stop"]
+    stop_used = result["stop_used"]
+    stop_dist = result["stop_dist"]
+    tp1 = result["tp1"]
+    tp2 = result["tp2"]
+    tp3 = result["tp3"]
+    tp1_source = result["tp1_source"]
+    tp2_source = result["tp2_source"]
+    tp3_source = result["tp3_source"]
+    technical_target_1 = result["technical_target_1"]
+    technical_target_2 = result["technical_target_2"]
+    stop_source = result["stop_source"]
+    suggested_entry_zone = result["suggested_entry_zone"]
+    entry_source = result["entry_source"]
+    entry_quality = result["entry_quality"]
+    tradeability_score = result["tradeability_score"]
+    tradeability_text = result["tradeability_text"]
+    investment_case_score = result["investment_case_score"]
+    investment_case_text = result["investment_case_text"]
+    trading_case_score = result["trading_case_score"]
+    trading_case_text = result["trading_case_text"]
+    setup_type = result["setup_type"]
+    preferred_entry = result["preferred_entry"]
+    setup_confidence = result["setup_confidence"]
+    setup_confidence_text = result["setup_confidence_text"]
+    trade_crv_score = result["trade_crv_score"]
+    trade_stop_score = result["trade_stop_score"]
+    trade_entry_score = result["trade_entry_score"]
+    trade_timing_score = result["trade_timing_score"]
+    trade_market_score = result["trade_market_score"]
+    crv = result["crv"]
+    pos_size = result["pos_size"]
+    risk_eur = result["risk_eur"]
+    time_stop = result["time_stop"]
+    valid_trade_setup = result["valid_trade_setup"]
+    short_term_score = result["short_term_score"]
+    s3 = result["s3"]
+    s3a = result["s3a"]
+    s3t = result["s3t"]
+    s4 = result["s4"]
+    s4a = result["s4a"]
+    s4t = result["s4t"]
+    s5 = result["s5"]
+    s5a = result["s5a"]
+    s5t = result["s5t"]
+    s6 = result["s6"]
+    s6a = result["s6a"]
+    s6t = result["s6t"]
+    w52 = result["w52"]
+    dist52 = result["dist52"]
+    rs_score = result["rs_score"]
+    rs_composite = result["rs_composite"]
+    ret21 = result["ret21"]
+    ret63 = result["ret63"]
+    ret126 = result["ret126"]
+    bench_ret21 = result["bench_ret21"]
+    bench_ret63 = result["bench_ret63"]
+    bench_ret126 = result["bench_ret126"]
+    rs_vs_benchmark_21 = result["rs_vs_benchmark_21"]
+    rs_vs_benchmark_63 = result["rs_vs_benchmark_63"]
+    rs_vs_benchmark_126 = result["rs_vs_benchmark_126"]
+    ma20 = result["ma20"]
+    ma50 = result["ma50"]
+    ma150 = result["ma150"]
+    ma200 = result["ma200"]
+    rsi = result["rsi"]
+    macd_v = result["macd_v"]
+    signal_v = result["signal_v"]
+    macd_hist_current = result["macd_hist_current"]
+    adx = result["adx"]
+    atr = result["atr"]
+    atr_pct = result["atr_pct"]
+    stoch_k_v = result["stoch_k_v"]
+    stoch_d_v = result["stoch_d_v"]
+    willr_v = result["willr_v"]
+    roc20 = result["roc20"]
+    roc60 = result["roc60"]
+    high52 = result["high52"]
+    low52 = result["low52"]
+    profit_margin = result["profit_margin"]
+    oper_margin = result["oper_margin"]
+    gross_margin = result["gross_margin"]
+    roe = result["roe"]
+    revenue_growth = result["revenue_growth"]
+    earnings_growth = result["earnings_growth"]
+    current_ratio = result["current_ratio"]
+    quick_ratio = result["quick_ratio"]
+    debt_to_equity = result["debt_to_equity"]
+    pe = result["pe"]
+    peg = result["peg"]
+    ps = result["ps"]
+    pb = result["pb"]
+    rec_label = result["rec_label"]
+    analysts = result["analysts"]
+    rec_mean = result["rec_mean"]
+    beta = result["beta"]
+    short_pct = result["short_pct"]
+    market_cap = result["market_cap"]
+    short_thesis = result["short_thesis"]
+    top_red_flag = result["top_red_flag"]
 
+    # ---------- Header ----------
+    st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")
+    st.markdown(
+        f"<div class='small-note'>Sektor: {sector} | Industrie: {industry} | Stil: {stock_style} | "
+        f"Kontext: {display_mode_label(mode_label)} | Benchmark: {benchmark_label} | Marktumfeld: {market_regime_label(market_info['regime'])} | "
+        f"Top Red Flag: {top_red_flag}</div>",
+        unsafe_allow_html=True
+    )
 
-def derive_position_context(position_pnl_pct, horizon):
-    if pd.notna(position_pnl_pct):
-        if position_pnl_pct >= 15:
-            pnl_bucket = "starker Gewinner"
-        elif position_pnl_pct >= 5:
-            pnl_bucket = "Gewinner"
-        elif position_pnl_pct <= -8:
-            pnl_bucket = "klarer Verlierer"
-        elif position_pnl_pct < 0:
-            pnl_bucket = "leichter Verlierer"
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        st.markdown(
+            f"""
+            <div class="premium-card">
+                <div class="premium-title">Kurs (Adj. Close)</div>
+                <div class="premium-value">{price:.2f} {ccy}</div>
+                <div class="premium-sub">{ts}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f"""
+            <div class="premium-card">
+                <div class="premium-title">Trend-Regime</div>
+                <div class="premium-value">{regime}</div>
+                <div class="premium-sub">{reg_amp}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            f"""
+            <div class="premium-card">
+                <div class="premium-title">Earnings-Datum</div>
+                <div class="premium-value">{sg_earn_txt}</div>
+                <div class="premium-sub">{sg_earn}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c4:
+        if has_upcoming_earnings:
+            countdown_value = f"{int(days_earn)}d"
+        elif has_past_earnings:
+            countdown_value = "vorbei"
         else:
-            pnl_bucket = "nahe Einstand"
+            countdown_value = "kein Datum"
+        st.markdown(
+            f"""
+            <div class="premium-card">
+                <div class="premium-title">Earnings-Countdown</div>
+                <div class="premium-value">{countdown_value}</div>
+                <div class="premium-sub">{sg_earn}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c5:
+        st.markdown(
+            f"""
+            <div class="premium-card">
+                <div class="premium-title">Analysten-Target</div>
+                <div class="premium-value">{fmt_num(target, 2, f" {ccy}")}</div>
+                <div class="premium-sub">{fmt_num(upside, 1, "%")}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.divider()
+
+    if fund_data_warning:
+        st.warning(
+            f"Fundamentaldaten nur teilweise geladen ({fund_cov*100:.0f}% Abdeckung, {fund_fields_loaded}/21 Felder). "
+            "Der Company Quality Score kann dadurch zu niedrig ausfallen."
+        )
+    elif fund_cov < 0.55:
+        st.info(
+            f"Fundamentaldaten teilweise vorhanden ({fund_cov*100:.0f}% Abdeckung, {fund_fields_loaded}/21 Felder)."
+        )
+
+    if red_flag_items:
+        st.warning("Red Flags erkannt: " + " | ".join(red_flag_notes[:4]))
+
+    # ---------- Scores ----------
+    # ---------- v10.0B Overview ----------
+
+    def ui_chip_class_from_score(score):
+        try:
+            value = float(score)
+        except Exception:
+            value = None
+        if value is None:
+            return "blue"
+        if value >= 75:
+            return "green"
+        if value >= 55:
+            return "amber"
+        return "red"
+
+
+    def ui_action_chip_class(action_text):
+        s = str(action_text).strip().lower()
+        if any(x in s for x in ["kauf", "aufbau", "nachkauf", "long"]):
+            return "green"
+        if any(x in s for x in ["verkauf", "reduzier", "risiko", "stop"]):
+            return "red"
+        if any(x in s for x in ["abwarten", "beobacht", "halten"]):
+            return "amber"
+        return "purple"
+
+
+    def ui_priority_chip_class(priority_text):
+        s = str(priority_text).strip().lower()
+        if s == "hoch":
+            return "green"
+        if s == "mittel":
+            return "amber"
+        if s == "niedrig":
+            return "blue"
+        return "blue"
+
+
+    def ui_safe_metric_text(value, digits=1, suffix=""):
+        try:
+            if value in [None, "", "-"]:
+                return "n/a"
+            return fmt_num(float(value), digits, suffix)
+        except Exception:
+            try:
+                return fmt_num(value, digits, suffix)
+            except Exception:
+                return str(value) if str(value).strip() else "n/a"
+
+
+
+    def ui_target_text(value, ccy="", missing_text="kein sauberes Setup-Ziel ableitbar"):
+        try:
+            if value is None or (isinstance(value, str) and value.strip().lower() in {"", "-", "n/a", "none"}):
+                return missing_text
+            if pd.isna(value):
+                return missing_text
+            return f"{float(value):.2f} {ccy}".strip()
+        except Exception:
+            s = str(value).strip()
+            return s if s else missing_text
+
+
+
+    def exit_score_label(score):
+        if score >= 80:
+            return "klarer Exit-Druck"
+        if score >= 65:
+            return "Verkaufsdruck erhöht"
+        if score >= 45:
+            return "Gewinne absichern"
+        if score >= 25:
+            return "erste Schwäche"
+        return "stabil"
+
+
+    def derive_exit_action(exit_score, position_pnl_pct, price, stop_used):
+        try:
+            if pd.notna(stop_used) and pd.notna(price) and price < stop_used:
+                return "Verkaufen"
+        except Exception:
+            pass
+        if exit_score >= 80:
+            return "Verkaufen"
+        if exit_score >= 65:
+            return "Risiko reduzieren"
+        if exit_score >= 45:
+            try:
+                if pd.notna(position_pnl_pct) and position_pnl_pct > 8:
+                    return "Teilgewinn prüfen"
+            except Exception:
+                pass
+            return "Risiko reduzieren"
+        if exit_score >= 25:
+            return "Beobachten"
+        return "Halten"
+
+
+
+    def derive_position_context(position_pnl_pct, horizon):
+        if pd.notna(position_pnl_pct):
+            if position_pnl_pct >= 15:
+                pnl_bucket = "starker Gewinner"
+            elif position_pnl_pct >= 5:
+                pnl_bucket = "Gewinner"
+            elif position_pnl_pct <= -8:
+                pnl_bucket = "klarer Verlierer"
+            elif position_pnl_pct < 0:
+                pnl_bucket = "leichter Verlierer"
+            else:
+                pnl_bucket = "nahe Einstand"
+        else:
+            pnl_bucket = "ohne Einstandsdaten"
+
+        horizon_label = str(horizon or "").strip() or "unbekannt"
+        return pnl_bucket, horizon_label
+
+
+    def combine_position_action(exit_action, legacy_position_action, add_on_action, partial_profit_action, position_pnl_pct):
+        if exit_action in {"Verkaufen", "Risiko reduzieren"}:
+            return exit_action
+        if exit_action == "Teilgewinn prüfen":
+            return "Teilgewinn prüfen"
+        if exit_action == "Beobachten":
+            return "Halten / eng beobachten"
+
+        if str(add_on_action).lower().startswith("ja"):
+            return "Halten / ggf. ausbauen"
+        if str(partial_profit_action).lower().startswith("ja") and pd.notna(position_pnl_pct) and position_pnl_pct > 10:
+            return "Teilgewinn prüfen"
+        return legacy_position_action
+
+
+
+
+    main_action_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
+    top_strengths = strengths[:3] if strengths else []
+    top_weaknesses = weaknesses[:3] if weaknesses else []
+
+    action_chip_class = ui_action_chip_class(main_action_label)
+    entry_chip_class = ui_chip_class_from_score(trading_case_score)
+    investment_chip_class = ui_chip_class_from_score(investment_case_score)
+    priority_chip_class = ui_priority_chip_class(watchlist_priority)
+    crv_value = result.get("crv", rr if "rr" in locals() else result.get("rr", "-"))
+    trigger_label = trigger_status if trigger_status not in ["", None] else entry_quality
+    exit_score_display = result.get("exit_score", 0)
+    exit_action_display = result.get("exit_action", "Halten")
+    exit_chip_class = ui_chip_class_from_score(100 - float(exit_score_display)) if str(exit_score_display).strip() not in {"", "-", "n/a"} else "blue"
+    exit_score_text_display = result.get("exit_score_text", "stabil")
+    exit_reason_top_display = result.get("exit_reason_top", "kein akuter Exit-Grund")
+    exit_reason_list_display = result.get("exit_reason_list", []) or []
+    exit_reason_extra_display = [x for x in exit_reason_list_display if str(x).strip() and str(x).strip() != str(exit_reason_top_display).strip()]
+    leadership_score_display = result.get("leadership_score", np.nan)
+    leadership_status_display = result.get("leadership_status", "-")
+    sector_strength_display = result.get("sector_strength_score", np.nan)
+    industry_strength_display = result.get("industry_strength_score", np.nan)
+    rs_acceleration_display = result.get("rs_acceleration_score", np.nan)
+    sector_label_display = result.get("sector_label", sector if 'sector' in locals() else "-")
+    industry_label_display = result.get("industry_label", industry if 'industry' in locals() else "-")
+    sector_trend_text_display = result.get("sector_trend_text", "nicht belastbar")
+    industry_trend_text_display = result.get("industry_trend_text", "nicht belastbar")
+    sector_strength_text_display = score_or_unavailable_text(sector_strength_display)
+    sector_etf_display = result.get("sector_etf_symbol", "-")
+    sector_delta_display = f"{sector_label_display} | ETF: {sector_etf_display}" if sector_etf_display not in ["", "-", None] else sector_label_display
+    trend_quality_display = result.get("trend_quality_score", np.nan)
+    base_quality_display = result.get("base_quality_score", np.nan)
+    setup_type_quality_display = result.get("setup_type_quality_score", np.nan)
+    setup_priority_display = result.get("setup_priority_score", np.nan)
+    base_length_display = result.get("base_length_days", np.nan)
+    correction_depth_display = result.get("correction_depth_pct", np.nan)
+    range_tightness_display = result.get("range_tightness_score", np.nan)
+    volatility_contraction_display = result.get("volatility_contraction_score", np.nan)
+    pullback_quality_display = result.get("pullback_quality_score", np.nan)
+    volume_quality_display = result.get("volume_quality_score", np.nan)
+    accumulation_display = result.get("accumulation_score", np.nan)
+    distribution_display = result.get("distribution_pressure_score", np.nan)
+    pullback_dryup_display = result.get("pullback_dryup_score", np.nan)
+    breakout_volume_display = result.get("breakout_volume_score", np.nan)
+    up_down_volume_ratio_display = result.get("up_down_volume_ratio", np.nan)
+    volume_trend_display = result.get("volume_trend_score", np.nan)
+    accumulation_day_count_display = result.get("accumulation_day_count", np.nan)
+    distribution_day_count_display = result.get("distribution_day_count", np.nan)
+    catalyst_score_display = result.get("catalyst_score", np.nan)
+    earnings_event_score_display = result.get("earnings_event_score", np.nan)
+    post_earnings_reaction_score_display = result.get("post_earnings_reaction_score", np.nan)
+    revision_momentum_score_display = result.get("revision_momentum_score", np.nan)
+    event_risk_score_display = result.get("event_risk_score", np.nan)
+    catalyst_text_display = result.get("catalyst_text", "-")
+    event_phase_label_display = result.get("event_phase_label", "kein Eventfenster")
+    earnings_reaction_5d_display = result.get("earnings_reaction_5d", np.nan)
+    earnings_reaction_10d_display = result.get("earnings_reaction_10d", np.nan)
+    cashflow_stability_display = result.get("cashflow_stability_score", np.nan)
+    margin_stability_display = result.get("margin_stability_score", np.nan)
+    institutional_quality_display = result.get("institutional_quality_score", np.nan)
+    institutional_quality_text_display = result.get("institutional_quality_text", "-")
+
+
+    st.markdown("""
+    <style>
+    .reason-box{
+        border:1px solid rgba(148,163,184,0.18);
+        border-radius:18px;
+        padding:14px 16px;
+        background:rgba(15,23,42,0.55);
+        margin:8px 0 12px 0;
+    }
+    .reason-title{font-size:1.02rem;font-weight:800;margin-bottom:8px;}
+    .reason-item{padding:8px 0;border-top:1px solid rgba(148,163,184,0.10);}
+    .reason-item:first-child{border-top:none;}
+    .reason-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+    .reason-label{font-weight:700;}
+    .reason-value{font-weight:800;}
+    .reason-meta{margin-top:4px;font-size:0.88rem;color:#cbd5e1;}
+    .diag-row{border:1px solid rgba(148,163,184,0.12);border-radius:16px;padding:10px 12px;margin:8px 0;background:rgba(15,23,42,0.42);}
+    .diag-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;}
+    .diag-label{font-weight:800;}
+    .diag-value{font-weight:800;}
+    .diag-sub{margin-top:4px;font-size:0.88rem;color:#cbd5e1;}
+    .diag-chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:0.78rem;font-weight:800;margin-right:6px;background:rgba(148,163,184,0.15);color:#e2e8f0;}
+    .diag-pos{background:#052e16;color:#86efac;}
+    .diag-neu{background:#3f2f0a;color:#fde68a;}
+    .diag-neg{background:#450a0a;color:#fca5a5;}
+    .affects-line{margin-top:4px;font-size:0.82rem;color:#93c5fd;font-weight:700;}
+    .compact-summary-card{border:1px solid rgba(148,163,184,0.14);border-radius:18px;padding:12px 14px;background:rgba(15,23,42,0.48);}
+    .compact-summary-title{font-size:0.82rem;color:#cbd5e1;font-weight:700;}
+    .compact-summary-value{font-size:1.18rem;font-weight:900;margin-top:2px;}
+    .compact-summary-sub{font-size:0.82rem;color:#93c5fd;margin-top:4px;}
+    </style>
+    """, unsafe_allow_html=True)
+
+    analysis_view_mode = "Expertenmodus"
+
+    is_simple_mode = False
+    is_pro_mode = False
+    is_expert_mode = True
+
+    driver_summary = build_driver_summary(result)
+    diag_items_126a = build_diagnostic_impacts(result)
+    diag_sections_126a = {}
+    for _item in diag_items_126a:
+        _sec = _item.get("section", "Diagnose")
+        diag_sections_126a.setdefault(_sec, []).append(_item)
+
+    if str(exit_action_display).strip().lower() == "halten":
+        exit_action_sub_display = "Kein akuter Verkaufsdruck"
+    elif str(exit_action_display).strip().lower() == "beobachten":
+        exit_action_sub_display = "Frühe Schwäche, eng beobachten"
+    elif str(exit_action_display).strip().lower() == "teilgewinn prüfen":
+        exit_action_sub_display = "Gewinnschutz und De-Risking"
+    elif str(exit_action_display).strip().lower() == "risiko reduzieren":
+        exit_action_sub_display = "Verkaufsdruck erhöht"
+    elif str(exit_action_display).strip().lower() == "verkaufen":
+        exit_action_sub_display = "Klarer Exit-Druck"
     else:
-        pnl_bucket = "ohne Einstandsdaten"
+        exit_action_sub_display = "Exit-Einordnung der aktuellen Lage"
 
-    horizon_label = str(horizon or "").strip() or "unbekannt"
-    return pnl_bucket, horizon_label
-
-
-def combine_position_action(exit_action, legacy_position_action, add_on_action, partial_profit_action, position_pnl_pct):
-    if exit_action in {"Verkaufen", "Risiko reduzieren"}:
-        return exit_action
-    if exit_action == "Teilgewinn prüfen":
-        return "Teilgewinn prüfen"
-    if exit_action == "Beobachten":
-        return "Halten / eng beobachten"
-
-    if str(add_on_action).lower().startswith("ja"):
-        return "Halten / ggf. ausbauen"
-    if str(partial_profit_action).lower().startswith("ja") and pd.notna(position_pnl_pct) and position_pnl_pct > 10:
-        return "Teilgewinn prüfen"
-    return legacy_position_action
-
-
-
-
-main_action_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
-top_strengths = strengths[:3] if strengths else []
-top_weaknesses = weaknesses[:3] if weaknesses else []
-
-action_chip_class = ui_action_chip_class(main_action_label)
-entry_chip_class = ui_chip_class_from_score(trading_case_score)
-investment_chip_class = ui_chip_class_from_score(investment_case_score)
-priority_chip_class = ui_priority_chip_class(watchlist_priority)
-crv_value = result.get("crv", rr if "rr" in locals() else result.get("rr", "-"))
-trigger_label = trigger_status if trigger_status not in ["", None] else entry_quality
-exit_score_display = result.get("exit_score", 0)
-exit_action_display = result.get("exit_action", "Halten")
-exit_chip_class = ui_chip_class_from_score(100 - float(exit_score_display)) if str(exit_score_display).strip() not in {"", "-", "n/a"} else "blue"
-exit_score_text_display = result.get("exit_score_text", "stabil")
-exit_reason_top_display = result.get("exit_reason_top", "kein akuter Exit-Grund")
-exit_reason_list_display = result.get("exit_reason_list", []) or []
-exit_reason_extra_display = [x for x in exit_reason_list_display if str(x).strip() and str(x).strip() != str(exit_reason_top_display).strip()]
-leadership_score_display = result.get("leadership_score", np.nan)
-leadership_status_display = result.get("leadership_status", "-")
-sector_strength_display = result.get("sector_strength_score", np.nan)
-industry_strength_display = result.get("industry_strength_score", np.nan)
-rs_acceleration_display = result.get("rs_acceleration_score", np.nan)
-sector_label_display = result.get("sector_label", sector if 'sector' in locals() else "-")
-industry_label_display = result.get("industry_label", industry if 'industry' in locals() else "-")
-sector_trend_text_display = result.get("sector_trend_text", "nicht belastbar")
-industry_trend_text_display = result.get("industry_trend_text", "nicht belastbar")
-sector_strength_text_display = score_or_unavailable_text(sector_strength_display)
-sector_etf_display = result.get("sector_etf_symbol", "-")
-sector_delta_display = f"{sector_label_display} | ETF: {sector_etf_display}" if sector_etf_display not in ["", "-", None] else sector_label_display
-trend_quality_display = result.get("trend_quality_score", np.nan)
-base_quality_display = result.get("base_quality_score", np.nan)
-setup_type_quality_display = result.get("setup_type_quality_score", np.nan)
-setup_priority_display = result.get("setup_priority_score", np.nan)
-base_length_display = result.get("base_length_days", np.nan)
-correction_depth_display = result.get("correction_depth_pct", np.nan)
-range_tightness_display = result.get("range_tightness_score", np.nan)
-volatility_contraction_display = result.get("volatility_contraction_score", np.nan)
-pullback_quality_display = result.get("pullback_quality_score", np.nan)
-volume_quality_display = result.get("volume_quality_score", np.nan)
-accumulation_display = result.get("accumulation_score", np.nan)
-distribution_display = result.get("distribution_pressure_score", np.nan)
-pullback_dryup_display = result.get("pullback_dryup_score", np.nan)
-breakout_volume_display = result.get("breakout_volume_score", np.nan)
-up_down_volume_ratio_display = result.get("up_down_volume_ratio", np.nan)
-volume_trend_display = result.get("volume_trend_score", np.nan)
-accumulation_day_count_display = result.get("accumulation_day_count", np.nan)
-distribution_day_count_display = result.get("distribution_day_count", np.nan)
-catalyst_score_display = result.get("catalyst_score", np.nan)
-earnings_event_score_display = result.get("earnings_event_score", np.nan)
-post_earnings_reaction_score_display = result.get("post_earnings_reaction_score", np.nan)
-revision_momentum_score_display = result.get("revision_momentum_score", np.nan)
-event_risk_score_display = result.get("event_risk_score", np.nan)
-catalyst_text_display = result.get("catalyst_text", "-")
-event_phase_label_display = result.get("event_phase_label", "kein Eventfenster")
-earnings_reaction_5d_display = result.get("earnings_reaction_5d", np.nan)
-earnings_reaction_10d_display = result.get("earnings_reaction_10d", np.nan)
-cashflow_stability_display = result.get("cashflow_stability_score", np.nan)
-margin_stability_display = result.get("margin_stability_score", np.nan)
-institutional_quality_display = result.get("institutional_quality_score", np.nan)
-institutional_quality_text_display = result.get("institutional_quality_text", "-")
-
-
-st.markdown("""
-<style>
-.reason-box{
-    border:1px solid rgba(148,163,184,0.18);
-    border-radius:18px;
-    padding:14px 16px;
-    background:rgba(15,23,42,0.55);
-    margin:8px 0 12px 0;
-}
-.reason-title{font-size:1.02rem;font-weight:800;margin-bottom:8px;}
-.reason-item{padding:8px 0;border-top:1px solid rgba(148,163,184,0.10);}
-.reason-item:first-child{border-top:none;}
-.reason-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
-.reason-label{font-weight:700;}
-.reason-value{font-weight:800;}
-.reason-meta{margin-top:4px;font-size:0.88rem;color:#cbd5e1;}
-.diag-row{border:1px solid rgba(148,163,184,0.12);border-radius:16px;padding:10px 12px;margin:8px 0;background:rgba(15,23,42,0.42);}
-.diag-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;}
-.diag-label{font-weight:800;}
-.diag-value{font-weight:800;}
-.diag-sub{margin-top:4px;font-size:0.88rem;color:#cbd5e1;}
-.diag-chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:0.78rem;font-weight:800;margin-right:6px;background:rgba(148,163,184,0.15);color:#e2e8f0;}
-.diag-pos{background:#052e16;color:#86efac;}
-.diag-neu{background:#3f2f0a;color:#fde68a;}
-.diag-neg{background:#450a0a;color:#fca5a5;}
-.affects-line{margin-top:4px;font-size:0.82rem;color:#93c5fd;font-weight:700;}
-.compact-summary-card{border:1px solid rgba(148,163,184,0.14);border-radius:18px;padding:12px 14px;background:rgba(15,23,42,0.48);}
-.compact-summary-title{font-size:0.82rem;color:#cbd5e1;font-weight:700;}
-.compact-summary-value{font-size:1.18rem;font-weight:900;margin-top:2px;}
-.compact-summary-sub{font-size:0.82rem;color:#93c5fd;margin-top:4px;}
-</style>
-""", unsafe_allow_html=True)
-
-analysis_view_mode = "Expertenmodus"
-
-is_simple_mode = False
-is_pro_mode = False
-is_expert_mode = True
-
-driver_summary = build_driver_summary(result)
-diag_items_126a = build_diagnostic_impacts(result)
-diag_sections_126a = {}
-for _item in diag_items_126a:
-    _sec = _item.get("section", "Diagnose")
-    diag_sections_126a.setdefault(_sec, []).append(_item)
-
-if str(exit_action_display).strip().lower() == "halten":
-    exit_action_sub_display = "Kein akuter Verkaufsdruck"
-elif str(exit_action_display).strip().lower() == "beobachten":
-    exit_action_sub_display = "Frühe Schwäche, eng beobachten"
-elif str(exit_action_display).strip().lower() == "teilgewinn prüfen":
-    exit_action_sub_display = "Gewinnschutz und De-Risking"
-elif str(exit_action_display).strip().lower() == "risiko reduzieren":
-    exit_action_sub_display = "Verkaufsdruck erhöht"
-elif str(exit_action_display).strip().lower() == "verkaufen":
-    exit_action_sub_display = "Klarer Exit-Druck"
-else:
-    exit_action_sub_display = "Exit-Einordnung der aktuellen Lage"
-
-if is_expert_mode:
-    st.markdown(
-        f"""
-        <div class="exec-shell">
-            <div class="exec-top">
-                <div>
-                    <div class="exec-kicker">Capital Hill Executive Summary</div>
-                    <div class="exec-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
-                    <div class="exec-sub">{shorten_text(short_thesis, 210)}</div>
-                    <div class="exec-meta">
-                        <div class="status-chip {action_chip_class}">⚡ Handlung: {main_action_label}</div>
-                        <div class="status-chip {entry_chip_class}">📈 Einstieg: {trading_case_score}/100</div>
-                        <div class="status-chip {investment_chip_class}">🏛️ Investment: {investment_case_score}/100</div>
-                        <div class="status-chip {priority_chip_class}">📌 Priorität: {watchlist_priority}</div>
-                        <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
-                        <div class="status-chip purple">🧩 Setup: {setup_type}</div>
-                        <div class="status-chip blue">⚖️ CRV: {ui_safe_metric_text(crv_value,1,":1")}</div>
-                        <div class="status-chip {exit_chip_class}">🚪 Exit: {exit_action_display}</div>
-                    </div>
-                </div>
-                <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
-                    <div class="exec-score-label">Hauptsignal</div>
-                    <div class="exec-score-value">{main_action_label}</div>
-                    <div class="exec-score-sub">{market_regime_label(market_info["regime"])} · {display_mode_label(mode_label)}</div>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-compact_cols = st.columns(6)
-compact_data = [
-    ("Hauptsignal", main_action_label, display_mode_label(mode_label)),
-    ("Investment-Case", f"{investment_case_score}/100", investment_case_text),
-    ("Trading-Case", f"{trading_case_score}/100", trading_case_text),
-    ("Exit", exit_action_display, exit_score_text_display),
-    ("Setup-Priorität", f"{fmt_num(result.get('setup_priority_score', np.nan),0)}/100", watchlist_priority),
-    ("Regime-Fit", f"{fmt_num(result.get('regime_fit_score', np.nan),0)}/100", market_regime_label(market_info["regime"])),
-]
-for _col, (_title, _value, _sub) in zip(compact_cols, compact_data):
-    with _col:
+    if is_expert_mode:
         st.markdown(
             f"""
-            <div class="compact-summary-card">
-                <div class="compact-summary-title">{_title}</div>
-                <div class="compact-summary-value">{_value}</div>
-                <div class="compact-summary-sub">{_sub}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-why_col, risk_col = st.columns(2)
-with why_col:
-    render_reason_box("Warum attraktiv", driver_summary.get("positives", []), empty_text="Keine klaren positiven Treiber erkannt.")
-with risk_col:
-    render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
-
-if is_pro_mode or is_expert_mode:
-    with st.expander("Setup & Timing", expanded=False):
-        render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
-    with st.expander("Volumen & Akkumulation", expanded=False):
-        render_diagnostic_section("Volumen & Akkumulation", diag_sections_126a.get("Volumen & Akkumulation", []))
-    with st.expander("Event & Katalysator", expanded=False):
-        render_diagnostic_section("Event & Katalysator", diag_sections_126a.get("Event & Katalysator", []))
-    with st.expander("Qualität & Fundamentals", expanded=False):
-        render_diagnostic_section("Qualität & Fundamentals", diag_sections_126a.get("Qualität & Fundamentals", []))
-    with st.expander("Marktregime", expanded=False):
-        render_diagnostic_section("Marktregime", diag_sections_126a.get("Marktregime", []))
-    with st.expander("Exit & Risiko", expanded=False):
-        render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
-
-if is_pro_mode or is_expert_mode:
-    st.markdown(
-        f"""
-        <div class="section-head">
-            <div class="section-title">Entscheidung auf einen Blick</div>
-            <div class="section-meta-line">Marktumfeld: {market_regime_label(market_info["regime"])} | Entry-Lage: {entry_quality} | Red Flag: {shorten_text(top_red_flag, 42)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        st.markdown(
-            f"""
-            <div class="decision-card invest" title="Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.">
-                <div class="dc-label">Investment-Attraktivität</div>
-                <div class="dc-value">{investment_case_score}/100</div>
-                <div class="dc-sub">{investment_case_text}</div>
-                <div class="dc-note">Grundqualität und Investment-Case.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with d2:
-        st.markdown(
-            f"""
-            <div class="decision-card entry" title="Wie attraktiv ein Einstieg genau jetzt gerade ist.">
-                <div class="dc-label">Einstieg jetzt attraktiv?</div>
-                <div class="dc-value">{trading_case_score}/100</div>
-                <div class="dc-sub">{trading_case_text}</div>
-                <div class="dc-note">Timing, Setup und Entry-Lage.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with d3:
-        st.markdown(
-            f"""
-            <div class="decision-card action" title="Verdichtete Handlungsempfehlung für Watchlist oder Position.">
-                <div class="dc-label">Handlung</div>
-                <div class="dc-value">{main_action_label}</div>
-                <div class="dc-sub">{market_regime_label(market_info["regime"])}</div>
-                <div class="dc-note">Was jetzt praktisch am ehesten sinnvoll ist.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-    st.markdown(
-        f"""
-        <div class="section-head">
-            <div class="section-title">Exit-Sicht für Positionen</div>
-            <div class="section-meta-line">Frühe Verkaufssignale aus Trendbruch, Momentum, relativer Schwäche, Distributionsdruck und harten Exit-Triggern.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    ex1, ex2, ex3 = st.columns(3)
-    with ex1:
-        st.markdown(
-            f"""
-            <div class="decision-card action" title="Verdichteter Verkaufsdruck für die aktuelle Situation.">
-                <div class="dc-label">Exit-Score</div>
-                <div class="dc-value">{exit_score_display}/100</div>
-                <div class="dc-sub">{exit_score_text_display}</div>
-                <div class="dc-note">Je höher, desto stärker der Verkaufsdruck.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with ex2:
-        st.markdown(
-            f"""
-            <div class="decision-card entry" title="Operative Exit-Aktion für die aktuelle Lage.">
-                <div class="dc-label">Exit-Aktion</div>
-                <div class="dc-value">{exit_action_display}</div>
-                <div class="dc-sub">{exit_action_sub_display}</div>
-                <div class="dc-note">Ergänzt die bestehende Kauf-/Aufbaulogik um ein eigenes Verkaufssystem.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with ex3:
-        st.markdown(
-            f"""
-            <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
-                <div class="dc-label">Hauptgrund</div>
-                <div class="dc-value" style="font-size:clamp(1.0rem, 1.15vw, 1.18rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exit_reason_top_display}</div>
-                <div class="dc-sub">{' | '.join(exit_reason_extra_display[:2]) if exit_reason_extra_display else 'keine weiteren Exit-Hinweise'}</div>
-                <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Die wichtigsten Begründungen</div>
-            <div class="section-meta-line">Die App trennt jetzt klarer zwischen Kernaussage, operativer Ausführung und Diagnose.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    b1, b2, b3 = st.columns(3)
-    with b1:
-        strengths_html = "".join([f"<li>{s}</li>" for s in top_strengths]) if top_strengths else "<li>Keine klaren Stärken identifiziert.</li>"
-        st.markdown(
-            f"""
-            <div class="bullet-card">
-                <h4>Pro</h4>
-                <ul>{strengths_html}</ul>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with b2:
-        weaknesses_html = "".join([f"<li>{w}</li>" for w in top_weaknesses]) if top_weaknesses else "<li>Keine wesentlichen Schwächen identifiziert.</li>"
-        st.markdown(
-            f"""
-            <div class="bullet-card">
-                <h4>Contra</h4>
-                <ul>{weaknesses_html}</ul>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with b3:
-        st.markdown(
-            f"""
-            <div class="bullet-card">
-                <h4>Kurzfazit</h4>
-                <ul>
-                    <li>{shorten_text(decision_summary, 170)}</li>
-                    <li>Setup-Typ: {setup_type}</li>
-                    <li>Trigger / Lage: {entry_quality}</li>
-                </ul>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Kernbausteine</div>
-            <div class="section-meta-line">Operative Subscores für Struktur, Confidence und Qualitätsbild.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    kb1, kb2, kb3, kb4 = st.columns(4)
-    with kb1:
-        st.markdown(
-            f"""
-            <div class="compact-panel" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
-                <div class="cp-label">Trade-Struktur</div>
-                <div class="cp-value">{fmt_num(tradeability_score,0)}/100</div>
-                <div class="cp-sub">{tradeability_text}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with kb2:
-        st.markdown(
-            f"""
-            <div class="compact-panel" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
-                <div class="cp-label">Setup-Confidence</div>
-                <div class="cp-value">{fmt_num(setup_confidence,0)}/100</div>
-                <div class="cp-sub">{setup_confidence_text}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with kb3:
-        st.markdown(
-            f"""
-            <div class="compact-panel" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
-                <div class="cp-label">Company Quality</div>
-                <div class="cp-value">{company}/100</div>
-                <div class="cp-sub">{ampel(company)}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with kb4:
-        st.markdown(
-            f"""
-            <div class="compact-panel" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
-                <div class="cp-label">Investment Score</div>
-                <div class="cp-value">{investment}/100</div>
-                <div class="cp-sub">{ampel(investment)}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-    st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div></div>', unsafe_allow_html=True)
-    se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
-    sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
-    with se_outer1:
-        st.markdown(
-            f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
-            unsafe_allow_html=True
-        )
-    with se_outer2:
-        st.markdown(
-            f'<a class="export-action-btn" href="{sheet_href}"><span>Sheets</span></a>',
-            unsafe_allow_html=True
-        )
-    with se_outer3:
-        st.markdown("", unsafe_allow_html=True)
-
-    with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
-        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-        with c1:
-            render_score_card("Company Quality", f"{company}/100", ampel(company), "company", tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens.")
-        with c2:
-            render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup", tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter.")
-        with c3:
-            render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment", tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität.")
-        with c4:
-            render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}/100", tradeability_text, "kb", tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.")
-        with c5:
-            render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board", tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard.")
-        with c6:
-            render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short", tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke.")
-        with c7:
-            render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper", tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt.")
-
-
-
-
-# ---------- Tabs ----------
-st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
-st.divider()
-if is_pro_mode or is_expert_mode:
-    t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
-        "Überblick",
-        "Trading-Case",
-        "Signalbild",
-        "TradingBoard",
-        "Investment-Case",
-        "Sicherheit & Checks",
-        "Trade-Plan",
-        "Position",
-        "Watchlist"
-    ])
-
-    with t0:
-        st.subheader("Überblick")
-        st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
-
-        p1, p2, p3 = st.columns(3)
-        p1.metric("Unternehmen", name)
-        p2.metric("Sektor", sector if sector else "-")
-        p3.metric("Industrie", industry if industry else "-")
-
-        if is_expert_mode:
-            st.markdown(
-                """
-                <div class="section-head">
-                    <div class="section-title">Leadership & Marktbreite</div>
-                    <div class="section-meta-line">Bewertet, ob die Aktie in einem starken Umfeld selbst als Leader auftritt oder eher nur mitläuft.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            l1, l2, l3, l4 = st.columns(4)
-            l1.metric("Leadership", f"{fmt_num(leadership_score_display,0)}/100", leadership_status_display)
-            l2.metric("Sektor-Stärke", sector_strength_text_display, sector_delta_display)
-            l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
-            l4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
-
-        st.markdown(
-                f"""
-                    <div class="section-card">
-                        <div class="premium-title">Einordnung</div>
-                        <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
-                        <div class="premium-sub">
-                            Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
+            <div class="exec-shell">
+                <div class="exec-top">
+                    <div>
+                        <div class="exec-kicker">Capital Hill Executive Summary</div>
+                        <div class="exec-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
+                        <div class="exec-sub">{shorten_text(short_thesis, 210)}</div>
+                        <div class="exec-meta">
+                            <div class="status-chip {action_chip_class}">⚡ Handlung: {main_action_label}</div>
+                            <div class="status-chip {entry_chip_class}">📈 Einstieg: {trading_case_score}/100</div>
+                            <div class="status-chip {investment_chip_class}">🏛️ Investment: {investment_case_score}/100</div>
+                            <div class="status-chip {priority_chip_class}">📌 Priorität: {watchlist_priority}</div>
+                            <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
+                            <div class="status-chip purple">🧩 Setup: {setup_type}</div>
+                            <div class="status-chip blue">⚖️ CRV: {ui_safe_metric_text(crv_value,1,":1")}</div>
+                            <div class="status-chip {exit_chip_class}">🚪 Exit: {exit_action_display}</div>
                         </div>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-        with st.expander("Details zwischen Einordnung und Kurzfazit anzeigen", expanded=False):
-                st.markdown(
-                    """
-                    <div class="section-head">
-                        <div class="section-title">Setup-Qualität & Trendstruktur</div>
-                        <div class="section-meta-line">Bewertet, wie sauber Trend, Base und konkreter Setup-Typ wirklich aufgebaut sind.</div>
+                    <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
+                        <div class="exec-score-label">Hauptsignal</div>
+                        <div class="exec-score-value">{main_action_label}</div>
+                        <div class="exec-score-sub">{market_regime_label(market_info["regime"])} · {display_mode_label(mode_label)}</div>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                q1, q2, q3, q4 = st.columns(4)
-                q1.metric("Trendqualität", f"{fmt_num(trend_quality_display,0)}/100")
-                q2.metric("Base-Qualität", f"{fmt_num(base_quality_display,0)}/100")
-                q3.metric("Setup-Typ-Qualität", f"{fmt_num(setup_type_quality_display,0)}/100", setup_type)
-                q4.metric("Setup-Priorität", f"{fmt_num(setup_priority_display,0)}/100")
-
-                d1, d2, d3, d4, d5 = st.columns(5)
-                d1.metric("Base-Länge", fmt_num(base_length_display, 0))
-                d2.metric("Korrekturtiefe %", fmt_num(correction_depth_display, 1, "%"))
-                d3.metric("Range-Tightness", f"{fmt_num(range_tightness_display,0)}/100")
-                d4.metric("Volatility Contraction", f"{fmt_num(volatility_contraction_display,0)}/100")
-                d5.metric("Pullback-Qualität", f"{fmt_num(pullback_quality_display,0)}/100")
-
-                st.markdown(
-                    """
-                    <div class="section-head">
-                        <div class="section-title">Volumenqualität & Akkumulation</div>
-                        <div class="section-meta-line">Bewertet, ob Nachfrage, Pullback-Volumen und Breakout-Bestätigung das Long-Setup wirklich tragen.</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                v1, v2, v3, v4, v5 = st.columns(5)
-                v1.metric("Volumenqualität", f"{fmt_num(volume_quality_display,0)}/100")
-                v2.metric("Akkumulation", f"{fmt_num(accumulation_display,0)}/100")
-                v3.metric("Distribution", f"{fmt_num(distribution_display,0)}/100")
-                v4.metric("Pullback-Dry-up", f"{fmt_num(pullback_dryup_display,0)}/100")
-                v5.metric("Breakout-Volumen", f"{fmt_num(breakout_volume_display,0)}/100")
-
-                dv1, dv2, dv3, dv4 = st.columns(4)
-                dv1.metric("Up/Down-Vol.-Ratio", fmt_num(up_down_volume_ratio_display, 2))
-                dv2.metric("Akkumulationstage", fmt_num(accumulation_day_count_display, 0))
-                dv3.metric("Distributionstage", fmt_num(distribution_day_count_display, 0))
-                dv4.metric("Volumentrend", f"{fmt_num(volume_trend_display,0)}/100")
-
-                st.markdown(
-                    """
-                    <div class="section-head">
-                        <div class="section-title">Katalysatoren & Event-Kontext</div>
-                        <div class="section-meta-line">Bewertet Earnings-Nähe, Reaktionsqualität nach Events und den aktuellen Katalysator-Rückenwind.</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Katalysator-Score", f"{fmt_num(catalyst_score_display,0)}/100", catalyst_text_display)
-                c2.metric("Event-Score", f"{fmt_num(earnings_event_score_display,0)}/100", event_phase_text(event_phase_label_display))
-                c3.metric("Revision/Momentum", f"{fmt_num(revision_momentum_score_display,0)}/100")
-                c4.metric("Event-Risiko", f"{fmt_num(event_risk_score_display,0)}/100")
-
-                e1, e2 = st.columns(2)
-                e1.metric("Post-Earnings 5d", fmt_num(earnings_reaction_5d_display, 1, "%"))
-                e2.metric("Post-Earnings 10d", fmt_num(earnings_reaction_10d_display, 1, "%"))
-
-                st.markdown(
-                    """
-                    <div class="section-head">
-                        <div class="section-title">Institutionelle Qualität</div>
-                        <div class="section-meta-line">Bewertet Cashflow-Stabilität, Margenqualität und die Robustheit des Unternehmens aus Investorensicht.</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                iq1, iq2, iq3 = st.columns(3)
-                iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
-                iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
-                iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
-        st.markdown("**Kurzfazit**")
-        st.write(short_thesis)
-
-        st.markdown("**Kurzbeschreibung**")
-        summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
-        st.write(summary_short)
-
-        st.markdown(f"**Chart & Performance · {ticker} ({ccy})**")
-        chart_range = st.selectbox(
-            "Zeitraum",
-            ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
-            index=2,
-            key="chart_range"
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-        chart_df = compute_chart_df(df, chart_range)
-        fig = build_candlestick_chart(chart_df, ticker, ccy)
-        st.plotly_chart(fig, use_container_width=True)
-
-        perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
-        perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
-        perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
-
-        p4, p5, p6 = st.columns(3)
-        p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
-        p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
-        p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
-
-    with t1:
-        st.subheader("Trading-Case")
-        st.markdown('<div class="panel-caption">Technisches Setup, Momentum, Volumen und kurzfristige Struktur.</div>', unsafe_allow_html=True)
-        st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_regime_label(market_info['regime'])}")
-
-        cols = st.columns(2)
-        items = [
-            ("S3 Trend", s3a, s3, s3t),
-            ("S4 Momentum", s4a, s4, s4t),
-            ("S5 Volumen", s5a, s5, s5t),
-            ("S6 Volatilitaet", s6a, s6, s6t),
-            ("52W-Lage", ampel(w52), w52, f"{dist52:.1f}% vom 52W-Hoch"),
-            ("Relative Stärke", ampel(rs_score), rs_score, f"RS composite: {fmt_num(rs_composite,1,'%')}"),
-        ]
-        for i, (lab, ico, score, com) in enumerate(items):
-            with cols[i % 2]:
-                st.markdown(
-                    f'<div class="metric-card {card_class(score)}"><b>{ico} {lab}</b>'
-                    f'<span style="float:right;font-size:1.3rem;font-weight:700">{score}</span>'
-                    f'<br><small style="color:#aaa">{com}</small></div>',
-                    unsafe_allow_html=True,
-                )
-
-        tech_df = pd.DataFrame({
-            "Indikator": [
-                "Kurs", "MA20", "MA50", "MA150", "MA200",
-                "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR in %",
-                "Stoch %K", "Stoch %D", "Williams %R", "ROC20", "ROC60",
-                "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch",
-                "1M Aktie", "1M Benchmark", "1M Outperformance",
-                "3M Aktie", "3M Benchmark", "3M Outperformance",
-                "6M Aktie", "6M Benchmark", "6M Outperformance",
-                "RS Composite", "Marktregime"
-            ],
-            "Wert": [
-                f"{price:.2f}", f"{ma20:.2f}", f"{ma50:.2f}", f"{ma150:.2f}", f"{ma200:.2f}",
-                f"{rsi:.1f}", f"{macd_v:.3f}", f"{signal_v:.3f}", f"{macd_hist_current:.3f}", f"{adx:.1f}",
-                f"{atr:.3f}", f"{atr_pct:.1f}%", f"{stoch_k_v:.1f}", f"{stoch_d_v:.1f}", f"{willr_v:.1f}",
-                f"{roc20:.1f}%", f"{roc60:.1f}%", f"{high52:.2f}", f"{low52:.2f}", f"{dist52:.1f}%",
-                fmt_num(ret21, 1, "%"), fmt_num(bench_ret21, 1, "%"), fmt_num(rs_vs_benchmark_21, 1, "%"),
-                fmt_num(ret63, 1, "%"), fmt_num(bench_ret63, 1, "%"), fmt_num(rs_vs_benchmark_63, 1, "%"),
-                fmt_num(ret126, 1, "%"), fmt_num(bench_ret126, 1, "%"), fmt_num(rs_vs_benchmark_126, 1, "%"),
-                fmt_num(rs_composite, 1, "%"), market_regime_label(market_info["regime"])
-            ],
-        })
-        st.dataframe(tech_df, hide_index=True, use_container_width=True)
-
-    with t2:
-        st.subheader("Kurzfristiges Signalbild")
-        c1, c2, c3, c4 = st.columns([1.0, 1.0, 1.15, 1.15])
-        c1.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
-        c2.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
-        with c3:
+    compact_cols = st.columns(6)
+    compact_data = [
+        ("Hauptsignal", main_action_label, display_mode_label(mode_label)),
+        ("Investment-Case", f"{investment_case_score}/100", investment_case_text),
+        ("Trading-Case", f"{trading_case_score}/100", trading_case_text),
+        ("Exit", exit_action_display, exit_score_text_display),
+        ("Setup-Priorität", f"{fmt_num(result.get('setup_priority_score', np.nan),0)}/100", watchlist_priority),
+        ("Regime-Fit", f"{fmt_num(result.get('regime_fit_score', np.nan),0)}/100", market_regime_label(market_info["regime"])),
+    ]
+    for _col, (_title, _value, _sub) in zip(compact_cols, compact_data):
+        with _col:
             st.markdown(
-                """
-                <div class="wrap-metric-card">
-                    <div class="wrap-metric-label">Core Fokus</div>
-                    <div class="wrap-metric-value">Momentum und Volumen</div>
-                    <div class="wrap-metric-sub">Die Kernsignale für kurzfristige Stärke.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with c4:
-            st.markdown(
-                """
-                <div class="wrap-metric-card">
-                    <div class="wrap-metric-label">Board Fokus</div>
-                    <div class="wrap-metric-value">Einzelne Handelssignale</div>
-                    <div class="wrap-metric-sub">Additive Trigger aus dem Hilfsboard.</div>
+                f"""
+                <div class="compact-summary-card">
+                    <div class="compact-summary-title">{_title}</div>
+                    <div class="compact-summary-value">{_value}</div>
+                    <div class="compact-summary-sub">{_sub}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-        st.dataframe(
-            pd.DataFrame({
-                "Kennzahl": ["Kurzfrist Core", "Kurzfrist Hilfsboard", "Board-Signal", "Board-Treiber"],
-                "Wert": [f"{short_term_score}/100", str(stb_score), stb_signal, stb_text],
-                "Kommentar": [
-                    "S4 Momentum 45%, S5 Volumen 28%, S6 Volatilitaet 17%, RS 10%",
-                    "Additive Kurzfrist-Punkte aus MA/RSI/Momentum/ADX/Stoch/Williams",
-                    stb_empf,
-                    stb_text
-                ],
-            }),
-            hide_index=True,
-            use_container_width=True,
-        )
+    why_col, risk_col = st.columns(2)
+    with why_col:
+        render_reason_box("Warum attraktiv", driver_summary.get("positives", []), empty_text="Keine klaren positiven Treiber erkannt.")
+    with risk_col:
+        render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
 
-    with t3:
-        st.subheader("TradingBoard & Timing")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Kurzfrist-Timing", f"{tb_score_100}/100", tb_timing_text)
-        c2.metric("Board-Signal", tb_signal, tb_empf)
-        c3.metric("TradingBoard Stop-Loss", f"{price - (2.5 * atr):.2f} {ccy}")
-        c4.metric("TradingBoard Kursziel 2", f"{tp2:.2f} {ccy}")
+    if is_pro_mode or is_expert_mode:
+        with st.expander("Setup & Timing", expanded=False):
+            render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
+        with st.expander("Volumen & Akkumulation", expanded=False):
+            render_diagnostic_section("Volumen & Akkumulation", diag_sections_126a.get("Volumen & Akkumulation", []))
+        with st.expander("Event & Katalysator", expanded=False):
+            render_diagnostic_section("Event & Katalysator", diag_sections_126a.get("Event & Katalysator", []))
+        with st.expander("Qualität & Fundamentals", expanded=False):
+            render_diagnostic_section("Qualität & Fundamentals", diag_sections_126a.get("Qualität & Fundamentals", []))
+        with st.expander("Marktregime", expanded=False):
+            render_diagnostic_section("Marktregime", diag_sections_126a.get("Marktregime", []))
+        with st.expander("Exit & Risiko", expanded=False):
+            render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
 
-        st.dataframe(tb_df, hide_index=True, use_container_width=True)
-
-        st.markdown("**Board-Details (Kurzfrist-Timing)**")
-        st.text("\n".join(tb_details))
-
-        st.markdown("**Board-Kontext (nicht im Score)**")
-        st.text("\n".join(tb_context))
-
-    with t4:
-        st.subheader("Investment-Case")
-        st.markdown('<div class="panel-caption">Fundamentale Qualität, Bewertung und mittelfristige Attraktivität.</div>', unsafe_allow_html=True)
+    if is_pro_mode or is_expert_mode:
         st.markdown(
-            f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}% | Geladene Felder: {fund_fields_loaded}/21</div>",
-            unsafe_allow_html=True
+            f"""
+            <div class="section-head">
+                <div class="section-title">Entscheidung auf einen Blick</div>
+                <div class="section-meta-line">Marktumfeld: {market_regime_label(market_info["regime"])} | Entry-Lage: {entry_quality} | Red Flag: {shorten_text(top_red_flag, 42)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-        f1, f2, f3, f4 = st.columns(4)
-        f1.metric("Fundamental-Confidence", confidence_info["confidence"], confidence_info["confidence_icon"])
-        f2.metric("Coverage", f"{confidence_info['coverage']*100:.0f}%")
-        f3.metric("Geladene Felder", f"{confidence_info['loaded']}/{confidence_info['total']}")
-        f4.metric("Abgeleitete Felder", str(confidence_info["derived_estimate"]))
-
-        fund_df = pd.DataFrame({
-            "Fundament-Block": [
-                "Qualitaet", "Wachstum", "Growth Quality", "Bewertung",
-                "Bilanz", "Sentiment", "Risiko"
-            ],
-            "Score": [
-                quality_score, growth_score, growth_quality, valuation_score,
-                balance_score, sentiment_score, risk_score
-            ],
-            "Kommentar": [
-                f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | ROE {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')}",
-                f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | EPS-Wachstum {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')}",
-                f"Wachstum + Cashflow + Margen | Stil: {stock_style}",
-                f"KGV {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | KUV {fmt_num(ps,2)} | KBV {fmt_num(pb,2)}",
-                f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | D/E {fmt_num(debt_to_equity,1)}",
-                f"Analystenmeinung {rec_label} | Anzahl {fmt_num(analysts,0)} | Mean {fmt_num(rec_mean,2)}",
-                f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR% {fmt_num(atr_pct,1,'%')}",
-            ],
-        })
-        st.dataframe(fund_df, hide_index=True, use_container_width=True)
-
-        st.markdown("**Strukturierte Red Flags**")
-        st.dataframe(red_flags_df, hide_index=True, use_container_width=True)
-
-    with t5:
-        st.subheader("Sicherheit & Checks")
-        safeguard_df = pd.DataFrame({
-            "Safeguard": [
-                "S0 Currency/Exchange",
-                "S0 Preis-Typ-Lock",
-                "S1 Earnings",
-                "S2 Regime",
-                "S3 Konfluenz-Cap",
-                "S4 Datenabdeckung",
-                "S5 Marktfilter",
-                "S6 Modus",
-                "S7 Red Flags",
-                "S8 Fundamental-Confidence"
-            ],
-            "Status": [
-                "🟢",
-                "🟢",
-                sg_earn,
-                reg_amp,
-                "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"),
-                "🟢" if fund_cov >= 0.55 else ("🟡" if fund_cov >= 0.35 else "🔴"),
-                market_info["ampel"],
-                "🟢",
-                "🟢" if red_flag_penalty_total == 0 else ("🟡" if red_flag_penalty_total <= 10 else "🔴"),
-                confidence_info["confidence_icon"],
-            ],
-            "Kommentar": [
-                f"{ccy} | {exch}",
-                "auto_adjust=True Yahoo Finance",
-                sg_earn_txt,
-                regime,
-                f"{kb}/4 Kernbloecke",
-                f"Fundamental-Coverage {fund_cov*100:.0f}%",
-                f"{benchmark_label} | {market_regime_label(market_info['regime'])}",
-                mode_label,
-                f"Penalty {red_flag_penalty_total}",
-                confidence_info["confidence"]
-            ],
-        })
-        st.dataframe(safeguard_df, hide_index=True, use_container_width=True)
-
-    with t6:
-        st.subheader("Trade-Plan")
-        st.markdown('<div class="panel-caption">Konkrete Ableitung von Entry, Stop, Zielen und Chance-Risiko-Verhältnis.</div>', unsafe_allow_html=True)
-        st.markdown('<div class="muted-meta">Setup-Ziele werden nur gezeigt, wenn aus dem konkreten Muster ein belastbares Primär- oder Sekundärziel ableitbar ist.</div>', unsafe_allow_html=True)
-        if not valid_trade_setup:
-            st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
-            st.write(
-                f"Aktuell: Investment Score {investment}/100 | "
-                f"Setup Quality {setup_adj}/100 | "
-                f"Konfluenz {kb}/4 | "
-                f"Marktregime {market_regime_label(market_info['regime'])}"
+        d1, d2, d3 = st.columns(3)
+        with d1:
+            st.markdown(
+                f"""
+                <div class="decision-card invest" title="Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.">
+                    <div class="dc-label">Investment-Attraktivität</div>
+                    <div class="dc-value">{investment_case_score}/100</div>
+                    <div class="dc-sub">{investment_case_text}</div>
+                    <div class="dc-note">Grundqualität und Investment-Case.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
-                st.write("Zusatzhinweis: Earnings-Veto aktiv.")
-        else:
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Einstiegskurs", f"{price:.2f} {ccy}")
-            c2.metric("ATR-basierter Stop-Loss", f"{atr_stop:.2f} {ccy}", f"-{(price-atr_stop)/price*100:.1f}%" if atr_stop < price else "-")
-            c3.metric("Aktueller Stop-Loss", f"{stop_used:.2f} {ccy}", f"-{stop_dist:.1f}%")
+        with d2:
+            st.markdown(
+                f"""
+                <div class="decision-card entry" title="Wie attraktiv ein Einstieg genau jetzt gerade ist.">
+                    <div class="dc-label">Einstieg jetzt attraktiv?</div>
+                    <div class="dc-value">{trading_case_score}/100</div>
+                    <div class="dc-sub">{trading_case_text}</div>
+                    <div class="dc-note">Timing, Setup und Entry-Lage.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with d3:
+            st.markdown(
+                f"""
+                <div class="decision-card action" title="Verdichtete Handlungsempfehlung für Watchlist oder Position.">
+                    <div class="dc-label">Handlung</div>
+                    <div class="dc-value">{main_action_label}</div>
+                    <div class="dc-sub">{market_regime_label(market_info["regime"])}</div>
+                    <div class="dc-note">Was jetzt praktisch am ehesten sinnvoll ist.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-            c4, c5, c6 = st.columns(3)
-            c4.metric("Kursziel 1 (1R)", f"{tp1:.2f} {ccy}", f"+{(tp1/price-1)*100:.1f}%")
-            c5.metric("Kursziel 2 (Hauptziel)", f"{tp2:.2f} {ccy}", f"+{(tp2/price-1)*100:.1f}%")
-            c6.metric("Kursziel 3", f"{tp3:.2f} {ccy}", f"+{(tp3/price-1)*100:.1f}%")
 
-            c7, c8, c9 = st.columns(3)
-            c7.metric(f"Chance-Risiko-Verhältnis {ampel_crv(crv)}", f"{crv:.1f}:1")
-            c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
-            c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
+        st.markdown(
+            f"""
+            <div class="section-head">
+                <div class="section-title">Exit-Sicht für Positionen</div>
+                <div class="section-meta-line">Frühe Verkaufssignale aus Trendbruch, Momentum, relativer Schwäche, Distributionsdruck und harten Exit-Triggern.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            st.markdown("**Konkreter Einstiegsvorschlag**")
-            e1, e2, e3 = st.columns(3)
-            e1.metric("Entry-Zone", suggested_entry_zone)
-            e2.metric("Entry-Herleitung", entry_source)
-            e3.metric("Aktuelle Lage", entry_quality)
+        ex1, ex2, ex3 = st.columns(3)
+        with ex1:
+            st.markdown(
+                f"""
+                <div class="decision-card action" title="Verdichteter Verkaufsdruck für die aktuelle Situation.">
+                    <div class="dc-label">Exit-Score</div>
+                    <div class="dc-value">{exit_score_display}/100</div>
+                    <div class="dc-sub">{exit_score_text_display}</div>
+                    <div class="dc-note">Je höher, desto stärker der Verkaufsdruck.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with ex2:
+            st.markdown(
+                f"""
+                <div class="decision-card entry" title="Operative Exit-Aktion für die aktuelle Lage.">
+                    <div class="dc-label">Exit-Aktion</div>
+                    <div class="dc-value">{exit_action_display}</div>
+                    <div class="dc-sub">{exit_action_sub_display}</div>
+                    <div class="dc-note">Ergänzt die bestehende Kauf-/Aufbaulogik um ein eigenes Verkaufssystem.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with ex3:
+            st.markdown(
+                f"""
+                <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
+                    <div class="dc-label">Hauptgrund</div>
+                    <div class="dc-value" style="font-size:clamp(1.0rem, 1.15vw, 1.18rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exit_reason_top_display}</div>
+                    <div class="dc-sub">{' | '.join(exit_reason_extra_display[:2]) if exit_reason_extra_display else 'keine weiteren Exit-Hinweise'}</div>
+                    <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-            st.markdown("**Case-Komponenten**")
-            tc1, tc2, tc3, tc4, tc5 = st.columns(5)
-            tc1.metric("Investment-Case", f"{investment_case_score}/100", investment_case_text)
-            tc2.metric("Einstiegs-Case", f"{trading_case_score}/100", trading_case_text)
-            tc3.metric("CRV-Score", fmt_num(trade_crv_score, 0))
-            tc4.metric("Entry-Score", fmt_num(trade_entry_score, 0))
-            tc5.metric("Setup-Confidence", fmt_num(setup_confidence, 0))
+        st.markdown(
+            """
+            <div class="section-head">
+                <div class="section-title">Die wichtigsten Begründungen</div>
+                <div class="section-meta-line">Die App trennt jetzt klarer zwischen Kernaussage, operativer Ausführung und Diagnose.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            st.markdown("**Herleitung von Stop und Zielen**")
-            st.write(f"• Stop: {stop_source}")
-            st.write(f"• TP1: {tp1_source}")
-            st.write(f"• TP2: {tp2_source}")
-            st.write(f"• TP3: {tp3_source}")
+        b1, b2, b3 = st.columns(3)
+        with b1:
+            strengths_html = "".join([f"<li>{s}</li>" for s in top_strengths]) if top_strengths else "<li>Keine klaren Stärken identifiziert.</li>"
+            st.markdown(
+                f"""
+                <div class="bullet-card">
+                    <h4>Pro</h4>
+                    <ul>{strengths_html}</ul>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with b2:
+            weaknesses_html = "".join([f"<li>{w}</li>" for w in top_weaknesses]) if top_weaknesses else "<li>Keine wesentlichen Schwächen identifiziert.</li>"
+            st.markdown(
+                f"""
+                <div class="bullet-card">
+                    <h4>Contra</h4>
+                    <ul>{weaknesses_html}</ul>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with b3:
+            st.markdown(
+                f"""
+                <div class="bullet-card">
+                    <h4>Kurzfazit</h4>
+                    <ul>
+                        <li>{shorten_text(decision_summary, 170)}</li>
+                        <li>Setup-Typ: {setup_type}</li>
+                        <li>Trigger / Lage: {entry_quality}</li>
+                    </ul>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-            td1, td2 = st.columns(2)
-            td1.metric("Primärziel aus Setup", ui_target_text(technical_target_1, ccy))
-            td2.metric("Sekundärziel aus Setup", ui_target_text(technical_target_2, ccy, "kein zweites Setup-Ziel"))
+        st.markdown(
+            """
+            <div class="section-head">
+                <div class="section-title">Kernbausteine</div>
+                <div class="section-meta-line">Operative Subscores für Struktur, Confidence und Qualitätsbild.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    with t7:
-        st.subheader("Position")
-        st.markdown('<div class="panel-caption">Positionssicht mit Exit-Score, Exit-Aktion, Kontext und den wichtigsten Verkaufsgründen.</div>', unsafe_allow_html=True)
+        kb1, kb2, kb3, kb4 = st.columns(4)
+        with kb1:
+            st.markdown(
+                f"""
+                <div class="compact-panel" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
+                    <div class="cp-label">Trade-Struktur</div>
+                    <div class="cp-value">{fmt_num(tradeability_score,0)}/100</div>
+                    <div class="cp-sub">{tradeability_text}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with kb2:
+            st.markdown(
+                f"""
+                <div class="compact-panel" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
+                    <div class="cp-label">Setup-Confidence</div>
+                    <div class="cp-value">{fmt_num(setup_confidence,0)}/100</div>
+                    <div class="cp-sub">{setup_confidence_text}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with kb3:
+            st.markdown(
+                f"""
+                <div class="compact-panel" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
+                    <div class="cp-label">Company Quality</div>
+                    <div class="cp-value">{company}/100</div>
+                    <div class="cp-sub">{ampel(company)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with kb4:
+            st.markdown(
+                f"""
+                <div class="compact-panel" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
+                    <div class="cp-label">Investment Score</div>
+                    <div class="cp-value">{investment}/100</div>
+                    <div class="cp-sub">{ampel(investment)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-        px1, px2, px3, px4 = st.columns(4)
-        px1.metric("Exit-Score", f"{exit_score_display}/100")
-        px2.metric("Exit-Aktion", exit_action_display)
-        px3.metric("Hauptgrund", exit_reason_top_display)
-        px4.metric("P&L-Kontext", result.get("pnl_bucket", "-"))
+        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div></div>', unsafe_allow_html=True)
+        se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
+        sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        with se_outer1:
+            st.markdown(
+                f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
+                unsafe_allow_html=True
+            )
+        with se_outer2:
+            st.markdown(
+                f'<a class="export-action-btn" href="{sheet_href}"><span>Sheets</span></a>',
+                unsafe_allow_html=True
+            )
+        with se_outer3:
+            st.markdown("", unsafe_allow_html=True)
 
-        exs1, exs2, exs3, exs4, exs5 = st.columns(5)
-        exs1.metric("Trendbruch", f"{result.get('trend_break_score', 0)}/100")
-        exs2.metric("Momentum", f"{result.get('momentum_collapse_score', 0)}/100")
-        exs3.metric("Rel. Schwäche", f"{result.get('relative_weakness_score', 0)}/100")
-        exs4.metric("Distribution", f"{result.get('distribution_score', 0)}/100")
-        exs5.metric("Trigger", f"{result.get('exit_trigger_score', 0)}/100")
+        with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
+            c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+            with c1:
+                render_score_card("Company Quality", f"{company}/100", ampel(company), "company", tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens.")
+            with c2:
+                render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup", tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter.")
+            with c3:
+                render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment", tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität.")
+            with c4:
+                render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}/100", tradeability_text, "kb", tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.")
+            with c5:
+                render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board", tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard.")
+            with c6:
+                render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short", tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke.")
+            with c7:
+                render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper", tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt.")
 
-        st.subheader("Position")
-        if not position_mode:
-            st.info("Dieser Bereich ist nur relevant, wenn ein Buy-in gesetzt ist und damit der Positionsmodus aktiv ist.")
-        else:
+
+
+
+    # ---------- Tabs ----------
+    st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
+    st.divider()
+    if is_pro_mode or is_expert_mode:
+        t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
+            "Überblick",
+            "Trading-Case",
+            "Signalbild",
+            "TradingBoard",
+            "Investment-Case",
+            "Sicherheit & Checks",
+            "Trade-Plan",
+            "Position",
+            "Watchlist"
+        ])
+
+        with t0:
+            st.subheader("Überblick")
+            st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
+
             p1, p2, p3 = st.columns(3)
-            p1.metric("Positions-Aktion", position_action)
-            p2.metric("Nachkauf sinnvoll?", add_on_action)
-            p3.metric("Teilgewinn prüfen?", partial_profit_action)
+            p1.metric("Unternehmen", name)
+            p2.metric("Sektor", sector if sector else "-")
+            p3.metric("Industrie", industry if industry else "-")
+
+            if is_expert_mode:
+                st.markdown(
+                    """
+                    <div class="section-head">
+                        <div class="section-title">Leadership & Marktbreite</div>
+                        <div class="section-meta-line">Bewertet, ob die Aktie in einem starken Umfeld selbst als Leader auftritt oder eher nur mitläuft.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                l1, l2, l3, l4 = st.columns(4)
+                l1.metric("Leadership", f"{fmt_num(leadership_score_display,0)}/100", leadership_status_display)
+                l2.metric("Sektor-Stärke", sector_strength_text_display, sector_delta_display)
+                l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
+                l4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
+
+            st.markdown(
+                    f"""
+                        <div class="section-card">
+                            <div class="premium-title">Einordnung</div>
+                            <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
+                            <div class="premium-sub">
+                                Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+            with st.expander("Details zwischen Einordnung und Kurzfazit anzeigen", expanded=False):
+                    st.markdown(
+                        """
+                        <div class="section-head">
+                            <div class="section-title">Setup-Qualität & Trendstruktur</div>
+                            <div class="section-meta-line">Bewertet, wie sauber Trend, Base und konkreter Setup-Typ wirklich aufgebaut sind.</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    q1, q2, q3, q4 = st.columns(4)
+                    q1.metric("Trendqualität", f"{fmt_num(trend_quality_display,0)}/100")
+                    q2.metric("Base-Qualität", f"{fmt_num(base_quality_display,0)}/100")
+                    q3.metric("Setup-Typ-Qualität", f"{fmt_num(setup_type_quality_display,0)}/100", setup_type)
+                    q4.metric("Setup-Priorität", f"{fmt_num(setup_priority_display,0)}/100")
+
+                    d1, d2, d3, d4, d5 = st.columns(5)
+                    d1.metric("Base-Länge", fmt_num(base_length_display, 0))
+                    d2.metric("Korrekturtiefe %", fmt_num(correction_depth_display, 1, "%"))
+                    d3.metric("Range-Tightness", f"{fmt_num(range_tightness_display,0)}/100")
+                    d4.metric("Volatility Contraction", f"{fmt_num(volatility_contraction_display,0)}/100")
+                    d5.metric("Pullback-Qualität", f"{fmt_num(pullback_quality_display,0)}/100")
+
+                    st.markdown(
+                        """
+                        <div class="section-head">
+                            <div class="section-title">Volumenqualität & Akkumulation</div>
+                            <div class="section-meta-line">Bewertet, ob Nachfrage, Pullback-Volumen und Breakout-Bestätigung das Long-Setup wirklich tragen.</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    v1, v2, v3, v4, v5 = st.columns(5)
+                    v1.metric("Volumenqualität", f"{fmt_num(volume_quality_display,0)}/100")
+                    v2.metric("Akkumulation", f"{fmt_num(accumulation_display,0)}/100")
+                    v3.metric("Distribution", f"{fmt_num(distribution_display,0)}/100")
+                    v4.metric("Pullback-Dry-up", f"{fmt_num(pullback_dryup_display,0)}/100")
+                    v5.metric("Breakout-Volumen", f"{fmt_num(breakout_volume_display,0)}/100")
+
+                    dv1, dv2, dv3, dv4 = st.columns(4)
+                    dv1.metric("Up/Down-Vol.-Ratio", fmt_num(up_down_volume_ratio_display, 2))
+                    dv2.metric("Akkumulationstage", fmt_num(accumulation_day_count_display, 0))
+                    dv3.metric("Distributionstage", fmt_num(distribution_day_count_display, 0))
+                    dv4.metric("Volumentrend", f"{fmt_num(volume_trend_display,0)}/100")
+
+                    st.markdown(
+                        """
+                        <div class="section-head">
+                            <div class="section-title">Katalysatoren & Event-Kontext</div>
+                            <div class="section-meta-line">Bewertet Earnings-Nähe, Reaktionsqualität nach Events und den aktuellen Katalysator-Rückenwind.</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Katalysator-Score", f"{fmt_num(catalyst_score_display,0)}/100", catalyst_text_display)
+                    c2.metric("Event-Score", f"{fmt_num(earnings_event_score_display,0)}/100", event_phase_text(event_phase_label_display))
+                    c3.metric("Revision/Momentum", f"{fmt_num(revision_momentum_score_display,0)}/100")
+                    c4.metric("Event-Risiko", f"{fmt_num(event_risk_score_display,0)}/100")
+
+                    e1, e2 = st.columns(2)
+                    e1.metric("Post-Earnings 5d", fmt_num(earnings_reaction_5d_display, 1, "%"))
+                    e2.metric("Post-Earnings 10d", fmt_num(earnings_reaction_10d_display, 1, "%"))
+
+                    st.markdown(
+                        """
+                        <div class="section-head">
+                            <div class="section-title">Institutionelle Qualität</div>
+                            <div class="section-meta-line">Bewertet Cashflow-Stabilität, Margenqualität und die Robustheit des Unternehmens aus Investorensicht.</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    iq1, iq2, iq3 = st.columns(3)
+                    iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
+                    iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
+                    iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
+            st.markdown("**Kurzfazit**")
+            st.write(short_thesis)
+
+            st.markdown("**Kurzbeschreibung**")
+            summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
+            st.write(summary_short)
+
+            st.markdown(f"**Chart & Performance · {ticker} ({ccy})**")
+            chart_range = st.selectbox(
+                "Zeitraum",
+                ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
+                index=2,
+                key="chart_range"
+            )
+
+            chart_df = compute_chart_df(df, chart_range)
+            fig = build_candlestick_chart(chart_df, ticker, ccy)
+            st.plotly_chart(fig, use_container_width=True)
+
+            perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
+            perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
+            perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
 
             p4, p5, p6 = st.columns(3)
-            p4.metric("Stop-Anpassung", stop_action)
-            p5.metric("Performance seit Einstieg", fmt_num(tb_perf, 1, "%"))
-            p6.metric("Risiko-Hinweis", risk_note)
+            p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
+            p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
+            p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
 
-            st.markdown("**Einordnung**")
-            st.write(
-                f"Die Positionsentscheidung kombiniert Investment-Case ({investment_case_score}/100), "
-                f"Einstiegs-Case ({trading_case_score}/100), Setup-Confidence ({fmt_num(setup_confidence,0)}/100), "
-                f"Marktumfeld ({market_regime_label(market_info['regime'])}) und die bisherige Performance seit Einstieg."
-            )
+        with t1:
+            st.subheader("Trading-Case")
+            st.markdown('<div class="panel-caption">Technisches Setup, Momentum, Volumen und kurzfristige Struktur.</div>', unsafe_allow_html=True)
+            st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_regime_label(market_info['regime'])}")
 
+            cols = st.columns(2)
+            items = [
+                ("S3 Trend", s3a, s3, s3t),
+                ("S4 Momentum", s4a, s4, s4t),
+                ("S5 Volumen", s5a, s5, s5t),
+                ("S6 Volatilitaet", s6a, s6, s6t),
+                ("52W-Lage", ampel(w52), w52, f"{dist52:.1f}% vom 52W-Hoch"),
+                ("Relative Stärke", ampel(rs_score), rs_score, f"RS composite: {fmt_num(rs_composite,1,'%')}"),
+            ]
+            for i, (lab, ico, score, com) in enumerate(items):
+                with cols[i % 2]:
+                    st.markdown(
+                        f'<div class="metric-card {card_class(score)}"><b>{ico} {lab}</b>'
+                        f'<span style="float:right;font-size:1.3rem;font-weight:700">{score}</span>'
+                        f'<br><small style="color:#aaa">{com}</small></div>',
+                        unsafe_allow_html=True,
+                    )
 
-    with t8:
-        st.subheader("Watchlist & Trigger")
-        if position_mode:
-            st.info("Dieser Bereich ist vor allem für den Watchlist-Modus gedacht. Im Positionsmodus sind Trigger nur nachrangig relevant.")
-        else:
-            w1, w2, w3 = st.columns(3)
-            w1.metric("Trigger-Status", trigger_status)
-            w2.metric("Watchlist-Priorität", watchlist_priority)
-            w3.metric("Nächster Trigger", next_trigger)
+            tech_df = pd.DataFrame({
+                "Indikator": [
+                    "Kurs", "MA20", "MA50", "MA150", "MA200",
+                    "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR in %",
+                    "Stoch %K", "Stoch %D", "Williams %R", "ROC20", "ROC60",
+                    "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch",
+                    "1M Aktie", "1M Benchmark", "1M Outperformance",
+                    "3M Aktie", "3M Benchmark", "3M Outperformance",
+                    "6M Aktie", "6M Benchmark", "6M Outperformance",
+                    "RS Composite", "Marktregime"
+                ],
+                "Wert": [
+                    f"{price:.2f}", f"{ma20:.2f}", f"{ma50:.2f}", f"{ma150:.2f}", f"{ma200:.2f}",
+                    f"{rsi:.1f}", f"{macd_v:.3f}", f"{signal_v:.3f}", f"{macd_hist_current:.3f}", f"{adx:.1f}",
+                    f"{atr:.3f}", f"{atr_pct:.1f}%", f"{stoch_k_v:.1f}", f"{stoch_d_v:.1f}", f"{willr_v:.1f}",
+                    f"{roc20:.1f}%", f"{roc60:.1f}%", f"{high52:.2f}", f"{low52:.2f}", f"{dist52:.1f}%",
+                    fmt_num(ret21, 1, "%"), fmt_num(bench_ret21, 1, "%"), fmt_num(rs_vs_benchmark_21, 1, "%"),
+                    fmt_num(ret63, 1, "%"), fmt_num(bench_ret63, 1, "%"), fmt_num(rs_vs_benchmark_63, 1, "%"),
+                    fmt_num(ret126, 1, "%"), fmt_num(bench_ret126, 1, "%"), fmt_num(rs_vs_benchmark_126, 1, "%"),
+                    fmt_num(rs_composite, 1, "%"), market_regime_label(market_info["regime"])
+                ],
+            })
+            st.dataframe(tech_df, hide_index=True, use_container_width=True)
 
-            st.markdown("**Warum steht die Aktie auf der Watchlist so weit oben?**")
-            st.write(trigger_reason)
-
-            w4, w5, w6 = st.columns(3)
-            w4.metric("Setup-Typ", setup_type)
-            w5.metric("Entry-Lage", entry_quality)
-            w6.metric("Einstieg jetzt attraktiv?", f"{trading_case_score}/100", trading_case_text)
-
-            st.markdown("**Praktische Watchlist-Logik**")
-            st.write(
-                "Die Watchlist-Logik priorisiert Werte, die entweder bereits valide sind, "
-                "kurz vor einem Trigger stehen oder einen starken Investment-Case haben, "
-                "aber noch auf besseres Timing warten."
-            )
-
-
-
-
-if is_pro_mode or is_expert_mode:
-    # ---------- Horizon lamps ----------
-    st.divider()
-    with st.expander("Zeithorizonte anzeigen", expanded=False):
-        st.subheader("5 Zeithorizont-Ampeln")
-        st.markdown('<div class="panel-caption">Verdichtete Eignung je Anlagehorizont. Die Werte sind enger an Trading-Case, Investment-Case, Marktregime, Red Flags und bei Positionen auch an die Exit-Sicht gekoppelt.</div>', unsafe_allow_html=True)
-        cols = st.columns(5)
-        for col, (lab, scv) in zip(cols, hmap.items()):
-            tone, status_word, status_text = horizon_status_meta(scv)
-            icon = horizon_icon(scv)
-            col.markdown(
-                f"""
-                <div class="horizon-card {tone}">
-                    <div class="horizon-top">
-                        <div class="horizon-label">{lab}</div>
-                        <div class="horizon-icon">{icon}</div>
+        with t2:
+            st.subheader("Kurzfristiges Signalbild")
+            c1, c2, c3, c4 = st.columns([1.0, 1.0, 1.15, 1.15])
+            c1.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
+            c2.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
+            with c3:
+                st.markdown(
+                    """
+                    <div class="wrap-metric-card">
+                        <div class="wrap-metric-label">Core Fokus</div>
+                        <div class="wrap-metric-value">Momentum und Volumen</div>
+                        <div class="wrap-metric-sub">Die Kernsignale für kurzfristige Stärke.</div>
                     </div>
-                    <div class="horizon-value">{status_word}</div>
-                    <div class="horizon-score">{scv}/100</div>
-                    <div class="horizon-sub">{status_text}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with c4:
+                st.markdown(
+                    """
+                    <div class="wrap-metric-card">
+                        <div class="wrap-metric-label">Board Fokus</div>
+                        <div class="wrap-metric-value">Einzelne Handelssignale</div>
+                        <div class="wrap-metric-sub">Additive Trigger aus dem Hilfsboard.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            st.dataframe(
+                pd.DataFrame({
+                    "Kennzahl": ["Kurzfrist Core", "Kurzfrist Hilfsboard", "Board-Signal", "Board-Treiber"],
+                    "Wert": [f"{short_term_score}/100", str(stb_score), stb_signal, stb_text],
+                    "Kommentar": [
+                        "S4 Momentum 45%, S5 Volumen 28%, S6 Volatilitaet 17%, RS 10%",
+                        "Additive Kurzfrist-Punkte aus MA/RSI/Momentum/ADX/Stoch/Williams",
+                        stb_empf,
+                        stb_text
+                    ],
+                }),
+                hide_index=True,
+                use_container_width=True,
             )
 
-    # ---------- Recommendation + Why block ----------
-    st.divider()
-    with st.expander("Erweiterte Entscheidungsansicht", expanded=False):
-        st.subheader("Handlungsempfehlung")
-        c1, c2, c3, c4, c5 = st.columns(5)
+        with t3:
+            st.subheader("TradingBoard & Timing")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Kurzfrist-Timing", f"{tb_score_100}/100", tb_timing_text)
+            c2.metric("Board-Signal", tb_signal, tb_empf)
+            c3.metric("TradingBoard Stop-Loss", f"{price - (2.5 * atr):.2f} {ccy}")
+            c4.metric("TradingBoard Kursziel 2", f"{tp2:.2f} {ccy}")
 
-        with c1:
+            st.dataframe(tb_df, hide_index=True, use_container_width=True)
+
+            st.markdown("**Board-Details (Kurzfrist-Timing)**")
+            st.text("\n".join(tb_details))
+
+            st.markdown("**Board-Kontext (nicht im Score)**")
+            st.text("\n".join(tb_context))
+
+        with t4:
+            st.subheader("Investment-Case")
+            st.markdown('<div class="panel-caption">Fundamentale Qualität, Bewertung und mittelfristige Attraktivität.</div>', unsafe_allow_html=True)
             st.markdown(
-                f"""
-                <div class="reco-card context">
-                    <div>
-                        <div class="reco-top">
-                            <div class="reco-label">Analysekontext</div>
-                            <div class="reco-icon">🧭</div>
-                        </div>
-                        <div class="reco-value">{display_mode_label(mode_label)}</div>
-                    </div>
-                    <div class="reco-chip">Aktueller Rahmen</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+                f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}% | Geladene Felder: {fund_fields_loaded}/21</div>",
+                unsafe_allow_html=True
             )
 
-        with c2:
-            main_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
-            main_chip = "Positions-Aktion" if position_mode else "Zentrale Aussage"
-            st.markdown(
-                f"""
-                <div class="reco-card main">
-                    <div>
-                        <div class="reco-top">
-                            <div class="reco-label">Haupteinschätzung</div>
-                            <div class="reco-icon">🎯</div>
-                        </div>
-                        <div class="reco-value">{main_label}</div>
-                    </div>
-                    <div class="reco-chip">{main_chip}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            f1, f2, f3, f4 = st.columns(4)
+            f1.metric("Fundamental-Confidence", confidence_info["confidence"], confidence_info["confidence_icon"])
+            f2.metric("Coverage", f"{confidence_info['coverage']*100:.0f}%")
+            f3.metric("Geladene Felder", f"{confidence_info['loaded']}/{confidence_info['total']}")
+            f4.metric("Abgeleitete Felder", str(confidence_info["derived_estimate"]))
 
-        with c3:
-            st.markdown(
-                f"""
-                <div class="reco-card conviction">
-                    <div>
-                        <div class="reco-top">
-                            <div class="reco-label">Überzeugungsgrad</div>
-                            <div class="reco-icon">📌</div>
-                        </div>
-                        <div class="reco-value">{display_conv_label(result.get("conv", "-"))}</div>
-                    </div>
-                    <div class="reco-chip">Vertrauen ins Setup</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            fund_df = pd.DataFrame({
+                "Fundament-Block": [
+                    "Qualitaet", "Wachstum", "Growth Quality", "Bewertung",
+                    "Bilanz", "Sentiment", "Risiko"
+                ],
+                "Score": [
+                    quality_score, growth_score, growth_quality, valuation_score,
+                    balance_score, sentiment_score, risk_score
+                ],
+                "Kommentar": [
+                    f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | ROE {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')}",
+                    f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | EPS-Wachstum {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')}",
+                    f"Wachstum + Cashflow + Margen | Stil: {stock_style}",
+                    f"KGV {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | KUV {fmt_num(ps,2)} | KBV {fmt_num(pb,2)}",
+                    f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | D/E {fmt_num(debt_to_equity,1)}",
+                    f"Analystenmeinung {rec_label} | Anzahl {fmt_num(analysts,0)} | Mean {fmt_num(rec_mean,2)}",
+                    f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR% {fmt_num(atr_pct,1,'%')}",
+                ],
+            })
+            st.dataframe(fund_df, hide_index=True, use_container_width=True)
 
-        with c4:
-            st.markdown(
-                f"""
-                <div class="reco-card signal">
-                    <div>
-                        <div class="reco-top">
-                            <div class="reco-label">Kurzfristsignal</div>
-                            <div class="reco-icon">⚡</div>
-                        </div>
-                        <div class="reco-value">{display_stb_label(stb_signal)}</div>
-                    </div>
-                    <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            st.markdown("**Strukturierte Red Flags**")
+            st.dataframe(red_flags_df, hide_index=True, use_container_width=True)
 
-        with c5:
-            st.markdown(
-                f"""
-                <div class="reco-card market">
-                    <div>
-                        <div class="reco-top">
-                            <div class="reco-label">Marktumfeld</div>
-                            <div class="reco-icon">🌍</div>
-                        </div>
-                        <div class="reco-value">{market_regime_label(market_info["regime"])}</div>
-                    </div>
-                    <div class="reco-delta">{market_info["ampel"]}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        with t5:
+            st.subheader("Sicherheit & Checks")
+            safeguard_df = pd.DataFrame({
+                "Safeguard": [
+                    "S0 Currency/Exchange",
+                    "S0 Preis-Typ-Lock",
+                    "S1 Earnings",
+                    "S2 Regime",
+                    "S3 Konfluenz-Cap",
+                    "S4 Datenabdeckung",
+                    "S5 Marktfilter",
+                    "S6 Modus",
+                    "S7 Red Flags",
+                    "S8 Fundamental-Confidence"
+                ],
+                "Status": [
+                    "🟢",
+                    "🟢",
+                    sg_earn,
+                    reg_amp,
+                    "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"),
+                    "🟢" if fund_cov >= 0.55 else ("🟡" if fund_cov >= 0.35 else "🔴"),
+                    market_info["ampel"],
+                    "🟢",
+                    "🟢" if red_flag_penalty_total == 0 else ("🟡" if red_flag_penalty_total <= 10 else "🔴"),
+                    confidence_info["confidence_icon"],
+                ],
+                "Kommentar": [
+                    f"{ccy} | {exch}",
+                    "auto_adjust=True Yahoo Finance",
+                    sg_earn_txt,
+                    regime,
+                    f"{kb}/4 Kernbloecke",
+                    f"Fundamental-Coverage {fund_cov*100:.0f}%",
+                    f"{benchmark_label} | {market_regime_label(market_info['regime'])}",
+                    mode_label,
+                    f"Penalty {red_flag_penalty_total}",
+                    confidence_info["confidence"]
+                ],
+            })
+            st.dataframe(safeguard_df, hide_index=True, use_container_width=True)
 
-        st.caption("Diese erweiterte Sicht zeigt die zusätzlichen Diagnose- und Einordnungsbausteine der Entscheidung.")
+        with t6:
+            st.subheader("Trade-Plan")
+            st.markdown('<div class="panel-caption">Konkrete Ableitung von Entry, Stop, Zielen und Chance-Risiko-Verhältnis.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="muted-meta">Setup-Ziele werden nur gezeigt, wenn aus dem konkreten Muster ein belastbares Primär- oder Sekundärziel ableitbar ist.</div>', unsafe_allow_html=True)
+            if not valid_trade_setup:
+                st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
+                st.write(
+                    f"Aktuell: Investment Score {investment}/100 | "
+                    f"Setup Quality {setup_adj}/100 | "
+                    f"Konfluenz {kb}/4 | "
+                    f"Marktregime {market_regime_label(market_info['regime'])}"
+                )
+                if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
+                    st.write("Zusatzhinweis: Earnings-Veto aktiv.")
+            else:
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Einstiegskurs", f"{price:.2f} {ccy}")
+                c2.metric("ATR-basierter Stop-Loss", f"{atr_stop:.2f} {ccy}", f"-{(price-atr_stop)/price*100:.1f}%" if atr_stop < price else "-")
+                c3.metric("Aktueller Stop-Loss", f"{stop_used:.2f} {ccy}", f"-{stop_dist:.1f}%")
+
+                c4, c5, c6 = st.columns(3)
+                c4.metric("Kursziel 1 (1R)", f"{tp1:.2f} {ccy}", f"+{(tp1/price-1)*100:.1f}%")
+                c5.metric("Kursziel 2 (Hauptziel)", f"{tp2:.2f} {ccy}", f"+{(tp2/price-1)*100:.1f}%")
+                c6.metric("Kursziel 3", f"{tp3:.2f} {ccy}", f"+{(tp3/price-1)*100:.1f}%")
+
+                c7, c8, c9 = st.columns(3)
+                c7.metric(f"Chance-Risiko-Verhältnis {ampel_crv(crv)}", f"{crv:.1f}:1")
+                c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
+                c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
+
+                st.markdown("**Konkreter Einstiegsvorschlag**")
+                e1, e2, e3 = st.columns(3)
+                e1.metric("Entry-Zone", suggested_entry_zone)
+                e2.metric("Entry-Herleitung", entry_source)
+                e3.metric("Aktuelle Lage", entry_quality)
+
+                st.markdown("**Case-Komponenten**")
+                tc1, tc2, tc3, tc4, tc5 = st.columns(5)
+                tc1.metric("Investment-Case", f"{investment_case_score}/100", investment_case_text)
+                tc2.metric("Einstiegs-Case", f"{trading_case_score}/100", trading_case_text)
+                tc3.metric("CRV-Score", fmt_num(trade_crv_score, 0))
+                tc4.metric("Entry-Score", fmt_num(trade_entry_score, 0))
+                tc5.metric("Setup-Confidence", fmt_num(setup_confidence, 0))
+
+                st.markdown("**Herleitung von Stop und Zielen**")
+                st.write(f"• Stop: {stop_source}")
+                st.write(f"• TP1: {tp1_source}")
+                st.write(f"• TP2: {tp2_source}")
+                st.write(f"• TP3: {tp3_source}")
+
+                td1, td2 = st.columns(2)
+                td1.metric("Primärziel aus Setup", ui_target_text(technical_target_1, ccy))
+                td2.metric("Sekundärziel aus Setup", ui_target_text(technical_target_2, ccy, "kein zweites Setup-Ziel"))
+
+        with t7:
+            st.subheader("Position")
+            st.markdown('<div class="panel-caption">Positionssicht mit Exit-Score, Exit-Aktion, Kontext und den wichtigsten Verkaufsgründen.</div>', unsafe_allow_html=True)
+
+            px1, px2, px3, px4 = st.columns(4)
+            px1.metric("Exit-Score", f"{exit_score_display}/100")
+            px2.metric("Exit-Aktion", exit_action_display)
+            px3.metric("Hauptgrund", exit_reason_top_display)
+            px4.metric("P&L-Kontext", result.get("pnl_bucket", "-"))
+
+            exs1, exs2, exs3, exs4, exs5 = st.columns(5)
+            exs1.metric("Trendbruch", f"{result.get('trend_break_score', 0)}/100")
+            exs2.metric("Momentum", f"{result.get('momentum_collapse_score', 0)}/100")
+            exs3.metric("Rel. Schwäche", f"{result.get('relative_weakness_score', 0)}/100")
+            exs4.metric("Distribution", f"{result.get('distribution_score', 0)}/100")
+            exs5.metric("Trigger", f"{result.get('exit_trigger_score', 0)}/100")
+
+            st.subheader("Position")
+            if not position_mode:
+                st.info("Dieser Bereich ist nur relevant, wenn ein Buy-in gesetzt ist und damit der Positionsmodus aktiv ist.")
+            else:
+                p1, p2, p3 = st.columns(3)
+                p1.metric("Positions-Aktion", position_action)
+                p2.metric("Nachkauf sinnvoll?", add_on_action)
+                p3.metric("Teilgewinn prüfen?", partial_profit_action)
+
+                p4, p5, p6 = st.columns(3)
+                p4.metric("Stop-Anpassung", stop_action)
+                p5.metric("Performance seit Einstieg", fmt_num(tb_perf, 1, "%"))
+                p6.metric("Risiko-Hinweis", risk_note)
+
+                st.markdown("**Einordnung**")
+                st.write(
+                    f"Die Positionsentscheidung kombiniert Investment-Case ({investment_case_score}/100), "
+                    f"Einstiegs-Case ({trading_case_score}/100), Setup-Confidence ({fmt_num(setup_confidence,0)}/100), "
+                    f"Marktumfeld ({market_regime_label(market_info['regime'])}) und die bisherige Performance seit Einstieg."
+                )
+
+
+        with t8:
+            st.subheader("Watchlist & Trigger")
+            if position_mode:
+                st.info("Dieser Bereich ist vor allem für den Watchlist-Modus gedacht. Im Positionsmodus sind Trigger nur nachrangig relevant.")
+            else:
+                w1, w2, w3 = st.columns(3)
+                w1.metric("Trigger-Status", trigger_status)
+                w2.metric("Watchlist-Priorität", watchlist_priority)
+                w3.metric("Nächster Trigger", next_trigger)
+
+                st.markdown("**Warum steht die Aktie auf der Watchlist so weit oben?**")
+                st.write(trigger_reason)
+
+                w4, w5, w6 = st.columns(3)
+                w4.metric("Setup-Typ", setup_type)
+                w5.metric("Entry-Lage", entry_quality)
+                w6.metric("Einstieg jetzt attraktiv?", f"{trading_case_score}/100", trading_case_text)
+
+                st.markdown("**Praktische Watchlist-Logik**")
+                st.write(
+                    "Die Watchlist-Logik priorisiert Werte, die entweder bereits valide sind, "
+                    "kurz vor einem Trigger stehen oder einen starken Investment-Case haben, "
+                    "aber noch auf besseres Timing warten."
+                )
+
+
+
+
+    if is_pro_mode or is_expert_mode:
+        # ---------- Horizon lamps ----------
+        st.divider()
+        with st.expander("Zeithorizonte anzeigen", expanded=False):
+            st.subheader("5 Zeithorizont-Ampeln")
+            st.markdown('<div class="panel-caption">Verdichtete Eignung je Anlagehorizont. Die Werte sind enger an Trading-Case, Investment-Case, Marktregime, Red Flags und bei Positionen auch an die Exit-Sicht gekoppelt.</div>', unsafe_allow_html=True)
+            cols = st.columns(5)
+            for col, (lab, scv) in zip(cols, hmap.items()):
+                tone, status_word, status_text = horizon_status_meta(scv)
+                icon = horizon_icon(scv)
+                col.markdown(
+                    f"""
+                    <div class="horizon-card {tone}">
+                        <div class="horizon-top">
+                            <div class="horizon-label">{lab}</div>
+                            <div class="horizon-icon">{icon}</div>
+                        </div>
+                        <div class="horizon-value">{status_word}</div>
+                        <div class="horizon-score">{scv}/100</div>
+                        <div class="horizon-sub">{status_text}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        # ---------- Recommendation + Why block ----------
+        st.divider()
+        with st.expander("Erweiterte Entscheidungsansicht", expanded=False):
+            st.subheader("Handlungsempfehlung")
+            c1, c2, c3, c4, c5 = st.columns(5)
+
+            with c1:
+                st.markdown(
+                    f"""
+                    <div class="reco-card context">
+                        <div>
+                            <div class="reco-top">
+                                <div class="reco-label">Analysekontext</div>
+                                <div class="reco-icon">🧭</div>
+                            </div>
+                            <div class="reco-value">{display_mode_label(mode_label)}</div>
+                        </div>
+                        <div class="reco-chip">Aktueller Rahmen</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with c2:
+                main_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
+                main_chip = "Positions-Aktion" if position_mode else "Zentrale Aussage"
+                st.markdown(
+                    f"""
+                    <div class="reco-card main">
+                        <div>
+                            <div class="reco-top">
+                                <div class="reco-label">Haupteinschätzung</div>
+                                <div class="reco-icon">🎯</div>
+                            </div>
+                            <div class="reco-value">{main_label}</div>
+                        </div>
+                        <div class="reco-chip">{main_chip}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with c3:
+                st.markdown(
+                    f"""
+                    <div class="reco-card conviction">
+                        <div>
+                            <div class="reco-top">
+                                <div class="reco-label">Überzeugungsgrad</div>
+                                <div class="reco-icon">📌</div>
+                            </div>
+                            <div class="reco-value">{display_conv_label(result.get("conv", "-"))}</div>
+                        </div>
+                        <div class="reco-chip">Vertrauen ins Setup</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with c4:
+                st.markdown(
+                    f"""
+                    <div class="reco-card signal">
+                        <div>
+                            <div class="reco-top">
+                                <div class="reco-label">Kurzfristsignal</div>
+                                <div class="reco-icon">⚡</div>
+                            </div>
+                            <div class="reco-value">{display_stb_label(stb_signal)}</div>
+                        </div>
+                        <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            with c5:
+                st.markdown(
+                    f"""
+                    <div class="reco-card market">
+                        <div>
+                            <div class="reco-top">
+                                <div class="reco-label">Marktumfeld</div>
+                                <div class="reco-icon">🌍</div>
+                            </div>
+                            <div class="reco-value">{market_regime_label(market_info["regime"])}</div>
+                        </div>
+                        <div class="reco-delta">{market_info["ampel"]}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            st.caption("Diese erweiterte Sicht zeigt die zusätzlichen Diagnose- und Einordnungsbausteine der Entscheidung.")

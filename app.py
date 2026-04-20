@@ -38,12 +38,18 @@ from logging_utils import (
     update_watchlist_alert_mode,
     update_watchlist_check_frequency,
 )
-from telegram_utils import send_telegram_message, send_watchlist_alerts
+try:
+    from telegram_utils import send_telegram_message, send_watchlist_alerts
+except ImportError:
+    from telegram_utils import send_telegram_message
+
+    def send_watchlist_alerts(*args, **kwargs):
+        return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar"
 from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.5B"
+APP_VERSION = "v12.5B.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",

@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.7"
+APP_VERSION = "v12.6C.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7489,16 +7489,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-analysis_view_mode = st.radio(
-    "Ansicht",
-    ["Einfach", "Profi", "Expertenmodus"],
-    horizontal=True,
-    key="analysis_view_mode_126a"
-)
+analysis_view_mode = "Expertenmodus"
 
-is_simple_mode = analysis_view_mode == "Einfach"
-is_pro_mode = analysis_view_mode == "Profi"
-is_expert_mode = analysis_view_mode == "Expertenmodus"
+is_simple_mode = False
+is_pro_mode = False
+is_expert_mode = True
 
 driver_summary = build_driver_summary(result)
 diag_items_126a = build_diagnostic_impacts(result)
@@ -7851,8 +7846,6 @@ if is_pro_mode or is_expert_mode:
 
     with t0:
         st.subheader("Überblick")
-        if is_simple_mode:
-            st.info("Du nutzt die einfache Ansicht. Sichtbar sind nur die kompakte Summary sowie Treiber und Bremsfaktoren.")
         st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
 
         p1, p2, p3 = st.columns(3)
@@ -8301,27 +8294,6 @@ if is_pro_mode or is_expert_mode:
             )
 
 
-elif is_pro_mode:
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Profi-Diagnose aktiv</div>
-            <div class="section-meta-line">Der Profi-Modus zeigt nahezu das gesamte Analyseboard. Nur die vertieften Fachblöcke zu Leadership, Setup, Volumen, Katalysator und institutioneller Qualität bleiben dem Expertenmodus vorbehalten.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-else:
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Kompakte Ansicht aktiv</div>
-            <div class="section-meta-line">Einfach zeigt nur die kompakten Kernaussagen. Profi zeigt fast alles, Expertenmodus zusätzlich die vertieften Fachblöcke.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 if is_pro_mode or is_expert_mode:

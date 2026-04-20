@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.5B.2"
+APP_VERSION = "v12.5C"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2358,6 +2358,146 @@ def institutional_quality_label(score):
     return "schwach"
 
 
+
+
+def classify_market_regime_detailed(price, ma50, ma200, ret21, ret63, ret126, atr_pct):
+    if any(pd.isna(x) for x in [price, ma50, ma200]):
+        return "UNBEKANNT", 50
+
+    score = 50
+
+    if price > ma50:
+        score += 12
+    else:
+        score -= 12
+
+    if price > ma200:
+        score += 16
+    else:
+        score -= 16
+
+    if ma50 > ma200:
+        score += 14
+    else:
+        score -= 14
+
+    if pd.notna(ret21):
+        if ret21 >= 6:
+            score += 10
+        elif ret21 <= -6:
+            score -= 10
+
+    if pd.notna(ret63):
+        if ret63 >= 12:
+            score += 12
+        elif ret63 <= -12:
+            score -= 12
+
+    if pd.notna(ret126):
+        if ret126 >= 18:
+            score += 10
+        elif ret126 <= -18:
+            score -= 10
+
+    if pd.notna(atr_pct):
+        if atr_pct >= 4.5:
+            score -= 8
+        elif atr_pct <= 2.5:
+            score += 4
+
+    score = round(clamp(score))
+
+    if score >= 85:
+        return "TREND_STARK", score
+    if score >= 68:
+        return "TREND_POSITIV", score
+    if score >= 55:
+        return "NEUTRAL", score
+    if score >= 42:
+        return "SEITWAERTS", score
+    if score >= 30:
+        return "VOLATIL", score
+    return "RISK_OFF", score
+
+
+def calc_regime_fit_score(setup_type, regime_label, leadership_score, trend_quality_score, volume_quality_score):
+    base = 50
+    setup_type = str(setup_type or "").strip()
+
+    if regime_label == "TREND_STARK":
+        if setup_type in ["Breakout", "Range-Breakout", "Breakout-Retest", "Trendfolge"]:
+            base += 22
+        elif setup_type in ["Pullback an MA20", "Pullback an MA50"]:
+            base += 14
+        elif setup_type == "Rebound":
+            base += 4
+
+    elif regime_label == "TREND_POSITIV":
+        if setup_type in ["Breakout", "Breakout-Retest", "Pullback an MA20", "Trendfolge"]:
+            base += 18
+        elif setup_type in ["Pullback an MA50", "Range-Breakout"]:
+            base += 12
+        elif setup_type == "Rebound":
+            base += 4
+
+    elif regime_label == "NEUTRAL":
+        if setup_type in ["Pullback an MA20", "Pullback an MA50", "Breakout-Retest"]:
+            base += 10
+        elif setup_type in ["Breakout", "Trendfolge"]:
+            base += 4
+
+    elif regime_label == "SEITWAERTS":
+        if setup_type in ["Breakout-Retest", "Pullback an MA50", "Rebound"]:
+            base += 10
+        elif setup_type in ["Breakout", "Range-Breakout", "Trendfolge"]:
+            base -= 8
+
+    elif regime_label == "VOLATIL":
+        if setup_type == "Rebound":
+            base += 10
+        elif setup_type in ["Pullback an MA50"]:
+            base += 4
+        elif setup_type in ["Breakout", "Trendfolge"]:
+            base -= 12
+
+    elif regime_label == "RISK_OFF":
+        if setup_type == "Rebound":
+            base += 2
+        else:
+            base -= 20
+
+    if pd.notna(leadership_score):
+        base += (leadership_score - 50) * 0.10
+    if pd.notna(trend_quality_score):
+        base += (trend_quality_score - 50) * 0.08
+    if pd.notna(volume_quality_score):
+        base += (volume_quality_score - 50) * 0.06
+
+    return round(clamp(base))
+
+
+def calc_regime_adjustment_score(regime_score, regime_fit_score):
+    return round(clamp(
+        regime_score * 0.55
+        + regime_fit_score * 0.45
+    ))
+
+
+def regime_label_text(label):
+    mapping = {
+        "TREND_STARK": "Starker Trendmarkt",
+        "TREND_POSITIV": "Positiver Trendmarkt",
+        "NEUTRAL": "Neutraler Markt",
+        "SEITWAERTS": "Seitwärtsmarkt",
+        "VOLATIL": "Volatiles Umfeld",
+        "RISK_OFF": "Risk-off-Markt",
+        "UNBEKANNT": "Marktumfeld unklar",
+        "POSITIV": "Positiver Markt",
+        "NEGATIV": "Negativer Markt",
+    }
+    return mapping.get(label, "Marktumfeld unklar")
+
+
 def render_score_card(label, value, subtitle="", variant="company", tooltip=""):
     title_attr = f' title="{tooltip}"' if tooltip else ""
     st.markdown(
@@ -2686,7 +2826,9 @@ def evaluate_market_filter(benchmark_df):
             "ret126": np.nan,
             "regime": "UNBEKANNT",
             "ampel": "⚪",
-            "score": 50
+            "score": 50,
+            "detailed_regime": "UNBEKANNT",
+            "detailed_score": 50
         }
 
     close = benchmark_df["Close"]
@@ -2695,6 +2837,9 @@ def evaluate_market_filter(benchmark_df):
     ma200 = safe_last(close.rolling(200).mean(), np.nan)
 
     rets = calc_return_metrics(close)
+    tr_b = true_range(benchmark_df["High"], benchmark_df["Low"], benchmark_df["Close"])
+    atr_b = safe_last(tr_b.rolling(14).mean())
+    atr_pct_benchmark = atr_b / price * 100 if pd.notna(atr_b) and pd.notna(price) and price else np.nan
 
     if pd.notna(price) and pd.notna(ma50) and pd.notna(ma200):
         if price > ma50 and price > ma200 and ma50 > ma200:
@@ -2706,6 +2851,12 @@ def evaluate_market_filter(benchmark_df):
     else:
         regime, ampel_icon, score = "UNBEKANNT", "⚪", 50
 
+    detailed_regime, detailed_score = classify_market_regime_detailed(
+        price, ma50, ma200,
+        rets["ret21"], rets["ret63"], rets["ret126"],
+        atr_pct_benchmark
+    )
+
     return {
         "price": price,
         "ma50": ma50,
@@ -2715,7 +2866,9 @@ def evaluate_market_filter(benchmark_df):
         "ret126": rets["ret126"],
         "regime": regime,
         "ampel": ampel_icon,
-        "score": score
+        "score": score,
+        "detailed_regime": detailed_regime,
+        "detailed_score": detailed_score
     }
 
 
@@ -4599,6 +4752,46 @@ def analyze_stock(
     investment_case_text = investment_case_label(investment_case_score)
     tradeability_text = tradeability_label(tradeability_score)
 
+    regime_label = market_info.get("detailed_regime", market_info.get("regime", "UNBEKANNT"))
+    regime_score = market_info.get("detailed_score", market_info.get("score", 50))
+
+    regime_fit_score = calc_regime_fit_score(
+        setup_type,
+        regime_label,
+        leadership_score,
+        trend_quality_score,
+        volume_quality_score if pd.notna(volume_quality_score) else 50
+    )
+
+    regime_adjustment_score = calc_regime_adjustment_score(
+        regime_score,
+        regime_fit_score
+    )
+
+    trading_case_score = round(clamp(
+        trading_case_score * 0.84
+        + regime_adjustment_score * 0.16
+    ))
+
+    setup_priority_score = round(clamp(
+        setup_priority_score * 0.86
+        + regime_fit_score * 0.14
+    ))
+
+    tradeability_score = round(clamp(
+        tradeability_score * 0.90
+        + regime_adjustment_score * 0.10
+    ))
+
+    investment_case_score = round(clamp(
+        investment_case_score * 0.94
+        + regime_adjustment_score * 0.06
+    ))
+
+    trading_case_text = trading_case_label(trading_case_score)
+    investment_case_text = investment_case_label(investment_case_score)
+    tradeability_text = tradeability_label(tradeability_score)
+
     position_mode = buy_in_override > 0
 
     # ---------- Recommendations ----------
@@ -5418,6 +5611,11 @@ def analyze_stock(
         "margin_stability_score": margin_stability_score,
         "institutional_quality_score": institutional_quality_score,
         "institutional_quality_text": institutional_quality_text,
+        "regime_label": regime_label,
+        "regime_score": regime_score,
+        "regime_fit_score": regime_fit_score,
+        "regime_adjustment_score": regime_adjustment_score,
+        "regime_text": regime_label_text(regime_label),
         "sector_etf_symbol": sector_etf_symbol if sector_etf_symbol else "-",
         "next_trigger": next_trigger,
         "trigger_reason": trigger_reason,
@@ -6430,6 +6628,8 @@ def style_ranking_table(df):
         "Institutionelle Qualität",
         "Cashflow-Stabilität",
         "Margenstabilität",
+        "Regime-Fit",
+        "Regime-Anpassung",
     ] if c in df.columns]
 
     for col in score_cols:
@@ -6626,6 +6826,10 @@ if st.session_state.get("analysis_requested", False):
         ranking_df["Institutionelle Qualität"] = ranking_df["Ticker"].astype(str).map(institutional_quality_map)
         ranking_df["Cashflow-Stabilität"] = ranking_df["Ticker"].astype(str).map(cashflow_stability_map)
         ranking_df["Margenstabilität"] = ranking_df["Ticker"].astype(str).map(margin_stability_map)
+        regime_fit_map = {str(r.get("ticker", "")): r.get("regime_fit_score", np.nan) for r in results}
+        regime_adjustment_map = {str(r.get("ticker", "")): r.get("regime_adjustment_score", np.nan) for r in results}
+        ranking_df["Regime-Fit"] = ranking_df["Ticker"].astype(str).map(regime_fit_map)
+        ranking_df["Regime-Anpassung"] = ranking_df["Ticker"].astype(str).map(regime_adjustment_map)
     results_map = {r["ticker"]: r for r in results}
     st.session_state.ranking_df = ranking_df
     st.session_state.ranking_results = results_map
@@ -6770,6 +6974,8 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
             "Volumenqualität",
             "Katalysator",
             "Institutionelle Qualität",
+            "Regime-Fit",
+            "Regime-Anpassung",
             "Event-Risiko",
             "Distribution",
             "Exit-Score", "Exit-Aktion",
@@ -7288,6 +7494,11 @@ cashflow_stability_display = result.get("cashflow_stability_score", np.nan)
 margin_stability_display = result.get("margin_stability_score", np.nan)
 institutional_quality_display = result.get("institutional_quality_score", np.nan)
 institutional_quality_text_display = result.get("institutional_quality_text", "-")
+regime_label_display = result.get("regime_label", "UNBEKANNT")
+regime_score_display = result.get("regime_score", np.nan)
+regime_fit_display = result.get("regime_fit_score", np.nan)
+regime_adjustment_display = result.get("regime_adjustment_score", np.nan)
+regime_text_display = result.get("regime_text", "Marktumfeld unklar")
 
 if str(exit_action_display).strip().lower() == "halten":
     exit_action_sub_display = "Kein akuter Verkaufsdruck"
@@ -7698,6 +7909,21 @@ with t0:
     iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
     iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
     iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Marktregime & Anpassung</div>
+            <div class="section-meta-line">Bewertet das Marktumfeld und wie gut das aktuelle Setup dazu passt.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    r1, r2, r3 = st.columns(3)
+    r1.metric("Marktregime", f"{fmt_num(regime_score_display,0)}/100", regime_text_display)
+    r2.metric("Regime-Fit", f"{fmt_num(regime_fit_display,0)}/100")
+    r3.metric("Regime-Anpassung", f"{fmt_num(regime_adjustment_display,0)}/100")
 
     st.markdown("**Kurzfazit**")
     st.write(short_thesis)

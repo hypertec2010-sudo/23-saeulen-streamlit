@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.9"
+APP_VERSION = "v12.6C.10"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6847,7 +6847,11 @@ else:
 if selected_display_ticker not in results_map and not ranking_df.empty:
     selected_display_ticker = ranking_df.iloc[0]["Ticker"]
 
-st.session_state.selected_ranking_ticker = selected_display_ticker
+try:
+    if "selected_display_ticker" in locals():
+        st.session_state.selected_ranking_ticker = selected_display_ticker
+except Exception:
+    pass
 
 # ---------- Ranking Section ----------
 ranking_expanded_default = len(ranking_df) > 1

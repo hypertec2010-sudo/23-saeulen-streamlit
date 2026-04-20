@@ -432,7 +432,7 @@ def send_telegram_message(message_text):
         return False, str(e)
 
 
-def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="Standard"):
+def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="Standard", return_diagnostics=False):
     if not results:
         return False, "Keine Ergebnisse für Telegram-Alerts vorhanden.", 0
 
@@ -521,9 +521,19 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
                 else:
                     errors.append(err)
 
+    diagnostics = {
+        "matched": int(matched or 0),
+        "suppressed": int(suppressed or 0),
+        "info_sent": int(info_sent or 0),
+        "sent": int(sent or 0),
+        "errors": list(errors[:5]),
+        "reason": "",
+    }
+
     if matched == 0 and info_sent == 0:
-        return False, "Keine alert-relevanten Werte in dieser Watchlist gefunden.", 0
-    if sent > 0 and not errors:
+        diagnostics["reason"] = "Keine alert-relevanten Werte"
+        result_tuple = (False, "Keine alert-relevanten Werte in dieser Watchlist gefunden.", 0)
+    elif sent > 0 and not errors:
         parts = []
         if sent - info_sent > 0:
             parts.append(f"{sent - info_sent} Alerts")
@@ -532,9 +542,18 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
         msg = f"{', '.join(parts)} für '{watchlist_name}' gesendet."
         if suppressed > 0:
             msg += f" {suppressed} doppelte Meldungen wurden unterdrückt."
-        return True, msg, sent
-    if sent > 0:
-        return True, f"{sent} Meldungen gesendet, einzelne Fehler: {' | '.join(errors[:2])}", sent
-    if suppressed > 0:
-        return False, f"Keine neuen Alerts gesendet. {suppressed} doppelte Meldungen wurden unterdrückt.", 0
-    return False, f"Telegram-Versand fehlgeschlagen: {' | '.join(errors[:2])}", 0
+        diagnostics["reason"] = "Alerts gesendet"
+        result_tuple = (True, msg, sent)
+    elif sent > 0:
+        diagnostics["reason"] = "Teilweise gesendet mit Fehlern"
+        result_tuple = (True, f"{sent} Meldungen gesendet, einzelne Fehler: {' | '.join(errors[:2])}", sent)
+    elif suppressed > 0:
+        diagnostics["reason"] = "Nur Dubletten unterdrückt"
+        result_tuple = (False, f"Keine neuen Alerts gesendet. {suppressed} doppelte Meldungen wurden unterdrückt.", 0)
+    else:
+        diagnostics["reason"] = "Telegram-Versand fehlgeschlagen"
+        result_tuple = (False, f"Telegram-Versand fehlgeschlagen: {' | '.join(errors[:2])}", 0)
+
+    if return_diagnostics:
+        return result_tuple[0], result_tuple[1], result_tuple[2], diagnostics
+    return result_tuple

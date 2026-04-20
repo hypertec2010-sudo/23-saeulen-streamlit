@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.5C"
+APP_VERSION = "v12.6A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2360,142 +2360,168 @@ def institutional_quality_label(score):
 
 
 
-def classify_market_regime_detailed(price, ma50, ma200, ret21, ret63, ret126, atr_pct):
-    if any(pd.isna(x) for x in [price, ma50, ma200]):
-        return "UNBEKANNT", 50
-
-    score = 50
-
-    if price > ma50:
-        score += 12
+def diag_direction_from_score(score, inverse=False):
+    if pd.isna(score):
+        return "neutral"
+    s = float(score)
+    if not inverse:
+        if s >= 65:
+            return "positiv"
+        if s >= 45:
+            return "neutral"
+        return "negativ"
     else:
-        score -= 12
-
-    if price > ma200:
-        score += 16
-    else:
-        score -= 16
-
-    if ma50 > ma200:
-        score += 14
-    else:
-        score -= 14
-
-    if pd.notna(ret21):
-        if ret21 >= 6:
-            score += 10
-        elif ret21 <= -6:
-            score -= 10
-
-    if pd.notna(ret63):
-        if ret63 >= 12:
-            score += 12
-        elif ret63 <= -12:
-            score -= 12
-
-    if pd.notna(ret126):
-        if ret126 >= 18:
-            score += 10
-        elif ret126 <= -18:
-            score -= 10
-
-    if pd.notna(atr_pct):
-        if atr_pct >= 4.5:
-            score -= 8
-        elif atr_pct <= 2.5:
-            score += 4
-
-    score = round(clamp(score))
-
-    if score >= 85:
-        return "TREND_STARK", score
-    if score >= 68:
-        return "TREND_POSITIV", score
-    if score >= 55:
-        return "NEUTRAL", score
-    if score >= 42:
-        return "SEITWAERTS", score
-    if score >= 30:
-        return "VOLATIL", score
-    return "RISK_OFF", score
+        if s < 35:
+            return "positiv"
+        if s < 60:
+            return "neutral"
+        return "negativ"
 
 
-def calc_regime_fit_score(setup_type, regime_label, leadership_score, trend_quality_score, volume_quality_score):
-    base = 50
-    setup_type = str(setup_type or "").strip()
-
-    if regime_label == "TREND_STARK":
-        if setup_type in ["Breakout", "Range-Breakout", "Breakout-Retest", "Trendfolge"]:
-            base += 22
-        elif setup_type in ["Pullback an MA20", "Pullback an MA50"]:
-            base += 14
-        elif setup_type == "Rebound":
-            base += 4
-
-    elif regime_label == "TREND_POSITIV":
-        if setup_type in ["Breakout", "Breakout-Retest", "Pullback an MA20", "Trendfolge"]:
-            base += 18
-        elif setup_type in ["Pullback an MA50", "Range-Breakout"]:
-            base += 12
-        elif setup_type == "Rebound":
-            base += 4
-
-    elif regime_label == "NEUTRAL":
-        if setup_type in ["Pullback an MA20", "Pullback an MA50", "Breakout-Retest"]:
-            base += 10
-        elif setup_type in ["Breakout", "Trendfolge"]:
-            base += 4
-
-    elif regime_label == "SEITWAERTS":
-        if setup_type in ["Breakout-Retest", "Pullback an MA50", "Rebound"]:
-            base += 10
-        elif setup_type in ["Breakout", "Range-Breakout", "Trendfolge"]:
-            base -= 8
-
-    elif regime_label == "VOLATIL":
-        if setup_type == "Rebound":
-            base += 10
-        elif setup_type in ["Pullback an MA50"]:
-            base += 4
-        elif setup_type in ["Breakout", "Trendfolge"]:
-            base -= 12
-
-    elif regime_label == "RISK_OFF":
-        if setup_type == "Rebound":
-            base += 2
-        else:
-            base -= 20
-
-    if pd.notna(leadership_score):
-        base += (leadership_score - 50) * 0.10
-    if pd.notna(trend_quality_score):
-        base += (trend_quality_score - 50) * 0.08
-    if pd.notna(volume_quality_score):
-        base += (volume_quality_score - 50) * 0.06
-
-    return round(clamp(base))
+def diag_direction_class(direction):
+    direction = str(direction).strip().lower()
+    if direction == "positiv":
+        return "diag-pos"
+    if direction == "negativ":
+        return "diag-neg"
+    return "diag-neu"
 
 
-def calc_regime_adjustment_score(regime_score, regime_fit_score):
-    return round(clamp(
-        regime_score * 0.55
-        + regime_fit_score * 0.45
-    ))
-
-
-def regime_label_text(label):
-    mapping = {
-        "TREND_STARK": "Starker Trendmarkt",
-        "TREND_POSITIV": "Positiver Trendmarkt",
-        "NEUTRAL": "Neutraler Markt",
-        "SEITWAERTS": "Seitwärtsmarkt",
-        "VOLATIL": "Volatiles Umfeld",
-        "RISK_OFF": "Risk-off-Markt",
-        "UNBEKANNT": "Marktumfeld unklar",
-        "POSITIV": "Positiver Markt",
-        "NEGATIV": "Negativer Markt",
+def make_diag_item(section, label, value, affects, impact="mittel", inverse=False, note=""):
+    direction = diag_direction_from_score(value, inverse=inverse)
+    return {
+        "section": section,
+        "label": label,
+        "value": value,
+        "direction": direction,
+        "impact": impact,
+        "affects": affects or [],
+        "inverse": inverse,
+        "note": note,
     }
-    return mapping.get(label, "Marktumfeld unklar")
+
+
+def affects_text(affects):
+    if not affects:
+        return "-"
+    return ", ".join([str(x) for x in affects if str(x).strip()])
+
+
+def build_diagnostic_impacts(result):
+    items = []
+    items.append(make_diag_item("Setup & Timing", "Trendqualität", result.get("trend_quality_score", np.nan), ["Trading-Case", "Setup-Priorität"], impact="mittel"))
+    items.append(make_diag_item("Setup & Timing", "Base-Qualität", result.get("base_quality_score", np.nan), ["Trading-Case", "Setup-Priorität"], impact="hoch"))
+    items.append(make_diag_item("Setup & Timing", "Setup-Typ-Qualität", result.get("setup_type_quality_score", np.nan), ["Trading-Case", "Setup-Priorität"], impact="hoch"))
+    items.append(make_diag_item("Setup & Timing", "Setup-Priorität", result.get("setup_priority_score", np.nan), ["Trading-Case"], impact="hoch"))
+
+    items.append(make_diag_item("Volumen & Akkumulation", "Volumenqualität", result.get("volume_quality_score", np.nan), ["Trading-Case", "Setup-Priorität"], impact="mittel"))
+    items.append(make_diag_item("Volumen & Akkumulation", "Akkumulation", result.get("accumulation_score", np.nan), ["Trading-Case"], impact="mittel"))
+    items.append(make_diag_item("Volumen & Akkumulation", "Distribution", result.get("distribution_pressure_score", np.nan), ["Trading-Case", "Exit"], impact="hoch", inverse=True))
+    items.append(make_diag_item("Volumen & Akkumulation", "Pullback-Dry-up", result.get("pullback_dryup_score", np.nan), ["Trading-Case"], impact="niedrig"))
+    items.append(make_diag_item("Volumen & Akkumulation", "Breakout-Volumen", result.get("breakout_volume_score", np.nan), ["Trading-Case", "Setup-Priorität"], impact="niedrig"))
+
+    items.append(make_diag_item("Event & Katalysator", "Katalysator", result.get("catalyst_score", np.nan), ["Investment-Case", "Setup-Priorität"], impact="mittel"))
+    items.append(make_diag_item("Event & Katalysator", "Event-Score", result.get("earnings_event_score", np.nan), ["Trading-Case"], impact="mittel"))
+    items.append(make_diag_item("Event & Katalysator", "Event-Risiko", result.get("event_risk_score", np.nan), ["Trading-Case", "Exit"], impact="hoch", inverse=True))
+    items.append(make_diag_item("Event & Katalysator", "Revision/Momentum", result.get("revision_momentum_score", np.nan), ["Investment-Case", "Katalysator"], impact="mittel"))
+
+    items.append(make_diag_item("Qualität & Fundamentals", "Institutionelle Qualität", result.get("institutional_quality_score", np.nan), ["Investment-Case"], impact="hoch"))
+    items.append(make_diag_item("Qualität & Fundamentals", "Cashflow-Stabilität", result.get("cashflow_stability_score", np.nan), ["Investment-Case"], impact="mittel"))
+    items.append(make_diag_item("Qualität & Fundamentals", "Margenstabilität", result.get("margin_stability_score", np.nan), ["Investment-Case"], impact="mittel"))
+    items.append(make_diag_item("Qualität & Fundamentals", "Leadership", result.get("leadership_score", np.nan), ["Investment-Case", "Trading-Case", "Setup-Priorität"], impact="hoch"))
+
+    items.append(make_diag_item("Marktregime", "Regime-Fit", result.get("regime_fit_score", np.nan), ["Trading-Case", "Setup-Priorität", "Investment-Case"], impact="hoch"))
+    items.append(make_diag_item("Marktregime", "Regime-Anpassung", result.get("regime_adjustment_score", np.nan), ["Trading-Case", "Investment-Case"], impact="hoch"))
+
+    items.append(make_diag_item("Exit & Risiko", "Exit-Score", result.get("exit_score", np.nan), ["Exit"], impact="hoch", inverse=True))
+    return items
+
+
+def build_driver_summary(result, max_pos=5, max_neg=4):
+    items = build_diagnostic_impacts(result)
+    positives, negatives = [], []
+    for item in items:
+        val = item.get("value", np.nan)
+        if pd.isna(val):
+            continue
+        entry = {
+            "label": item.get("label", "-"),
+            "value": val,
+            "impact": item.get("impact", "mittel"),
+            "affects": item.get("affects", []),
+            "section": item.get("section", "Diagnose"),
+            "note": item.get("note", ""),
+        }
+        if item.get("direction") == "positiv":
+            positives.append(entry)
+        elif item.get("direction") == "negativ":
+            negatives.append(entry)
+
+    impact_rank = {"hoch": 3, "mittel": 2, "niedrig": 1}
+    positives = sorted(positives, key=lambda x: (impact_rank.get(x["impact"], 0), float(x["value"])), reverse=True)[:max_pos]
+    negatives = sorted(negatives, key=lambda x: (impact_rank.get(x["impact"], 0), float(x["value"])), reverse=True)[:max_neg]
+    return {"positives": positives, "negatives": negatives}
+
+
+def render_reason_box(title, items, empty_text="Keine klaren Treiber erkannt."):
+    st.markdown(f'<div class="reason-box"><div class="reason-title">{title}</div>', unsafe_allow_html=True)
+    if not items:
+        st.markdown(f'<div class="reason-item"><div class="reason-meta">{empty_text}</div></div></div>', unsafe_allow_html=True)
+        return
+    for item in items:
+        label = item.get("label", "-")
+        value = item.get("value", np.nan)
+        impact = item.get("impact", "-")
+        affects = affects_text(item.get("affects", []))
+        st.markdown(
+            f"""
+            <div class="reason-item">
+                <div class="reason-top">
+                    <div class="reason-label">{label}</div>
+                    <div class="reason-value">{fmt_num(value,0)}/100</div>
+                </div>
+                <div class="reason-meta">Einfluss: {impact}</div>
+                <div class="affects-line">Beeinflusst: {affects}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_diagnostic_row(item):
+    label = item.get("label", "-")
+    value = item.get("value", np.nan)
+    direction = item.get("direction", "neutral")
+    impact = item.get("impact", "mittel")
+    affects = affects_text(item.get("affects", []))
+    note = item.get("note", "")
+    chip_class = diag_direction_class(direction)
+    st.markdown(
+        f"""
+        <div class="diag-row">
+            <div class="diag-head">
+                <div class="diag-label">{label}</div>
+                <div class="diag-value">{fmt_num(value,0)}/100</div>
+            </div>
+            <div class="diag-sub">
+                <span class="diag-chip {chip_class}">{direction}</span>
+                <span class="diag-chip">{impact}</span>
+            </div>
+            <div class="affects-line">Beeinflusst: {affects}</div>
+            {f'<div class="diag-sub">{note}</div>' if note else ''}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_diagnostic_section(title, items):
+    if not items:
+        return
+    st.markdown(f"**{title}**")
+    for item in items:
+        render_diagnostic_row(item)
 
 
 def render_score_card(label, value, subtitle="", variant="company", tooltip=""):
@@ -2826,9 +2852,7 @@ def evaluate_market_filter(benchmark_df):
             "ret126": np.nan,
             "regime": "UNBEKANNT",
             "ampel": "⚪",
-            "score": 50,
-            "detailed_regime": "UNBEKANNT",
-            "detailed_score": 50
+            "score": 50
         }
 
     close = benchmark_df["Close"]
@@ -2837,9 +2861,6 @@ def evaluate_market_filter(benchmark_df):
     ma200 = safe_last(close.rolling(200).mean(), np.nan)
 
     rets = calc_return_metrics(close)
-    tr_b = true_range(benchmark_df["High"], benchmark_df["Low"], benchmark_df["Close"])
-    atr_b = safe_last(tr_b.rolling(14).mean())
-    atr_pct_benchmark = atr_b / price * 100 if pd.notna(atr_b) and pd.notna(price) and price else np.nan
 
     if pd.notna(price) and pd.notna(ma50) and pd.notna(ma200):
         if price > ma50 and price > ma200 and ma50 > ma200:
@@ -2851,12 +2872,6 @@ def evaluate_market_filter(benchmark_df):
     else:
         regime, ampel_icon, score = "UNBEKANNT", "⚪", 50
 
-    detailed_regime, detailed_score = classify_market_regime_detailed(
-        price, ma50, ma200,
-        rets["ret21"], rets["ret63"], rets["ret126"],
-        atr_pct_benchmark
-    )
-
     return {
         "price": price,
         "ma50": ma50,
@@ -2866,9 +2881,7 @@ def evaluate_market_filter(benchmark_df):
         "ret126": rets["ret126"],
         "regime": regime,
         "ampel": ampel_icon,
-        "score": score,
-        "detailed_regime": detailed_regime,
-        "detailed_score": detailed_score
+        "score": score
     }
 
 
@@ -4752,46 +4765,6 @@ def analyze_stock(
     investment_case_text = investment_case_label(investment_case_score)
     tradeability_text = tradeability_label(tradeability_score)
 
-    regime_label = market_info.get("detailed_regime", market_info.get("regime", "UNBEKANNT"))
-    regime_score = market_info.get("detailed_score", market_info.get("score", 50))
-
-    regime_fit_score = calc_regime_fit_score(
-        setup_type,
-        regime_label,
-        leadership_score,
-        trend_quality_score,
-        volume_quality_score if pd.notna(volume_quality_score) else 50
-    )
-
-    regime_adjustment_score = calc_regime_adjustment_score(
-        regime_score,
-        regime_fit_score
-    )
-
-    trading_case_score = round(clamp(
-        trading_case_score * 0.84
-        + regime_adjustment_score * 0.16
-    ))
-
-    setup_priority_score = round(clamp(
-        setup_priority_score * 0.86
-        + regime_fit_score * 0.14
-    ))
-
-    tradeability_score = round(clamp(
-        tradeability_score * 0.90
-        + regime_adjustment_score * 0.10
-    ))
-
-    investment_case_score = round(clamp(
-        investment_case_score * 0.94
-        + regime_adjustment_score * 0.06
-    ))
-
-    trading_case_text = trading_case_label(trading_case_score)
-    investment_case_text = investment_case_label(investment_case_score)
-    tradeability_text = tradeability_label(tradeability_score)
-
     position_mode = buy_in_override > 0
 
     # ---------- Recommendations ----------
@@ -5611,11 +5584,6 @@ def analyze_stock(
         "margin_stability_score": margin_stability_score,
         "institutional_quality_score": institutional_quality_score,
         "institutional_quality_text": institutional_quality_text,
-        "regime_label": regime_label,
-        "regime_score": regime_score,
-        "regime_fit_score": regime_fit_score,
-        "regime_adjustment_score": regime_adjustment_score,
-        "regime_text": regime_label_text(regime_label),
         "sector_etf_symbol": sector_etf_symbol if sector_etf_symbol else "-",
         "next_trigger": next_trigger,
         "trigger_reason": trigger_reason,
@@ -6628,8 +6596,6 @@ def style_ranking_table(df):
         "Institutionelle Qualität",
         "Cashflow-Stabilität",
         "Margenstabilität",
-        "Regime-Fit",
-        "Regime-Anpassung",
     ] if c in df.columns]
 
     for col in score_cols:
@@ -6826,10 +6792,6 @@ if st.session_state.get("analysis_requested", False):
         ranking_df["Institutionelle Qualität"] = ranking_df["Ticker"].astype(str).map(institutional_quality_map)
         ranking_df["Cashflow-Stabilität"] = ranking_df["Ticker"].astype(str).map(cashflow_stability_map)
         ranking_df["Margenstabilität"] = ranking_df["Ticker"].astype(str).map(margin_stability_map)
-        regime_fit_map = {str(r.get("ticker", "")): r.get("regime_fit_score", np.nan) for r in results}
-        regime_adjustment_map = {str(r.get("ticker", "")): r.get("regime_adjustment_score", np.nan) for r in results}
-        ranking_df["Regime-Fit"] = ranking_df["Ticker"].astype(str).map(regime_fit_map)
-        ranking_df["Regime-Anpassung"] = ranking_df["Ticker"].astype(str).map(regime_adjustment_map)
     results_map = {r["ticker"]: r for r in results}
     st.session_state.ranking_df = ranking_df
     st.session_state.ranking_results = results_map
@@ -6974,8 +6936,6 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
             "Volumenqualität",
             "Katalysator",
             "Institutionelle Qualität",
-            "Regime-Fit",
-            "Regime-Anpassung",
             "Event-Risiko",
             "Distribution",
             "Exit-Score", "Exit-Aktion",
@@ -7494,11 +7454,54 @@ cashflow_stability_display = result.get("cashflow_stability_score", np.nan)
 margin_stability_display = result.get("margin_stability_score", np.nan)
 institutional_quality_display = result.get("institutional_quality_score", np.nan)
 institutional_quality_text_display = result.get("institutional_quality_text", "-")
-regime_label_display = result.get("regime_label", "UNBEKANNT")
-regime_score_display = result.get("regime_score", np.nan)
-regime_fit_display = result.get("regime_fit_score", np.nan)
-regime_adjustment_display = result.get("regime_adjustment_score", np.nan)
-regime_text_display = result.get("regime_text", "Marktumfeld unklar")
+
+
+st.markdown("""
+<style>
+.reason-box{
+    border:1px solid rgba(148,163,184,0.18);
+    border-radius:18px;
+    padding:14px 16px;
+    background:rgba(15,23,42,0.55);
+    margin:8px 0 12px 0;
+}
+.reason-title{font-size:1.02rem;font-weight:800;margin-bottom:8px;}
+.reason-item{padding:8px 0;border-top:1px solid rgba(148,163,184,0.10);}
+.reason-item:first-child{border-top:none;}
+.reason-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.reason-label{font-weight:700;}
+.reason-value{font-weight:800;}
+.reason-meta{margin-top:4px;font-size:0.88rem;color:#cbd5e1;}
+.diag-row{border:1px solid rgba(148,163,184,0.12);border-radius:16px;padding:10px 12px;margin:8px 0;background:rgba(15,23,42,0.42);}
+.diag-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;}
+.diag-label{font-weight:800;}
+.diag-value{font-weight:800;}
+.diag-sub{margin-top:4px;font-size:0.88rem;color:#cbd5e1;}
+.diag-chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:0.78rem;font-weight:800;margin-right:6px;background:rgba(148,163,184,0.15);color:#e2e8f0;}
+.diag-pos{background:#052e16;color:#86efac;}
+.diag-neu{background:#3f2f0a;color:#fde68a;}
+.diag-neg{background:#450a0a;color:#fca5a5;}
+.affects-line{margin-top:4px;font-size:0.82rem;color:#93c5fd;font-weight:700;}
+.compact-summary-card{border:1px solid rgba(148,163,184,0.14);border-radius:18px;padding:12px 14px;background:rgba(15,23,42,0.48);}
+.compact-summary-title{font-size:0.82rem;color:#cbd5e1;font-weight:700;}
+.compact-summary-value{font-size:1.18rem;font-weight:900;margin-top:2px;}
+.compact-summary-sub{font-size:0.82rem;color:#93c5fd;margin-top:4px;}
+</style>
+""", unsafe_allow_html=True)
+
+analysis_view_mode = st.radio(
+    "Ansicht",
+    ["Einfach", "Profi"],
+    horizontal=True,
+    key="analysis_view_mode_126a"
+)
+
+driver_summary = build_driver_summary(result)
+diag_items_126a = build_diagnostic_impacts(result)
+diag_sections_126a = {}
+for _item in diag_items_126a:
+    _sec = _item.get("section", "Diagnose")
+    diag_sections_126a.setdefault(_sec, []).append(_item)
 
 if str(exit_action_display).strip().lower() == "halten":
     exit_action_sub_display = "Kein akuter Verkaufsdruck"
@@ -7542,6 +7545,48 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+compact_cols = st.columns(6)
+compact_data = [
+    ("Hauptsignal", main_action_label, display_mode_label(mode_label)),
+    ("Investment-Case", f"{investment_case_score}/100", investment_case_text),
+    ("Trading-Case", f"{trading_case_score}/100", trading_case_text),
+    ("Exit", exit_action_display, exit_score_text_display),
+    ("Setup-Priorität", f"{fmt_num(result.get('setup_priority_score', np.nan),0)}/100", watchlist_priority),
+    ("Regime-Fit", f"{fmt_num(result.get('regime_fit_score', np.nan),0)}/100", market_regime_label(market_info["regime"])),
+]
+for _col, (_title, _value, _sub) in zip(compact_cols, compact_data):
+    with _col:
+        st.markdown(
+            f"""
+            <div class="compact-summary-card">
+                <div class="compact-summary-title">{_title}</div>
+                <div class="compact-summary-value">{_value}</div>
+                <div class="compact-summary-sub">{_sub}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+why_col, risk_col = st.columns(2)
+with why_col:
+    render_reason_box("Warum attraktiv", driver_summary.get("positives", []), empty_text="Keine klaren positiven Treiber erkannt.")
+with risk_col:
+    render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
+
+if analysis_view_mode == "Profi":
+    with st.expander("Setup & Timing", expanded=False):
+        render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
+    with st.expander("Volumen & Akkumulation", expanded=False):
+        render_diagnostic_section("Volumen & Akkumulation", diag_sections_126a.get("Volumen & Akkumulation", []))
+    with st.expander("Event & Katalysator", expanded=False):
+        render_diagnostic_section("Event & Katalysator", diag_sections_126a.get("Event & Katalysator", []))
+    with st.expander("Qualität & Fundamentals", expanded=False):
+        render_diagnostic_section("Qualität & Fundamentals", diag_sections_126a.get("Qualität & Fundamentals", []))
+    with st.expander("Marktregime", expanded=False):
+        render_diagnostic_section("Marktregime", diag_sections_126a.get("Marktregime", []))
+    with st.expander("Exit & Risiko", expanded=False):
+        render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
 
 st.markdown(
     f"""
@@ -7796,6 +7841,8 @@ t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
 
 with t0:
     st.subheader("Überblick")
+    if analysis_view_mode == "Einfach":
+        st.info("Du nutzt die einfache Ansicht. Die wichtigsten Treiber und Bremsen stehen bereits oben; tiefere Diagnoseeinblicke erscheinen nur im Profi-Modus.")
     st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
 
     p1, p2, p3 = st.columns(3)
@@ -7909,21 +7956,6 @@ with t0:
     iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
     iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
     iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
-
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Marktregime & Anpassung</div>
-            <div class="section-meta-line">Bewertet das Marktumfeld und wie gut das aktuelle Setup dazu passt.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    r1, r2, r3 = st.columns(3)
-    r1.metric("Marktregime", f"{fmt_num(regime_score_display,0)}/100", regime_text_display)
-    r2.metric("Regime-Fit", f"{fmt_num(regime_fit_display,0)}/100")
-    r3.metric("Regime-Anpassung", f"{fmt_num(regime_adjustment_display,0)}/100")
 
     st.markdown("**Kurzfazit**")
     st.write(short_thesis)

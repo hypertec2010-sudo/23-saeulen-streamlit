@@ -43,7 +43,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.4"
+APP_VERSION = "v12.4.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3457,7 +3457,7 @@ def analyze_stock(
     accumulation_score = calc_accumulation_score(up_down_volume_ratio, obv_trend, accumulation_day_count, strong_up_volume_day)
     distribution_pressure_score = calc_distribution_pressure_score(distribution_day_count, obv_trend, down_volume_heavy, weak_rebound_on_volume)
     pullback_dryup_score = calc_pullback_dryup_score(pullback_active, recent_pullback_volume_ratio, pullback_quality_score, volatility_contraction_score)
-    breakout_volume_score = calc_breakout_volume_score(breakout_context, breakout_day_volume_ratio, rs_score, close_near_day_high, breakout_failure_risk_low=True)
+    breakout_volume_score = calc_breakout_volume_score(breakout_context, breakout_day_volume_ratio, 50, close_near_day_high, breakout_failure_risk_low=True)
     volume_quality_score = calc_volume_quality_score(accumulation_score, distribution_pressure_score, pullback_dryup_score, breakout_volume_score, volume_trend_score)
 
     # ---------- Fundamentals ----------

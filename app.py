@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6A"
+APP_VERSION = "v12.6B"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7827,468 +7827,480 @@ with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
 # ---------- Tabs ----------
 st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 st.divider()
-t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
-    "Überblick",
-    "Trading-Case",
-    "Signalbild",
-    "TradingBoard",
-    "Investment-Case",
-    "Sicherheit & Checks",
-    "Trade-Plan",
-    "Position",
-    "Watchlist"
-])
+if analysis_view_mode == "Profi":
+    t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
+        "Überblick",
+        "Trading-Case",
+        "Signalbild",
+        "TradingBoard",
+        "Investment-Case",
+        "Sicherheit & Checks",
+        "Trade-Plan",
+        "Position",
+        "Watchlist"
+    ])
 
-with t0:
-    st.subheader("Überblick")
-    if analysis_view_mode == "Einfach":
-        st.info("Du nutzt die einfache Ansicht. Die wichtigsten Treiber und Bremsen stehen bereits oben; tiefere Diagnoseeinblicke erscheinen nur im Profi-Modus.")
-    st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
+    with t0:
+        st.subheader("Überblick")
+        if analysis_view_mode == "Einfach":
+            st.info("Du nutzt die einfache Ansicht. Die wichtigsten Treiber und Bremsen stehen bereits oben; tiefere Diagnoseeinblicke erscheinen nur im Profi-Modus.")
+        st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
 
-    p1, p2, p3 = st.columns(3)
-    p1.metric("Unternehmen", name)
-    p2.metric("Sektor", sector if sector else "-")
-    p3.metric("Industrie", industry if industry else "-")
+        p1, p2, p3 = st.columns(3)
+        p1.metric("Unternehmen", name)
+        p2.metric("Sektor", sector if sector else "-")
+        p3.metric("Industrie", industry if industry else "-")
 
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Leadership & Marktbreite</div>
-            <div class="section-meta-line">Bewertet, ob die Aktie in einem starken Umfeld selbst als Leader auftritt oder eher nur mitläuft.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    l1, l2, l3, l4 = st.columns(4)
-    l1.metric("Leadership", f"{fmt_num(leadership_score_display,0)}/100", leadership_status_display)
-    l2.metric("Sektor-Stärke", sector_strength_text_display, sector_delta_display)
-    l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
-    l4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
-
-    st.markdown(
-        f"""
-        <div class="section-card">
-            <div class="premium-title">Einordnung</div>
-            <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
-            <div class="premium-sub">
-                Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
+        st.markdown(
+            """
+            <div class="section-head">
+                <div class="section-title">Leadership & Marktbreite</div>
+                <div class="section-meta-line">Bewertet, ob die Aktie in einem starken Umfeld selbst als Leader auftritt oder eher nur mitläuft.</div>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
+        l1, l2, l3, l4 = st.columns(4)
+        l1.metric("Leadership", f"{fmt_num(leadership_score_display,0)}/100", leadership_status_display)
+        l2.metric("Sektor-Stärke", sector_strength_text_display, sector_delta_display)
+        l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
+        l4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
 
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Setup-Qualität & Trendstruktur</div>
-            <div class="section-meta-line">Bewertet, wie sauber Trend, Base und konkreter Setup-Typ wirklich aufgebaut sind.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    q1, q2, q3, q4 = st.columns(4)
-    q1.metric("Trendqualität", f"{fmt_num(trend_quality_display,0)}/100")
-    q2.metric("Base-Qualität", f"{fmt_num(base_quality_display,0)}/100")
-    q3.metric("Setup-Typ-Qualität", f"{fmt_num(setup_type_quality_display,0)}/100", setup_type)
-    q4.metric("Setup-Priorität", f"{fmt_num(setup_priority_display,0)}/100")
+        st.markdown(
+            f"""
+            <div class="section-card">
+                <div class="premium-title">Einordnung</div>
+                <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
+                <div class="premium-sub">
+                    Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    d1, d2, d3, d4, d5 = st.columns(5)
-    d1.metric("Base-Länge", fmt_num(base_length_display, 0))
-    d2.metric("Korrekturtiefe %", fmt_num(correction_depth_display, 1, "%"))
-    d3.metric("Range-Tightness", f"{fmt_num(range_tightness_display,0)}/100")
-    d4.metric("Volatility Contraction", f"{fmt_num(volatility_contraction_display,0)}/100")
-    d5.metric("Pullback-Qualität", f"{fmt_num(pullback_quality_display,0)}/100")
+        st.markdown(
+            """
+            <div class="section-head">
+                <div class="section-title">Setup-Qualität & Trendstruktur</div>
+                <div class="section-meta-line">Bewertet, wie sauber Trend, Base und konkreter Setup-Typ wirklich aufgebaut sind.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        q1, q2, q3, q4 = st.columns(4)
+        q1.metric("Trendqualität", f"{fmt_num(trend_quality_display,0)}/100")
+        q2.metric("Base-Qualität", f"{fmt_num(base_quality_display,0)}/100")
+        q3.metric("Setup-Typ-Qualität", f"{fmt_num(setup_type_quality_display,0)}/100", setup_type)
+        q4.metric("Setup-Priorität", f"{fmt_num(setup_priority_display,0)}/100")
 
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Volumenqualität & Akkumulation</div>
-            <div class="section-meta-line">Bewertet, ob Nachfrage, Pullback-Volumen und Breakout-Bestätigung das Long-Setup wirklich tragen.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    v1, v2, v3, v4, v5 = st.columns(5)
-    v1.metric("Volumenqualität", f"{fmt_num(volume_quality_display,0)}/100")
-    v2.metric("Akkumulation", f"{fmt_num(accumulation_display,0)}/100")
-    v3.metric("Distribution", f"{fmt_num(distribution_display,0)}/100")
-    v4.metric("Pullback-Dry-up", f"{fmt_num(pullback_dryup_display,0)}/100")
-    v5.metric("Breakout-Volumen", f"{fmt_num(breakout_volume_display,0)}/100")
+        d1, d2, d3, d4, d5 = st.columns(5)
+        d1.metric("Base-Länge", fmt_num(base_length_display, 0))
+        d2.metric("Korrekturtiefe %", fmt_num(correction_depth_display, 1, "%"))
+        d3.metric("Range-Tightness", f"{fmt_num(range_tightness_display,0)}/100")
+        d4.metric("Volatility Contraction", f"{fmt_num(volatility_contraction_display,0)}/100")
+        d5.metric("Pullback-Qualität", f"{fmt_num(pullback_quality_display,0)}/100")
 
-    dv1, dv2, dv3, dv4 = st.columns(4)
-    dv1.metric("Up/Down-Vol.-Ratio", fmt_num(up_down_volume_ratio_display, 2))
-    dv2.metric("Akkumulationstage", fmt_num(accumulation_day_count_display, 0))
-    dv3.metric("Distributionstage", fmt_num(distribution_day_count_display, 0))
-    dv4.metric("Volumentrend", f"{fmt_num(volume_trend_display,0)}/100")
+        st.markdown(
+            """
+            <div class="section-head">
+                <div class="section-title">Volumenqualität & Akkumulation</div>
+                <div class="section-meta-line">Bewertet, ob Nachfrage, Pullback-Volumen und Breakout-Bestätigung das Long-Setup wirklich tragen.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        v1, v2, v3, v4, v5 = st.columns(5)
+        v1.metric("Volumenqualität", f"{fmt_num(volume_quality_display,0)}/100")
+        v2.metric("Akkumulation", f"{fmt_num(accumulation_display,0)}/100")
+        v3.metric("Distribution", f"{fmt_num(distribution_display,0)}/100")
+        v4.metric("Pullback-Dry-up", f"{fmt_num(pullback_dryup_display,0)}/100")
+        v5.metric("Breakout-Volumen", f"{fmt_num(breakout_volume_display,0)}/100")
 
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Katalysatoren & Event-Kontext</div>
-            <div class="section-meta-line">Bewertet Earnings-Nähe, Reaktionsqualität nach Events und den aktuellen Katalysator-Rückenwind.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        dv1, dv2, dv3, dv4 = st.columns(4)
+        dv1.metric("Up/Down-Vol.-Ratio", fmt_num(up_down_volume_ratio_display, 2))
+        dv2.metric("Akkumulationstage", fmt_num(accumulation_day_count_display, 0))
+        dv3.metric("Distributionstage", fmt_num(distribution_day_count_display, 0))
+        dv4.metric("Volumentrend", f"{fmt_num(volume_trend_display,0)}/100")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Katalysator-Score", f"{fmt_num(catalyst_score_display,0)}/100", catalyst_text_display)
-    c2.metric("Event-Score", f"{fmt_num(earnings_event_score_display,0)}/100", event_phase_text(event_phase_label_display))
-    c3.metric("Revision/Momentum", f"{fmt_num(revision_momentum_score_display,0)}/100")
-    c4.metric("Event-Risiko", f"{fmt_num(event_risk_score_display,0)}/100")
+        st.markdown(
+            """
+            <div class="section-head">
+                <div class="section-title">Katalysatoren & Event-Kontext</div>
+                <div class="section-meta-line">Bewertet Earnings-Nähe, Reaktionsqualität nach Events und den aktuellen Katalysator-Rückenwind.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    e1, e2 = st.columns(2)
-    e1.metric("Post-Earnings 5d", fmt_num(earnings_reaction_5d_display, 1, "%"))
-    e2.metric("Post-Earnings 10d", fmt_num(earnings_reaction_10d_display, 1, "%"))
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Katalysator-Score", f"{fmt_num(catalyst_score_display,0)}/100", catalyst_text_display)
+        c2.metric("Event-Score", f"{fmt_num(earnings_event_score_display,0)}/100", event_phase_text(event_phase_label_display))
+        c3.metric("Revision/Momentum", f"{fmt_num(revision_momentum_score_display,0)}/100")
+        c4.metric("Event-Risiko", f"{fmt_num(event_risk_score_display,0)}/100")
 
-    st.markdown(
-        """
-        <div class="section-head">
-            <div class="section-title">Institutionelle Qualität</div>
-            <div class="section-meta-line">Bewertet Cashflow-Stabilität, Margenqualität und die Robustheit des Unternehmens aus Investorensicht.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        e1, e2 = st.columns(2)
+        e1.metric("Post-Earnings 5d", fmt_num(earnings_reaction_5d_display, 1, "%"))
+        e2.metric("Post-Earnings 10d", fmt_num(earnings_reaction_10d_display, 1, "%"))
 
-    iq1, iq2, iq3 = st.columns(3)
-    iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
-    iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
-    iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
+        st.markdown(
+            """
+            <div class="section-head">
+                <div class="section-title">Institutionelle Qualität</div>
+                <div class="section-meta-line">Bewertet Cashflow-Stabilität, Margenqualität und die Robustheit des Unternehmens aus Investorensicht.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    st.markdown("**Kurzfazit**")
-    st.write(short_thesis)
+        iq1, iq2, iq3 = st.columns(3)
+        iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
+        iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
+        iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
 
-    st.markdown("**Kurzbeschreibung**")
-    summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
-    st.write(summary_short)
+        st.markdown("**Kurzfazit**")
+        st.write(short_thesis)
 
-    st.markdown(f"**Chart & Performance · {ticker} ({ccy})**")
-    chart_range = st.selectbox(
-        "Zeitraum",
-        ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
-        index=2,
-        key="chart_range"
-    )
+        st.markdown("**Kurzbeschreibung**")
+        summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
+        st.write(summary_short)
 
-    chart_df = compute_chart_df(df, chart_range)
-    fig = build_candlestick_chart(chart_df, ticker, ccy)
-    st.plotly_chart(fig, use_container_width=True)
+        st.markdown(f"**Chart & Performance · {ticker} ({ccy})**")
+        chart_range = st.selectbox(
+            "Zeitraum",
+            ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
+            index=2,
+            key="chart_range"
+        )
 
-    perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
-    perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
-    perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
+        chart_df = compute_chart_df(df, chart_range)
+        fig = build_candlestick_chart(chart_df, ticker, ccy)
+        st.plotly_chart(fig, use_container_width=True)
 
-    p4, p5, p6 = st.columns(3)
-    p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
-    p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
-    p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
+        perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
+        perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
+        perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
 
-with t1:
-    st.subheader("Trading-Case")
-    st.markdown('<div class="panel-caption">Technisches Setup, Momentum, Volumen und kurzfristige Struktur.</div>', unsafe_allow_html=True)
-    st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_regime_label(market_info['regime'])}")
+        p4, p5, p6 = st.columns(3)
+        p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
+        p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
+        p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
 
-    cols = st.columns(2)
-    items = [
-        ("S3 Trend", s3a, s3, s3t),
-        ("S4 Momentum", s4a, s4, s4t),
-        ("S5 Volumen", s5a, s5, s5t),
-        ("S6 Volatilitaet", s6a, s6, s6t),
-        ("52W-Lage", ampel(w52), w52, f"{dist52:.1f}% vom 52W-Hoch"),
-        ("Relative Stärke", ampel(rs_score), rs_score, f"RS composite: {fmt_num(rs_composite,1,'%')}"),
-    ]
-    for i, (lab, ico, score, com) in enumerate(items):
-        with cols[i % 2]:
+    with t1:
+        st.subheader("Trading-Case")
+        st.markdown('<div class="panel-caption">Technisches Setup, Momentum, Volumen und kurzfristige Struktur.</div>', unsafe_allow_html=True)
+        st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_regime_label(market_info['regime'])}")
+
+        cols = st.columns(2)
+        items = [
+            ("S3 Trend", s3a, s3, s3t),
+            ("S4 Momentum", s4a, s4, s4t),
+            ("S5 Volumen", s5a, s5, s5t),
+            ("S6 Volatilitaet", s6a, s6, s6t),
+            ("52W-Lage", ampel(w52), w52, f"{dist52:.1f}% vom 52W-Hoch"),
+            ("Relative Stärke", ampel(rs_score), rs_score, f"RS composite: {fmt_num(rs_composite,1,'%')}"),
+        ]
+        for i, (lab, ico, score, com) in enumerate(items):
+            with cols[i % 2]:
+                st.markdown(
+                    f'<div class="metric-card {card_class(score)}"><b>{ico} {lab}</b>'
+                    f'<span style="float:right;font-size:1.3rem;font-weight:700">{score}</span>'
+                    f'<br><small style="color:#aaa">{com}</small></div>',
+                    unsafe_allow_html=True,
+                )
+
+        tech_df = pd.DataFrame({
+            "Indikator": [
+                "Kurs", "MA20", "MA50", "MA150", "MA200",
+                "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR in %",
+                "Stoch %K", "Stoch %D", "Williams %R", "ROC20", "ROC60",
+                "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch",
+                "1M Aktie", "1M Benchmark", "1M Outperformance",
+                "3M Aktie", "3M Benchmark", "3M Outperformance",
+                "6M Aktie", "6M Benchmark", "6M Outperformance",
+                "RS Composite", "Marktregime"
+            ],
+            "Wert": [
+                f"{price:.2f}", f"{ma20:.2f}", f"{ma50:.2f}", f"{ma150:.2f}", f"{ma200:.2f}",
+                f"{rsi:.1f}", f"{macd_v:.3f}", f"{signal_v:.3f}", f"{macd_hist_current:.3f}", f"{adx:.1f}",
+                f"{atr:.3f}", f"{atr_pct:.1f}%", f"{stoch_k_v:.1f}", f"{stoch_d_v:.1f}", f"{willr_v:.1f}",
+                f"{roc20:.1f}%", f"{roc60:.1f}%", f"{high52:.2f}", f"{low52:.2f}", f"{dist52:.1f}%",
+                fmt_num(ret21, 1, "%"), fmt_num(bench_ret21, 1, "%"), fmt_num(rs_vs_benchmark_21, 1, "%"),
+                fmt_num(ret63, 1, "%"), fmt_num(bench_ret63, 1, "%"), fmt_num(rs_vs_benchmark_63, 1, "%"),
+                fmt_num(ret126, 1, "%"), fmt_num(bench_ret126, 1, "%"), fmt_num(rs_vs_benchmark_126, 1, "%"),
+                fmt_num(rs_composite, 1, "%"), market_regime_label(market_info["regime"])
+            ],
+        })
+        st.dataframe(tech_df, hide_index=True, use_container_width=True)
+
+    with t2:
+        st.subheader("Kurzfristiges Signalbild")
+        c1, c2, c3, c4 = st.columns([1.0, 1.0, 1.15, 1.15])
+        c1.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
+        c2.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
+        with c3:
             st.markdown(
-                f'<div class="metric-card {card_class(score)}"><b>{ico} {lab}</b>'
-                f'<span style="float:right;font-size:1.3rem;font-weight:700">{score}</span>'
-                f'<br><small style="color:#aaa">{com}</small></div>',
+                """
+                <div class="wrap-metric-card">
+                    <div class="wrap-metric-label">Core Fokus</div>
+                    <div class="wrap-metric-value">Momentum und Volumen</div>
+                    <div class="wrap-metric-sub">Die Kernsignale für kurzfristige Stärke.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with c4:
+            st.markdown(
+                """
+                <div class="wrap-metric-card">
+                    <div class="wrap-metric-label">Board Fokus</div>
+                    <div class="wrap-metric-value">Einzelne Handelssignale</div>
+                    <div class="wrap-metric-sub">Additive Trigger aus dem Hilfsboard.</div>
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
 
-    tech_df = pd.DataFrame({
-        "Indikator": [
-            "Kurs", "MA20", "MA50", "MA150", "MA200",
-            "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR in %",
-            "Stoch %K", "Stoch %D", "Williams %R", "ROC20", "ROC60",
-            "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch",
-            "1M Aktie", "1M Benchmark", "1M Outperformance",
-            "3M Aktie", "3M Benchmark", "3M Outperformance",
-            "6M Aktie", "6M Benchmark", "6M Outperformance",
-            "RS Composite", "Marktregime"
-        ],
-        "Wert": [
-            f"{price:.2f}", f"{ma20:.2f}", f"{ma50:.2f}", f"{ma150:.2f}", f"{ma200:.2f}",
-            f"{rsi:.1f}", f"{macd_v:.3f}", f"{signal_v:.3f}", f"{macd_hist_current:.3f}", f"{adx:.1f}",
-            f"{atr:.3f}", f"{atr_pct:.1f}%", f"{stoch_k_v:.1f}", f"{stoch_d_v:.1f}", f"{willr_v:.1f}",
-            f"{roc20:.1f}%", f"{roc60:.1f}%", f"{high52:.2f}", f"{low52:.2f}", f"{dist52:.1f}%",
-            fmt_num(ret21, 1, "%"), fmt_num(bench_ret21, 1, "%"), fmt_num(rs_vs_benchmark_21, 1, "%"),
-            fmt_num(ret63, 1, "%"), fmt_num(bench_ret63, 1, "%"), fmt_num(rs_vs_benchmark_63, 1, "%"),
-            fmt_num(ret126, 1, "%"), fmt_num(bench_ret126, 1, "%"), fmt_num(rs_vs_benchmark_126, 1, "%"),
-            fmt_num(rs_composite, 1, "%"), market_regime_label(market_info["regime"])
-        ],
-    })
-    st.dataframe(tech_df, hide_index=True, use_container_width=True)
-
-with t2:
-    st.subheader("Kurzfristiges Signalbild")
-    c1, c2, c3, c4 = st.columns([1.0, 1.0, 1.15, 1.15])
-    c1.metric("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score))
-    c2.metric("Kurzfrist Hilfsboard", f"{stb_score} Punkte", stb_signal)
-    with c3:
-        st.markdown(
-            """
-            <div class="wrap-metric-card">
-                <div class="wrap-metric-label">Core Fokus</div>
-                <div class="wrap-metric-value">Momentum und Volumen</div>
-                <div class="wrap-metric-sub">Die Kernsignale für kurzfristige Stärke.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with c4:
-        st.markdown(
-            """
-            <div class="wrap-metric-card">
-                <div class="wrap-metric-label">Board Fokus</div>
-                <div class="wrap-metric-value">Einzelne Handelssignale</div>
-                <div class="wrap-metric-sub">Additive Trigger aus dem Hilfsboard.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        st.dataframe(
+            pd.DataFrame({
+                "Kennzahl": ["Kurzfrist Core", "Kurzfrist Hilfsboard", "Board-Signal", "Board-Treiber"],
+                "Wert": [f"{short_term_score}/100", str(stb_score), stb_signal, stb_text],
+                "Kommentar": [
+                    "S4 Momentum 45%, S5 Volumen 28%, S6 Volatilitaet 17%, RS 10%",
+                    "Additive Kurzfrist-Punkte aus MA/RSI/Momentum/ADX/Stoch/Williams",
+                    stb_empf,
+                    stb_text
+                ],
+            }),
+            hide_index=True,
+            use_container_width=True,
         )
 
-    st.dataframe(
-        pd.DataFrame({
-            "Kennzahl": ["Kurzfrist Core", "Kurzfrist Hilfsboard", "Board-Signal", "Board-Treiber"],
-            "Wert": [f"{short_term_score}/100", str(stb_score), stb_signal, stb_text],
-            "Kommentar": [
-                "S4 Momentum 45%, S5 Volumen 28%, S6 Volatilitaet 17%, RS 10%",
-                "Additive Kurzfrist-Punkte aus MA/RSI/Momentum/ADX/Stoch/Williams",
-                stb_empf,
-                stb_text
+    with t3:
+        st.subheader("TradingBoard & Timing")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Kurzfrist-Timing", f"{tb_score_100}/100", tb_timing_text)
+        c2.metric("Board-Signal", tb_signal, tb_empf)
+        c3.metric("TradingBoard Stop-Loss", f"{price - (2.5 * atr):.2f} {ccy}")
+        c4.metric("TradingBoard Kursziel 2", f"{tp2:.2f} {ccy}")
+
+        st.dataframe(tb_df, hide_index=True, use_container_width=True)
+
+        st.markdown("**Board-Details (Kurzfrist-Timing)**")
+        st.text("\n".join(tb_details))
+
+        st.markdown("**Board-Kontext (nicht im Score)**")
+        st.text("\n".join(tb_context))
+
+    with t4:
+        st.subheader("Investment-Case")
+        st.markdown('<div class="panel-caption">Fundamentale Qualität, Bewertung und mittelfristige Attraktivität.</div>', unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}% | Geladene Felder: {fund_fields_loaded}/21</div>",
+            unsafe_allow_html=True
+        )
+
+        f1, f2, f3, f4 = st.columns(4)
+        f1.metric("Fundamental-Confidence", confidence_info["confidence"], confidence_info["confidence_icon"])
+        f2.metric("Coverage", f"{confidence_info['coverage']*100:.0f}%")
+        f3.metric("Geladene Felder", f"{confidence_info['loaded']}/{confidence_info['total']}")
+        f4.metric("Abgeleitete Felder", str(confidence_info["derived_estimate"]))
+
+        fund_df = pd.DataFrame({
+            "Fundament-Block": [
+                "Qualitaet", "Wachstum", "Growth Quality", "Bewertung",
+                "Bilanz", "Sentiment", "Risiko"
             ],
-        }),
-        hide_index=True,
-        use_container_width=True,
-    )
+            "Score": [
+                quality_score, growth_score, growth_quality, valuation_score,
+                balance_score, sentiment_score, risk_score
+            ],
+            "Kommentar": [
+                f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | ROE {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')}",
+                f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | EPS-Wachstum {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')}",
+                f"Wachstum + Cashflow + Margen | Stil: {stock_style}",
+                f"KGV {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | KUV {fmt_num(ps,2)} | KBV {fmt_num(pb,2)}",
+                f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | D/E {fmt_num(debt_to_equity,1)}",
+                f"Analystenmeinung {rec_label} | Anzahl {fmt_num(analysts,0)} | Mean {fmt_num(rec_mean,2)}",
+                f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR% {fmt_num(atr_pct,1,'%')}",
+            ],
+        })
+        st.dataframe(fund_df, hide_index=True, use_container_width=True)
 
-with t3:
-    st.subheader("TradingBoard & Timing")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Kurzfrist-Timing", f"{tb_score_100}/100", tb_timing_text)
-    c2.metric("Board-Signal", tb_signal, tb_empf)
-    c3.metric("TradingBoard Stop-Loss", f"{price - (2.5 * atr):.2f} {ccy}")
-    c4.metric("TradingBoard Kursziel 2", f"{tp2:.2f} {ccy}")
+        st.markdown("**Strukturierte Red Flags**")
+        st.dataframe(red_flags_df, hide_index=True, use_container_width=True)
 
-    st.dataframe(tb_df, hide_index=True, use_container_width=True)
+    with t5:
+        st.subheader("Sicherheit & Checks")
+        safeguard_df = pd.DataFrame({
+            "Safeguard": [
+                "S0 Currency/Exchange",
+                "S0 Preis-Typ-Lock",
+                "S1 Earnings",
+                "S2 Regime",
+                "S3 Konfluenz-Cap",
+                "S4 Datenabdeckung",
+                "S5 Marktfilter",
+                "S6 Modus",
+                "S7 Red Flags",
+                "S8 Fundamental-Confidence"
+            ],
+            "Status": [
+                "🟢",
+                "🟢",
+                sg_earn,
+                reg_amp,
+                "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"),
+                "🟢" if fund_cov >= 0.55 else ("🟡" if fund_cov >= 0.35 else "🔴"),
+                market_info["ampel"],
+                "🟢",
+                "🟢" if red_flag_penalty_total == 0 else ("🟡" if red_flag_penalty_total <= 10 else "🔴"),
+                confidence_info["confidence_icon"],
+            ],
+            "Kommentar": [
+                f"{ccy} | {exch}",
+                "auto_adjust=True Yahoo Finance",
+                sg_earn_txt,
+                regime,
+                f"{kb}/4 Kernbloecke",
+                f"Fundamental-Coverage {fund_cov*100:.0f}%",
+                f"{benchmark_label} | {market_regime_label(market_info['regime'])}",
+                mode_label,
+                f"Penalty {red_flag_penalty_total}",
+                confidence_info["confidence"]
+            ],
+        })
+        st.dataframe(safeguard_df, hide_index=True, use_container_width=True)
 
-    st.markdown("**Board-Details (Kurzfrist-Timing)**")
-    st.text("\n".join(tb_details))
+    with t6:
+        st.subheader("Trade-Plan")
+        st.markdown('<div class="panel-caption">Konkrete Ableitung von Entry, Stop, Zielen und Chance-Risiko-Verhältnis.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="muted-meta">Setup-Ziele werden nur gezeigt, wenn aus dem konkreten Muster ein belastbares Primär- oder Sekundärziel ableitbar ist.</div>', unsafe_allow_html=True)
+        if not valid_trade_setup:
+            st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
+            st.write(
+                f"Aktuell: Investment Score {investment}/100 | "
+                f"Setup Quality {setup_adj}/100 | "
+                f"Konfluenz {kb}/4 | "
+                f"Marktregime {market_regime_label(market_info['regime'])}"
+            )
+            if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
+                st.write("Zusatzhinweis: Earnings-Veto aktiv.")
+        else:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Einstiegskurs", f"{price:.2f} {ccy}")
+            c2.metric("ATR-basierter Stop-Loss", f"{atr_stop:.2f} {ccy}", f"-{(price-atr_stop)/price*100:.1f}%" if atr_stop < price else "-")
+            c3.metric("Aktueller Stop-Loss", f"{stop_used:.2f} {ccy}", f"-{stop_dist:.1f}%")
 
-    st.markdown("**Board-Kontext (nicht im Score)**")
-    st.text("\n".join(tb_context))
+            c4, c5, c6 = st.columns(3)
+            c4.metric("Kursziel 1 (1R)", f"{tp1:.2f} {ccy}", f"+{(tp1/price-1)*100:.1f}%")
+            c5.metric("Kursziel 2 (Hauptziel)", f"{tp2:.2f} {ccy}", f"+{(tp2/price-1)*100:.1f}%")
+            c6.metric("Kursziel 3", f"{tp3:.2f} {ccy}", f"+{(tp3/price-1)*100:.1f}%")
 
-with t4:
-    st.subheader("Investment-Case")
-    st.markdown('<div class="panel-caption">Fundamentale Qualität, Bewertung und mittelfristige Attraktivität.</div>', unsafe_allow_html=True)
+            c7, c8, c9 = st.columns(3)
+            c7.metric(f"Chance-Risiko-Verhältnis {ampel_crv(crv)}", f"{crv:.1f}:1")
+            c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
+            c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
+
+            st.markdown("**Konkreter Einstiegsvorschlag**")
+            e1, e2, e3 = st.columns(3)
+            e1.metric("Entry-Zone", suggested_entry_zone)
+            e2.metric("Entry-Herleitung", entry_source)
+            e3.metric("Aktuelle Lage", entry_quality)
+
+            st.markdown("**Case-Komponenten**")
+            tc1, tc2, tc3, tc4, tc5 = st.columns(5)
+            tc1.metric("Investment-Case", f"{investment_case_score}/100", investment_case_text)
+            tc2.metric("Einstiegs-Case", f"{trading_case_score}/100", trading_case_text)
+            tc3.metric("CRV-Score", fmt_num(trade_crv_score, 0))
+            tc4.metric("Entry-Score", fmt_num(trade_entry_score, 0))
+            tc5.metric("Setup-Confidence", fmt_num(setup_confidence, 0))
+
+            st.markdown("**Herleitung von Stop und Zielen**")
+            st.write(f"• Stop: {stop_source}")
+            st.write(f"• TP1: {tp1_source}")
+            st.write(f"• TP2: {tp2_source}")
+            st.write(f"• TP3: {tp3_source}")
+
+            td1, td2 = st.columns(2)
+            td1.metric("Primärziel aus Setup", ui_target_text(technical_target_1, ccy))
+            td2.metric("Sekundärziel aus Setup", ui_target_text(technical_target_2, ccy, "kein zweites Setup-Ziel"))
+
+    with t7:
+        st.subheader("Position")
+        st.markdown('<div class="panel-caption">Positionssicht mit Exit-Score, Exit-Aktion, Kontext und den wichtigsten Verkaufsgründen.</div>', unsafe_allow_html=True)
+
+        px1, px2, px3, px4 = st.columns(4)
+        px1.metric("Exit-Score", f"{exit_score_display}/100")
+        px2.metric("Exit-Aktion", exit_action_display)
+        px3.metric("Hauptgrund", exit_reason_top_display)
+        px4.metric("P&L-Kontext", result.get("pnl_bucket", "-"))
+
+        exs1, exs2, exs3, exs4, exs5 = st.columns(5)
+        exs1.metric("Trendbruch", f"{result.get('trend_break_score', 0)}/100")
+        exs2.metric("Momentum", f"{result.get('momentum_collapse_score', 0)}/100")
+        exs3.metric("Rel. Schwäche", f"{result.get('relative_weakness_score', 0)}/100")
+        exs4.metric("Distribution", f"{result.get('distribution_score', 0)}/100")
+        exs5.metric("Trigger", f"{result.get('exit_trigger_score', 0)}/100")
+
+        st.subheader("Position")
+        if not position_mode:
+            st.info("Dieser Bereich ist nur relevant, wenn ein Buy-in gesetzt ist und damit der Positionsmodus aktiv ist.")
+        else:
+            p1, p2, p3 = st.columns(3)
+            p1.metric("Positions-Aktion", position_action)
+            p2.metric("Nachkauf sinnvoll?", add_on_action)
+            p3.metric("Teilgewinn prüfen?", partial_profit_action)
+
+            p4, p5, p6 = st.columns(3)
+            p4.metric("Stop-Anpassung", stop_action)
+            p5.metric("Performance seit Einstieg", fmt_num(tb_perf, 1, "%"))
+            p6.metric("Risiko-Hinweis", risk_note)
+
+            st.markdown("**Einordnung**")
+            st.write(
+                f"Die Positionsentscheidung kombiniert Investment-Case ({investment_case_score}/100), "
+                f"Einstiegs-Case ({trading_case_score}/100), Setup-Confidence ({fmt_num(setup_confidence,0)}/100), "
+                f"Marktumfeld ({market_regime_label(market_info['regime'])}) und die bisherige Performance seit Einstieg."
+            )
+
+
+    with t8:
+        st.subheader("Watchlist & Trigger")
+        if position_mode:
+            st.info("Dieser Bereich ist vor allem für den Watchlist-Modus gedacht. Im Positionsmodus sind Trigger nur nachrangig relevant.")
+        else:
+            w1, w2, w3 = st.columns(3)
+            w1.metric("Trigger-Status", trigger_status)
+            w2.metric("Watchlist-Priorität", watchlist_priority)
+            w3.metric("Nächster Trigger", next_trigger)
+
+            st.markdown("**Warum steht die Aktie auf der Watchlist so weit oben?**")
+            st.write(trigger_reason)
+
+            w4, w5, w6 = st.columns(3)
+            w4.metric("Setup-Typ", setup_type)
+            w5.metric("Entry-Lage", entry_quality)
+            w6.metric("Einstieg jetzt attraktiv?", f"{trading_case_score}/100", trading_case_text)
+
+            st.markdown("**Praktische Watchlist-Logik**")
+            st.write(
+                "Die Watchlist-Logik priorisiert Werte, die entweder bereits valide sind, "
+                "kurz vor einem Trigger stehen oder einen starken Investment-Case haben, "
+                "aber noch auf besseres Timing warten."
+            )
+
+
+else:
     st.markdown(
-        f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}% | Geladene Felder: {fund_fields_loaded}/21</div>",
-        unsafe_allow_html=True
+        """
+        <div class="section-head">
+            <div class="section-title">Vertiefung</div>
+            <div class="section-meta-line">Im einfachen Modus bleiben die klassischen Detailtabs ausgeblendet. Wechsle oben auf Profi, wenn du das vollständige Analyseboard sehen willst.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-
-    f1, f2, f3, f4 = st.columns(4)
-    f1.metric("Fundamental-Confidence", confidence_info["confidence"], confidence_info["confidence_icon"])
-    f2.metric("Coverage", f"{confidence_info['coverage']*100:.0f}%")
-    f3.metric("Geladene Felder", f"{confidence_info['loaded']}/{confidence_info['total']}")
-    f4.metric("Abgeleitete Felder", str(confidence_info["derived_estimate"]))
-
-    fund_df = pd.DataFrame({
-        "Fundament-Block": [
-            "Qualitaet", "Wachstum", "Growth Quality", "Bewertung",
-            "Bilanz", "Sentiment", "Risiko"
-        ],
-        "Score": [
-            quality_score, growth_score, growth_quality, valuation_score,
-            balance_score, sentiment_score, risk_score
-        ],
-        "Kommentar": [
-            f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | ROE {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')}",
-            f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | EPS-Wachstum {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')}",
-            f"Wachstum + Cashflow + Margen | Stil: {stock_style}",
-            f"KGV {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | KUV {fmt_num(ps,2)} | KBV {fmt_num(pb,2)}",
-            f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | D/E {fmt_num(debt_to_equity,1)}",
-            f"Analystenmeinung {rec_label} | Anzahl {fmt_num(analysts,0)} | Mean {fmt_num(rec_mean,2)}",
-            f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR% {fmt_num(atr_pct,1,'%')}",
-        ],
-    })
-    st.dataframe(fund_df, hide_index=True, use_container_width=True)
-
-    st.markdown("**Strukturierte Red Flags**")
-    st.dataframe(red_flags_df, hide_index=True, use_container_width=True)
-
-with t5:
-    st.subheader("Sicherheit & Checks")
-    safeguard_df = pd.DataFrame({
-        "Safeguard": [
-            "S0 Currency/Exchange",
-            "S0 Preis-Typ-Lock",
-            "S1 Earnings",
-            "S2 Regime",
-            "S3 Konfluenz-Cap",
-            "S4 Datenabdeckung",
-            "S5 Marktfilter",
-            "S6 Modus",
-            "S7 Red Flags",
-            "S8 Fundamental-Confidence"
-        ],
-        "Status": [
-            "🟢",
-            "🟢",
-            sg_earn,
-            reg_amp,
-            "🟢" if kb >= 3 else ("🟡" if kb == 2 else "🔴"),
-            "🟢" if fund_cov >= 0.55 else ("🟡" if fund_cov >= 0.35 else "🔴"),
-            market_info["ampel"],
-            "🟢",
-            "🟢" if red_flag_penalty_total == 0 else ("🟡" if red_flag_penalty_total <= 10 else "🔴"),
-            confidence_info["confidence_icon"],
-        ],
-        "Kommentar": [
-            f"{ccy} | {exch}",
-            "auto_adjust=True Yahoo Finance",
-            sg_earn_txt,
-            regime,
-            f"{kb}/4 Kernbloecke",
-            f"Fundamental-Coverage {fund_cov*100:.0f}%",
-            f"{benchmark_label} | {market_regime_label(market_info['regime'])}",
-            mode_label,
-            f"Penalty {red_flag_penalty_total}",
-            confidence_info["confidence"]
-        ],
-    })
-    st.dataframe(safeguard_df, hide_index=True, use_container_width=True)
-
-with t6:
-    st.subheader("Trade-Plan")
-    st.markdown('<div class="panel-caption">Konkrete Ableitung von Entry, Stop, Zielen und Chance-Risiko-Verhältnis.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="muted-meta">Setup-Ziele werden nur gezeigt, wenn aus dem konkreten Muster ein belastbares Primär- oder Sekundärziel ableitbar ist.</div>', unsafe_allow_html=True)
-    if not valid_trade_setup:
-        st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
-        st.write(
-            f"Aktuell: Investment Score {investment}/100 | "
-            f"Setup Quality {setup_adj}/100 | "
-            f"Konfluenz {kb}/4 | "
-            f"Marktregime {market_regime_label(market_info['regime'])}"
-        )
-        if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
-            st.write("Zusatzhinweis: Earnings-Veto aktiv.")
-    else:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Einstiegskurs", f"{price:.2f} {ccy}")
-        c2.metric("ATR-basierter Stop-Loss", f"{atr_stop:.2f} {ccy}", f"-{(price-atr_stop)/price*100:.1f}%" if atr_stop < price else "-")
-        c3.metric("Aktueller Stop-Loss", f"{stop_used:.2f} {ccy}", f"-{stop_dist:.1f}%")
-
-        c4, c5, c6 = st.columns(3)
-        c4.metric("Kursziel 1 (1R)", f"{tp1:.2f} {ccy}", f"+{(tp1/price-1)*100:.1f}%")
-        c5.metric("Kursziel 2 (Hauptziel)", f"{tp2:.2f} {ccy}", f"+{(tp2/price-1)*100:.1f}%")
-        c6.metric("Kursziel 3", f"{tp3:.2f} {ccy}", f"+{(tp3/price-1)*100:.1f}%")
-
-        c7, c8, c9 = st.columns(3)
-        c7.metric(f"Chance-Risiko-Verhältnis {ampel_crv(crv)}", f"{crv:.1f}:1")
-        c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
-        c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
-
-        st.markdown("**Konkreter Einstiegsvorschlag**")
-        e1, e2, e3 = st.columns(3)
-        e1.metric("Entry-Zone", suggested_entry_zone)
-        e2.metric("Entry-Herleitung", entry_source)
-        e3.metric("Aktuelle Lage", entry_quality)
-
-        st.markdown("**Case-Komponenten**")
-        tc1, tc2, tc3, tc4, tc5 = st.columns(5)
-        tc1.metric("Investment-Case", f"{investment_case_score}/100", investment_case_text)
-        tc2.metric("Einstiegs-Case", f"{trading_case_score}/100", trading_case_text)
-        tc3.metric("CRV-Score", fmt_num(trade_crv_score, 0))
-        tc4.metric("Entry-Score", fmt_num(trade_entry_score, 0))
-        tc5.metric("Setup-Confidence", fmt_num(setup_confidence, 0))
-
-        st.markdown("**Herleitung von Stop und Zielen**")
-        st.write(f"• Stop: {stop_source}")
-        st.write(f"• TP1: {tp1_source}")
-        st.write(f"• TP2: {tp2_source}")
-        st.write(f"• TP3: {tp3_source}")
-
-        td1, td2 = st.columns(2)
-        td1.metric("Primärziel aus Setup", ui_target_text(technical_target_1, ccy))
-        td2.metric("Sekundärziel aus Setup", ui_target_text(technical_target_2, ccy, "kein zweites Setup-Ziel"))
-
-with t7:
-    st.subheader("Position")
-    st.markdown('<div class="panel-caption">Positionssicht mit Exit-Score, Exit-Aktion, Kontext und den wichtigsten Verkaufsgründen.</div>', unsafe_allow_html=True)
-
-    px1, px2, px3, px4 = st.columns(4)
-    px1.metric("Exit-Score", f"{exit_score_display}/100")
-    px2.metric("Exit-Aktion", exit_action_display)
-    px3.metric("Hauptgrund", exit_reason_top_display)
-    px4.metric("P&L-Kontext", result.get("pnl_bucket", "-"))
-
-    exs1, exs2, exs3, exs4, exs5 = st.columns(5)
-    exs1.metric("Trendbruch", f"{result.get('trend_break_score', 0)}/100")
-    exs2.metric("Momentum", f"{result.get('momentum_collapse_score', 0)}/100")
-    exs3.metric("Rel. Schwäche", f"{result.get('relative_weakness_score', 0)}/100")
-    exs4.metric("Distribution", f"{result.get('distribution_score', 0)}/100")
-    exs5.metric("Trigger", f"{result.get('exit_trigger_score', 0)}/100")
-
-    st.subheader("Position")
-    if not position_mode:
-        st.info("Dieser Bereich ist nur relevant, wenn ein Buy-in gesetzt ist und damit der Positionsmodus aktiv ist.")
-    else:
-        p1, p2, p3 = st.columns(3)
-        p1.metric("Positions-Aktion", position_action)
-        p2.metric("Nachkauf sinnvoll?", add_on_action)
-        p3.metric("Teilgewinn prüfen?", partial_profit_action)
-
-        p4, p5, p6 = st.columns(3)
-        p4.metric("Stop-Anpassung", stop_action)
-        p5.metric("Performance seit Einstieg", fmt_num(tb_perf, 1, "%"))
-        p6.metric("Risiko-Hinweis", risk_note)
-
-        st.markdown("**Einordnung**")
-        st.write(
-            f"Die Positionsentscheidung kombiniert Investment-Case ({investment_case_score}/100), "
-            f"Einstiegs-Case ({trading_case_score}/100), Setup-Confidence ({fmt_num(setup_confidence,0)}/100), "
-            f"Marktumfeld ({market_regime_label(market_info['regime'])}) und die bisherige Performance seit Einstieg."
-        )
-
-
-with t8:
-    st.subheader("Watchlist & Trigger")
-    if position_mode:
-        st.info("Dieser Bereich ist vor allem für den Watchlist-Modus gedacht. Im Positionsmodus sind Trigger nur nachrangig relevant.")
-    else:
-        w1, w2, w3 = st.columns(3)
-        w1.metric("Trigger-Status", trigger_status)
-        w2.metric("Watchlist-Priorität", watchlist_priority)
-        w3.metric("Nächster Trigger", next_trigger)
-
-        st.markdown("**Warum steht die Aktie auf der Watchlist so weit oben?**")
-        st.write(trigger_reason)
-
-        w4, w5, w6 = st.columns(3)
-        w4.metric("Setup-Typ", setup_type)
-        w5.metric("Entry-Lage", entry_quality)
-        w6.metric("Einstieg jetzt attraktiv?", f"{trading_case_score}/100", trading_case_text)
-
-        st.markdown("**Praktische Watchlist-Logik**")
-        st.write(
-            "Die Watchlist-Logik priorisiert Werte, die entweder bereits valide sind, "
-            "kurz vor einem Trigger stehen oder einen starken Investment-Case haben, "
-            "aber noch auf besseres Timing warten."
-        )
-
 
 # ---------- Horizon lamps ----------
 st.divider()

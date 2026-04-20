@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.8"
+APP_VERSION = "v12.6C.9"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5916,7 +5916,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-workspace_mode = st.session_state.workspace_mode
+try:
+    workspace_mode = st.session_state.get("workspace_mode", "Expertenmodus")
+except Exception:
+    workspace_mode = "Expertenmodus"
 
 if not workspace_mode:
     st.info("Wähle oben einen Arbeitsmodus aus. Erst danach werden die passenden Eingaben und Werkzeuge eingeblendet.")

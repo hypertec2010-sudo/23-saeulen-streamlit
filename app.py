@@ -43,7 +43,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.4.1"
+APP_VERSION = "v12.5A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2073,6 +2073,178 @@ def calc_volume_quality_score(accumulation_score, distribution_pressure_score, p
         + breakout_volume_score * 0.20
         + volume_trend_score * 0.10
     ))
+
+
+
+
+def classify_event_phase(days_earn):
+    if pd.isna(days_earn):
+        return "kein Eventfenster"
+    if days_earn >= 0:
+        if days_earn <= 7:
+            return "earnings_unmittelbar"
+        if days_earn <= 21:
+            return "earnings_bald"
+        return "earnings_spaeter"
+    else:
+        if abs(days_earn) <= 7:
+            return "frisch_nach_earnings"
+        if abs(days_earn) <= 30:
+            return "post_earnings_fenster"
+        return "kein Eventfenster"
+
+
+def calc_post_earnings_reaction(close, days_earn):
+    try:
+        if pd.isna(days_earn) or days_earn >= 0:
+            return np.nan, np.nan
+        days_since = int(abs(days_earn))
+        if days_since < 1 or len(close) < 15:
+            return np.nan, np.nan
+        lookback_5 = min(days_since, 5)
+        lookback_10 = min(days_since, 10)
+        reaction_5d_s = close.pct_change(lookback_5) * 100
+        reaction_10d_s = close.pct_change(lookback_10) * 100
+        reaction_5d = float(reaction_5d_s.iloc[-1]) if pd.notna(reaction_5d_s.iloc[-1]) else np.nan
+        reaction_10d = float(reaction_10d_s.iloc[-1]) if pd.notna(reaction_10d_s.iloc[-1]) else np.nan
+        return reaction_5d, reaction_10d
+    except Exception:
+        return np.nan, np.nan
+
+
+def calc_post_earnings_reaction_score(reaction_5d, reaction_10d, rs_score):
+    score = 50
+    if pd.notna(reaction_5d):
+        if reaction_5d >= 6:
+            score += 22
+        elif reaction_5d >= 3:
+            score += 14
+        elif reaction_5d <= -6:
+            score -= 24
+        elif reaction_5d <= -3:
+            score -= 14
+    if pd.notna(reaction_10d):
+        if reaction_10d >= 8:
+            score += 18
+        elif reaction_10d >= 4:
+            score += 10
+        elif reaction_10d <= -8:
+            score -= 18
+        elif reaction_10d <= -4:
+            score -= 10
+    if pd.notna(rs_score):
+        if rs_score >= 65:
+            score += 8
+        elif rs_score <= 40:
+            score -= 8
+    return round(clamp(score))
+
+
+def calc_event_risk_score(days_earn, has_upcoming_earnings, atr_pct, breakout_context):
+    score = 20
+    if has_upcoming_earnings and pd.notna(days_earn):
+        if days_earn <= 3:
+            score += 45
+        elif days_earn <= 7:
+            score += 35
+        elif days_earn <= 14:
+            score += 20
+        elif days_earn <= 21:
+            score += 10
+    if pd.notna(atr_pct):
+        if atr_pct >= 6:
+            score += 12
+        elif atr_pct >= 4:
+            score += 6
+    if breakout_context and has_upcoming_earnings and pd.notna(days_earn) and days_earn <= 7:
+        score += 12
+    return round(clamp(score))
+
+
+def calc_revision_momentum_score(upside, revenue_growth, earnings_growth, ret21, rs_score):
+    score = 50
+    if pd.notna(upside):
+        if upside >= 20:
+            score += 14
+        elif upside >= 10:
+            score += 8
+        elif upside <= -10:
+            score -= 12
+    if pd.notna(revenue_growth):
+        if revenue_growth >= 0.15:
+            score += 12
+        elif revenue_growth >= 0.05:
+            score += 6
+        elif revenue_growth < 0:
+            score -= 10
+    if pd.notna(earnings_growth):
+        if earnings_growth >= 0.15:
+            score += 14
+        elif earnings_growth >= 0.05:
+            score += 8
+        elif earnings_growth < 0:
+            score -= 12
+    if pd.notna(ret21):
+        if ret21 >= 8:
+            score += 10
+        elif ret21 <= -8:
+            score -= 10
+    if pd.notna(rs_score):
+        if rs_score >= 65:
+            score += 10
+        elif rs_score <= 40:
+            score -= 10
+    return round(clamp(score))
+
+
+def calc_earnings_event_score(event_phase_label, event_risk_score, post_earnings_reaction_score):
+    if event_phase_label in ["earnings_unmittelbar", "earnings_bald"]:
+        return round(clamp(100 - event_risk_score))
+    if event_phase_label in ["frisch_nach_earnings", "post_earnings_fenster"]:
+        if pd.notna(post_earnings_reaction_score):
+            return round(clamp(post_earnings_reaction_score))
+        return 50
+    return 55
+
+
+def calc_catalyst_score(earnings_event_score, revision_momentum_score, post_earnings_reaction_score, event_phase_label):
+    post_score = 50 if pd.isna(post_earnings_reaction_score) else post_earnings_reaction_score
+    score = (
+        earnings_event_score * 0.40
+        + revision_momentum_score * 0.35
+        + post_score * 0.25
+    )
+    if event_phase_label == "earnings_unmittelbar":
+        score -= 8
+    elif event_phase_label == "frisch_nach_earnings" and post_score >= 65:
+        score += 6
+    return round(clamp(score))
+
+
+def event_phase_text(label):
+    mapping = {
+        "earnings_unmittelbar": "Earnings unmittelbar bevorstehend",
+        "earnings_bald": "Earnings in Kürze",
+        "earnings_spaeter": "Earnings später",
+        "frisch_nach_earnings": "Frisch nach Earnings",
+        "post_earnings_fenster": "Post-Earnings-Fenster",
+        "kein Eventfenster": "Kein relevantes Eventfenster",
+    }
+    return mapping.get(label, "Kein relevantes Eventfenster")
+
+
+def catalyst_label(score):
+    if pd.isna(score):
+        return "-"
+    if score >= 80:
+        return "stark"
+    if score >= 65:
+        return "konstruktiv"
+    if score >= 50:
+        return "neutral"
+    if score >= 35:
+        return "sensibel"
+    return "schwach"
 
 
 def render_score_card(label, value, subtitle="", variant="company", tooltip=""):
@@ -4177,6 +4349,47 @@ def analyze_stock(
         "Sehr langfristig": very_long_term_score,
     }
 
+    # ---------- Katalysatoren / Event-Kontext ----------
+    event_phase_label = classify_event_phase(days_earn)
+    earnings_reaction_5d, earnings_reaction_10d = calc_post_earnings_reaction(close, days_earn)
+
+    event_risk_score = calc_event_risk_score(
+        days_earn,
+        has_upcoming_earnings,
+        atr_pct,
+        breakout_context if 'breakout_context' in locals() else False
+    )
+
+    post_earnings_reaction_score = calc_post_earnings_reaction_score(
+        earnings_reaction_5d,
+        earnings_reaction_10d,
+        rs_score if pd.notna(rs_score) else 50
+    )
+
+    revision_momentum_score = calc_revision_momentum_score(
+        upside,
+        revenue_growth,
+        earnings_growth,
+        ret21,
+        rs_score if pd.notna(rs_score) else 50
+    )
+
+    earnings_event_score = calc_earnings_event_score(
+        event_phase_label,
+        event_risk_score,
+        post_earnings_reaction_score
+    )
+
+    catalyst_score = calc_catalyst_score(
+        earnings_event_score,
+        revision_momentum_score,
+        post_earnings_reaction_score,
+        event_phase_label
+    )
+
+    catalyst_text = catalyst_label(catalyst_score)
+    post_earnings_text = event_phase_text(event_phase_label)
+
     # ---------- Leadership / Marktbreite ----------
     sector_label = sector if pd.notna(sector) and sector not in ["", "-", None] else "Unbekannt"
     industry_label = industry if pd.notna(industry) and industry not in ["", "-", None] else "Unbekannt"
@@ -4238,6 +4451,19 @@ def analyze_stock(
     setup_priority_score = round(clamp(
         setup_priority_score * 0.88
         + volume_quality_score * 0.12
+    ))
+
+    investment_case_score = round(clamp(
+        investment_case_score * 0.88
+        + catalyst_score * 0.12
+    ))
+    setup_priority_score = round(clamp(
+        setup_priority_score * 0.92
+        + catalyst_score * 0.08
+    ))
+    tradeability_score = round(clamp(
+        tradeability_score * 0.96
+        + earnings_event_score * 0.04
     ))
 
     trading_case_text = trading_case_label(trading_case_score)
@@ -5049,6 +5275,16 @@ def analyze_stock(
         "distribution_day_count": distribution_day_count,
         "recent_pullback_volume_ratio": recent_pullback_volume_ratio,
         "breakout_day_volume_ratio": breakout_day_volume_ratio,
+        "catalyst_score": catalyst_score,
+        "earnings_event_score": earnings_event_score,
+        "post_earnings_reaction_score": post_earnings_reaction_score,
+        "revision_momentum_score": revision_momentum_score,
+        "event_risk_score": event_risk_score,
+        "catalyst_text": catalyst_text,
+        "post_earnings_text": post_earnings_text,
+        "event_phase_label": event_phase_label,
+        "earnings_reaction_5d": earnings_reaction_5d,
+        "earnings_reaction_10d": earnings_reaction_10d,
         "sector_etf_symbol": sector_etf_symbol if sector_etf_symbol else "-",
         "next_trigger": next_trigger,
         "trigger_reason": trigger_reason,
@@ -6055,6 +6291,9 @@ def style_ranking_table(df):
         "Distribution",
         "Pullback-Dry-up",
         "Breakout-Volumen",
+        "Katalysator",
+        "Event-Score",
+        "Event-Risiko",
     ] if c in df.columns]
 
     for col in score_cols:
@@ -6239,6 +6478,12 @@ if st.session_state.get("analysis_requested", False):
         ranking_df["Volumenqualität"] = ranking_df["Ticker"].astype(str).map(volume_quality_map)
         ranking_df["Akkumulation"] = ranking_df["Ticker"].astype(str).map(accumulation_map)
         ranking_df["Distribution"] = ranking_df["Ticker"].astype(str).map(distribution_map)
+        catalyst_map = {str(r.get("ticker", "")): r.get("catalyst_score", np.nan) for r in results}
+        event_risk_map = {str(r.get("ticker", "")): r.get("event_risk_score", np.nan) for r in results}
+        event_score_map = {str(r.get("ticker", "")): r.get("earnings_event_score", np.nan) for r in results}
+        ranking_df["Katalysator"] = ranking_df["Ticker"].astype(str).map(catalyst_map)
+        ranking_df["Event-Risiko"] = ranking_df["Ticker"].astype(str).map(event_risk_map)
+        ranking_df["Event-Score"] = ranking_df["Ticker"].astype(str).map(event_score_map)
     results_map = {r["ticker"]: r for r in results}
     st.session_state.ranking_df = ranking_df
     st.session_state.ranking_results = results_map
@@ -6381,6 +6626,8 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
             "Leadership", "Leadership-Status", "Sektor-Stärke",
             "Trendqualität", "Base-Qualität", "Setup-Priorität",
             "Volumenqualität",
+            "Katalysator",
+            "Event-Risiko",
             "Distribution",
             "Exit-Score", "Exit-Aktion",
             "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence",
@@ -6885,6 +7132,15 @@ up_down_volume_ratio_display = result.get("up_down_volume_ratio", np.nan)
 volume_trend_display = result.get("volume_trend_score", np.nan)
 accumulation_day_count_display = result.get("accumulation_day_count", np.nan)
 distribution_day_count_display = result.get("distribution_day_count", np.nan)
+catalyst_score_display = result.get("catalyst_score", np.nan)
+earnings_event_score_display = result.get("earnings_event_score", np.nan)
+post_earnings_reaction_score_display = result.get("post_earnings_reaction_score", np.nan)
+revision_momentum_score_display = result.get("revision_momentum_score", np.nan)
+event_risk_score_display = result.get("event_risk_score", np.nan)
+catalyst_text_display = result.get("catalyst_text", "-")
+event_phase_label_display = result.get("event_phase_label", "kein Eventfenster")
+earnings_reaction_5d_display = result.get("earnings_reaction_5d", np.nan)
+earnings_reaction_10d_display = result.get("earnings_reaction_10d", np.nan)
 
 if str(exit_action_display).strip().lower() == "halten":
     exit_action_sub_display = "Kein akuter Verkaufsdruck"
@@ -7260,6 +7516,26 @@ with t0:
     dv2.metric("Akkumulationstage", fmt_num(accumulation_day_count_display, 0))
     dv3.metric("Distributionstage", fmt_num(distribution_day_count_display, 0))
     dv4.metric("Volumentrend", f"{fmt_num(volume_trend_display,0)}/100")
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Katalysatoren & Event-Kontext</div>
+            <div class="section-meta-line">Bewertet Earnings-Nähe, Reaktionsqualität nach Events und den aktuellen Katalysator-Rückenwind.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Katalysator-Score", f"{fmt_num(catalyst_score_display,0)}/100", catalyst_text_display)
+    c2.metric("Event-Score", f"{fmt_num(earnings_event_score_display,0)}/100", event_phase_text(event_phase_label_display))
+    c3.metric("Revision/Momentum", f"{fmt_num(revision_momentum_score_display,0)}/100")
+    c4.metric("Event-Risiko", f"{fmt_num(event_risk_score_display,0)}/100")
+
+    e1, e2 = st.columns(2)
+    e1.metric("Post-Earnings 5d", fmt_num(earnings_reaction_5d_display, 1, "%"))
+    e2.metric("Post-Earnings 10d", fmt_num(earnings_reaction_10d_display, 1, "%"))
 
     st.markdown("**Kurzfazit**")
     st.write(short_thesis)

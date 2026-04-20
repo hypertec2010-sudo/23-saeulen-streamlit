@@ -43,7 +43,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.2"
+APP_VERSION = "v12.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5947,12 +5947,13 @@ if st.session_state.get("analysis_requested", False):
         industry_strength_map = {str(r.get("ticker", "")): r.get("industry_strength_score", np.nan) for r in results}
         rs_benchmark_map = {str(r.get("ticker", "")): r.get("rs_benchmark_score", np.nan) for r in results}
         rs_accel_map = {str(r.get("ticker", "")): r.get("rs_acceleration_score", np.nan) for r in results}
+        trend_quality_map = {str(r.get("ticker", "")): r.get("trend_quality_score", np.nan) for r in results}
+        base_quality_map = {str(r.get("ticker", "")): r.get("base_quality_score", np.nan) for r in results}
+        setup_type_quality_map = {str(r.get("ticker", "")): r.get("setup_type_quality_score", np.nan) for r in results}
+        setup_priority_map = {str(r.get("ticker", "")): r.get("setup_priority_score", np.nan) for r in results}
+
         ranking_df["Exit-Score"] = ranking_df["Ticker"].astype(str).map(exit_score_map)
         ranking_df["Exit-Aktion"] = ranking_df["Ticker"].astype(str).map(exit_action_map)
-        trend_quality_map = {str(k): v.get("trend_quality_score", np.nan) for k, v in results_map.items()}
-        base_quality_map = {str(k): v.get("base_quality_score", np.nan) for k, v in results_map.items()}
-        setup_type_quality_map = {str(k): v.get("setup_type_quality_score", np.nan) for k, v in results_map.items()}
-        setup_priority_map = {str(k): v.get("setup_priority_score", np.nan) for k, v in results_map.items()}
         ranking_df["Leadership"] = ranking_df["Ticker"].astype(str).map(leadership_map)
         ranking_df["Leadership-Status"] = ranking_df["Ticker"].astype(str).map(leadership_status_map)
         ranking_df["Sektor-Stärke"] = ranking_df["Ticker"].astype(str).map(sector_strength_map)

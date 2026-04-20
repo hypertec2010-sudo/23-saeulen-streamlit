@@ -43,7 +43,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.3"
+APP_VERSION = "v12.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1875,6 +1875,206 @@ def calc_setup_priority_score(setup_type_quality_score, leadership_score, trend_
     ))
 
 
+
+
+def calc_up_down_volume_ratio(close, vol, lookback=20):
+    try:
+        if len(close) < lookback + 2 or len(vol) < lookback + 2:
+            return np.nan
+        recent_close = close.tail(lookback + 1)
+        recent_vol = vol.tail(lookback + 1)
+        delta = recent_close.diff()
+        up_mask = delta > 0
+        down_mask = delta < 0
+        up_volume = recent_vol[up_mask].mean()
+        down_volume = recent_vol[down_mask].mean()
+        if pd.isna(down_volume) or down_volume == 0 or pd.isna(up_volume):
+            return np.nan
+        return float(up_volume / down_volume)
+    except Exception:
+        return np.nan
+
+
+def calc_accumulation_distribution_days(close, vol, lookback=20):
+    try:
+        if len(close) < lookback + 2 or len(vol) < lookback + 2:
+            return 0, 0
+        ret1 = close.pct_change(1) * 100
+        vol_ma20 = vol.rolling(20).mean()
+        recent_ret = ret1.tail(lookback)
+        recent_vol = vol.tail(lookback)
+        recent_vol_ma = vol_ma20.tail(lookback)
+        accumulation_mask = (recent_ret >= 1.0) & (recent_vol > 1.2 * recent_vol_ma)
+        distribution_mask = (recent_ret <= -1.5) & (recent_vol > 1.2 * recent_vol_ma)
+        return int(accumulation_mask.fillna(False).sum()), int(distribution_mask.fillna(False).sum())
+    except Exception:
+        return 0, 0
+
+
+def calc_volume_trend_score(vol, close):
+    try:
+        if len(vol) < 60 or len(close) < 60:
+            return np.nan
+        vol_recent = float(vol.tail(10).mean())
+        vol_mid = float(vol.iloc[-30:-10].mean())
+        ret20_s = close.pct_change(20) * 100
+        ret20 = float(ret20_s.iloc[-1]) if pd.notna(ret20_s.iloc[-1]) else np.nan
+        score = 50
+        if pd.notna(vol_recent) and pd.notna(vol_mid):
+            if vol_recent > vol_mid * 1.15 and pd.notna(ret20) and ret20 > 0:
+                score += 20
+            elif vol_recent < vol_mid * 0.90 and pd.notna(ret20) and ret20 < 0:
+                score -= 15
+            elif vol_recent > vol_mid * 1.10:
+                score += 8
+        return round(clamp(score))
+    except Exception:
+        return np.nan
+
+
+def calc_recent_pullback_volume_ratio(close, vol, lookback=10):
+    try:
+        if len(close) < lookback + 5 or len(vol) < lookback + 20:
+            return np.nan
+        ret1 = close.pct_change(1)
+        pullback_mask = ret1.tail(lookback) < 0
+        if pullback_mask.fillna(False).sum() == 0:
+            return np.nan
+        pullback_vol = vol.tail(lookback)[pullback_mask].mean()
+        vol_ma20 = vol.rolling(20).mean().iloc[-1]
+        if pd.isna(pullback_vol) or pd.isna(vol_ma20) or vol_ma20 == 0:
+            return np.nan
+        return float(pullback_vol / vol_ma20)
+    except Exception:
+        return np.nan
+
+
+def calc_breakout_day_volume_ratio(close, vol, lookback=20):
+    try:
+        if len(close) < lookback + 5 or len(vol) < lookback + 20:
+            return np.nan
+        prev_high = float(close.shift(1).rolling(lookback).max().iloc[-1])
+        current_close = float(close.iloc[-1])
+        current_vol = float(vol.iloc[-1])
+        vol_ma20 = float(vol.rolling(20).mean().iloc[-1])
+        if pd.isna(prev_high) or pd.isna(current_close) or pd.isna(current_vol) or pd.isna(vol_ma20) or vol_ma20 == 0:
+            return np.nan
+        if not (current_close >= prev_high * 0.995):
+            return np.nan
+        return float(current_vol / vol_ma20)
+    except Exception:
+        return np.nan
+
+
+def calc_close_near_day_high(close, high, low):
+    try:
+        c = float(close.iloc[-1]); h = float(high.iloc[-1]); l = float(low.iloc[-1])
+        if pd.isna(c) or pd.isna(h) or pd.isna(l) or h <= l:
+            return False
+        return c >= (l + 0.75 * (h - l))
+    except Exception:
+        return False
+
+
+def calc_accumulation_score(up_down_volume_ratio, obv_trend, accumulation_day_count, strong_up_volume_day):
+    score = 50
+    if pd.notna(up_down_volume_ratio):
+        if up_down_volume_ratio >= 1.25:
+            score += 18
+        elif up_down_volume_ratio >= 1.10:
+            score += 10
+        elif up_down_volume_ratio < 0.90:
+            score -= 12
+    if str(obv_trend).strip().lower() == "steigend":
+        score += 15
+    elif str(obv_trend).strip().lower() == "fallend":
+        score -= 10
+    if accumulation_day_count >= 4:
+        score += 18
+    elif accumulation_day_count >= 2:
+        score += 10
+    if strong_up_volume_day:
+        score += 10
+    return round(clamp(score))
+
+
+def calc_distribution_pressure_score(distribution_day_count, obv_trend, down_volume_heavy, weak_rebound_on_volume):
+    score = 0
+    if distribution_day_count >= 1:
+        score += 18
+    if distribution_day_count >= 2:
+        score += 20
+    if distribution_day_count >= 3:
+        score += 20
+    if str(obv_trend).strip().lower() == "fallend":
+        score += 15
+    if down_volume_heavy:
+        score += 12
+    if weak_rebound_on_volume:
+        score += 10
+    return round(clamp(score))
+
+
+def calc_pullback_dryup_score(pullback_active, recent_pullback_volume_ratio, pullback_quality_score, volatility_contraction_score):
+    score = 40
+    if pullback_active:
+        if pd.notna(recent_pullback_volume_ratio):
+            if recent_pullback_volume_ratio <= 0.75:
+                score += 30
+            elif recent_pullback_volume_ratio <= 0.90:
+                score += 18
+            elif recent_pullback_volume_ratio > 1.10:
+                score -= 12
+        if pd.notna(pullback_quality_score):
+            if pullback_quality_score >= 65:
+                score += 15
+            elif pullback_quality_score >= 50:
+                score += 8
+        if pd.notna(volatility_contraction_score):
+            if volatility_contraction_score >= 60:
+                score += 15
+            elif volatility_contraction_score >= 50:
+                score += 8
+    else:
+        score = 50
+    return round(clamp(score))
+
+
+def calc_breakout_volume_score(breakout_context, breakout_day_volume_ratio, rs_score, close_near_day_high, breakout_failure_risk_low=True):
+    score = 45
+    if breakout_context:
+        if pd.notna(breakout_day_volume_ratio):
+            if breakout_day_volume_ratio >= 1.8:
+                score += 28
+            elif breakout_day_volume_ratio >= 1.4:
+                score += 18
+            elif breakout_day_volume_ratio >= 1.1:
+                score += 10
+            else:
+                score -= 10
+        if pd.notna(rs_score) and rs_score >= 65:
+            score += 10
+        if close_near_day_high:
+            score += 10
+        if breakout_failure_risk_low:
+            score += 8
+    else:
+        score = 50
+    return round(clamp(score))
+
+
+def calc_volume_quality_score(accumulation_score, distribution_pressure_score, pullback_dryup_score, breakout_volume_score, volume_trend_score):
+    if pd.isna(volume_trend_score):
+        volume_trend_score = 50
+    return round(clamp(
+        accumulation_score * 0.30
+        + (100 - distribution_pressure_score) * 0.22
+        + pullback_dryup_score * 0.18
+        + breakout_volume_score * 0.20
+        + volume_trend_score * 0.10
+    ))
+
+
 def render_score_card(label, value, subtitle="", variant="company", tooltip=""):
     title_attr = f' title="{tooltip}"' if tooltip else ""
     st.markdown(
@@ -3224,6 +3424,42 @@ def analyze_stock(
     )
     volume_quality_proxy = calc_volume_quality_proxy(vol_ratio, obv_trend)
 
+    # ---------- Volumenqualität / Akkumulation ----------
+    up_down_volume_ratio = calc_up_down_volume_ratio(close, vol, lookback=20)
+    accumulation_day_count, distribution_day_count = calc_accumulation_distribution_days(close, vol, lookback=20)
+    volume_trend_score = calc_volume_trend_score(vol, close)
+    recent_pullback_volume_ratio = calc_recent_pullback_volume_ratio(close, vol, lookback=10)
+    breakout_day_volume_ratio = calc_breakout_day_volume_ratio(close, vol, lookback=20)
+    close_near_day_high = calc_close_near_day_high(close, high, low)
+
+    ret1_series = close.pct_change(1) * 100
+    ret1_last = float(ret1_series.iloc[-1]) if pd.notna(ret1_series.iloc[-1]) else np.nan
+    vol_ma20_last = float(vol.rolling(20).mean().iloc[-1]) if pd.notna(vol.rolling(20).mean().iloc[-1]) else np.nan
+    vol_last = float(vol.iloc[-1]) if pd.notna(vol.iloc[-1]) else np.nan
+
+    strong_up_volume_day = (
+        pd.notna(ret1_last) and ret1_last >= 1.5
+        and pd.notna(vol_last) and pd.notna(vol_ma20_last) and vol_last > 1.2 * vol_ma20_last
+    )
+    down_volume_heavy = (
+        pd.notna(ret1_last) and ret1_last <= -1.5
+        and pd.notna(vol_last) and pd.notna(vol_ma20_last) and vol_last > 1.2 * vol_ma20_last
+    )
+    weak_rebound_on_volume = (
+        pd.notna(ret1_last) and 0 < ret1_last < 0.8
+        and pd.notna(vol_last) and pd.notna(vol_ma20_last) and vol_last > 1.15 * vol_ma20_last
+    )
+
+    pullback_active = bool(pd.notna(ret20) and ret20 < 0 and ((pd.notna(ma50) and pd.notna(price) and price >= ma50 * 0.95) or not pd.notna(ma50)))
+    prev20_high_local = float(close.shift(1).rolling(20).max().iloc[-1]) if pd.notna(close.shift(1).rolling(20).max().iloc[-1]) else np.nan
+    breakout_context = bool(pd.notna(prev20_high_local) and pd.notna(price) and price >= prev20_high_local * 0.995)
+
+    accumulation_score = calc_accumulation_score(up_down_volume_ratio, obv_trend, accumulation_day_count, strong_up_volume_day)
+    distribution_pressure_score = calc_distribution_pressure_score(distribution_day_count, obv_trend, down_volume_heavy, weak_rebound_on_volume)
+    pullback_dryup_score = calc_pullback_dryup_score(pullback_active, recent_pullback_volume_ratio, pullback_quality_score, volatility_contraction_score)
+    breakout_volume_score = calc_breakout_volume_score(breakout_context, breakout_day_volume_ratio, rs_score, close_near_day_high, breakout_failure_risk_low=True)
+    volume_quality_score = calc_volume_quality_score(accumulation_score, distribution_pressure_score, pullback_dryup_score, breakout_volume_score, volume_trend_score)
+
     # ---------- Fundamentals ----------
     target = info.get("targetMeanPrice", np.nan)
     upside = ((target / price - 1) * 100) if pd.notna(target) and price else np.nan
@@ -3987,6 +4223,23 @@ def analyze_stock(
     trading_case_score = round(clamp(trading_case_score * 0.78 + trend_quality_score * 0.08 + base_quality_score * 0.07 + setup_type_quality_score * 0.07))
     investment_case_score = round(clamp(investment_case_score * 0.90 + leadership_score * 0.10))
     tradeability_score = round(clamp(tradeability_score * 0.82 + trend_quality_score * 0.08 + base_quality_score * 0.05 + setup_priority_score * 0.05))
+    trading_case_score = round(clamp(
+        trading_case_score * 0.82
+        + volume_quality_score * 0.10
+        + breakout_volume_score * 0.04
+        + pullback_dryup_score * 0.04
+    ))
+    setup_type_quality_score = round(clamp(
+        setup_type_quality_score * 0.82
+        + volume_quality_score * 0.10
+        + breakout_volume_score * 0.04
+        + pullback_dryup_score * 0.04
+    ))
+    setup_priority_score = round(clamp(
+        setup_priority_score * 0.88
+        + volume_quality_score * 0.12
+    ))
+
     trading_case_text = trading_case_label(trading_case_score)
     investment_case_text = investment_case_label(investment_case_score)
     tradeability_text = tradeability_label(tradeability_score)
@@ -4785,6 +5038,17 @@ def analyze_stock(
         "setup_type_quality_score": setup_type_quality_score,
         "setup_priority_score": setup_priority_score,
         "sector_strength_available": sector_strength_available,
+        "volume_quality_score": volume_quality_score,
+        "accumulation_score": accumulation_score,
+        "distribution_pressure_score": distribution_pressure_score,
+        "pullback_dryup_score": pullback_dryup_score,
+        "breakout_volume_score": breakout_volume_score,
+        "up_down_volume_ratio": up_down_volume_ratio,
+        "volume_trend_score": volume_trend_score,
+        "accumulation_day_count": accumulation_day_count,
+        "distribution_day_count": distribution_day_count,
+        "recent_pullback_volume_ratio": recent_pullback_volume_ratio,
+        "breakout_day_volume_ratio": breakout_day_volume_ratio,
         "sector_etf_symbol": sector_etf_symbol if sector_etf_symbol else "-",
         "next_trigger": next_trigger,
         "trigger_reason": trigger_reason,
@@ -5786,6 +6050,11 @@ def style_ranking_table(df):
         "Base-Qualität",
         "Setup-Typ-Qualität",
         "Setup-Priorität",
+        "Volumenqualität",
+        "Akkumulation",
+        "Distribution",
+        "Pullback-Dry-up",
+        "Breakout-Volumen",
     ] if c in df.columns]
 
     for col in score_cols:
@@ -5964,6 +6233,12 @@ if st.session_state.get("analysis_requested", False):
         ranking_df["Base-Qualität"] = ranking_df["Ticker"].astype(str).map(base_quality_map)
         ranking_df["Setup-Typ-Qualität"] = ranking_df["Ticker"].astype(str).map(setup_type_quality_map)
         ranking_df["Setup-Priorität"] = ranking_df["Ticker"].astype(str).map(setup_priority_map)
+        volume_quality_map = {str(r.get("ticker", "")): r.get("volume_quality_score", np.nan) for r in results}
+        accumulation_map = {str(r.get("ticker", "")): r.get("accumulation_score", np.nan) for r in results}
+        distribution_map = {str(r.get("ticker", "")): r.get("distribution_pressure_score", np.nan) for r in results}
+        ranking_df["Volumenqualität"] = ranking_df["Ticker"].astype(str).map(volume_quality_map)
+        ranking_df["Akkumulation"] = ranking_df["Ticker"].astype(str).map(accumulation_map)
+        ranking_df["Distribution"] = ranking_df["Ticker"].astype(str).map(distribution_map)
     results_map = {r["ticker"]: r for r in results}
     st.session_state.ranking_df = ranking_df
     st.session_state.ranking_results = results_map
@@ -6105,6 +6380,8 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
             "Ticker", "Name", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
             "Leadership", "Leadership-Status", "Sektor-Stärke",
             "Trendqualität", "Base-Qualität", "Setup-Priorität",
+            "Volumenqualität",
+            "Distribution",
             "Exit-Score", "Exit-Aktion",
             "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence",
             "Valides Setup", "Setup-Typ", "Watchlist-Priorität", "Handlung"
@@ -6599,6 +6876,15 @@ correction_depth_display = result.get("correction_depth_pct", np.nan)
 range_tightness_display = result.get("range_tightness_score", np.nan)
 volatility_contraction_display = result.get("volatility_contraction_score", np.nan)
 pullback_quality_display = result.get("pullback_quality_score", np.nan)
+volume_quality_display = result.get("volume_quality_score", np.nan)
+accumulation_display = result.get("accumulation_score", np.nan)
+distribution_display = result.get("distribution_pressure_score", np.nan)
+pullback_dryup_display = result.get("pullback_dryup_score", np.nan)
+breakout_volume_display = result.get("breakout_volume_score", np.nan)
+up_down_volume_ratio_display = result.get("up_down_volume_ratio", np.nan)
+volume_trend_display = result.get("volume_trend_score", np.nan)
+accumulation_day_count_display = result.get("accumulation_day_count", np.nan)
+distribution_day_count_display = result.get("distribution_day_count", np.nan)
 
 if str(exit_action_display).strip().lower() == "halten":
     exit_action_sub_display = "Kein akuter Verkaufsdruck"
@@ -6952,6 +7238,28 @@ with t0:
     d3.metric("Range-Tightness", f"{fmt_num(range_tightness_display,0)}/100")
     d4.metric("Volatility Contraction", f"{fmt_num(volatility_contraction_display,0)}/100")
     d5.metric("Pullback-Qualität", f"{fmt_num(pullback_quality_display,0)}/100")
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Volumenqualität & Akkumulation</div>
+            <div class="section-meta-line">Bewertet, ob Nachfrage, Pullback-Volumen und Breakout-Bestätigung das Long-Setup wirklich tragen.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    v1, v2, v3, v4, v5 = st.columns(5)
+    v1.metric("Volumenqualität", f"{fmt_num(volume_quality_display,0)}/100")
+    v2.metric("Akkumulation", f"{fmt_num(accumulation_display,0)}/100")
+    v3.metric("Distribution", f"{fmt_num(distribution_display,0)}/100")
+    v4.metric("Pullback-Dry-up", f"{fmt_num(pullback_dryup_display,0)}/100")
+    v5.metric("Breakout-Volumen", f"{fmt_num(breakout_volume_display,0)}/100")
+
+    dv1, dv2, dv3, dv4 = st.columns(4)
+    dv1.metric("Up/Down-Vol.-Ratio", fmt_num(up_down_volume_ratio_display, 2))
+    dv2.metric("Akkumulationstage", fmt_num(accumulation_day_count_display, 0))
+    dv3.metric("Distributionstage", fmt_num(distribution_day_count_display, 0))
+    dv4.metric("Volumentrend", f"{fmt_num(volume_trend_display,0)}/100")
 
     st.markdown("**Kurzfazit**")
     st.write(short_thesis)

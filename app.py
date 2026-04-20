@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6B"
+APP_VERSION = "v12.6C"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7491,7 +7491,7 @@ st.markdown("""
 
 analysis_view_mode = st.radio(
     "Ansicht",
-    ["Einfach", "Profi"],
+    ["Einfach", "Profi", "Expertenmodus"],
     horizontal=True,
     key="analysis_view_mode_126a"
 )
@@ -7574,7 +7574,7 @@ with why_col:
 with risk_col:
     render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
 
-if analysis_view_mode == "Profi":
+if analysis_view_mode == "Expertenmodus":
     with st.expander("Setup & Timing", expanded=False):
         render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
     with st.expander("Volumen & Akkumulation", expanded=False):
@@ -8291,16 +8291,28 @@ if analysis_view_mode == "Profi":
             )
 
 
+elif analysis_view_mode == "Profi":
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Profi-Diagnose aktiv</div>
+            <div class="section-meta-line">Die strukturierte Diagnose oben bleibt sichtbar. Die alten Detailtabs und Rohansichten erscheinen nur im Expertenmodus, damit nichts doppelt verwirrt.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 else:
     st.markdown(
         """
         <div class="section-head">
             <div class="section-title">Vertiefung</div>
-            <div class="section-meta-line">Im einfachen Modus bleiben die klassischen Detailtabs ausgeblendet. Wechsle oben auf Profi, wenn du das vollständige Analyseboard sehen willst.</div>
+            <div class="section-meta-line">Im einfachen Modus bleiben die klassischen Detailtabs und Rohansichten ausgeblendet. Wechsle auf Profi für strukturierte Diagnose oder auf Expertenmodus für das vollständige Analyseboard.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
 
 # ---------- Horizon lamps ----------
 st.divider()

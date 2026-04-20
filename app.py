@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.10"
+APP_VERSION = "v12.6C.11"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6854,7 +6854,10 @@ except Exception:
     pass
 
 # ---------- Ranking Section ----------
-ranking_expanded_default = len(ranking_df) > 1
+try:
+    ranking_expanded_default = len(ranking_df) > 1
+except Exception:
+    ranking_expanded_default = False
 
 st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):

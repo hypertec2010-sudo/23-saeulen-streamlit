@@ -43,7 +43,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.5A"
+APP_VERSION = "v12.5B"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2247,6 +2247,102 @@ def catalyst_label(score):
     return "schwach"
 
 
+
+
+def calc_cashflow_stability_score(fcf, op_cf, market_cap, revenue_growth, earnings_growth):
+    score = 50
+    if pd.notna(fcf):
+        if fcf > 0:
+            score += 18
+        else:
+            score -= 15
+    if pd.notna(op_cf):
+        if op_cf > 0:
+            score += 16
+        else:
+            score -= 12
+    if pd.notna(market_cap) and market_cap > 0 and pd.notna(fcf):
+        fcf_yield_pct = (fcf / market_cap) * 100
+        if fcf_yield_pct >= 4:
+            score += 10
+        elif fcf_yield_pct >= 1:
+            score += 5
+        elif fcf_yield_pct < 0:
+            score -= 8
+    if pd.notna(revenue_growth):
+        if revenue_growth >= 0.05:
+            score += 4
+        elif revenue_growth < 0:
+            score -= 5
+    if pd.notna(earnings_growth):
+        if earnings_growth >= 0.05:
+            score += 4
+        elif earnings_growth < 0:
+            score -= 6
+    return round(clamp(score))
+
+
+def calc_margin_stability_score(profit_margin, oper_margin, gross_margin, roe, roa):
+    score = 50
+    if pd.notna(gross_margin):
+        if gross_margin >= 0.45:
+            score += 12
+        elif gross_margin >= 0.25:
+            score += 6
+        elif gross_margin < 0.10:
+            score -= 8
+    if pd.notna(oper_margin):
+        if oper_margin >= 0.20:
+            score += 14
+        elif oper_margin >= 0.10:
+            score += 8
+        elif oper_margin < 0:
+            score -= 15
+    if pd.notna(profit_margin):
+        if profit_margin >= 0.15:
+            score += 12
+        elif profit_margin >= 0.07:
+            score += 6
+        elif profit_margin < 0:
+            score -= 14
+    if pd.notna(roe):
+        if roe >= 0.18:
+            score += 8
+        elif roe >= 0.10:
+            score += 4
+    if pd.notna(roa):
+        if roa >= 0.08:
+            score += 4
+        elif roa < 0:
+            score -= 6
+    return round(clamp(score))
+
+
+def calc_institutional_quality_score(cashflow_stability_score, margin_stability_score, balance_score, quality_score, risk_score):
+    risk_component = 100 - risk_score if pd.notna(risk_score) else 50
+    return round(clamp(
+        cashflow_stability_score * 0.30
+        + margin_stability_score * 0.28
+        + balance_score * 0.18
+        + quality_score * 0.14
+        + risk_component * 0.10
+    ))
+
+
+def institutional_quality_label(score):
+    if pd.isna(score):
+        return "-"
+    if score >= 80:
+        return "sehr stark"
+    if score >= 65:
+        return "stark"
+    if score >= 50:
+        return "solide"
+    if score >= 35:
+        return "gemischt"
+    return "schwach"
+
+
 def render_score_card(label, value, subtitle="", variant="company", tooltip=""):
     title_attr = f' title="{tooltip}"' if tooltip else ""
     st.markdown(
@@ -3916,6 +4012,23 @@ def analyze_stock(
         company = base_company
     company = int(clamp(company))
 
+    # ---------- Institutionelle Qualität ----------
+    cashflow_stability_score = calc_cashflow_stability_score(
+        fcf, op_cf, market_cap, revenue_growth, earnings_growth
+    )
+    margin_stability_score = calc_margin_stability_score(
+        profit_margin, oper_margin, gross_margin, roe, roa
+    )
+    institutional_quality_score = calc_institutional_quality_score(
+        cashflow_stability_score,
+        margin_stability_score,
+        balance_score,
+        quality_score,
+        risk_score
+    )
+    institutional_quality_text = institutional_quality_label(institutional_quality_score)
+
+    company = round(clamp(company * 0.90 + institutional_quality_score * 0.10))
     investment = round(clamp(setup_adj * ws + company * wc))
 
     if bb_squeeze and pd.notna(prev20_high) and price > prev20_high and vol_ratio >= 1.0:
@@ -4454,8 +4567,9 @@ def analyze_stock(
     ))
 
     investment_case_score = round(clamp(
-        investment_case_score * 0.88
-        + catalyst_score * 0.12
+        investment_case_score * 0.80
+        + catalyst_score * 0.10
+        + institutional_quality_score * 0.10
     ))
     setup_priority_score = round(clamp(
         setup_priority_score * 0.92
@@ -5285,6 +5399,10 @@ def analyze_stock(
         "event_phase_label": event_phase_label,
         "earnings_reaction_5d": earnings_reaction_5d,
         "earnings_reaction_10d": earnings_reaction_10d,
+        "cashflow_stability_score": cashflow_stability_score,
+        "margin_stability_score": margin_stability_score,
+        "institutional_quality_score": institutional_quality_score,
+        "institutional_quality_text": institutional_quality_text,
         "sector_etf_symbol": sector_etf_symbol if sector_etf_symbol else "-",
         "next_trigger": next_trigger,
         "trigger_reason": trigger_reason,
@@ -6294,6 +6412,9 @@ def style_ranking_table(df):
         "Katalysator",
         "Event-Score",
         "Event-Risiko",
+        "Institutionelle Qualität",
+        "Cashflow-Stabilität",
+        "Margenstabilität",
     ] if c in df.columns]
 
     for col in score_cols:
@@ -6484,6 +6605,12 @@ if st.session_state.get("analysis_requested", False):
         ranking_df["Katalysator"] = ranking_df["Ticker"].astype(str).map(catalyst_map)
         ranking_df["Event-Risiko"] = ranking_df["Ticker"].astype(str).map(event_risk_map)
         ranking_df["Event-Score"] = ranking_df["Ticker"].astype(str).map(event_score_map)
+        institutional_quality_map = {str(r.get("ticker", "")): r.get("institutional_quality_score", np.nan) for r in results}
+        cashflow_stability_map = {str(r.get("ticker", "")): r.get("cashflow_stability_score", np.nan) for r in results}
+        margin_stability_map = {str(r.get("ticker", "")): r.get("margin_stability_score", np.nan) for r in results}
+        ranking_df["Institutionelle Qualität"] = ranking_df["Ticker"].astype(str).map(institutional_quality_map)
+        ranking_df["Cashflow-Stabilität"] = ranking_df["Ticker"].astype(str).map(cashflow_stability_map)
+        ranking_df["Margenstabilität"] = ranking_df["Ticker"].astype(str).map(margin_stability_map)
     results_map = {r["ticker"]: r for r in results}
     st.session_state.ranking_df = ranking_df
     st.session_state.ranking_results = results_map
@@ -6627,6 +6754,7 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
             "Trendqualität", "Base-Qualität", "Setup-Priorität",
             "Volumenqualität",
             "Katalysator",
+            "Institutionelle Qualität",
             "Event-Risiko",
             "Distribution",
             "Exit-Score", "Exit-Aktion",
@@ -7141,6 +7269,10 @@ catalyst_text_display = result.get("catalyst_text", "-")
 event_phase_label_display = result.get("event_phase_label", "kein Eventfenster")
 earnings_reaction_5d_display = result.get("earnings_reaction_5d", np.nan)
 earnings_reaction_10d_display = result.get("earnings_reaction_10d", np.nan)
+cashflow_stability_display = result.get("cashflow_stability_score", np.nan)
+margin_stability_display = result.get("margin_stability_score", np.nan)
+institutional_quality_display = result.get("institutional_quality_score", np.nan)
+institutional_quality_text_display = result.get("institutional_quality_text", "-")
 
 if str(exit_action_display).strip().lower() == "halten":
     exit_action_sub_display = "Kein akuter Verkaufsdruck"
@@ -7536,6 +7668,21 @@ with t0:
     e1, e2 = st.columns(2)
     e1.metric("Post-Earnings 5d", fmt_num(earnings_reaction_5d_display, 1, "%"))
     e2.metric("Post-Earnings 10d", fmt_num(earnings_reaction_10d_display, 1, "%"))
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Institutionelle Qualität</div>
+            <div class="section-meta-line">Bewertet Cashflow-Stabilität, Margenqualität und die Robustheit des Unternehmens aus Investorensicht.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    iq1, iq2, iq3 = st.columns(3)
+    iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
+    iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
+    iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
 
     st.markdown("**Kurzfazit**")
     st.write(short_thesis)

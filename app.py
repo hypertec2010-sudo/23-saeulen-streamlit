@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.2"
+APP_VERSION = "v12.6C.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7829,6 +7829,121 @@ if is_expert_mode:
             render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short", tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke.")
         with c7:
             render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper", tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt.")
+
+
+
+if is_pro_mode:
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Profi-Überblick</div>
+            <div class="section-meta-line">Fachliche Block-Karten ohne Rohwerte, Tabellen und Einzelindikatoren.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Leadership & Marktbreite</div>
+            <div class="section-meta-line">Bewertet, ob die Aktie in einem starken Umfeld selbst als Leader auftritt oder eher nur mitläuft.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    pl1, pl2, pl3, pl4 = st.columns(4)
+    pl1.metric("Leadership", f"{fmt_num(leadership_score_display,0)}/100", leadership_status_display)
+    pl2.metric("Sektor-Stärke", sector_strength_text_display, sector_delta_display)
+    pl3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
+    pl4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
+
+    st.markdown(
+        f"""
+        <div class="section-card">
+            <div class="premium-title">Einordnung</div>
+            <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
+            <div class="premium-sub">
+                Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Setup-Qualität & Trendstruktur</div>
+            <div class="section-meta-line">Bewertet, wie sauber Trend, Base und konkreter Setup-Typ wirklich aufgebaut sind.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    pq1, pq2, pq3, pq4 = st.columns(4)
+    pq1.metric("Trendqualität", f"{fmt_num(trend_quality_display,0)}/100")
+    pq2.metric("Base-Qualität", f"{fmt_num(base_quality_display,0)}/100")
+    pq3.metric("Setup-Typ-Qualität", f"{fmt_num(setup_type_quality_display,0)}/100", setup_type)
+    pq4.metric("Setup-Priorität", f"{fmt_num(setup_priority_display,0)}/100")
+    pd1, pd2, pd3, pd4, pd5 = st.columns(5)
+    pd1.metric("Base-Länge", fmt_num(base_length_display, 0))
+    pd2.metric("Korrekturtiefe %", fmt_num(correction_depth_display, 1, "%"))
+    pd3.metric("Range-Tightness", f"{fmt_num(range_tightness_display,0)}/100")
+    pd4.metric("Volatility Contraction", f"{fmt_num(volatility_contraction_display,0)}/100")
+    pd5.metric("Pullback-Qualität", f"{fmt_num(pullback_quality_display,0)}/100")
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Volumenqualität & Akkumulation</div>
+            <div class="section-meta-line">Bewertet, ob Nachfrage, Pullback-Volumen und Breakout-Bestätigung das Long-Setup wirklich tragen.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    pv1, pv2, pv3, pv4, pv5 = st.columns(5)
+    pv1.metric("Volumenqualität", f"{fmt_num(volume_quality_display,0)}/100")
+    pv2.metric("Akkumulation", f"{fmt_num(accumulation_display,0)}/100")
+    pv3.metric("Distribution", f"{fmt_num(distribution_display,0)}/100")
+    pv4.metric("Pullback-Dry-up", f"{fmt_num(pullback_dryup_display,0)}/100")
+    pv5.metric("Breakout-Volumen", f"{fmt_num(breakout_volume_display,0)}/100")
+    pvd1, pvd2, pvd3, pvd4 = st.columns(4)
+    pvd1.metric("Up/Down-Vol.-Ratio", fmt_num(up_down_volume_ratio_display, 2))
+    pvd2.metric("Akkumulationstage", fmt_num(accumulation_day_count_display, 0))
+    pvd3.metric("Distributionstage", fmt_num(distribution_day_count_display, 0))
+    pvd4.metric("Volumentrend", f"{fmt_num(volume_trend_display,0)}/100")
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Katalysatoren & Event-Kontext</div>
+            <div class="section-meta-line">Bewertet Earnings-Nähe, Reaktionsqualität nach Events und den aktuellen Katalysator-Rückenwind.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    pc1, pc2, pc3, pc4 = st.columns(4)
+    pc1.metric("Katalysator-Score", f"{fmt_num(catalyst_score_display,0)}/100", catalyst_text_display)
+    pc2.metric("Event-Score", f"{fmt_num(earnings_event_score_display,0)}/100", event_phase_text(event_phase_label_display))
+    pc3.metric("Revision/Momentum", f"{fmt_num(revision_momentum_score_display,0)}/100")
+    pc4.metric("Event-Risiko", f"{fmt_num(event_risk_score_display,0)}/100")
+    pe1, pe2 = st.columns(2)
+    pe1.metric("Post-Earnings 5d", fmt_num(earnings_reaction_5d_display, 1, "%"))
+    pe2.metric("Post-Earnings 10d", fmt_num(earnings_reaction_10d_display, 1, "%"))
+
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Institutionelle Qualität</div>
+            <div class="section-meta-line">Bewertet Cashflow-Stabilität, Margenqualität und die Robustheit des Unternehmens aus Investorensicht.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    piq1, piq2, piq3 = st.columns(3)
+    piq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
+    piq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
+    piq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
 
 # ---------- Tabs ----------
 st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)

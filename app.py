@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.11"
+APP_VERSION = "v12.6C.12"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6986,7 +6986,10 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
         with st.expander("Nicht analysierbare Eingaben", expanded=False):
             st.dataframe(pd.DataFrame(errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
 
-result = results_map[selected_display_ticker]
+try:
+    result = results_map[selected_display_ticker]
+except Exception:
+    result = None
 single_export_df = build_export_df([result])
 
 sheet_log_triggered = False

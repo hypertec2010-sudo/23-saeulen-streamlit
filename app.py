@@ -58,7 +58,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6D"
+APP_VERSION = "v12.6C.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7489,11 +7489,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-analysis_view_mode = "Expertenmodus"
+analysis_view_mode = st.radio(
+    "Ansicht",
+    ["Einfach", "Profi", "Expertenmodus"],
+    horizontal=True,
+    key="analysis_view_mode_126a"
+)
 
-is_simple_mode = False
-is_pro_mode = False
-is_expert_mode = True
+is_simple_mode = analysis_view_mode == "Einfach"
+is_pro_mode = analysis_view_mode == "Profi"
+is_expert_mode = analysis_view_mode == "Expertenmodus"
 
 driver_summary = build_driver_summary(result)
 diag_items_126a = build_diagnostic_impacts(result)
@@ -7588,7 +7593,7 @@ if is_pro_mode or is_expert_mode:
     with st.expander("Exit & Risiko", expanded=False):
         render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
 
-if is_expert_mode:
+if is_pro_mode or is_expert_mode:
     st.markdown(
         f"""
         <div class="section-head">
@@ -7831,7 +7836,7 @@ if is_expert_mode:
 # ---------- Tabs ----------
 st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 st.divider()
-if is_expert_mode:
+if is_pro_mode or is_expert_mode:
     t0, t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
         "Überblick",
         "Trading-Case",
@@ -7846,6 +7851,8 @@ if is_expert_mode:
 
     with t0:
         st.subheader("Überblick")
+        if is_simple_mode:
+            st.info("Du nutzt die einfache Ansicht. Sichtbar sind nur die kompakte Summary sowie Treiber und Bremsfaktoren.")
         st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
 
         p1, p2, p3 = st.columns(3)
@@ -7869,97 +7876,98 @@ if is_expert_mode:
             l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
             l4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
 
-            st.markdown(
-                f"""
-                <div class="section-card">
-                    <div class="premium-title">Einordnung</div>
-                    <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
-                    <div class="premium-sub">
-                        Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
+        with st.expander("Einordnung bis Kurzfazit anzeigen", expanded=False):
+                st.markdown(
+                    f"""
+                    <div class="section-card">
+                        <div class="premium-title">Einordnung</div>
+                        <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
+                        <div class="premium-sub">
+                            Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
+                        </div>
                     </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-            st.markdown(
-                """
-                <div class="section-head">
-                    <div class="section-title">Setup-Qualität & Trendstruktur</div>
-                    <div class="section-meta-line">Bewertet, wie sauber Trend, Base und konkreter Setup-Typ wirklich aufgebaut sind.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            q1, q2, q3, q4 = st.columns(4)
-            q1.metric("Trendqualität", f"{fmt_num(trend_quality_display,0)}/100")
-            q2.metric("Base-Qualität", f"{fmt_num(base_quality_display,0)}/100")
-            q3.metric("Setup-Typ-Qualität", f"{fmt_num(setup_type_quality_display,0)}/100", setup_type)
-            q4.metric("Setup-Priorität", f"{fmt_num(setup_priority_display,0)}/100")
+                st.markdown(
+                    """
+                    <div class="section-head">
+                        <div class="section-title">Setup-Qualität & Trendstruktur</div>
+                        <div class="section-meta-line">Bewertet, wie sauber Trend, Base und konkreter Setup-Typ wirklich aufgebaut sind.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                q1, q2, q3, q4 = st.columns(4)
+                q1.metric("Trendqualität", f"{fmt_num(trend_quality_display,0)}/100")
+                q2.metric("Base-Qualität", f"{fmt_num(base_quality_display,0)}/100")
+                q3.metric("Setup-Typ-Qualität", f"{fmt_num(setup_type_quality_display,0)}/100", setup_type)
+                q4.metric("Setup-Priorität", f"{fmt_num(setup_priority_display,0)}/100")
 
-            d1, d2, d3, d4, d5 = st.columns(5)
-            d1.metric("Base-Länge", fmt_num(base_length_display, 0))
-            d2.metric("Korrekturtiefe %", fmt_num(correction_depth_display, 1, "%"))
-            d3.metric("Range-Tightness", f"{fmt_num(range_tightness_display,0)}/100")
-            d4.metric("Volatility Contraction", f"{fmt_num(volatility_contraction_display,0)}/100")
-            d5.metric("Pullback-Qualität", f"{fmt_num(pullback_quality_display,0)}/100")
+                d1, d2, d3, d4, d5 = st.columns(5)
+                d1.metric("Base-Länge", fmt_num(base_length_display, 0))
+                d2.metric("Korrekturtiefe %", fmt_num(correction_depth_display, 1, "%"))
+                d3.metric("Range-Tightness", f"{fmt_num(range_tightness_display,0)}/100")
+                d4.metric("Volatility Contraction", f"{fmt_num(volatility_contraction_display,0)}/100")
+                d5.metric("Pullback-Qualität", f"{fmt_num(pullback_quality_display,0)}/100")
 
-            st.markdown(
-                """
-                <div class="section-head">
-                    <div class="section-title">Volumenqualität & Akkumulation</div>
-                    <div class="section-meta-line">Bewertet, ob Nachfrage, Pullback-Volumen und Breakout-Bestätigung das Long-Setup wirklich tragen.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            v1, v2, v3, v4, v5 = st.columns(5)
-            v1.metric("Volumenqualität", f"{fmt_num(volume_quality_display,0)}/100")
-            v2.metric("Akkumulation", f"{fmt_num(accumulation_display,0)}/100")
-            v3.metric("Distribution", f"{fmt_num(distribution_display,0)}/100")
-            v4.metric("Pullback-Dry-up", f"{fmt_num(pullback_dryup_display,0)}/100")
-            v5.metric("Breakout-Volumen", f"{fmt_num(breakout_volume_display,0)}/100")
+                st.markdown(
+                    """
+                    <div class="section-head">
+                        <div class="section-title">Volumenqualität & Akkumulation</div>
+                        <div class="section-meta-line">Bewertet, ob Nachfrage, Pullback-Volumen und Breakout-Bestätigung das Long-Setup wirklich tragen.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                v1, v2, v3, v4, v5 = st.columns(5)
+                v1.metric("Volumenqualität", f"{fmt_num(volume_quality_display,0)}/100")
+                v2.metric("Akkumulation", f"{fmt_num(accumulation_display,0)}/100")
+                v3.metric("Distribution", f"{fmt_num(distribution_display,0)}/100")
+                v4.metric("Pullback-Dry-up", f"{fmt_num(pullback_dryup_display,0)}/100")
+                v5.metric("Breakout-Volumen", f"{fmt_num(breakout_volume_display,0)}/100")
 
-            dv1, dv2, dv3, dv4 = st.columns(4)
-            dv1.metric("Up/Down-Vol.-Ratio", fmt_num(up_down_volume_ratio_display, 2))
-            dv2.metric("Akkumulationstage", fmt_num(accumulation_day_count_display, 0))
-            dv3.metric("Distributionstage", fmt_num(distribution_day_count_display, 0))
-            dv4.metric("Volumentrend", f"{fmt_num(volume_trend_display,0)}/100")
+                dv1, dv2, dv3, dv4 = st.columns(4)
+                dv1.metric("Up/Down-Vol.-Ratio", fmt_num(up_down_volume_ratio_display, 2))
+                dv2.metric("Akkumulationstage", fmt_num(accumulation_day_count_display, 0))
+                dv3.metric("Distributionstage", fmt_num(distribution_day_count_display, 0))
+                dv4.metric("Volumentrend", f"{fmt_num(volume_trend_display,0)}/100")
 
-            st.markdown(
-                """
-                <div class="section-head">
-                    <div class="section-title">Katalysatoren & Event-Kontext</div>
-                    <div class="section-meta-line">Bewertet Earnings-Nähe, Reaktionsqualität nach Events und den aktuellen Katalysator-Rückenwind.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                st.markdown(
+                    """
+                    <div class="section-head">
+                        <div class="section-title">Katalysatoren & Event-Kontext</div>
+                        <div class="section-meta-line">Bewertet Earnings-Nähe, Reaktionsqualität nach Events und den aktuellen Katalysator-Rückenwind.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Katalysator-Score", f"{fmt_num(catalyst_score_display,0)}/100", catalyst_text_display)
-            c2.metric("Event-Score", f"{fmt_num(earnings_event_score_display,0)}/100", event_phase_text(event_phase_label_display))
-            c3.metric("Revision/Momentum", f"{fmt_num(revision_momentum_score_display,0)}/100")
-            c4.metric("Event-Risiko", f"{fmt_num(event_risk_score_display,0)}/100")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Katalysator-Score", f"{fmt_num(catalyst_score_display,0)}/100", catalyst_text_display)
+                c2.metric("Event-Score", f"{fmt_num(earnings_event_score_display,0)}/100", event_phase_text(event_phase_label_display))
+                c3.metric("Revision/Momentum", f"{fmt_num(revision_momentum_score_display,0)}/100")
+                c4.metric("Event-Risiko", f"{fmt_num(event_risk_score_display,0)}/100")
 
-            e1, e2 = st.columns(2)
-            e1.metric("Post-Earnings 5d", fmt_num(earnings_reaction_5d_display, 1, "%"))
-            e2.metric("Post-Earnings 10d", fmt_num(earnings_reaction_10d_display, 1, "%"))
+                e1, e2 = st.columns(2)
+                e1.metric("Post-Earnings 5d", fmt_num(earnings_reaction_5d_display, 1, "%"))
+                e2.metric("Post-Earnings 10d", fmt_num(earnings_reaction_10d_display, 1, "%"))
 
-            st.markdown(
-                """
-                <div class="section-head">
-                    <div class="section-title">Institutionelle Qualität</div>
-                    <div class="section-meta-line">Bewertet Cashflow-Stabilität, Margenqualität und die Robustheit des Unternehmens aus Investorensicht.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                st.markdown(
+                    """
+                    <div class="section-head">
+                        <div class="section-title">Institutionelle Qualität</div>
+                        <div class="section-meta-line">Bewertet Cashflow-Stabilität, Margenqualität und die Robustheit des Unternehmens aus Investorensicht.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-            iq1, iq2, iq3 = st.columns(3)
-            iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
-            iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
-            iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
+                iq1, iq2, iq3 = st.columns(3)
+                iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
+                iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
+                iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
         st.markdown("**Kurzfazit**")
         st.write(short_thesis)
 
@@ -8293,9 +8301,30 @@ if is_expert_mode:
             )
 
 
+elif is_pro_mode:
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Profi-Diagnose aktiv</div>
+            <div class="section-meta-line">Der Profi-Modus zeigt nahezu das gesamte Analyseboard. Nur die vertieften Fachblöcke zu Leadership, Setup, Volumen, Katalysator und institutioneller Qualität bleiben dem Expertenmodus vorbehalten.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+else:
+    st.markdown(
+        """
+        <div class="section-head">
+            <div class="section-title">Kompakte Ansicht aktiv</div>
+            <div class="section-meta-line">Einfach zeigt nur die kompakten Kernaussagen. Profi zeigt fast alles, Expertenmodus zusätzlich die vertieften Fachblöcke.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-if is_expert_mode:
+if is_pro_mode or is_expert_mode:
     # ---------- Horizon lamps ----------
     st.divider()
     with st.expander("Zeithorizonte anzeigen", expanded=False):

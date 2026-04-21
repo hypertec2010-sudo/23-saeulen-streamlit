@@ -14,6 +14,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+from analysis_core import analyze_stock
 import yfinance as yf
 from plotly.subplots import make_subplots
 
@@ -3749,7 +3750,7 @@ def compute_chart_df(df, chart_range):
 # ausgelagert nach logging_utils.py
 
 # ---------- Core Analysis Engine ----------
-def analyze_stock(
+def _legacy_analyze_stock(
     ticker,
     horizon,
     depot,

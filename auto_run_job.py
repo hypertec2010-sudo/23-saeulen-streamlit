@@ -2,20 +2,17 @@
 """
 Headless Auto-Run for Capital Hill Score Modell.
 
-Runs in GitHub Actions (or locally), loads due watchlists for the current Berlin slot,
-analyzes their tickers, sends Telegram alerts, and writes Auto_Run_Log rows.
+Uses analysis_core.py directly instead of loading app.py, so UI/session-state
+changes in Streamlit do not break GitHub auto-runs.
 """
 
 import argparse
-import ast
-import json
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import pandas as pd
 import streamlit as st
 
 
@@ -53,30 +50,8 @@ def patch_streamlit_secrets() -> None:
     st.secrets = build_streamlit_secrets()
 
 
-def load_analysis_namespace(app_path: Path) -> dict:
-    """
-    Loads imports, assignments and function definitions from app.py,
-    but skips top-level UI execution.
-    """
-    source = app_path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(app_path))
-
-    selected_nodes = []
-    for node in tree.body:
-        if isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            selected_nodes.append(node)
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-            selected_nodes.append(node)
-
-    module = ast.Module(body=selected_nodes, type_ignores=[])
-    code = compile(module, filename=str(app_path), mode="exec")
-    namespace: dict = {}
-    exec(code, namespace, namespace)
-    return namespace
-
-
-def default_app_path() -> Path:
-    return Path(os.getenv("APP_PY_PATH", "app.py")).resolve()
+def default_core_path() -> Path:
+    return Path(os.getenv("ANALYSIS_CORE_PATH", "analysis_core.py")).resolve()
 
 
 def berlin_now() -> datetime:
@@ -86,19 +61,29 @@ def berlin_now() -> datetime:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--slot", default="", help="Optional fixed slot like 10:30, 15:40, 18:30, 22:10")
-    parser.add_argument("--app-path", default=str(default_app_path()), help="Path to app.py")
+    parser.add_argument("--core-path", default=str(default_core_path()), help="Path to analysis_core.py")
     return parser.parse_args()
+
+
+def load_analysis_namespace(core_path: Path) -> dict:
+    namespace = {"__name__": "analysis_core"}
+    source = core_path.read_text(encoding="utf-8")
+    exec(compile(source, filename=str(core_path), mode="exec"), namespace, namespace)
+    if "analyze_stock" not in namespace:
+        available = sorted([k for k, v in namespace.items() if callable(v)])[:80]
+        raise RuntimeError(f"analyze_stock wurde in analysis_core.py nicht gefunden. Verfügbare Funktionen: {available}")
+    return namespace
 
 
 def main() -> int:
     args = parse_args()
     patch_streamlit_secrets()
 
-    app_path = Path(args.app_path)
-    if not app_path.exists():
-        raise FileNotFoundError(f"app.py nicht gefunden unter: {app_path}")
+    core_path = Path(args.core_path)
+    if not core_path.exists():
+        raise FileNotFoundError(f"analysis_core.py nicht gefunden unter: {core_path}")
 
-    namespace = load_analysis_namespace(app_path)
+    namespace = load_analysis_namespace(core_path)
 
     from logging_utils import (
         append_auto_run_log,
@@ -239,7 +224,7 @@ def main() -> int:
     else:
         print(f"Auto_Run_Log konnte nicht gespeichert werden: {log_msg}")
 
-    print(f"Fertig. Insgesamt gesendete Telegram-Meldungen: {total_sent}")
+    print(f"Fertig. Insgesamt gesendete Telegram-Nachrichten: {total_sent}")
     return 0
 
 

@@ -305,6 +305,13 @@ def get_watchlist_alert_mode(watchlist_name):
 
 
 
+
+def _norm_watchlist_text(value):
+    return str(value or "").strip()
+
+
+def _norm_watchlist_key(name, wtype):
+    return (_norm_watchlist_text(name).lower(), _norm_watchlist_text(wtype).lower())
 def get_watchlist_catalog_df():
     cols = ["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency"]
     df, err = load_watchlists_df()
@@ -317,15 +324,31 @@ def get_watchlist_catalog_df():
         if col not in df.columns:
             df[col] = ""
 
-    catalog = (
-        df[cols]
-        .fillna("")
-        .astype(str)
-        .query("Watchlist_Name != ''")
-        .drop_duplicates()
-        .reset_index(drop=True)
-    )
-    return catalog, None
+    catalog = df[cols].copy().fillna("").astype(str)
+    catalog["Watchlist_Name"] = catalog["Watchlist_Name"].map(_norm_watchlist_text)
+    catalog["Watchlist_Type"] = catalog["Watchlist_Type"].map(_norm_watchlist_text)
+    catalog["Alert_Mode"] = catalog["Alert_Mode"].map(_norm_watchlist_text)
+    catalog["Check_Frequency"] = catalog["Check_Frequency"].map(_norm_watchlist_text)
+    catalog = catalog[catalog["Watchlist_Name"] != ""].copy()
+
+    # Robust auf Watchlist-Ebene deduplizieren.
+    # Falls dieselbe Watchlist mehrfach mit identischer oder leicht abweichender Metainfo vorkommt,
+    # soll sie im Auto-Run trotzdem nur einmal verarbeitet werden.
+    deduped_rows = []
+    seen = set()
+    for _, row in catalog.iterrows():
+        key = _norm_watchlist_key(row.get("Watchlist_Name", ""), row.get("Watchlist_Type", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_rows.append({
+            "Watchlist_Name": row.get("Watchlist_Name", ""),
+            "Watchlist_Type": row.get("Watchlist_Type", ""),
+            "Alert_Mode": row.get("Alert_Mode", "") or "Standard",
+            "Check_Frequency": row.get("Check_Frequency", "") or "4x täglich",
+        })
+
+    return pd.DataFrame(deduped_rows, columns=cols), None
 
 
 def get_schedule_slots_for_frequency(check_frequency):
@@ -361,7 +384,25 @@ def get_due_watchlists_for_slot(slot_label):
 
     catalog = catalog.copy()
     catalog["Due_Now"] = catalog["Check_Frequency"].apply(lambda x: slot_label in get_schedule_slots_for_frequency(x))
-    return catalog[catalog["Due_Now"]].reset_index(drop=True), None
+    due = catalog[catalog["Due_Now"]].copy()
+
+    # Zusätzliche Sicherheits-Deduplizierung pro Slot
+    deduped_rows = []
+    seen = set()
+    for _, row in due.iterrows():
+        key = _norm_watchlist_key(row.get("Watchlist_Name", ""), row.get("Watchlist_Type", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_rows.append({
+            "Watchlist_Name": row.get("Watchlist_Name", ""),
+            "Watchlist_Type": row.get("Watchlist_Type", ""),
+            "Alert_Mode": row.get("Alert_Mode", ""),
+            "Check_Frequency": row.get("Check_Frequency", ""),
+            "Due_Now": True,
+        })
+
+    return pd.DataFrame(deduped_rows, columns=cols).reset_index(drop=True), None
 
 
 def get_watchlist_tickers(watchlist_name):
@@ -395,7 +436,7 @@ def append_auto_run_log(rows):
         return False, err
 
     try:
-        ws = get_or_create_worksheet(sh, "Auto_Run_Log", rows=5000, cols=16)
+        ws = get_or_create_worksheet(sh, "Auto_Run_Log", rows=5000, cols=24)
         existing = ws.get_all_values()
         headers = [
             "Run_Timestamp",
@@ -407,8 +448,12 @@ def append_auto_run_log(rows):
             "Check_Frequency",
             "Ticker_Count",
             "Analyzed_Count",
+            "Matched_Count",
+            "Suppressed_Count",
+            "Info_Sent_Count",
             "Sent_Count",
             "Status",
+            "Reason",
             "Message",
         ]
         if not existing:
@@ -483,6 +528,19 @@ def save_alert_history_df(df):
         return True, "Alert-History gespeichert"
     except Exception as e:
         return False, str(e)
+
+
+
+def has_any_alert_history_for_ticker(watchlist_name, ticker):
+    df, err = load_alert_history_df()
+    if err or df.empty:
+        return False
+
+    mask = (
+        (df["Watchlist_Name"].astype(str).str.strip().str.lower() == str(watchlist_name).strip().lower()) &
+        (df["Ticker"].astype(str).str.strip().str.upper() == str(ticker).strip().upper())
+    )
+    return bool(mask.any())
 
 
 def get_alert_history_entry(watchlist_name, ticker, alert_type):

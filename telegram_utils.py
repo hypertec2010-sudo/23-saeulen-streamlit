@@ -7,12 +7,26 @@ import streamlit as st
 from logging_utils import get_alert_history_entry, upsert_alert_history_entry
 
 try:
-    from logging_utils import has_any_alert_history_for_ticker
+    from logging_utils import has_any_alert_history_for_ticker as _has_any_alert_history_for_ticker
 except Exception:
-    def has_any_alert_history_for_ticker(watchlist_name, ticker):
-        return False
+    _has_any_alert_history_for_ticker = None
 
 
+WATCHLIST_ALERT_TYPES = [
+    "Trigger-Alert",
+    "Prioritäts-Alert",
+    "Handlungs-Alert",
+    "Watchlist-Info",
+    "Neue Watchlist-Aufnahme",
+]
+
+POSITION_ALERT_TYPES = [
+    "Exit-Alert",
+    "Risiko-Alert",
+    "Teilgewinn-Alert",
+    "Exit-Warnung",
+    "Positions-Info",
+]
 
 
 def _esc(value):
@@ -39,9 +53,6 @@ def _fmt_trade_value(value, suffix=""):
         return f"{raw}{suffix}" if suffix and not raw.endswith(suffix) else raw
 
 
-
-
-
 def _get_trade_plan_fields(result):
     entry_zone = result.get("suggested_entry_zone", "-")
     stop_value = result.get("stop_used", result.get("stop_current", result.get("stop", result.get("atr_stop", "-"))))
@@ -50,7 +61,6 @@ def _get_trade_plan_fields(result):
 
 
 def _should_show_trade_plan(result, watchlist_type):
-    # Show trade-plan details when the message is constructive and actual trade-plan fields exist.
     entry_zone = str(result.get("suggested_entry_zone", "")).strip()
     stop_value = result.get("stop_used", result.get("stop_current", result.get("stop", None)))
     crv_value = result.get("crv", result.get("rr", result.get("crv_value", None)))
@@ -87,8 +97,6 @@ def _should_show_trade_plan(result, watchlist_type):
     if any(term in trigger for term in ["aktiv", "bestätigt", "breakout", "retest"]):
         return has_trade_fields
     return False
-
-
 
 
 def get_telegram_credentials():
@@ -162,19 +170,6 @@ def _parse_signature(signature, watchlist_type):
     while len(parts) < len(fields):
         parts.append("-")
     return {field: parts[i] for i, field in enumerate(fields)}
-
-
-def _format_num_change(old_value, new_value):
-    try:
-        old_num = float(str(old_value).replace("%", "").replace(",", "."))
-        new_num = float(str(new_value).replace("%", "").replace(",", "."))
-        if abs(old_num - new_num) < 0.01:
-            return None
-        return f"{int(round(old_num))} -> {int(round(new_num))}"
-    except Exception:
-        if str(old_value) == str(new_value):
-            return None
-        return f"{old_value} -> {new_value}"
 
 
 def _rank_priority(value):
@@ -269,8 +264,7 @@ def _build_change_lines(result, previous_signature, watchlist_type):
         else:
             grouped["🟡"].append(f"{kind}: {line}")
 
-    ordered = grouped["🟢"] + grouped["🔴"] + grouped["🟡"]
-    return ordered
+    return grouped["🟢"] + grouped["🔴"] + grouped["🟡"]
 
 
 def _headline_lines(result, watchlist_name, watchlist_type, alert_mode, prefix_title):
@@ -354,7 +348,6 @@ def should_alert_for_watchlist_result(result, watchlist_type, alert_mode="Standa
         position_action = str(result.get("position_action", "")).lower()
         exit_action = str(result.get("exit_action", "")).lower()
         partial_profit = str(result.get("partial_profit_action", "")).lower()
-        risk_note = str(result.get("risk_note", "")).lower()
         setup_conf = float(result.get("setup_confidence", 0) or 0)
         exit_score = float(result.get("exit_score", 0) or 0)
 
@@ -432,8 +425,38 @@ def send_telegram_message(message_text):
         return False, str(e)
 
 
+def _get_previous_history_entry_any(watchlist_name, ticker, watchlist_type):
+    alert_types = POSITION_ALERT_TYPES if watchlist_type == "Positions-Watchlist" else WATCHLIST_ALERT_TYPES
+    best_entry = None
+    best_key = ""
+    for alert_type in alert_types:
+        try:
+            entry = get_alert_history_entry(watchlist_name, ticker, alert_type)
+        except Exception:
+            entry = None
+        if not entry:
+            continue
+        date_key = str(entry.get("Last_Sent_Date", ""))
+        if date_key >= best_key:
+            best_key = date_key
+            best_entry = entry
+    return best_entry
+
+
+def _has_prior_history_any(watchlist_name, ticker, watchlist_type):
+    if callable(_has_any_alert_history_for_ticker):
+        try:
+            return bool(_has_any_alert_history_for_ticker(watchlist_name, ticker))
+        except Exception:
+            pass
+    return _get_previous_history_entry_any(watchlist_name, ticker, watchlist_type) is not None
+
+
 def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="Standard", return_diagnostics=False):
     if not results:
+        diagnostics = {"matched": 0, "suppressed": 0, "info_sent": 0, "sent": 0, "errors": [], "reason": "Keine Ergebnisse vorhanden"}
+        if return_diagnostics:
+            return False, "Keine Ergebnisse für Telegram-Alerts vorhanden.", 0, diagnostics
         return False, "Keine Ergebnisse für Telegram-Alerts vorhanden.", 0
 
     sent = 0
@@ -444,21 +467,27 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
 
     for result in results:
         ticker = str(result.get("ticker", "-")).strip().upper()
-        previous_any = has_any_alert_history_for_ticker(watchlist_name, ticker)
+        previous_any = _has_prior_history_any(watchlist_name, ticker, watchlist_type)
 
         if should_alert_for_watchlist_result(result, watchlist_type, alert_mode):
             matched += 1
             alert_type = get_alert_type_label(result, watchlist_type)
             alert_signature = build_alert_signature(result, watchlist_type)
-            history_entry = get_alert_history_entry(watchlist_name, ticker, alert_type)
+
+            history_entry_same_type = get_alert_history_entry(watchlist_name, ticker, alert_type)
+            history_entry_any = _get_previous_history_entry_any(watchlist_name, ticker, watchlist_type)
 
             same_day = False
             same_signature = False
             previous_signature = None
-            if history_entry:
-                same_day = str(history_entry.get("Last_Sent_Date", "")) == datetime.now().strftime("%Y-%m-%d")
-                same_signature = str(history_entry.get("Alert_Signature", "")) == alert_signature
-                previous_signature = history_entry.get("Alert_Signature")
+
+            if history_entry_same_type:
+                same_day = str(history_entry_same_type.get("Last_Sent_Date", "")) == datetime.now().strftime("%Y-%m-%d")
+                same_signature = str(history_entry_same_type.get("Alert_Signature", "")) == alert_signature
+                previous_signature = history_entry_same_type.get("Alert_Signature")
+
+            if not previous_signature and history_entry_any:
+                previous_signature = history_entry_any.get("Alert_Signature")
 
             if same_day and same_signature:
                 suppressed += 1

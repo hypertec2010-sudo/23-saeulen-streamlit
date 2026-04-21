@@ -31,6 +31,16 @@ POSITION_ALERT_TYPES = [
 MAX_TELEGRAM_MESSAGE_LEN = 3800
 
 
+def _item_separator():
+    return "━━━━━━━━━━━━"
+
+
+def _emphasized_value_line(result):
+    ticker = _norm_ticker(result.get("ticker", "-"))
+    name = _norm_text(result.get("name", "-"))
+    return f"📌 <b>WERT: {_esc(name)} | {_esc(ticker)}</b>"
+
+
 def _norm_text(value):
     return str(value or "").strip()
 
@@ -285,13 +295,11 @@ def _build_change_lines(result, previous_signature, watchlist_type):
 
 
 def _headline_lines(result, watchlist_name, watchlist_type, alert_mode, prefix_title):
-    ticker = _norm_ticker(result.get("ticker", "-"))
-    name = result.get("name", "-")
     alert_type = get_alert_type_label(result, watchlist_type)
 
     return [
         f"<b>{_esc(prefix_title)}</b>",
-        f"📌 <b>WERT:</b> {_esc(ticker)} | {_esc(name)}",
+        _emphasized_value_line(result),
         f"📋 <b>WATCHLIST:</b> {_esc(watchlist_name)} | {_esc(watchlist_type)}",
         f"🚨 <b>ALERT:</b> {_esc(alert_type)} | <b>MODUS:</b> {_esc(alert_mode)}",
     ]
@@ -587,9 +595,13 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
 
     combined_items = []
     if alert_items:
-        combined_items.extend([f"<b>🔔 ALERT-ÄNDERUNGEN</b>"] + alert_items)
+        combined_items.append(f"<b>🔔 ALERT-ÄNDERUNGEN</b>")
+        for item in alert_items:
+            combined_items.append(f"{_item_separator()}\n{item}")
     if first_check_items:
-        combined_items.extend([f"<b>🆕 NEUE WATCHLIST-WERTE</b>"] + first_check_items)
+        combined_items.append(f"<b>🆕 NEUE WATCHLIST-WERTE</b>")
+        for item in first_check_items:
+            combined_items.append(f"{_item_separator()}\n{item}")
 
     if combined_items:
         header = [

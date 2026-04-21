@@ -585,25 +585,20 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
 
     sent = 0
 
+    combined_items = []
     if alert_items:
-        header = [
-            f"<b>🚨 Capital Hill | Watchlist-Sammelupdate</b>",
-            f"📋 <b>WATCHLIST:</b> {_esc(watchlist_name)} | {_esc(watchlist_type)}",
-            f"🧭 <b>MODUS:</b> {_esc(alert_mode)}",
-            f"📦 <b>ALERTS:</b> {_esc(len(alert_items))}",
-        ]
-        sent_now, errs = _send_chunked_messages(header, alert_items)
-        sent += sent_now
-        errors.extend(errs)
-
+        combined_items.extend([f"<b>🔔 ALERT-ÄNDERUNGEN</b>"] + alert_items)
     if first_check_items:
+        combined_items.extend([f"<b>🆕 NEUE WATCHLIST-WERTE</b>"] + first_check_items)
+
+    if combined_items:
         header = [
-            f"<b>🆕 Capital Hill | Neue Watchlist-Werte</b>",
+            f"<b>📦 Capital Hill | Watchlist-Sammelupdate</b>",
             f"📋 <b>WATCHLIST:</b> {_esc(watchlist_name)} | {_esc(watchlist_type)}",
             f"🧭 <b>MODUS:</b> {_esc(alert_mode)}",
-            f"📦 <b>ERST-CHECKS:</b> {_esc(len(first_check_items))}",
+            f"🔔 <b>ALERTS:</b> {_esc(len(alert_items))} | 🆕 <b>ERST-CHECKS:</b> {_esc(len(first_check_items))}",
         ]
-        sent_now, errs = _send_chunked_messages(header, first_check_items)
+        sent_now, errs = _send_chunked_messages(header, combined_items)
         sent += sent_now
         errors.extend(errs)
 

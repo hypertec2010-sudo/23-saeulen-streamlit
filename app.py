@@ -8533,11 +8533,11 @@ if result is not None:
     exec_focus_value = (
         top_red_flag if str(top_red_flag).strip() not in {"", "-", "None"} else
         risk_note if str(risk_note).strip() not in {"", "-", "None", "Watchlist-Modus"} else
-        trigger_status if str(trigger_status).strip() not in {"", "-", "None"} else
+        ("Ja" if str(trigger_status).strip() == "Aktiv" else "Noch nicht") if str(top_red_flag).strip() in {"", "-", "None"} and str(risk_note).strip() in {"", "-", "None", "Watchlist-Modus"} else
         main_action_label if str(main_action_label).strip() not in {"", "-", "None", "Nicht anwendbar"} else
         "Lage weiter beobachten"
     )
-    exec_focus_label = "Kritischer Kipppunkt" if str(top_red_flag).strip() not in {"", "-", "None"} else "Worauf es jetzt ankommt"
+    exec_focus_label = "Kritischer Kipppunkt" if str(top_red_flag).strip() not in {"", "-", "None"} else "Jetzt ein guter Einstieg?"
     exec_summary_text = company_summary if company_summary not in [None, "", "-"] else "Die Aktie ist oben bereits verdichtet. Hier bleibt nur die zusätzliche Einordnung, was das aktuelle Urteil kippen oder bestätigen würde."
     exec_redflag = top_red_flag if 'top_red_flag' in locals() else red_flag if 'red_flag' in locals() else "-"
     exec_risk_context = risk_note if str(risk_note).strip() not in {"", "-", "None", "Keine Auffälligkeit", "Watchlist-Modus"} else exit_reason_top_display
@@ -8563,7 +8563,7 @@ if result is not None:
                     <div class="exec-v2-signal-label">{exec_focus_label}</div>
                     <div class="exec-v2-signal-value" style="font-size:clamp(1.15rem, 1.75vw, 1.55rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exec_focus_value}</div>
                     <div class="exec-v2-signal-meta">
-                        Dieser Block wiederholt bewusst keine Hauptscores mehr, sondern nur noch den wichtigsten Kipppunkt hinter dem aktuellen Urteil.
+                        Dieser Block wiederholt bewusst keine Hauptscores mehr, sondern ordnet nur noch den wichtigsten Kipppunkt oder die Einstiegsreife ein.
                     </div>
                 </div>
             </div>

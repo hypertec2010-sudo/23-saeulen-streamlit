@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v13.1R"
+APP_VERSION = "v13.1R.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7967,37 +7967,6 @@ if result is not None:
     else:
         exit_action_sub_display = "Exit-Einordnung der aktuellen Lage"
 
-    if is_expert_mode:
-        st.markdown(
-            f"""
-            <div class="exec-shell">
-                <div class="exec-top">
-                    <div>
-                        <div class="exec-kicker">Capital Hill Executive Summary</div>
-                        <div class="exec-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
-                        <div class="exec-sub">{shorten_text(short_thesis, 210)}</div>
-                        <div class="exec-meta">
-                            <div class="status-chip {action_chip_class}">⚡ Handlung: {main_action_label}</div>
-                            <div class="status-chip {entry_chip_class}">📈 Einstieg: {trading_case_score}/100</div>
-                            <div class="status-chip {investment_chip_class}">🏛️ Investment: {investment_case_score}/100</div>
-                            <div class="status-chip {priority_chip_class}">📌 Priorität: {watchlist_priority}</div>
-                            <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
-                            <div class="status-chip purple">🧩 Setup: {setup_type}</div>
-                            <div class="status-chip blue">⚖️ CRV: {ui_safe_metric_text(crv_value,1,":1")}</div>
-                            <div class="status-chip {exit_chip_class}">🚪 Exit: {exit_action_display}</div>
-                        </div>
-                    </div>
-                    <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
-                        <div class="exec-score-label">Hauptsignal</div>
-                        <div class="exec-score-value">{main_action_label}</div>
-                        <div class="exec-score-sub">{market_regime_label(market_info["regime"])} · {display_mode_label(mode_label)}</div>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
     compact_cols = st.columns(6)
     compact_data = [
         ("Hauptsignal", main_action_label, display_mode_label(mode_label)),
@@ -8041,46 +8010,6 @@ if result is not None:
             render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
 
     if is_pro_mode or is_expert_mode:
-        
-        d1, d2, d3 = st.columns(3)
-        with d1:
-            st.markdown(
-                f"""
-                <div class="decision-card invest" title="Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.">
-                    <div class="dc-label">Investment-Attraktivität</div>
-                    <div class="dc-value">{investment_case_score}/100</div>
-                    <div class="dc-sub">{investment_case_text}</div>
-                    <div class="dc-note">Grundqualität und Investment-Case.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with d2:
-            st.markdown(
-                f"""
-                <div class="decision-card entry" title="Wie attraktiv ein Einstieg genau jetzt gerade ist.">
-                    <div class="dc-label">Einstieg jetzt attraktiv?</div>
-                    <div class="dc-value">{trading_case_score}/100</div>
-                    <div class="dc-sub">{trading_case_text}</div>
-                    <div class="dc-note">Timing, Setup und Entry-Lage.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with d3:
-            st.markdown(
-                f"""
-                <div class="decision-card action" title="Verdichtete Handlungsempfehlung für Watchlist oder Position.">
-                    <div class="dc-label">Handlung</div>
-                    <div class="dc-value">{main_action_label}</div>
-                    <div class="dc-sub">{market_regime_label(market_info["regime"])}</div>
-                    <div class="dc-note">Was jetzt praktisch am ehesten sinnvoll ist.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-
         st.markdown(
             f"""
             <div class="section-head">

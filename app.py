@@ -8054,53 +8054,97 @@ if result is not None:
             render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
 
     if is_pro_mode or is_expert_mode:
+        decision_meta = (
+            f"Positionsmodus | Risiko: {shorten_text(risk_note, 42)}"
+            if position_mode
+            else f"Marktumfeld: {market_regime_label(market_info['regime'])} | Trigger-Status: {trigger_status} | Priorität: {watchlist_priority}"
+        )
         st.markdown(
             f"""
             <div class="section-head">
-                <div class="section-title">Entscheidung auf einen Blick</div>
-                <div class="section-meta-line">Marktumfeld: {market_regime_label(market_info["regime"])} | Entry-Lage: {entry_quality} | Red Flag: {shorten_text(top_red_flag, 42)}</div>
+                <div class="section-title">Operative Einordnung auf einen Blick</div>
+                <div class="section-meta-line">{decision_meta}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
         d1, d2, d3 = st.columns(3)
-        with d1:
-            st.markdown(
-                f"""
-                <div class="decision-card invest" title="Wie attraktiv die Aktie grundsätzlich als Investment-Case ist.">
-                    <div class="dc-label">Investment-Attraktivität</div>
-                    <div class="dc-value">{investment_case_score}/100</div>
-                    <div class="dc-sub">{investment_case_text}</div>
-                    <div class="dc-note">Grundqualität und Investment-Case.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with d2:
-            st.markdown(
-                f"""
-                <div class="decision-card entry" title="Wie attraktiv ein Einstieg genau jetzt gerade ist.">
-                    <div class="dc-label">Einstieg jetzt attraktiv?</div>
-                    <div class="dc-value">{trading_case_score}/100</div>
-                    <div class="dc-sub">{trading_case_text}</div>
-                    <div class="dc-note">Timing, Setup und Entry-Lage.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with d3:
-            st.markdown(
-                f"""
-                <div class="decision-card action" title="Verdichtete Handlungsempfehlung für Watchlist oder Position.">
-                    <div class="dc-label">Handlung</div>
-                    <div class="dc-value">{main_action_label}</div>
-                    <div class="dc-sub">{market_regime_label(market_info["regime"])}</div>
-                    <div class="dc-note">Was jetzt praktisch am ehesten sinnvoll ist.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        if position_mode:
+            with d1:
+                st.markdown(
+                    f"""
+                    <div class="decision-card action" title="Aktuell sinnvollste Führungsaktion für die bestehende Position.">
+                        <div class="dc-label">Positions-Aktion</div>
+                        <div class="dc-value">{main_action_label}</div>
+                        <div class="dc-sub">{shorten_text(risk_note, 52)}</div>
+                        <div class="dc-note">Operative Führung der laufenden Position.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with d2:
+                st.markdown(
+                    f"""
+                    <div class="decision-card entry" title="Aktuelle Stop- und Führungslogik der Position.">
+                        <div class="dc-label">Stop-Führung</div>
+                        <div class="dc-value">{shorten_text(stop_action, 26)}</div>
+                        <div class="dc-sub">{exit_action_display}</div>
+                        <div class="dc-note">Stop und Exit-Taktik der Position.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with d3:
+                st.markdown(
+                    f"""
+                    <div class="decision-card invest" title="Worauf bei der Position aktuell besonders zu achten ist.">
+                        <div class="dc-label">Jetzt eng beobachten</div>
+                        <div class="dc-value">{shorten_text(exit_reason_top_display, 26)}</div>
+                        <div class="dc-sub">{exit_score_text_display}</div>
+                        <div class="dc-note">Wichtigster aktueller Exit- oder Risikotreiber.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            with d1:
+                st.markdown(
+                    f"""
+                    <div class="decision-card action" title="Was jetzt auf der Watchlist konkret als Nächstes sinnvoll ist.">
+                        <div class="dc-label">Nächster Schritt</div>
+                        <div class="dc-value">{main_action_label}</div>
+                        <div class="dc-sub">{trigger_status}</div>
+                        <div class="dc-note">Konkrete operative Einordnung für die Watchlist.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with d2:
+                st.markdown(
+                    f"""
+                    <div class="decision-card entry" title="Welcher Trigger als Nächstes relevant ist.">
+                        <div class="dc-label">Nächster Trigger</div>
+                        <div class="dc-value">{shorten_text(next_trigger, 26)}</div>
+                        <div class="dc-sub">{watchlist_priority}</div>
+                        <div class="dc-note">Worauf vor einem aktiven Einstieg zu warten ist.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with d3:
+                st.markdown(
+                    f"""
+                    <div class="decision-card invest" title="Welcher Punkt aktuell noch gegen ein aktiveres Setup spricht.">
+                        <div class="dc-label">Was noch fehlt</div>
+                        <div class="dc-value">{shorten_text(trigger_reason, 26)}</div>
+                        <div class="dc-sub">{entry_quality}</div>
+                        <div class="dc-note">Zentrale Hürde bis zu einem besseren Watchlist-Status.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
 
 
         st.markdown(

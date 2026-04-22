@@ -8521,9 +8521,10 @@ if result is not None:
     )
 
     exec_signal_value = (
+        main_action_label if 'main_action_label' in locals() else
         signal_label if 'signal_label' in locals() else
         signal_text if 'signal_text' in locals() else
-        emp if 'emp' in locals() else
+        display_emp_label(emp) if 'emp' in locals() else
         position_action if 'position_action' in locals() else
         "-"
     )
@@ -8563,7 +8564,7 @@ if result is not None:
         trigger_status if 'trigger_status' in locals() else
         "-"
     )
-    exec_action = emp if 'emp' in locals() else position_action if 'position_action' in locals() else "-"
+    exec_action = main_action_label if 'main_action_label' in locals() else display_emp_label(emp) if 'emp' in locals() else position_action if 'position_action' in locals() else "-"
     exec_trigger = trigger_status if 'trigger_status' in locals() else entry_quality if 'entry_quality' in locals() else "-"
     exec_redflag = top_red_flag if 'top_red_flag' in locals() else red_flag if 'red_flag' in locals() else "-"
 

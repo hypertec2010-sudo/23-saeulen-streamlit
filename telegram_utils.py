@@ -57,6 +57,33 @@ def _b(label, value):
     return f"<b>{_esc(label)}</b> {_esc(value)}"
 
 
+def _is_non_applicable(value):
+    raw = str(value if value is not None else "").strip().lower()
+    return raw in {"", "-", "n/a", "none", "nicht anwendbar"}
+
+
+def _append_detail_if_applicable(lines, label, value):
+    if _is_non_applicable(value):
+        return
+    lines.append(_b(label, value))
+
+
+def _append_position_detail(lines, label, value):
+    raw = str(value if value is not None else "").strip()
+    raw_lower = raw.lower()
+
+    if _is_non_applicable(raw):
+        return
+    if label == "💰 Teilgewinn:" and raw_lower == "nein":
+        return
+    if label == "🚨 Risiko-Hinweis:" and raw_lower in {"keine auffälligkeit", "watchlist-modus"}:
+        return
+    if label == "🛡️ Stop:" and raw_lower == "beibehalten":
+        return
+
+    lines.append(_b(label, raw))
+
+
 def _fmt_trade_value(value, suffix=""):
     if value is None:
         return "-"
@@ -319,16 +346,15 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_
     lines.extend(["", "<b>📊 AKTUELLER STAND</b>", _b("Modus:", mode), _b("Setup:", setup_type)])
 
     if watchlist_type == "Positions-Watchlist":
-        lines.extend([
-            _b("⚠️ Positions-Aktion:", result.get('position_action', '-')),
-            _b("🚪 Exit-Aktion:", result.get('exit_action', '-')),
-            _b("📊 Exit-Score:", f"{result.get('exit_score', '-')}/100"),
-            _b("🧭 Exit-Hauptgrund:", result.get('exit_reason_top', '-')),
-            _b("💰 Teilgewinn:", result.get('partial_profit_action', '-')),
-            _b("🛡️ Stop:", result.get('stop_action', '-')),
-            _b("🚨 Risiko-Hinweis:", result.get('risk_note', '-')),
-            _b("📊 Setup-Confidence:", f"{result.get('setup_confidence', '-')}/100"),
-        ])
+        _append_position_detail(lines, "⚠️ Positions-Aktion:", result.get('position_action', '-'))
+        _append_position_detail(lines, "➕ Aufstocken:", result.get('add_on_action', '-'))
+        _append_position_detail(lines, "🚪 Exit-Aktion:", result.get('exit_action', '-'))
+        _append_position_detail(lines, "📊 Exit-Score:", f"{result.get('exit_score', '-')}/100")
+        _append_position_detail(lines, "🧭 Exit-Hauptgrund:", result.get('exit_reason_top', '-'))
+        _append_position_detail(lines, "💰 Teilgewinn:", result.get('partial_profit_action', '-'))
+        _append_position_detail(lines, "🛡️ Stop:", result.get('stop_action', '-'))
+        _append_position_detail(lines, "🚨 Risiko-Hinweis:", result.get('risk_note', '-'))
+        _append_position_detail(lines, "📊 Setup-Confidence:", f"{result.get('setup_confidence', '-')}/100")
     else:
         lines.extend([
             _b("⚡ Handlung:", result.get('emp', '-')),

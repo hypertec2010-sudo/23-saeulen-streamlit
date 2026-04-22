@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v13.0B"
+APP_VERSION = "v13.0B.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5743,66 +5743,137 @@ st.caption("Investment- und Trading-Entscheidungen in einer hochwertigen, klar l
 st.markdown(
     """
     <style>
-    .landing-wrap{
-        margin-top: 4px;
-        margin-bottom: 18px;
+    .landing-stage{
+        position:relative;
+        margin: 8px 0 22px 0;
+        padding: 26px 26px 24px 26px;
+        border-radius: 28px;
+        background:
+            radial-gradient(circle at top left, rgba(96,165,250,0.20), rgba(0,0,0,0) 32%),
+            radial-gradient(circle at top right, rgba(14,165,233,0.12), rgba(0,0,0,0) 24%),
+            linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.82));
+        border: 1px solid rgba(96,165,250,0.22);
+        box-shadow:
+            0 24px 50px rgba(2,6,23,0.30),
+            inset 0 1px 0 rgba(255,255,255,0.04);
+        overflow:hidden;
+    }
+    .landing-stage::after{
+        content:"";
+        position:absolute;
+        inset:0;
+        background:linear-gradient(120deg, rgba(255,255,255,0.045), rgba(255,255,255,0.00) 42%);
+        pointer-events:none;
+    }
+    .landing-topline{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-bottom:12px;
+        position:relative;
+        z-index:1;
     }
     .landing-kicker{
         display:inline-block;
-        padding:6px 12px;
+        padding:7px 13px;
         border-radius:999px;
-        background:rgba(37,99,235,0.14);
-        color:#bfdbfe;
-        border:1px solid rgba(59,130,246,0.30);
+        background:rgba(37,99,235,0.18);
+        color:#dbeafe;
+        border:1px solid rgba(96,165,250,0.36);
         font-size:0.78rem;
-        font-weight:800;
-        letter-spacing:0.02em;
-        margin-bottom:10px;
+        font-weight:900;
+        letter-spacing:0.04em;
+    }
+    .landing-statusdot{
+        width:9px;
+        height:9px;
+        border-radius:999px;
+        background:#22c55e;
+        box-shadow:0 0 0 4px rgba(34,197,94,0.14);
     }
     .landing-title{
-        font-size:2.0rem;
-        line-height:1.08;
-        font-weight:900;
+        position:relative;
+        z-index:1;
+        font-size:2.25rem;
+        line-height:1.02;
+        font-weight:950;
         color:#f8fafc;
-        margin-bottom:8px;
+        margin-bottom:10px;
+        letter-spacing:-0.03em;
+        max-width:900px;
     }
     .landing-sub{
+        position:relative;
+        z-index:1;
         color:#cbd5e1;
-        font-size:0.98rem;
-        line-height:1.55;
-        max-width:820px;
+        font-size:1.02rem;
+        line-height:1.62;
+        max-width:860px;
         margin-bottom:18px;
     }
+    .landing-feature-row{
+        position:relative;
+        z-index:1;
+        display:flex;
+        flex-wrap:wrap;
+        gap:10px;
+        margin-bottom:6px;
+    }
+    .landing-feature{
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        padding:8px 12px;
+        border-radius:999px;
+        background:rgba(15,23,42,0.55);
+        border:1px solid rgba(148,163,184,0.16);
+        color:#dbeafe;
+        font-size:0.82rem;
+        font-weight:700;
+    }
     .landing-divider{
+        position:relative;
+        z-index:1;
         height:1px;
-        background:linear-gradient(90deg, rgba(59,130,246,0.35), rgba(148,163,184,0.10), rgba(0,0,0,0));
-        margin:10px 0 18px 0;
+        background:linear-gradient(90deg, rgba(96,165,250,0.44), rgba(148,163,184,0.14), rgba(0,0,0,0));
+        margin:18px 0 22px 0;
     }
     .landing-mini-note{
         color:#94a3b8;
         font-size:0.82rem;
-        margin-top:8px;
+        margin-top:10px;
         margin-bottom:0;
     }
 
     div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
         white-space: pre-line !important;
-        line-height: 1.28 !important;
-        font-weight: 800 !important;
-        border-radius: 24px !important;
-        min-height: 6.0rem !important;
-        padding-top: 0.9rem !important;
-        padding-bottom: 0.9rem !important;
+        line-height: 1.30 !important;
+        font-weight: 900 !important;
+        border-radius: 26px !important;
+        min-height: 7.0rem !important;
+        padding-top: 1.05rem !important;
+        padding-bottom: 1.00rem !important;
         background:
-            radial-gradient(circle at top left, rgba(96,165,250,0.18), rgba(0,0,0,0) 42%),
-            linear-gradient(180deg, #1d4ed8 0%, #0f172a 100%) !important;
+            radial-gradient(circle at top left, rgba(147,197,253,0.20), rgba(0,0,0,0) 36%),
+            linear-gradient(180deg, #2563eb 0%, #0f172a 100%) !important;
         color: #f8fafc !important;
-        border: 1px solid rgba(96,165,250,0.38) !important;
+        border: 1px solid rgba(147,197,253,0.40) !important;
         box-shadow:
-            0 16px 36px rgba(15,23,42,0.34),
-            inset 0 1px 0 rgba(255,255,255,0.05) !important;
+            0 22px 42px rgba(15,23,42,0.34),
+            0 8px 18px rgba(37,99,235,0.20),
+            inset 0 1px 0 rgba(255,255,255,0.08) !important;
         text-shadow: none !important;
         transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease !important;
+        position:relative !important;
+    }
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button::before{
+        content:"";
+        position:absolute;
+        inset:0;
+        border-radius:26px;
+        background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.00) 40%);
+        pointer-events:none;
     }
     div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button p,
     div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button span,
@@ -5810,41 +5881,42 @@ st.markdown(
         color: #f8fafc !important;
     }
     div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button:hover {
-        border-color: rgba(147,197,253,0.72) !important;
+        border-color: rgba(191,219,254,0.88) !important;
         box-shadow:
-            0 22px 44px rgba(29,78,216,0.24),
-            0 10px 28px rgba(15,23,42,0.28) !important;
-        transform: translateY(-2px);
+            0 30px 56px rgba(29,78,216,0.30),
+            0 12px 26px rgba(15,23,42,0.26) !important;
+        transform: translateY(-3px);
     }
 
     .utility-shell{
-        border:1px solid rgba(148,163,184,0.14);
-        border-radius:20px;
-        background:linear-gradient(180deg, rgba(15,23,42,0.70), rgba(15,23,42,0.46));
-        padding:10px 14px 14px 14px;
-        margin-top:16px;
-        box-shadow:0 10px 24px rgba(2,6,23,0.16);
+        border:1px solid rgba(148,163,184,0.12);
+        border-radius:18px;
+        background:linear-gradient(180deg, rgba(15,23,42,0.52), rgba(15,23,42,0.34));
+        padding:12px 14px 14px 14px;
+        margin-top:18px;
+        box-shadow:0 10px 24px rgba(2,6,23,0.14);
     }
     .utility-title{
-        font-size:0.94rem;
+        font-size:0.92rem;
         font-weight:800;
-        color:#e2e8f0;
+        color:#dbeafe;
         margin-bottom:2px;
     }
     .utility-sub{
-        font-size:0.82rem;
+        font-size:0.81rem;
         color:#94a3b8;
-        margin-bottom:8px;
+        margin-bottom:6px;
     }
 
     div[data-testid="stExpander"] {
         border:1px solid rgba(148,163,184,0.12) !important;
         border-radius:18px !important;
-        background:rgba(15,23,42,0.36) !important;
+        background:rgba(15,23,42,0.34) !important;
         overflow:hidden;
+        box-shadow: 0 10px 24px rgba(2,6,23,0.10);
     }
     div[data-testid="stExpander"] summary {
-        background:rgba(15,23,42,0.32) !important;
+        background:rgba(15,23,42,0.30) !important;
         border-radius:18px !important;
     }
     </style>
@@ -5854,19 +5926,26 @@ st.markdown(
 
 st.markdown(
     """
-    <div class="landing-wrap">
-        <div class="landing-kicker">PREMIUM WORKSPACE</div>
-        <div class="landing-title">Analysieren, priorisieren und überwachen.</div>
+    <div class="landing-stage">
+        <div class="landing-topline">
+            <div class="landing-kicker">PREMIUM WORKSPACE</div>
+            <div class="landing-statusdot"></div>
+        </div>
+        <div class="landing-title">Ein klarer Einstieg für Analyse, Watchlisten und Positionen.</div>
         <div class="landing-sub">
-            Wähle deinen Einstieg über Sofortanalyse, Watchlisten oder Positionen.
-            Die Hauptaktionen stehen bewusst vorne, Hilfen und Verwaltung darunter zurückgenommen.
+            Die wichtigsten Wege stehen bewusst im Vordergrund. Hauptaktionen oben,
+            Hilfen und Verwaltung zurückgenommen darunter – schneller erfassbar, ruhiger und hochwertiger.
+        </div>
+        <div class="landing-feature-row">
+            <div class="landing-feature">🔎 Sofortige Einzel- und Vergleichsanalyse</div>
+            <div class="landing-feature">📋 Watchlisten mit Telegram und Auto-Run</div>
+            <div class="landing-feature">🛡️ Positionsüberwachung mit Exit-Fokus</div>
         </div>
         <div class="landing-divider"></div>
     </div>
     """,
     unsafe_allow_html=True,
 )
-
 wc1, wc2, wc3 = st.columns(3)
 with wc1:
     if st.button(
@@ -5889,6 +5968,8 @@ with wc3:
         key="workspace_position_btn"
     ):
         st.session_state.workspace_mode = "Positionen"
+
+st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
 st.markdown("""<div class="landing-mini-note">Tipp: Die drei Hauptkarten sind für den täglichen Schnellzugriff optimiert.</div>""", unsafe_allow_html=True)
 

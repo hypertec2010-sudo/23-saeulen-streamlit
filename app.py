@@ -8572,10 +8572,6 @@ if result is not None:
                     <div class="exec-v2-panel-title">Zusätzliche Einordnung</div>
                     <div class="exec-v2-list">
                         <div class="exec-v2-list-item">
-                            <div class="exec-v2-list-label">Einordnung in einem Satz</div>
-                            <div class="exec-v2-list-value">{exec_summary_text}</div>
-                        </div>
-                        <div class="exec-v2-list-item">
                             <div class="exec-v2-list-label">Was das Urteil kippen würde</div>
                             <div class="exec-v2-list-value">{exec_redflag if str(exec_redflag).strip() not in {"", "-", "None"} else "derzeit keine dominierende Red Flag"}</div>
                         </div>

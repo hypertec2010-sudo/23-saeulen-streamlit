@@ -8530,45 +8530,23 @@ if result is not None:
         position_action if 'position_action' in locals() else
         "-"
     )
-    exec_trading_score = (
-        fmt_num(trading_case_score,0) if 'trading_case_score' in locals() else
-        fmt_num(entry_score,0) if 'entry_score' in locals() else
-        "n/a"
+    exec_focus_value = (
+        top_red_flag if str(top_red_flag).strip() not in {"", "-", "None"} else
+        risk_note if str(risk_note).strip() not in {"", "-", "None", "Watchlist-Modus"} else
+        trigger_status if str(trigger_status).strip() not in {"", "-", "None"} else
+        main_action_label if str(main_action_label).strip() not in {"", "-", "None", "Nicht anwendbar"} else
+        "Lage weiter beobachten"
     )
-    exec_trading_text = (
-        trading_case_text if 'trading_case_text' in locals() else
-        entry_quality if 'entry_quality' in locals() else
-        "-"
-    )
-    exec_investment_score = (
-        fmt_num(investment_case_score,0) if 'investment_case_score' in locals() else
-        fmt_num(investment,0) if 'investment' in locals() else
-        "n/a"
-    )
-    exec_investment_text = (
-        investment_case_text if 'investment_case_text' in locals() else
-        investment_case_label if 'investment_case_label' in locals() else
-        "-"
-    )
-    exec_exit_score = fmt_num(exit_score_display,0) if str(exit_score_display).strip().lower() not in {"", "-", "n/a", "none"} else "0"
-    exec_exit_text = (
-        exit_action_display if str(exit_action_display).strip() not in {"", "-", "None"} else
-        exit_reason_top_display if str(exit_reason_top_display).strip() not in {"", "-", "None"} else
-        "-"
-    )
-    exec_setup_score = (
-        fmt_num(setup_priority_score,0) if 'setup_priority_score' in locals() else
-        fmt_num(setup_confidence,0) if 'setup_confidence' in locals() else
-        "n/a"
-    )
-    exec_setup_text = (
-        setup_type if 'setup_type' in locals() else
-        trigger_status if 'trigger_status' in locals() else
-        "-"
-    )
-    exec_action = main_action_label if 'main_action_label' in locals() else display_emp_label(emp) if 'emp' in locals() else position_action if 'position_action' in locals() else "-"
-    exec_trigger = trigger_status if 'trigger_status' in locals() else entry_quality if 'entry_quality' in locals() else "-"
+    exec_focus_label = "Kritischer Kipppunkt" if str(top_red_flag).strip() not in {"", "-", "None"} else "Worauf es jetzt ankommt"
+    exec_summary_text = company_summary if company_summary not in [None, "", "-"] else "Die Aktie ist oben bereits verdichtet. Hier bleibt nur die zusätzliche Einordnung, was das aktuelle Urteil kippen oder bestätigen würde."
     exec_redflag = top_red_flag if 'top_red_flag' in locals() else red_flag if 'red_flag' in locals() else "-"
+    exec_risk_context = risk_note if str(risk_note).strip() not in {"", "-", "None", "Keine Auffälligkeit", "Watchlist-Modus"} else exit_reason_top_display
+    exec_confirmation = (
+        leadership_status_display if str(leadership_status_display).strip() not in {"", "-", "None"} else
+        sector_trend_text_display if str(sector_trend_text_display).strip() not in {"", "-", "None", "nicht belastbar"} else
+        trigger_status if str(trigger_status).strip() not in {"", "-", "None"} else
+        "noch kein zusätzlicher Bestätigungsfaktor"
+    )
 
     st.markdown(
         f"""
@@ -8578,57 +8556,41 @@ if result is not None:
                     <div class="exec-v2-eyebrow">Executive Summary</div>
                     <div class="exec-v2-title">{name} <span style="color:#93c5fd;">| {ticker}</span></div>
                     <div class="exec-v2-sub">
-                        {company_summary if company_summary not in [None, "", "-"] else "Die wichtigsten Signale, Chancen und Risiken sind unten klar strukturiert zusammengefasst."}
+                        Nur die zusätzliche Einordnung, die oberhalb noch nicht als Score oder Kachel gezeigt wird.
                     </div>
                 </div>
                 <div class="exec-v2-signal">
-                    <div class="exec-v2-signal-label">Hauptsignal</div>
-                    <div class="exec-v2-signal-value">{exec_signal_value}</div>
+                    <div class="exec-v2-signal-label">{exec_focus_label}</div>
+                    <div class="exec-v2-signal-value" style="font-size:clamp(1.15rem, 1.75vw, 1.55rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exec_focus_value}</div>
                     <div class="exec-v2-signal-meta">
-                        Fokus auf Entscheidung, Priorität und nächstem sinnvollen Schritt – ohne sofort in Rohdaten abzutauchen.
+                        Dieser Block wiederholt bewusst keine Hauptscores mehr, sondern nur noch den wichtigsten Kipppunkt hinter dem aktuellen Urteil.
                     </div>
                 </div>
             </div>
-            <div class="exec-v2-grid">
+            <div class="exec-v2-grid" style="grid-template-columns:1.1fr 0.9fr;">
                 <div class="exec-v2-panel">
-                    <div class="exec-v2-panel-title">Kernaussagen</div>
-                    <div class="exec-v2-kpi-grid">
-                        <div class="exec-v2-kpi">
-                            <div class="exec-v2-kpi-label">Trading-Case</div>
-                            <div class="exec-v2-kpi-value">{exec_trading_score}/100</div>
-                            <div class="exec-v2-kpi-sub">{exec_trading_text}</div>
+                    <div class="exec-v2-panel-title">Zusätzliche Einordnung</div>
+                    <div class="exec-v2-list">
+                        <div class="exec-v2-list-item">
+                            <div class="exec-v2-list-label">Einordnung in einem Satz</div>
+                            <div class="exec-v2-list-value">{exec_summary_text}</div>
                         </div>
-                        <div class="exec-v2-kpi">
-                            <div class="exec-v2-kpi-label">Investment-Case</div>
-                            <div class="exec-v2-kpi-value">{exec_investment_score}/100</div>
-                            <div class="exec-v2-kpi-sub">{exec_investment_text}</div>
-                        </div>
-                        <div class="exec-v2-kpi">
-                            <div class="exec-v2-kpi-label">Exit</div>
-                            <div class="exec-v2-kpi-value">{exec_exit_score}/100</div>
-                            <div class="exec-v2-kpi-sub">{exec_exit_text}</div>
-                        </div>
-                        <div class="exec-v2-kpi">
-                            <div class="exec-v2-kpi-label">Setup-Priorität</div>
-                            <div class="exec-v2-kpi-value">{exec_setup_score}/100</div>
-                            <div class="exec-v2-kpi-sub">{exec_setup_text}</div>
+                        <div class="exec-v2-list-item">
+                            <div class="exec-v2-list-label">Was das Urteil kippen würde</div>
+                            <div class="exec-v2-list-value">{exec_redflag if str(exec_redflag).strip() not in {"", "-", "None"} else "derzeit keine dominierende Red Flag"}</div>
                         </div>
                     </div>
                 </div>
                 <div class="exec-v2-panel">
-                    <div class="exec-v2-panel-title">Entscheidungsrahmen</div>
+                    <div class="exec-v2-panel-title">Zusätzlicher Kontext</div>
                     <div class="exec-v2-list">
                         <div class="exec-v2-list-item">
-                            <div class="exec-v2-list-label">Aktion</div>
-                            <div class="exec-v2-list-value">{exec_action}</div>
+                            <div class="exec-v2-list-label">Risikokontext</div>
+                            <div class="exec-v2-list-value">{exec_risk_context if str(exec_risk_context).strip() not in {"", "-", "None"} else "kein zusätzlicher Risikohinweis"}</div>
                         </div>
                         <div class="exec-v2-list-item">
-                            <div class="exec-v2-list-label">Trigger / Lage</div>
-                            <div class="exec-v2-list-value">{exec_trigger}</div>
-                        </div>
-                        <div class="exec-v2-list-item">
-                            <div class="exec-v2-list-label">Top Red Flag</div>
-                            <div class="exec-v2-list-value">{exec_redflag}</div>
+                            <div class="exec-v2-list-label">Was das Urteil bestätigt</div>
+                            <div class="exec-v2-list-value">{exec_confirmation}</div>
                         </div>
                     </div>
                     <div class="exec-v2-divider"></div>

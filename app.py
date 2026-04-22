@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.14.ui1"
+APP_VERSION = "v12.6C.14.ui9"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5742,7 +5742,33 @@ st.caption(
     "Mit Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement, Watchlisten und Telegram-Alerts."
 )
 
-with st.expander("Kurzanleitung", expanded=False):
+wc1, wc2, wc3 = st.columns(3)
+with wc1:
+    if st.button(
+        "🔎 Sofortanalyse\nEinzelaktie oder Vergleich",
+        use_container_width=True,
+        key="workspace_analysis_btn"
+    ):
+        st.session_state.workspace_mode = "Sofortanalyse"
+with wc2:
+    if st.button(
+        "📋 Watchlisten\nListen pflegen und prüfen",
+        use_container_width=True,
+        key="workspace_watchlist_btn"
+    ):
+        st.session_state.workspace_mode = "Watchlisten"
+with wc3:
+    if st.button(
+        "🛡️ Positionen\nPositionen überwachen",
+        use_container_width=True,
+        key="workspace_position_btn"
+    ):
+        st.session_state.workspace_mode = "Positionen"
+
+with st.expander("Hilfen & Verwaltung", expanded=False):
+    st.caption("Kurzanleitung, Auto-Run Control Center und Technik / Admin sind hier gebündelt.")
+
+    st.markdown("#### Kurzanleitung")
     st.markdown(
         "- **Sofortanalyse**: spontane Einzelanalyse oder Vergleich mehrerer Aktien.\n"
         "- **Watchlisten**: neue Chancen beobachten, priorisieren und bei Bedarf an Telegram senden.\n"
@@ -5769,10 +5795,9 @@ with st.expander("Kurzanleitung", expanded=False):
             "- Der Auto-Run-Bereich liegt bewusst im Technik-/Admin-Teil, damit die Hauptoberfläche ruhiger bleibt."
         )
 
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
-st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
-with st.expander("Auto-Run Control Center", expanded=False):
+    st.markdown("#### Auto-Run Control Center")
     berlin_now = get_current_berlin_time()
     current_slot_label = get_current_schedule_slot(berlin_now)
     slot_options = ["10:30", "15:40", "18:30", "22:10"]
@@ -5805,15 +5830,15 @@ with st.expander("Auto-Run Control Center", expanded=False):
         )
     with ar2:
         st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-        if     st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
+        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
             st.session_state.auto_run_requested = True
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
 
-with st.expander("Technik / Admin", expanded=False):
+    st.markdown("#### Technik / Admin")
     test1, test2 = st.columns([1.2, 2.8])
     with test1:
-        if     st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
+        if st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
             test_message = (
                 f"Capital Hill Test\n"
                 f"Version: {APP_VERSION}\n"
@@ -5827,71 +5852,6 @@ with st.expander("Technik / Admin", expanded=False):
                 st.error(f"Telegram-Test fehlgeschlagen: {msg}")
     with test2:
         st.caption("Technischer Test unabhängig von Marktlogik, Alert-History und Watchlist-Regeln.")
-
-st.markdown(
-    """
-    <div class="workspace-shell">
-        <div class="workspace-title">Was möchtest du heute tun?</div>
-        <div class="workspace-sub">
-            Wähle deinen Arbeitsmodus: spontane Analyse, Watchlisten oder bestehende Positionen.
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    """
-    <style>
-    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
-        white-space: pre-line !important;
-        line-height: 1.35 !important;
-        font-weight: 800 !important;
-        border-radius: 20px !important;
-        min-height: 5.25rem !important;
-        background: linear-gradient(180deg, #1e3a8a 0%, #111827 100%) !important;
-        color: #f8fafc !important;
-        border: 1px solid #3b82f6 !important;
-        box-shadow: 0 14px 28px rgba(30,58,138,0.25) !important;
-        text-shadow: none !important;
-    }
-    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button p,
-    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button span,
-    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button div {
-        color: #f8fafc !important;
-    }
-    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button:hover {
-        border-color: #60a5fa !important;
-        box-shadow: 0 18px 34px rgba(59,130,246,0.28) !important;
-        transform: translateY(-1px);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-wc1, wc2, wc3 = st.columns(3)
-with wc1:
-    if st.button(
-        "🔎 Sofortanalyse\nEinzelaktie oder Vergleich",
-        use_container_width=True,
-        key="workspace_analysis_btn"
-    ):
-        st.session_state.workspace_mode = "Sofortanalyse"
-with wc2:
-    if st.button(
-        "📋 Watchlisten\nListen pflegen und prüfen",
-        use_container_width=True,
-        key="workspace_watchlist_btn"
-    ):
-        st.session_state.workspace_mode = "Watchlisten"
-with wc3:
-    if st.button(
-        "🛡️ Positionen\nPositionen überwachen",
-        use_container_width=True,
-        key="workspace_position_btn"
-    ):
-        st.session_state.workspace_mode = "Positionen"
 
 st.markdown(
     """
@@ -6222,7 +6182,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     else:
                         st.info("In dieser Watchlist sind noch keine Ticker.")
             with act3:
-                if     st.button("Watchlist analysieren + Telegram", use_container_width=True, key="run_watchlist_telegram"):
+                if st.button("Watchlist analysieren + Telegram", use_container_width=True, key="run_watchlist_telegram"):
                     joined = "\n".join(current_tickers)
                     if joined.strip():
                         st.session_state.batch_input = joined
@@ -6242,18 +6202,7 @@ if workspace_mode:
         pass
 
     if workspace_mode == "Sofortanalyse":
-        st.markdown(
-            """
-            <div class="mobile-form-card">
-                <div class="mobile-form-title">Analyse starten</div>
-                <div class="mobile-form-sub">
-                    Für Mobilgeräte ist die Eingabe jetzt direkt im Hauptbereich. Die wichtigsten Felder sind sofort sichtbar,
-                    erweiterte Einstellungen bleiben eingeklappt.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        pass
     elif workspace_mode == "Watchlisten":
         st.markdown(
             """

@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v13.0A"
+APP_VERSION = "v13.0B"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5739,6 +5739,134 @@ with top2:
     st.markdown("")
 st.caption("Investment- und Trading-Entscheidungen in einer hochwertigen, klar lesbaren Oberfläche. Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement, Watchlisten und Telegram-Alerts.")
 
+
+st.markdown(
+    """
+    <style>
+    .landing-wrap{
+        margin-top: 4px;
+        margin-bottom: 18px;
+    }
+    .landing-kicker{
+        display:inline-block;
+        padding:6px 12px;
+        border-radius:999px;
+        background:rgba(37,99,235,0.14);
+        color:#bfdbfe;
+        border:1px solid rgba(59,130,246,0.30);
+        font-size:0.78rem;
+        font-weight:800;
+        letter-spacing:0.02em;
+        margin-bottom:10px;
+    }
+    .landing-title{
+        font-size:2.0rem;
+        line-height:1.08;
+        font-weight:900;
+        color:#f8fafc;
+        margin-bottom:8px;
+    }
+    .landing-sub{
+        color:#cbd5e1;
+        font-size:0.98rem;
+        line-height:1.55;
+        max-width:820px;
+        margin-bottom:18px;
+    }
+    .landing-divider{
+        height:1px;
+        background:linear-gradient(90deg, rgba(59,130,246,0.35), rgba(148,163,184,0.10), rgba(0,0,0,0));
+        margin:10px 0 18px 0;
+    }
+    .landing-mini-note{
+        color:#94a3b8;
+        font-size:0.82rem;
+        margin-top:8px;
+        margin-bottom:0;
+    }
+
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
+        white-space: pre-line !important;
+        line-height: 1.28 !important;
+        font-weight: 800 !important;
+        border-radius: 24px !important;
+        min-height: 6.0rem !important;
+        padding-top: 0.9rem !important;
+        padding-bottom: 0.9rem !important;
+        background:
+            radial-gradient(circle at top left, rgba(96,165,250,0.18), rgba(0,0,0,0) 42%),
+            linear-gradient(180deg, #1d4ed8 0%, #0f172a 100%) !important;
+        color: #f8fafc !important;
+        border: 1px solid rgba(96,165,250,0.38) !important;
+        box-shadow:
+            0 16px 36px rgba(15,23,42,0.34),
+            inset 0 1px 0 rgba(255,255,255,0.05) !important;
+        text-shadow: none !important;
+        transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease !important;
+    }
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button p,
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button span,
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button div {
+        color: #f8fafc !important;
+    }
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button:hover {
+        border-color: rgba(147,197,253,0.72) !important;
+        box-shadow:
+            0 22px 44px rgba(29,78,216,0.24),
+            0 10px 28px rgba(15,23,42,0.28) !important;
+        transform: translateY(-2px);
+    }
+
+    .utility-shell{
+        border:1px solid rgba(148,163,184,0.14);
+        border-radius:20px;
+        background:linear-gradient(180deg, rgba(15,23,42,0.70), rgba(15,23,42,0.46));
+        padding:10px 14px 14px 14px;
+        margin-top:16px;
+        box-shadow:0 10px 24px rgba(2,6,23,0.16);
+    }
+    .utility-title{
+        font-size:0.94rem;
+        font-weight:800;
+        color:#e2e8f0;
+        margin-bottom:2px;
+    }
+    .utility-sub{
+        font-size:0.82rem;
+        color:#94a3b8;
+        margin-bottom:8px;
+    }
+
+    div[data-testid="stExpander"] {
+        border:1px solid rgba(148,163,184,0.12) !important;
+        border-radius:18px !important;
+        background:rgba(15,23,42,0.36) !important;
+        overflow:hidden;
+    }
+    div[data-testid="stExpander"] summary {
+        background:rgba(15,23,42,0.32) !important;
+        border-radius:18px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <div class="landing-wrap">
+        <div class="landing-kicker">PREMIUM WORKSPACE</div>
+        <div class="landing-title">Analysieren, priorisieren und überwachen.</div>
+        <div class="landing-sub">
+            Wähle deinen Einstieg über Sofortanalyse, Watchlisten oder Positionen.
+            Die Hauptaktionen stehen bewusst vorne, Hilfen und Verwaltung darunter zurückgenommen.
+        </div>
+        <div class="landing-divider"></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 wc1, wc2, wc3 = st.columns(3)
 with wc1:
     if st.button(
@@ -5762,6 +5890,17 @@ with wc3:
     ):
         st.session_state.workspace_mode = "Positionen"
 
+st.markdown("""<div class="landing-mini-note">Tipp: Die drei Hauptkarten sind für den täglichen Schnellzugriff optimiert.</div>""", unsafe_allow_html=True)
+
+st.markdown(
+    """
+    <div class="utility-shell">
+        <div class="utility-title">Hilfen & Verwaltung</div>
+        <div class="utility-sub">Kurzanleitung, Auto-Run und Technik bewusst zurückgenommen unter den Hauptaktionen.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 with st.expander("Hilfen & Verwaltung", expanded=False):
     st.caption("Kurzanleitung, Auto-Run Control Center und Technik / Admin sind hier gebündelt.")
 

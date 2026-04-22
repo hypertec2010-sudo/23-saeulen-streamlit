@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v13.1A.1"
+APP_VERSION = "v13.1R"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -8041,16 +8041,7 @@ if result is not None:
             render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
 
     if is_pro_mode or is_expert_mode:
-        st.markdown(
-            f"""
-            <div class="section-head">
-                <div class="section-title">Entscheidung auf einen Blick</div>
-                <div class="section-meta-line">Marktumfeld: {market_regime_label(market_info["regime"])} | Entry-Lage: {entry_quality} | Red Flag: {shorten_text(top_red_flag, 42)}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
+        
         d1, d2, d3 = st.columns(3)
         with d1:
             st.markdown(

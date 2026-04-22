@@ -8113,11 +8113,11 @@ if result is not None:
             with d1:
                 st.markdown(
                     f"""
-                    <div class="decision-card action" title="Was jetzt auf der Watchlist konkret als Nächstes sinnvoll ist.">
-                        <div class="dc-label">Nächster Schritt</div>
-                        <div class="dc-value" style="font-size:clamp(1.02rem, 1.45vw, 1.26rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{main_action_label}</div>
-                        <div class="dc-sub">{trigger_status}</div>
-                        <div class="dc-note">Konkrete operative Einordnung für die Watchlist.</div>
+                    <div class="decision-card invest" title="Grundsätzliche Attraktivität des Werts als Investment, unabhängig vom exakten Einstiegstiming.">
+                        <div class="dc-label">Investment-Urteil</div>
+                        <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{investment_case_text}</div>
+                        <div class="dc-sub">{investment_case_score}/100</div>
+                        <div class="dc-note">Antwort auf die Frage: Ist der Wert grundsätzlich attraktiv?</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -8125,11 +8125,11 @@ if result is not None:
             with d2:
                 st.markdown(
                     f"""
-                    <div class="decision-card entry" title="Welcher Trigger als Nächstes relevant ist.">
-                        <div class="dc-label">Nächster Trigger</div>
-                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.2rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{next_trigger}</div>
-                        <div class="dc-sub">{watchlist_priority}</div>
-                        <div class="dc-note">Worauf vor einem aktiven Einstieg zu warten ist.</div>
+                    <div class="decision-card entry" title="Qualität des aktuellen Einstiegsfensters und des Setups, unabhängig von der grundsätzlichen Investmentqualität.">
+                        <div class="dc-label">Einstiegs-Urteil</div>
+                        <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{trading_case_text}</div>
+                        <div class="dc-sub">{trading_case_score}/100 | Entry-Lage: {entry_quality}</div>
+                        <div class="dc-note">Antwort auf die Frage: Ist das Timing für einen Einstieg aktuell gut?</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -8137,11 +8137,11 @@ if result is not None:
             with d3:
                 st.markdown(
                     f"""
-                    <div class="decision-card invest" title="Welcher Punkt aktuell noch gegen ein aktiveres Setup spricht.">
-                        <div class="dc-label">Was noch fehlt</div>
-                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{trigger_reason}</div>
-                        <div class="dc-sub">{entry_quality}</div>
-                        <div class="dc-note">Zentrale Hürde bis zu einem besseren Watchlist-Status.</div>
+                    <div class="decision-card action" title="Konkrete Handlungsableitung aus Investmentqualität, Einstiegstiming und Triggerstatus.">
+                        <div class="dc-label">Konkrete Aktion</div>
+                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{main_action_label}</div>
+                        <div class="dc-sub">{trigger_status} | {next_trigger}</div>
+                        <div class="dc-note">Antwort auf die Frage: Kaufen, vorbereiten oder weiter warten?</div>
                     </div>
                     """,
                     unsafe_allow_html=True,

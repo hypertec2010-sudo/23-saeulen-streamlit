@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v13.0B.3"
+APP_VERSION = "v13.1A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -8279,6 +8279,305 @@ if result is not None:
 
 
 
+
+
+    st.markdown(
+        """
+        <style>
+        .exec-v2-shell{
+            position:relative;
+            margin: 8px 0 18px 0;
+            padding: 22px 22px 18px 22px;
+            border-radius: 28px;
+            background:
+                radial-gradient(circle at top left, rgba(96,165,250,0.14), rgba(0,0,0,0) 30%),
+                linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.88));
+            border:1px solid rgba(96,165,250,0.20);
+            box-shadow:
+                0 24px 52px rgba(2,6,23,0.26),
+                inset 0 1px 0 rgba(255,255,255,0.05);
+            overflow:hidden;
+        }
+        .exec-v2-shell::after{
+            content:"";
+            position:absolute;
+            inset:0;
+            background:linear-gradient(120deg, rgba(255,255,255,0.04), rgba(255,255,255,0.00) 42%);
+            pointer-events:none;
+        }
+        .exec-v2-top{
+            position:relative;
+            z-index:1;
+            display:flex;
+            justify-content:space-between;
+            gap:16px;
+            align-items:flex-start;
+            flex-wrap:wrap;
+            margin-bottom:16px;
+        }
+        .exec-v2-eyebrow{
+            display:inline-block;
+            padding:6px 11px;
+            border-radius:999px;
+            background:rgba(37,99,235,0.16);
+            border:1px solid rgba(96,165,250,0.28);
+            color:#dbeafe;
+            font-size:0.76rem;
+            font-weight:900;
+            letter-spacing:0.03em;
+            margin-bottom:10px;
+        }
+        .exec-v2-title{
+            font-size:1.95rem;
+            line-height:1.02;
+            font-weight:950;
+            color:#f8fafc;
+            letter-spacing:-0.03em;
+            margin-bottom:6px;
+        }
+        .exec-v2-sub{
+            color:#cbd5e1;
+            font-size:0.95rem;
+            line-height:1.55;
+            max-width:760px;
+        }
+        .exec-v2-signal{
+            min-width:260px;
+            padding:14px 16px;
+            border-radius:22px;
+            background:linear-gradient(180deg, rgba(30,41,59,0.86), rgba(15,23,42,0.62));
+            border:1px solid rgba(148,163,184,0.18);
+            box-shadow:0 14px 28px rgba(2,6,23,0.20);
+        }
+        .exec-v2-signal-label{
+            font-size:0.74rem;
+            text-transform:uppercase;
+            letter-spacing:0.06em;
+            color:#93c5fd;
+            font-weight:900;
+            margin-bottom:6px;
+        }
+        .exec-v2-signal-value{
+            font-size:1.22rem;
+            line-height:1.15;
+            font-weight:900;
+            color:#f8fafc;
+            margin-bottom:6px;
+        }
+        .exec-v2-signal-meta{
+            font-size:0.86rem;
+            color:#cbd5e1;
+            line-height:1.45;
+        }
+        .exec-v2-grid{
+            position:relative;
+            z-index:1;
+            display:grid;
+            grid-template-columns:1.4fr 1fr;
+            gap:16px;
+            align-items:stretch;
+        }
+        .exec-v2-panel{
+            border-radius:22px;
+            padding:16px 16px 14px 16px;
+            background:linear-gradient(180deg, rgba(17,24,39,0.88), rgba(15,23,42,0.68));
+            border:1px solid rgba(148,163,184,0.16);
+            box-shadow:0 12px 24px rgba(2,6,23,0.16);
+        }
+        .exec-v2-panel-title{
+            font-size:0.78rem;
+            text-transform:uppercase;
+            letter-spacing:0.06em;
+            color:#93c5fd;
+            font-weight:900;
+            margin-bottom:10px;
+        }
+        .exec-v2-kpi-grid{
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0,1fr));
+            gap:12px;
+        }
+        .exec-v2-kpi{
+            border-radius:18px;
+            padding:12px 12px 10px 12px;
+            background:rgba(15,23,42,0.52);
+            border:1px solid rgba(148,163,184,0.14);
+        }
+        .exec-v2-kpi-label{
+            font-size:0.76rem;
+            color:#94a3b8;
+            font-weight:800;
+            margin-bottom:6px;
+            text-transform:uppercase;
+            letter-spacing:0.03em;
+        }
+        .exec-v2-kpi-value{
+            font-size:1.26rem;
+            line-height:1.1;
+            color:#f8fafc;
+            font-weight:950;
+            margin-bottom:4px;
+        }
+        .exec-v2-kpi-sub{
+            font-size:0.82rem;
+            color:#cbd5e1;
+            line-height:1.38;
+        }
+        .exec-v2-list{
+            display:flex;
+            flex-direction:column;
+            gap:10px;
+        }
+        .exec-v2-list-item{
+            border-radius:16px;
+            padding:11px 12px;
+            border:1px solid rgba(148,163,184,0.14);
+            background:rgba(15,23,42,0.44);
+        }
+        .exec-v2-list-label{
+            font-size:0.73rem;
+            font-weight:900;
+            letter-spacing:0.04em;
+            text-transform:uppercase;
+            color:#94a3b8;
+            margin-bottom:5px;
+        }
+        .exec-v2-list-value{
+            font-size:1.02rem;
+            line-height:1.35;
+            color:#f8fafc;
+            font-weight:800;
+        }
+        .exec-v2-divider{
+            height:1px;
+            background:linear-gradient(90deg, rgba(96,165,250,0.34), rgba(148,163,184,0.08), rgba(0,0,0,0));
+            margin:16px 0 4px 0;
+        }
+        @media (max-width: 980px){
+            .exec-v2-grid{ grid-template-columns:1fr; }
+            .exec-v2-title{ font-size:1.64rem; }
+            .exec-v2-signal{ width:100%; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    exec_signal_value = (
+        signal_label if 'signal_label' in locals() else
+        signal_text if 'signal_text' in locals() else
+        emp if 'emp' in locals() else
+        position_action if 'position_action' in locals() else
+        "-"
+    )
+    exec_trading_score = (
+        fmt_num(trading_case_score,0) if 'trading_case_score' in locals() else
+        fmt_num(entry_score,0) if 'entry_score' in locals() else
+        "n/a"
+    )
+    exec_trading_text = (
+        trading_case_text if 'trading_case_text' in locals() else
+        entry_quality if 'entry_quality' in locals() else
+        "-"
+    )
+    exec_investment_score = (
+        fmt_num(investment_case_score,0) if 'investment_case_score' in locals() else
+        fmt_num(investment,0) if 'investment' in locals() else
+        "n/a"
+    )
+    exec_investment_text = (
+        investment_case_text if 'investment_case_text' in locals() else
+        investment_case_label if 'investment_case_label' in locals() else
+        "-"
+    )
+    exec_exit_score = fmt_num(exit_score,0) if 'exit_score' in locals() else "n/a"
+    exec_exit_text = (
+        exit_reason_top if 'exit_reason_top' in locals() else
+        exit_action if 'exit_action' in locals() else
+        "-"
+    )
+    exec_setup_score = (
+        fmt_num(setup_priority_score,0) if 'setup_priority_score' in locals() else
+        fmt_num(setup_confidence,0) if 'setup_confidence' in locals() else
+        "n/a"
+    )
+    exec_setup_text = (
+        setup_type if 'setup_type' in locals() else
+        trigger_status if 'trigger_status' in locals() else
+        "-"
+    )
+    exec_action = emp if 'emp' in locals() else position_action if 'position_action' in locals() else "-"
+    exec_trigger = trigger_status if 'trigger_status' in locals() else entry_quality if 'entry_quality' in locals() else "-"
+    exec_redflag = top_red_flag if 'top_red_flag' in locals() else red_flag if 'red_flag' in locals() else "-"
+
+    st.markdown(
+        f"""
+        <div class="exec-v2-shell">
+            <div class="exec-v2-top">
+                <div>
+                    <div class="exec-v2-eyebrow">Executive Summary</div>
+                    <div class="exec-v2-title">{_esc(name)} <span style="color:#93c5fd;">| {_esc(ticker)}</span></div>
+                    <div class="exec-v2-sub">
+                        {_esc(company_summary if company_summary not in [None, "", "-"] else "Die wichtigsten Signale, Chancen und Risiken sind unten klar strukturiert zusammengefasst.")}
+                    </div>
+                </div>
+                <div class="exec-v2-signal">
+                    <div class="exec-v2-signal-label">Hauptsignal</div>
+                    <div class="exec-v2-signal-value">{_esc(exec_signal_value)}</div>
+                    <div class="exec-v2-signal-meta">
+                        Fokus auf Entscheidung, Priorität und nächstem sinnvollen Schritt – ohne sofort in Rohdaten abzutauchen.
+                    </div>
+                </div>
+            </div>
+            <div class="exec-v2-grid">
+                <div class="exec-v2-panel">
+                    <div class="exec-v2-panel-title">Kernaussagen</div>
+                    <div class="exec-v2-kpi-grid">
+                        <div class="exec-v2-kpi">
+                            <div class="exec-v2-kpi-label">Trading-Case</div>
+                            <div class="exec-v2-kpi-value">{exec_trading_score}/100</div>
+                            <div class="exec-v2-kpi-sub">{_esc(exec_trading_text)}</div>
+                        </div>
+                        <div class="exec-v2-kpi">
+                            <div class="exec-v2-kpi-label">Investment-Case</div>
+                            <div class="exec-v2-kpi-value">{exec_investment_score}/100</div>
+                            <div class="exec-v2-kpi-sub">{_esc(exec_investment_text)}</div>
+                        </div>
+                        <div class="exec-v2-kpi">
+                            <div class="exec-v2-kpi-label">Exit</div>
+                            <div class="exec-v2-kpi-value">{exec_exit_score}/100</div>
+                            <div class="exec-v2-kpi-sub">{_esc(exec_exit_text)}</div>
+                        </div>
+                        <div class="exec-v2-kpi">
+                            <div class="exec-v2-kpi-label">Setup-Priorität</div>
+                            <div class="exec-v2-kpi-value">{exec_setup_score}/100</div>
+                            <div class="exec-v2-kpi-sub">{_esc(exec_setup_text)}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="exec-v2-panel">
+                    <div class="exec-v2-panel-title">Entscheidungsrahmen</div>
+                    <div class="exec-v2-list">
+                        <div class="exec-v2-list-item">
+                            <div class="exec-v2-list-label">Aktion</div>
+                            <div class="exec-v2-list-value">{_esc(exec_action)}</div>
+                        </div>
+                        <div class="exec-v2-list-item">
+                            <div class="exec-v2-list-label">Trigger / Lage</div>
+                            <div class="exec-v2-list-value">{_esc(exec_trigger)}</div>
+                        </div>
+                        <div class="exec-v2-list-item">
+                            <div class="exec-v2-list-label">Top Red Flag</div>
+                            <div class="exec-v2-list-value">{_esc(exec_redflag)}</div>
+                        </div>
+                    </div>
+                    <div class="exec-v2-divider"></div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # ---------- Tabs ----------
     st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)

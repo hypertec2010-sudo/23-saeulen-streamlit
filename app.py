@@ -7901,6 +7901,8 @@ if result is not None:
     sector_trend_text_display = result.get("sector_trend_text", "nicht belastbar")
     industry_trend_text_display = result.get("industry_trend_text", "nicht belastbar")
     sector_strength_text_display = score_or_unavailable_text(sector_strength_display)
+    if str(sector_strength_text_display).strip().lower() == "nicht verfügbar":
+        sector_strength_text_display = sector_trend_text_display if str(sector_trend_text_display).strip() not in {"", "-", "nicht belastbar"} else "derzeit nicht belastbar"
     sector_etf_display = result.get("sector_etf_symbol", "-")
     sector_delta_display = f"{sector_label_display} | ETF: {sector_etf_display}" if sector_etf_display not in ["", "-", None] else sector_label_display
     trend_quality_display = result.get("trend_quality_score", np.nan)
@@ -8076,7 +8078,7 @@ if result is not None:
                     f"""
                     <div class="decision-card action" title="Aktuell sinnvollste Führungsaktion für die bestehende Position.">
                         <div class="dc-label">Positions-Aktion</div>
-                        <div class="dc-value">{main_action_label}</div>
+                        <div class="dc-value" style="font-size:clamp(1.02rem, 1.45vw, 1.26rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{main_action_label}</div>
                         <div class="dc-sub">{shorten_text(risk_note, 52)}</div>
                         <div class="dc-note">Operative Führung der laufenden Position.</div>
                     </div>
@@ -8088,7 +8090,7 @@ if result is not None:
                     f"""
                     <div class="decision-card entry" title="Aktuelle Stop- und Führungslogik der Position.">
                         <div class="dc-label">Stop-Führung</div>
-                        <div class="dc-value">{shorten_text(stop_action, 26)}</div>
+                        <div class="dc-value" style="font-size:clamp(1.02rem, 1.45vw, 1.24rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{shorten_text(stop_action, 26)}</div>
                         <div class="dc-sub">{exit_action_display}</div>
                         <div class="dc-note">Stop und Exit-Taktik der Position.</div>
                     </div>
@@ -8100,7 +8102,7 @@ if result is not None:
                     f"""
                     <div class="decision-card invest" title="Worauf bei der Position aktuell besonders zu achten ist.">
                         <div class="dc-label">Jetzt eng beobachten</div>
-                        <div class="dc-value">{shorten_text(exit_reason_top_display, 26)}</div>
+                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{shorten_text(exit_reason_top_display, 26)}</div>
                         <div class="dc-sub">{exit_score_text_display}</div>
                         <div class="dc-note">Wichtigster aktueller Exit- oder Risikotreiber.</div>
                     </div>
@@ -8113,7 +8115,7 @@ if result is not None:
                     f"""
                     <div class="decision-card action" title="Was jetzt auf der Watchlist konkret als Nächstes sinnvoll ist.">
                         <div class="dc-label">Nächster Schritt</div>
-                        <div class="dc-value">{main_action_label}</div>
+                        <div class="dc-value" style="font-size:clamp(1.02rem, 1.45vw, 1.26rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{main_action_label}</div>
                         <div class="dc-sub">{trigger_status}</div>
                         <div class="dc-note">Konkrete operative Einordnung für die Watchlist.</div>
                     </div>
@@ -8125,7 +8127,7 @@ if result is not None:
                     f"""
                     <div class="decision-card entry" title="Welcher Trigger als Nächstes relevant ist.">
                         <div class="dc-label">Nächster Trigger</div>
-                        <div class="dc-value">{shorten_text(next_trigger, 26)}</div>
+                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.2rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{shorten_text(next_trigger, 26)}</div>
                         <div class="dc-sub">{watchlist_priority}</div>
                         <div class="dc-note">Worauf vor einem aktiven Einstieg zu warten ist.</div>
                     </div>
@@ -8137,7 +8139,7 @@ if result is not None:
                     f"""
                     <div class="decision-card invest" title="Welcher Punkt aktuell noch gegen ein aktiveres Setup spricht.">
                         <div class="dc-label">Was noch fehlt</div>
-                        <div class="dc-value">{shorten_text(trigger_reason, 26)}</div>
+                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{shorten_text(trigger_reason, 26)}</div>
                         <div class="dc-sub">{entry_quality}</div>
                         <div class="dc-note">Zentrale Hürde bis zu einem besseren Watchlist-Status.</div>
                     </div>
@@ -8548,10 +8550,10 @@ if result is not None:
         investment_case_label if 'investment_case_label' in locals() else
         "-"
     )
-    exec_exit_score = fmt_num(exit_score,0) if 'exit_score' in locals() else "n/a"
+    exec_exit_score = fmt_num(exit_score_display,0) if str(exit_score_display).strip().lower() not in {"", "-", "n/a", "none"} else "0"
     exec_exit_text = (
-        exit_reason_top if 'exit_reason_top' in locals() else
-        exit_action if 'exit_action' in locals() else
+        exit_action_display if str(exit_action_display).strip() not in {"", "-", "None"} else
+        exit_reason_top_display if str(exit_reason_top_display).strip() not in {"", "-", "None"} else
         "-"
     )
     exec_setup_score = (

@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v13.0B.2"
+APP_VERSION = "v13.0B.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5832,6 +5832,16 @@ st.markdown(
         font-size:0.82rem;
         font-weight:700;
     }
+    .landing-cards-wrap{
+        margin-top: -4px;
+        margin-bottom: 10px;
+        padding: 14px;
+        border-radius: 30px;
+        background:
+            linear-gradient(180deg, rgba(15,23,42,0.55), rgba(15,23,42,0.26));
+        border:1px solid rgba(96,165,250,0.14);
+        box-shadow: 0 18px 40px rgba(2,6,23,0.18);
+    }
     .landing-divider{
         position:relative;
         z-index:1;
@@ -5848,21 +5858,21 @@ st.markdown(
 
     div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
         white-space: pre-line !important;
-        line-height: 1.30 !important;
+        line-height: 1.28 !important;
         font-weight: 900 !important;
-        border-radius: 26px !important;
-        min-height: 7.0rem !important;
-        padding-top: 1.05rem !important;
-        padding-bottom: 1.00rem !important;
+        border-radius: 28px !important;
+        min-height: 8.2rem !important;
+        padding-top: 1.25rem !important;
+        padding-bottom: 1.15rem !important;
         background:
-            radial-gradient(circle at top left, rgba(147,197,253,0.20), rgba(0,0,0,0) 36%),
-            linear-gradient(180deg, #2563eb 0%, #0f172a 100%) !important;
+            radial-gradient(circle at top left, rgba(191,219,254,0.24), rgba(0,0,0,0) 34%),
+            linear-gradient(180deg, #2563eb 0%, #111827 100%) !important;
         color: #f8fafc !important;
-        border: 1px solid rgba(147,197,253,0.40) !important;
+        border: 1px solid rgba(191,219,254,0.42) !important;
         box-shadow:
-            0 22px 42px rgba(15,23,42,0.34),
-            0 8px 18px rgba(37,99,235,0.20),
-            inset 0 1px 0 rgba(255,255,255,0.08) !important;
+            0 28px 54px rgba(15,23,42,0.34),
+            0 10px 24px rgba(37,99,235,0.24),
+            inset 0 1px 0 rgba(255,255,255,0.10) !important;
         text-shadow: none !important;
         transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease !important;
         position:relative !important;
@@ -5891,7 +5901,7 @@ st.markdown(
     .utility-shell{
         border:1px solid rgba(148,163,184,0.12);
         border-radius:18px;
-        background:linear-gradient(180deg, rgba(15,23,42,0.52), rgba(15,23,42,0.34));
+        background:linear-gradient(180deg, rgba(15,23,42,0.40), rgba(15,23,42,0.22));
         padding:12px 14px 14px 14px;
         margin-top:18px;
         box-shadow:0 10px 24px rgba(2,6,23,0.14);
@@ -5931,21 +5941,17 @@ st.markdown(
             <div class="landing-kicker">PREMIUM WORKSPACE</div>
             <div class="landing-statusdot"></div>
         </div>
-        <div class="landing-title">Ein klarer Einstieg für Analyse, Watchlisten und Positionen.</div>
+        <div class="landing-title">Wähle deinen Einstieg.</div>
         <div class="landing-sub">
-            Die wichtigsten Wege stehen bewusst im Vordergrund. Hauptaktionen oben,
-            Hilfen und Verwaltung zurückgenommen darunter – schneller erfassbar, ruhiger und hochwertiger.
-        </div>
-        <div class="landing-feature-row">
-            <div class="landing-feature">🔎 Sofortige Einzel- und Vergleichsanalyse</div>
-            <div class="landing-feature">📋 Watchlisten mit Telegram und Auto-Run</div>
-            <div class="landing-feature">🛡️ Positionsüberwachung mit Exit-Fokus</div>
+            Sofortanalyse, Watchlisten und Positionen stehen als Hauptaktionen im Fokus.
+            Verwaltung und Hilfen bleiben bewusst darunter und optisch ruhiger.
         </div>
         <div class="landing-divider"></div>
     </div>
     """,
     unsafe_allow_html=True,
 )
+st.markdown("""<div class="landing-cards-wrap">""", unsafe_allow_html=True)
 wc1, wc2, wc3 = st.columns(3)
 with wc1:
     if st.button(
@@ -5969,6 +5975,7 @@ with wc3:
     ):
         st.session_state.workspace_mode = "Positionen"
 
+st.markdown("""</div>""", unsafe_allow_html=True)
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
 st.markdown("""<div class="landing-mini-note">Tipp: Die drei Hauptkarten sind für den täglichen Schnellzugriff optimiert.</div>""", unsafe_allow_html=True)

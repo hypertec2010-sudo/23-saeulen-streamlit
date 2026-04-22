@@ -6512,6 +6512,21 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 unsafe_allow_html=True
             )
 
+            st.markdown("""
+<style>
+div[data-testid="stExpander"] div[data-testid="stButton"] > button {
+    min-height: 2.1rem !important;
+    padding: 0.18rem 0.65rem !important;
+    font-size: 0.82rem !important;
+    line-height: 1.15 !important;
+    border-radius: 0.6rem !important;
+}
+div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
+    font-size: 0.82rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
             with st.expander("Einstellungen und Pflege dieser Watchlist", expanded=False):
 
                 st.markdown("**Alert-Einstellungen für diese Watchlist**")
@@ -6609,41 +6624,43 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                             if ok:
                                 st.success(msg)
                                 st.session_state.watchlist_bulk_add = ""
+                                trigger_ui_refresh()
                             else:
                                 st.error(msg)
 
-                                st.markdown("**Inhalt der aktuellen Watchlist**")
-                                st.caption(f"Anzahl Werte: {len(current_tickers)}")
-                                if current_tickers:
-                                    preview_df = pd.DataFrame({"Ticker": current_tickers})
-                                    st.dataframe(preview_df, hide_index=True, use_container_width=True, height=min(320, 45 * len(preview_df) + 40))
+                st.markdown("**Inhalt der aktuellen Watchlist**")
+                st.caption(f"Anzahl Werte: {len(current_tickers)}")
+                if current_tickers:
+                    preview_df = pd.DataFrame({"Ticker": current_tickers})
+                    st.dataframe(preview_df, hide_index=True, use_container_width=True, height=min(320, 45 * len(preview_df) + 40))
 
-                                    rem1, rem2, rem3 = st.columns([1.4, 1.1, 1.2])
-                                    with rem1:
-                                        ticker_to_remove = st.selectbox("Ticker entfernen", options=current_tickers, key="remove_watchlist_ticker_widget")
-                                    with rem2:
-                                        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                                        if st.button("Ticker entfernen", use_container_width=True, key="remove_watchlist_ticker_btn"):
-                                            ok, msg = remove_ticker_from_watchlist(selected_watchlist_name, ticker_to_remove)
-                                            if ok:
-                                                st.success(msg)
-                                                trigger_ui_refresh()
-                                            else:
-                                                st.error(msg)
-                                    with rem3:
-                                        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                                        if st.button("Watchlist löschen", use_container_width=True, key="delete_watchlist_btn"):
-                                            ok, msg = delete_watchlist(selected_watchlist_name)
-                                            if ok:
-                                                st.success(msg)
-                                                st.session_state.selected_watchlist_name = ""
-                                            else:
-                                                st.error(msg)
-                                else:
-                                    st.markdown(
-                    '<div class="empty-state"><div class="empty-state-title">Diese Watchlist ist noch leer</div><div class="empty-state-text">Füge im Verwaltungsbereich Werte hinzu oder übernimm den aktuell ausgewählten Ticker.</div></div>',
-                    unsafe_allow_html=True,
-                )
+                    rem1, rem2, rem3 = st.columns([1.7, 0.8, 0.9])
+                    with rem1:
+                        ticker_to_remove = st.selectbox("Ticker entfernen", options=current_tickers, key="remove_watchlist_ticker_widget")
+                    with rem2:
+                        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                        if st.button("Ticker entfernen", use_container_width=True, key="remove_watchlist_ticker_btn"):
+                            ok, msg = remove_ticker_from_watchlist(selected_watchlist_name, ticker_to_remove)
+                            if ok:
+                                st.success(msg)
+                                trigger_ui_refresh()
+                            else:
+                                st.error(msg)
+                    with rem3:
+                        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+                        if st.button("Watchlist löschen", use_container_width=True, key="delete_watchlist_btn"):
+                            ok, msg = delete_watchlist(selected_watchlist_name)
+                            if ok:
+                                st.success(msg)
+                                st.session_state.selected_watchlist_name = ""
+                                trigger_ui_refresh()
+                            else:
+                                st.error(msg)
+                else:
+                    st.markdown(
+                        '<div class="empty-state"><div class="empty-state-title">Diese Watchlist ist noch leer</div><div class="empty-state-text">Füge im Verwaltungsbereich Werte hinzu oder übernimm den aktuell ausgewählten Ticker.</div></div>',
+                        unsafe_allow_html=True,
+                    )
 
             act1, act2, act3 = st.columns(3)
             with act1:

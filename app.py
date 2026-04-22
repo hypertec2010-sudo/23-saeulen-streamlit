@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.14"
+APP_VERSION = "v12.6C.14.ui1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5805,7 +5805,7 @@ with st.expander("Auto-Run Control Center", expanded=False):
         )
     with ar2:
         st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
+        if     st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
             st.session_state.auto_run_requested = True
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
@@ -5813,7 +5813,7 @@ with st.expander("Auto-Run Control Center", expanded=False):
 with st.expander("Technik / Admin", expanded=False):
     test1, test2 = st.columns([1.2, 2.8])
     with test1:
-        if st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
+        if     st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
             test_message = (
                 f"Capital Hill Test\n"
                 f"Version: {APP_VERSION}\n"
@@ -6222,7 +6222,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                     else:
                         st.info("In dieser Watchlist sind noch keine Ticker.")
             with act3:
-                if st.button("Watchlist analysieren + Telegram", use_container_width=True, key="run_watchlist_telegram"):
+                if     st.button("Watchlist analysieren + Telegram", use_container_width=True, key="run_watchlist_telegram"):
                     joined = "\n".join(current_tickers)
                     if joined.strip():
                         st.session_state.batch_input = joined

@@ -6661,6 +6661,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         '<div class="empty-state"><div class="empty-state-title">Diese Watchlist ist noch leer</div><div class="empty-state-text">Füge im Verwaltungsbereich Werte hinzu oder übernimm den aktuell ausgewählten Ticker.</div></div>',
                         unsafe_allow_html=True,
                     )
+                    empty_del_left, empty_del_mid, empty_del_right = st.columns([1.7, 0.8, 0.9])
+                    with empty_del_right:
+                        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                        if st.button("Watchlist löschen", use_container_width=True, key="delete_empty_watchlist_btn"):
+                            ok, msg = delete_watchlist(selected_watchlist_name)
+                            if ok:
+                                st.success(msg)
+                                st.session_state.selected_watchlist_name = ""
+                                trigger_ui_refresh()
+                            else:
+                                st.error(msg)
 
             act1, act2, act3 = st.columns(3)
             with act1:

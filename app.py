@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.14.ui9.ui10"
+APP_VERSION = "v13.0A"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5737,10 +5737,7 @@ with top1:
         )
 with top2:
     st.markdown("")
-st.caption(
-    "Investment- und Trading-Entscheidungen in einer Oberfläche. "
-    "Mit Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement, Watchlisten und Telegram-Alerts."
-)
+st.caption("Investment- und Trading-Entscheidungen in einer hochwertigen, klar lesbaren Oberfläche. Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement, Watchlisten und Telegram-Alerts.")
 
 wc1, wc2, wc3 = st.columns(3)
 with wc1:
@@ -5885,6 +5882,258 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+st.markdown(
+    """
+    <style>
+    :root{
+        --bg-main:#0B1220;
+        --bg-panel:#111827;
+        --bg-panel-2:#0F172A;
+        --bg-elev:#162033;
+        --border-soft:rgba(148,163,184,0.18);
+        --border-strong:rgba(96,165,250,0.32);
+        --text-main:#F8FAFC;
+        --text-sub:#CBD5E1;
+        --text-muted:#94A3B8;
+        --blue-1:#1D4ED8;
+        --blue-2:#2563EB;
+        --blue-3:#3B82F6;
+        --green-1:#052E16;
+        --green-2:#16A34A;
+        --green-3:#22C55E;
+        --red-1:#450A0A;
+        --red-2:#DC2626;
+        --red-3:#EF4444;
+        --amber-1:#3F2F0A;
+        --amber-2:#D97706;
+        --amber-3:#F59E0B;
+        --shadow-card:0 10px 24px rgba(2,6,23,0.20);
+        --shadow-hero:0 16px 36px rgba(15,23,42,0.28);
+        --shadow-blue:0 18px 34px rgba(59,130,246,0.28);
+        --radius-card:18px;
+        --radius-hero:22px;
+    }
+
+    .stApp{
+        background:
+            radial-gradient(circle at top right, rgba(37,99,235,0.10), transparent 28%),
+            radial-gradient(circle at top left, rgba(34,197,94,0.05), transparent 22%),
+            linear-gradient(180deg,var(--bg-main) 0%, #0B1220 100%);
+        color:var(--text-main);
+    }
+
+    html, body, [class*="css"], .stApp, p, li, label, span, div{
+        -webkit-font-smoothing:antialiased;
+        text-rendering:optimizeLegibility;
+    }
+
+    h1,h2,h3,h4,h5,h6, .section-title, .mobile-form-title, .premium-value, .wrap-metric-value, .reco-value{
+        color:var(--text-main) !important;
+        letter-spacing:0.01em;
+    }
+
+    .stCaptionContainer, .stCaptionContainer p, .section-meta-line, .panel-caption, .workspace-sub, .mobile-note,
+    .premium-sub, .wrap-metric-sub, .reco-sub, .action-row-note{
+        color:var(--text-sub) !important;
+    }
+
+    .model-pill{
+        display:inline-block;
+        margin-top:6px;
+        padding:7px 12px;
+        border-radius:999px;
+        background:linear-gradient(90deg,var(--blue-1) 0%, var(--blue-3) 100%);
+        color:white;
+        font-size:0.84rem;
+        font-weight:800;
+        letter-spacing:0.02em;
+        box-shadow:0 8px 18px rgba(37,99,235,0.24);
+        border:1px solid rgba(147,197,253,0.28);
+    }
+
+    .section-head{
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:12px;
+        flex-wrap:wrap;
+        margin:8px 0 12px 0;
+    }
+    .section-title{
+        font-size:1.08rem !important;
+        font-weight:900 !important;
+    }
+    .section-meta-line{
+        font-size:0.88rem !important;
+        line-height:1.45 !important;
+    }
+
+    .wrap-metric-card, .reco-card, .mobile-form-card, .compact-summary-card, .reason-box, .diag-row,
+    .score-card-shell, .premium-card, .section-card{
+        background:linear-gradient(180deg,var(--bg-panel-2) 0%, var(--bg-panel) 100%) !important;
+        border:1px solid var(--border-soft) !important;
+        border-radius:var(--radius-card) !important;
+        box-shadow:var(--shadow-card) !important;
+    }
+
+    .reco-card, .mobile-form-card{
+        border-radius:var(--radius-hero) !important;
+        box-shadow:var(--shadow-hero) !important;
+    }
+
+    .premium-title, .wrap-metric-label, .reco-label, .compact-summary-title{
+        color:var(--text-muted) !important;
+        font-size:0.80rem !important;
+        text-transform:uppercase;
+        letter-spacing:0.04em;
+        font-weight:800 !important;
+    }
+
+    .premium-value, .wrap-metric-value, .compact-summary-value{
+        color:var(--text-main) !important;
+        font-size:1.2rem !important;
+        font-weight:900 !important;
+        line-height:1.2 !important;
+    }
+
+    .premium-sub, .wrap-metric-sub, .compact-summary-sub{
+        color:var(--text-sub) !important;
+        line-height:1.45 !important;
+    }
+
+    .section-accent{
+        display:inline-block;
+        padding:7px 12px;
+        border-radius:999px;
+        font-size:0.80rem;
+        font-weight:900;
+        margin-top:6px;
+        border:1px solid transparent;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .section-accent.blue{background:rgba(37,99,235,0.16); color:#BFDBFE; border-color:rgba(59,130,246,0.32);}
+    .section-accent.purple{background:rgba(139,92,246,0.16); color:#DDD6FE; border-color:rgba(139,92,246,0.28);}
+    .section-accent.amber{background:rgba(245,158,11,0.16); color:#FDE68A; border-color:rgba(245,158,11,0.30);}
+
+    .diag-chip, .status-chip, .tag-chip{
+        display:inline-block;
+        padding:3px 9px;
+        border-radius:999px;
+        font-size:0.78rem;
+        font-weight:900;
+        margin-right:6px;
+        border:1px solid transparent;
+    }
+    .diag-pos, .status-pos{background:var(--green-1) !important; color:#86EFAC !important; border-color:rgba(34,197,94,0.34) !important;}
+    .diag-neg, .status-neg{background:var(--red-1) !important; color:#FCA5A5 !important; border-color:rgba(239,68,68,0.34) !important;}
+    .diag-neu, .status-neu{background:var(--amber-1) !important; color:#FDE68A !important; border-color:rgba(245,158,11,0.34) !important;}
+
+    .affects-line{
+        margin-top:6px;
+        font-size:0.82rem;
+        color:#93C5FD !important;
+        font-weight:800;
+    }
+
+    div[data-testid="stMetric"]{
+        background:linear-gradient(180deg,var(--bg-panel-2) 0%, var(--bg-panel) 100%);
+        border:1px solid var(--border-soft);
+        border-radius:16px;
+        padding:10px 12px 8px 12px;
+        box-shadow:var(--shadow-card);
+    }
+    div[data-testid="stMetricLabel"]{
+        color:var(--text-muted) !important;
+        font-weight:800 !important;
+    }
+    div[data-testid="stMetricValue"]{
+        color:var(--text-main) !important;
+        font-weight:900 !important;
+    }
+
+    div[data-testid="stExpander"]{
+        border:1px solid var(--border-soft);
+        border-radius:16px;
+        background:linear-gradient(180deg, rgba(17,24,39,0.82) 0%, rgba(15,23,42,0.82) 100%);
+        box-shadow:var(--shadow-card);
+    }
+    div[data-testid="stExpander"] details summary{
+        color:var(--text-main) !important;
+        font-weight:800 !important;
+    }
+
+    .stTabs [data-baseweb="tab-list"]{
+        gap:8px !important;
+        padding:8px !important;
+        background:rgba(15,23,42,0.65);
+        border:1px solid var(--border-soft);
+        border-radius:16px;
+    }
+    .stTabs [data-baseweb="tab"]{
+        border-radius:12px !important;
+        color:var(--text-sub) !important;
+        font-weight:800 !important;
+    }
+    .stTabs [aria-selected="true"]{
+        background:linear-gradient(180deg, rgba(37,99,235,0.20) 0%, rgba(29,78,216,0.12) 100%) !important;
+        color:var(--text-main) !important;
+        border:1px solid var(--border-strong) !important;
+    }
+
+    div[data-testid="stDataFrame"]{
+        border:1px solid var(--border-soft);
+        border-radius:16px;
+        box-shadow:var(--shadow-card);
+        overflow:hidden;
+    }
+
+    div[data-testid="stButton"] > button, div[data-testid="stDownloadButton"] > button{
+        border-radius:16px !important;
+        font-weight:800 !important;
+        border:1px solid rgba(96,165,250,0.24) !important;
+        box-shadow:0 8px 18px rgba(15,23,42,0.18) !important;
+    }
+    div[data-testid="stButton"] > button:hover, div[data-testid="stDownloadButton"] > button:hover{
+        border-color:rgba(96,165,250,0.42) !important;
+        transform:translateY(-1px);
+    }
+
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button{
+        white-space:pre-line !important;
+        line-height:1.35 !important;
+        font-weight:900 !important;
+        border-radius:22px !important;
+        min-height:5.35rem !important;
+        background:linear-gradient(180deg,var(--blue-1) 0%, #111827 100%) !important;
+        color:var(--text-main) !important;
+        border:1px solid var(--blue-3) !important;
+        box-shadow:var(--shadow-blue) !important;
+        text-shadow:none !important;
+    }
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button:hover{
+        border-color:#93C5FD !important;
+        box-shadow:0 22px 38px rgba(59,130,246,0.32) !important;
+    }
+
+    .pos, .success, .ok{ color:var(--green-3) !important; }
+    .neg, .error, .risk{ color:var(--red-3) !important; }
+    .warn, .caution{ color:var(--amber-3) !important; }
+
+    @media (max-width: 900px){
+        .section-title{font-size:1.02rem !important;}
+        .premium-value, .wrap-metric-value, .compact-summary-value{font-size:1.08rem !important;}
+        div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button{
+            min-height:4.85rem !important;
+            border-radius:20px !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 try:
     workspace_mode = st.session_state.get("workspace_mode", "Expertenmodus")

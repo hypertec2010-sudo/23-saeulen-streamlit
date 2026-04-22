@@ -8001,24 +8001,9 @@ if result is not None:
             <div class="exec-shell">
                 <div class="exec-top">
                     <div>
-                        <div class="exec-kicker">Capital Hill Executive Summary</div>
+                        <div class="exec-kicker">Capital Hill Analyse</div>
                         <div class="exec-title">{name} <span style="color:#93c5fd;">{ticker}</span></div>
                         <div class="exec-sub">{shorten_text(short_thesis, 210)}</div>
-                        <div class="exec-meta">
-                            <div class="status-chip {action_chip_class}">⚡ Handlung: {main_action_label}</div>
-                            <div class="status-chip {entry_chip_class}">📈 Einstieg: {trading_case_score}/100</div>
-                            <div class="status-chip {investment_chip_class}">🏛️ Investment: {investment_case_score}/100</div>
-                            <div class="status-chip {priority_chip_class}">📌 Priorität: {watchlist_priority}</div>
-                            <div class="status-chip blue">🔔 Trigger: {trigger_label}</div>
-                            <div class="status-chip purple">🧩 Setup: {setup_type}</div>
-                            <div class="status-chip blue">⚖️ CRV: {ui_safe_metric_text(crv_value,1,":1")}</div>
-                            <div class="status-chip {exit_chip_class}">🚪 Exit: {exit_action_display}</div>
-                        </div>
-                    </div>
-                    <div class="exec-score-box" title="Verdichtete Hauptaussage aus Investment-Case, Einstiegs-Case und Marktumfeld.">
-                        <div class="exec-score-label">Hauptsignal</div>
-                        <div class="exec-score-value">{main_action_label}</div>
-                        <div class="exec-score-sub">{market_regime_label(market_info["regime"])} · {display_mode_label(mode_label)}</div>
                     </div>
                 </div>
             </div>

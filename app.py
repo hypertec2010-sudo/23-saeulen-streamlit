@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v13.1A"
+APP_VERSION = "v13.1A.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -8516,14 +8516,14 @@ if result is not None:
             <div class="exec-v2-top">
                 <div>
                     <div class="exec-v2-eyebrow">Executive Summary</div>
-                    <div class="exec-v2-title">{_esc(name)} <span style="color:#93c5fd;">| {_esc(ticker)}</span></div>
+                    <div class="exec-v2-title">{name} <span style="color:#93c5fd;">| {ticker}</span></div>
                     <div class="exec-v2-sub">
-                        {_esc(company_summary if company_summary not in [None, "", "-"] else "Die wichtigsten Signale, Chancen und Risiken sind unten klar strukturiert zusammengefasst.")}
+                        {company_summary if company_summary not in [None, "", "-"] else "Die wichtigsten Signale, Chancen und Risiken sind unten klar strukturiert zusammengefasst."}
                     </div>
                 </div>
                 <div class="exec-v2-signal">
                     <div class="exec-v2-signal-label">Hauptsignal</div>
-                    <div class="exec-v2-signal-value">{_esc(exec_signal_value)}</div>
+                    <div class="exec-v2-signal-value">{exec_signal_value}</div>
                     <div class="exec-v2-signal-meta">
                         Fokus auf Entscheidung, Priorität und nächstem sinnvollen Schritt – ohne sofort in Rohdaten abzutauchen.
                     </div>
@@ -8536,22 +8536,22 @@ if result is not None:
                         <div class="exec-v2-kpi">
                             <div class="exec-v2-kpi-label">Trading-Case</div>
                             <div class="exec-v2-kpi-value">{exec_trading_score}/100</div>
-                            <div class="exec-v2-kpi-sub">{_esc(exec_trading_text)}</div>
+                            <div class="exec-v2-kpi-sub">{exec_trading_text}</div>
                         </div>
                         <div class="exec-v2-kpi">
                             <div class="exec-v2-kpi-label">Investment-Case</div>
                             <div class="exec-v2-kpi-value">{exec_investment_score}/100</div>
-                            <div class="exec-v2-kpi-sub">{_esc(exec_investment_text)}</div>
+                            <div class="exec-v2-kpi-sub">{exec_investment_text}</div>
                         </div>
                         <div class="exec-v2-kpi">
                             <div class="exec-v2-kpi-label">Exit</div>
                             <div class="exec-v2-kpi-value">{exec_exit_score}/100</div>
-                            <div class="exec-v2-kpi-sub">{_esc(exec_exit_text)}</div>
+                            <div class="exec-v2-kpi-sub">{exec_exit_text}</div>
                         </div>
                         <div class="exec-v2-kpi">
                             <div class="exec-v2-kpi-label">Setup-Priorität</div>
                             <div class="exec-v2-kpi-value">{exec_setup_score}/100</div>
-                            <div class="exec-v2-kpi-sub">{_esc(exec_setup_text)}</div>
+                            <div class="exec-v2-kpi-sub">{exec_setup_text}</div>
                         </div>
                     </div>
                 </div>
@@ -8560,15 +8560,15 @@ if result is not None:
                     <div class="exec-v2-list">
                         <div class="exec-v2-list-item">
                             <div class="exec-v2-list-label">Aktion</div>
-                            <div class="exec-v2-list-value">{_esc(exec_action)}</div>
+                            <div class="exec-v2-list-value">{exec_action}</div>
                         </div>
                         <div class="exec-v2-list-item">
                             <div class="exec-v2-list-label">Trigger / Lage</div>
-                            <div class="exec-v2-list-value">{_esc(exec_trigger)}</div>
+                            <div class="exec-v2-list-value">{exec_trigger}</div>
                         </div>
                         <div class="exec-v2-list-item">
                             <div class="exec-v2-list-label">Top Red Flag</div>
-                            <div class="exec-v2-list-value">{_esc(exec_redflag)}</div>
+                            <div class="exec-v2-list-value">{exec_redflag}</div>
                         </div>
                     </div>
                     <div class="exec-v2-divider"></div>

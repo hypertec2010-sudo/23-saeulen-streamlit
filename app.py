@@ -8090,7 +8090,7 @@ if result is not None:
                     f"""
                     <div class="decision-card entry" title="Aktuelle Stop- und Führungslogik der Position.">
                         <div class="dc-label">Stop-Führung</div>
-                        <div class="dc-value" style="font-size:clamp(1.02rem, 1.45vw, 1.24rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{shorten_text(stop_action, 26)}</div>
+                        <div class="dc-value" style="font-size:clamp(1.02rem, 1.45vw, 1.24rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{stop_action}</div>
                         <div class="dc-sub">{exit_action_display}</div>
                         <div class="dc-note">Stop und Exit-Taktik der Position.</div>
                     </div>
@@ -8102,7 +8102,7 @@ if result is not None:
                     f"""
                     <div class="decision-card invest" title="Worauf bei der Position aktuell besonders zu achten ist.">
                         <div class="dc-label">Jetzt eng beobachten</div>
-                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{shorten_text(exit_reason_top_display, 26)}</div>
+                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{exit_reason_top_display}</div>
                         <div class="dc-sub">{exit_score_text_display}</div>
                         <div class="dc-note">Wichtigster aktueller Exit- oder Risikotreiber.</div>
                     </div>
@@ -8127,7 +8127,7 @@ if result is not None:
                     f"""
                     <div class="decision-card entry" title="Welcher Trigger als Nächstes relevant ist.">
                         <div class="dc-label">Nächster Trigger</div>
-                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.2rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{shorten_text(next_trigger, 26)}</div>
+                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.2rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{next_trigger}</div>
                         <div class="dc-sub">{watchlist_priority}</div>
                         <div class="dc-note">Worauf vor einem aktiven Einstieg zu warten ist.</div>
                     </div>
@@ -8139,7 +8139,7 @@ if result is not None:
                     f"""
                     <div class="decision-card invest" title="Welcher Punkt aktuell noch gegen ein aktiveres Setup spricht.">
                         <div class="dc-label">Was noch fehlt</div>
-                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{shorten_text(trigger_reason, 26)}</div>
+                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{trigger_reason}</div>
                         <div class="dc-sub">{entry_quality}</div>
                         <div class="dc-note">Zentrale Hürde bis zu einem besseren Watchlist-Status.</div>
                     </div>

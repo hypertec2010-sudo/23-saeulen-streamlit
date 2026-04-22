@@ -8581,7 +8581,7 @@ if result is not None:
                     <div class="exec-v2-panel-title">Zusätzlicher Kontext</div>
                     <div class="exec-v2-list">
                         <div class="exec-v2-list-item">
-                            <div class="exec-v2-list-label">Risikokontext</div>
+                            <div class="exec-v2-list-label">Wichtig zu beachten</div>
                             <div class="exec-v2-list-value">{exec_risk_context if str(exec_risk_context).strip() not in {"", "-", "None"} else "kein zusätzlicher Risikohinweis"}</div>
                         </div>
                         <div class="exec-v2-list-item">

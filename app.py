@@ -59,7 +59,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v12.6C.14.ui9"
+APP_VERSION = "v12.6C.14.ui9.ui10"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5856,18 +5856,27 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
 st.markdown(
     """
     <style>
-    div[data-testid="stButton"] > button {
-        min-height: 2.75rem;
-        white-space: normal;
-        line-height: 1.15;
-        padding-top: 0.35rem;
-        padding-bottom: 0.35rem;
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
+        white-space: pre-line !important;
+        line-height: 1.35 !important;
+        font-weight: 800 !important;
+        border-radius: 20px !important;
+        min-height: 5.25rem !important;
+        background: linear-gradient(180deg, #1e3a8a 0%, #111827 100%) !important;
+        color: #f8fafc !important;
+        border: 1px solid #3b82f6 !important;
+        box-shadow: 0 14px 28px rgba(30,58,138,0.25) !important;
+        text-shadow: none !important;
+    }
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button p,
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button span,
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button div {
         color: #f8fafc !important;
     }
-    div[data-testid="stButton"] > button p,
-    div[data-testid="stButton"] > button span,
-    div[data-testid="stButton"] > button div {
-        color: #f8fafc !important;
+    div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button:hover {
+        border-color: #60a5fa !important;
+        box-shadow: 0 18px 34px rgba(59,130,246,0.28) !important;
+        transform: translateY(-1px);
     }
     div[data-testid="stDownloadButton"] > button {
         color: #f8fafc !important;

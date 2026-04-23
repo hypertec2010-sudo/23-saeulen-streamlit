@@ -71,6 +71,8 @@ st.set_page_config(
 if not check_password():
     st.stop()
 
+st.caption("DEBUG BUILD: stopfix-3.5-active")
+
 # ---------- Session State / App Defaults ----------
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "AAPL"

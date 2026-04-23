@@ -76,13 +76,36 @@ def _append_position_detail(lines, label, value):
         return
     if label == "💰 Teilgewinn:" and raw_lower == "nein":
         return
-    if label == "🚨 Risiko-Hinweis:" and raw_lower in {"keine auffälligkeit", "watchlist-modus"}:
+    if label == "🚨 Wichtig zu beachten:" and raw_lower in {"keine auffälligkeit", "watchlist-modus"}:
         return
-    if label == "🛡️ Stop:" and raw_lower == "beibehalten":
+    if label == "🛡️ Stop-Führung:" and raw_lower == "beibehalten":
         return
 
     lines.append(_b(label, raw))
 
+
+
+
+def _fmt_score_with_text(score, text_value):
+    score_raw = str(score if score is not None else 'n/a').strip()
+    text_raw = str(text_value if text_value is not None else '').strip()
+    if text_raw and text_raw not in {'-', 'n/a', 'None', 'Nicht anwendbar'}:
+        return f"{score_raw}/100 | {text_raw}"
+    return f"{score_raw}/100"
+
+
+def _entry_now_value(result):
+    trigger_status = str(result.get('trigger_status', '') or '').strip().lower()
+    if any(term in trigger_status for term in ['aktiv', 'bestätigt', 'breakout', 'retest']):
+        return 'Ja'
+    return 'Noch nicht'
+
+
+def _next_focus_value(result):
+    next_trigger = str(result.get('next_trigger', '') or '').strip()
+    if next_trigger in {'', '-', 'n/a', 'None', 'Nicht anwendbar', 'Jetzt prüfbar'}:
+        return None
+    return next_trigger
 
 def _fmt_trade_value(value, suffix=""):
     if value is None:
@@ -260,7 +283,7 @@ def _classify_change(label, old_value, new_value, watchlist_type, numeric=False)
     negative_terms = ["stop", "verkaufen", "reduzieren", "verlust", "schwach", "nein", "abbauen"]
 
     if watchlist_type == "Positions-Watchlist":
-        if label in ["⚠️ Positions-Aktion", "🚨 Risiko", "🛡️ Stop"]:
+        if label in ["⚡ Konkrete Aktion", "🚨 Wichtig zu beachten", "🛡️ Stop-Führung"]:
             if old_str == new_str:
                 return None, None
             if any(x in new_str.lower() for x in ["reduzieren", "verkaufen", "enger", "verlust", "risiko"]):
@@ -287,24 +310,22 @@ def _build_change_lines(result, previous_signature, watchlist_type):
 
     if watchlist_type == "Positions-Watchlist":
         checks = [
-            ("⚠️ Positions-Aktion", prev.get("position_action", "-"), result.get("position_action", "-"), False),
+            ("⚡ Konkrete Aktion", prev.get("position_action", "-"), result.get("position_action", "-"), False),
             ("🚪 Exit-Aktion", prev.get("exit_action", "-"), result.get("exit_action", "-"), False),
             ("📊 Exit-Score", prev.get("exit_score", "-"), result.get("exit_score", "-"), True),
             ("🧭 Exit-Grund", prev.get("exit_reason_top", "-"), result.get("exit_reason_top", "-"), False),
             ("💰 Teilgewinn", prev.get("partial_profit_action", "-"), result.get("partial_profit_action", "-"), False),
-            ("🛡️ Stop", prev.get("stop_action", "-"), result.get("stop_action", "-"), False),
-            ("🚨 Risiko", prev.get("risk_note", "-"), result.get("risk_note", "-"), False),
+            ("🛡️ Stop-Führung", prev.get("stop_action", "-"), result.get("stop_action", "-"), False),
+            ("🚨 Wichtig zu beachten", prev.get("risk_note", "-"), result.get("risk_note", "-"), False),
             ("📊 Setup-Confidence", prev.get("setup_confidence", "-"), result.get("setup_confidence", "-"), True),
         ]
     else:
         checks = [
-            ("🔔 Trigger", prev.get("trigger_status", "-"), result.get("trigger_status", "-"), False),
-            ("📌 Priorität", prev.get("watchlist_priority", "-"), result.get("watchlist_priority", "-"), False),
-            ("⚡ Handlung", prev.get("emp", "-"), result.get("emp", "-"), False),
-            ("📈 Einstieg", prev.get("trading_case_score", "-"), result.get("trading_case_score", "-"), True),
-            ("🏛️ Investment", prev.get("investment_case_score", "-"), result.get("investment_case_score", "-"), True),
-            ("🧭 Lage", prev.get("entry_quality", "-"), result.get("entry_quality", "-"), False),
-            ("📊 Setup-Confidence", prev.get("setup_confidence", "-"), result.get("setup_confidence", "-"), True),
+            ("⚡ Konkrete Aktion", prev.get("emp", "-"), result.get("emp", "-"), False),
+            ("🎯 Jetzt ein guter Einstieg?", prev.get("trigger_status", "-"), result.get("trigger_status", "-"), False),
+            ("📈 Einstiegs-Urteil", prev.get("trading_case_score", "-"), result.get("trading_case_score", "-"), True),
+            ("🏛️ Investment-Urteil", prev.get("investment_case_score", "-"), result.get("investment_case_score", "-"), True),
+            ("📌 Nächster Fokus", prev.get("entry_quality", "-"), result.get("entry_quality", "-"), False),
         ]
 
     for label, old_value, new_value, numeric in checks:
@@ -346,23 +367,24 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_
     lines.extend(["", "<b>📊 AKTUELLER STAND</b>", _b("Modus:", mode), _b("Setup:", setup_type)])
 
     if watchlist_type == "Positions-Watchlist":
-        _append_position_detail(lines, "⚠️ Positions-Aktion:", result.get('position_action', '-'))
+        _append_position_detail(lines, "⚡ Konkrete Aktion:", result.get('position_action', '-'))
         _append_position_detail(lines, "➕ Aufstocken:", result.get('add_on_action', '-'))
         _append_position_detail(lines, "🚪 Exit-Aktion:", result.get('exit_action', '-'))
         _append_position_detail(lines, "📊 Exit-Score:", f"{result.get('exit_score', '-')}/100")
         _append_position_detail(lines, "🧭 Exit-Hauptgrund:", result.get('exit_reason_top', '-'))
         _append_position_detail(lines, "💰 Teilgewinn:", result.get('partial_profit_action', '-'))
-        _append_position_detail(lines, "🛡️ Stop:", result.get('stop_action', '-'))
-        _append_position_detail(lines, "🚨 Risiko-Hinweis:", result.get('risk_note', '-'))
-        _append_position_detail(lines, "📊 Setup-Confidence:", f"{result.get('setup_confidence', '-')}/100")
+        _append_position_detail(lines, "🛡️ Stop-Führung:", result.get('stop_action', '-'))
+        _append_position_detail(lines, "🚨 Wichtig zu beachten:", result.get('risk_note', '-'))
     else:
         lines.extend([
-            _b("⚡ Handlung:", result.get('emp', '-')),
-            _b("🔔 Trigger:", result.get('trigger_status', '-')),
-            _b("📌 Priorität:", result.get('watchlist_priority', '-')),
-            _b("📈 Einstieg:", f"{result.get('trading_case_score', 'n/a')}/100"),
-            _b("🏛️ Investment:", f"{result.get('investment_case_score', 'n/a')}/100"),
+            _b("🏛️ Investment-Urteil:", _fmt_score_with_text(result.get('investment_case_score', 'n/a'), result.get('investment_case_text', '-'))),
+            _b("📈 Einstiegs-Urteil:", _fmt_score_with_text(result.get('trading_case_score', 'n/a'), result.get('trading_case_text', '-'))),
+            _b("⚡ Konkrete Aktion:", result.get('emp', '-')),
+            _b("🎯 Jetzt ein guter Einstieg?:", _entry_now_value(result)),
         ])
+        next_focus = _next_focus_value(result)
+        if next_focus:
+            lines.append(_b("📌 Nächster Fokus:", next_focus))
         if _should_show_trade_plan(result, watchlist_type):
             entry_zone, stop_value, crv_value = _get_trade_plan_fields(result)
             lines.extend([
@@ -382,11 +404,10 @@ def build_new_watchlist_entry_text(result, watchlist_name, watchlist_type, alert
     lines.extend([
         "",
         "<b>📊 AKTUELLER STAND</b>",
-        f"⚡ Handlung: {result.get('emp', result.get('position_action', '-'))}",
-        _b("🔔 Trigger:", result.get('trigger_status', '-')),
-        _b("📌 Priorität:", result.get('watchlist_priority', '-')),
-        _b("📈 Einstieg:", f"{result.get('trading_case_score', 'n/a')}/100"),
-        _b("🏛️ Investment:", f"{result.get('investment_case_score', 'n/a')}/100"),
+        _b("🏛️ Investment-Urteil:", _fmt_score_with_text(result.get('investment_case_score', 'n/a'), result.get('investment_case_text', '-'))),
+        _b("📈 Einstiegs-Urteil:", _fmt_score_with_text(result.get('trading_case_score', 'n/a'), result.get('trading_case_text', '-'))),
+        _b("⚡ Konkrete Aktion:", result.get('emp', result.get('position_action', '-'))),
+        _b("🎯 Jetzt ein guter Einstieg?:", _entry_now_value(result)),
         "Hinweis: Neuer Wert in der Watchlist, aktuell noch kein harter Trigger-Alert.",
     ])
     return "\n".join(lines)

@@ -7440,10 +7440,14 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
 
     sel_col1, sel_col2 = st.columns([2, 1])
     with sel_col1:
+        ranking_ticker_options = ranking_df["Ticker"].tolist()
+        ranking_select_index = 0
+        if ranking_ticker_options and selected_display_ticker in ranking_ticker_options:
+            ranking_select_index = ranking_ticker_options.index(selected_display_ticker)
         selected_display_ticker = st.selectbox(
             "Einzelanalyse aus Ranking auswählen",
-            options=ranking_df["Ticker"].tolist(),
-            index=ranking_df["Ticker"].tolist().index(selected_display_ticker),
+            options=ranking_ticker_options,
+            index=ranking_select_index,
             key="selected_ranking_ticker_widget"
         )
         st.session_state.selected_ranking_ticker = selected_display_ticker

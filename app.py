@@ -4398,6 +4398,12 @@ def _legacy_analyze_stock(
             stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
             stop_source = "Fallback-Stop"
 
+        practical_min_stop_dist_pct = 3.5
+        if price > 0 and stop_dist < practical_min_stop_dist_pct:
+            stop_used = round(price * (1 - practical_min_stop_dist_pct / 100), 2)
+            stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
+            stop_source = "Praxis-Mindestabstand"
+
         risk_per_share = price - stop_used
 
         tp1 = round(price + 1 * risk_per_share, 2)
@@ -7902,7 +7908,7 @@ if result is not None:
     industry_trend_text_display = result.get("industry_trend_text", "nicht belastbar")
     sector_strength_text_display = score_or_unavailable_text(sector_strength_display)
     if str(sector_strength_text_display).strip().lower() == "nicht verfügbar":
-        sector_strength_text_display = sector_trend_text_display if str(sector_trend_text_display).strip() not in {"", "-", "nicht belastbar"} else "derzeit nicht belastbar"
+        sector_strength_text_display = sector_trend_text_display if str(sector_trend_text_display).strip() not in {"", "-", "nicht belastbar"} else "aktuell keine saubere Sektor-Einordnung möglich"
     sector_etf_display = result.get("sector_etf_symbol", "-")
     sector_delta_display = f"{sector_label_display} | ETF: {sector_etf_display}" if sector_etf_display not in ["", "-", None] else sector_label_display
     trend_quality_display = result.get("trend_quality_score", np.nan)

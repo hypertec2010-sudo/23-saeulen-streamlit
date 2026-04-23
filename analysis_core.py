@@ -3323,6 +3323,12 @@ def analyze_stock(
             stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
             stop_source = "Fallback-Stop"
 
+        practical_min_stop_dist_pct = 3.5
+        if price > 0 and stop_dist < practical_min_stop_dist_pct:
+            stop_used = round(price * (1 - practical_min_stop_dist_pct / 100), 2)
+            stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
+            stop_source = "Praxis-Mindestabstand"
+
         risk_per_share = price - stop_used
 
         tp1 = round(price + 1 * risk_per_share, 2)

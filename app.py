@@ -6070,7 +6070,7 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
     st.markdown("#### Technik / Admin")
     test1, test2 = st.columns([1.2, 2.8])
     with test1:
-        if st.button("Telegram-Test senden", use_container_width=True, key=f"telegram_test_button_{admin_render_ns}"):
+        if st.button("Telegram-Test senden", use_container_width=True, key=f"telegram_test_button_{auto_run_key_ns}"):
             test_message = (
                 f"Capital Hill Test\n"
                 f"Version: {APP_VERSION}\n"

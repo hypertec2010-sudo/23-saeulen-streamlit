@@ -54,9 +54,7 @@ if _telegram_utils is not None and hasattr(_telegram_utils, "send_watchlist_aler
     send_watchlist_alerts = _telegram_utils.send_watchlist_alerts
 else:
     def send_watchlist_alerts(*args, **kwargs):
-        if kwargs.get("return_diagnostics"):
-            return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar", 0, {"suppressed": [], "sent": [], "errors": ["telegram_utils Import fehlgeschlagen oder Funktion nicht verfügbar"]}
-        return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar", 0
+        return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar"
 from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
@@ -72,8 +70,6 @@ st.set_page_config(
 
 if not check_password():
     st.stop()
-
-st.caption("DEBUG BUILD: stopfix-3.5-active")
 
 # ---------- Session State / App Defaults ----------
 if "selected_ticker" not in st.session_state:
@@ -5962,26 +5958,28 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown("""<div class="landing-cards-wrap">""", unsafe_allow_html=True)
+_landing_widget_ns = st.session_state.get("_landing_widget_ns", 0) + 1
+st.session_state["_landing_widget_ns"] = _landing_widget_ns
 wc1, wc2, wc3 = st.columns(3)
 with wc1:
     if st.button(
         "🔎 Sofortanalyse\nEinzelaktie oder Vergleich",
         use_container_width=True,
-        key="workspace_analysis_btn"
+        key=f"workspace_analysis_btn_{_landing_widget_ns}"
     ):
         st.session_state.workspace_mode = "Sofortanalyse"
 with wc2:
     if st.button(
         "📋 Watchlisten\nListen pflegen und prüfen",
         use_container_width=True,
-        key="workspace_watchlist_btn"
+        key=f"workspace_watchlist_btn_{_landing_widget_ns}"
     ):
         st.session_state.workspace_mode = "Watchlisten"
 with wc3:
     if st.button(
         "🛡️ Positionen\nPositionen überwachen",
         use_container_width=True,
-        key="workspace_position_btn"
+        key=f"workspace_position_btn_{_landing_widget_ns}"
     ):
         st.session_state.workspace_mode = "Positionen"
 

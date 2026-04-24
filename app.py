@@ -5958,28 +5958,26 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown("""<div class="landing-cards-wrap">""", unsafe_allow_html=True)
-_landing_widget_ns = st.session_state.get("_landing_widget_ns", 0) + 1
-st.session_state["_landing_widget_ns"] = _landing_widget_ns
 wc1, wc2, wc3 = st.columns(3)
 with wc1:
     if st.button(
         "🔎 Sofortanalyse\nEinzelaktie oder Vergleich",
         use_container_width=True,
-        key=f"workspace_analysis_btn_{_landing_widget_ns}"
+        key="workspace_analysis_btn"
     ):
         st.session_state.workspace_mode = "Sofortanalyse"
 with wc2:
     if st.button(
         "📋 Watchlisten\nListen pflegen und prüfen",
         use_container_width=True,
-        key=f"workspace_watchlist_btn_{_landing_widget_ns}"
+        key="workspace_watchlist_btn"
     ):
         st.session_state.workspace_mode = "Watchlisten"
 with wc3:
     if st.button(
         "🛡️ Positionen\nPositionen überwachen",
         use_container_width=True,
-        key=f"workspace_position_btn_{_landing_widget_ns}"
+        key="workspace_position_btn"
     ):
         st.session_state.workspace_mode = "Positionen"
 
@@ -6052,17 +6050,20 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
     else:
         st.info("Vor dem ersten Slot des Tages ist noch keine Watchlist automatisch fällig.")
 
+    _admin_widget_ns = st.session_state.get("_admin_widget_ns", 0)
+    st.session_state["_admin_widget_ns"] = _admin_widget_ns + 1
+
     ar1, ar2 = st.columns([1.2, 1.0])
     with ar1:
         selected_auto_slot = st.selectbox(
             "Auto-Run-Testslot",
             options=slot_options,
             index=slot_options.index(current_slot_label) if current_slot_label in slot_options else 0,
-            key="selected_auto_run_slot_widget"
+            key=f"selected_auto_run_slot_widget_{_admin_widget_ns}"
         )
     with ar2:
         st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
+        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key=f"run_auto_slot_test_btn_{_admin_widget_ns}"):
             st.session_state.auto_run_requested = True
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
@@ -6070,7 +6071,7 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
     st.markdown("#### Technik / Admin")
     test1, test2 = st.columns([1.2, 2.8])
     with test1:
-        if st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
+        if st.button("Telegram-Test senden", use_container_width=True, key=f"telegram_test_button_{_admin_widget_ns}"):
             test_message = (
                 f"Capital Hill Test\n"
                 f"Version: {APP_VERSION}\n"

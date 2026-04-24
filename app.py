@@ -54,7 +54,9 @@ if _telegram_utils is not None and hasattr(_telegram_utils, "send_watchlist_aler
     send_watchlist_alerts = _telegram_utils.send_watchlist_alerts
 else:
     def send_watchlist_alerts(*args, **kwargs):
-        return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar"
+        if kwargs.get("return_diagnostics"):
+            return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar", 0, {"suppressed": [], "sent": [], "errors": ["telegram_utils Import fehlgeschlagen oder Funktion nicht verfügbar"]}
+        return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar", 0
 from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
@@ -70,6 +72,8 @@ st.set_page_config(
 
 if not check_password():
     st.stop()
+
+st.caption("DEBUG BUILD: stopfix-3.5-active")
 
 # ---------- Session State / App Defaults ----------
 if "selected_ticker" not in st.session_state:
@@ -7440,14 +7444,10 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
 
     sel_col1, sel_col2 = st.columns([2, 1])
     with sel_col1:
-        ranking_ticker_options = ranking_df["Ticker"].tolist()
-        ranking_select_index = 0
-        if ranking_ticker_options and selected_display_ticker in ranking_ticker_options:
-            ranking_select_index = ranking_ticker_options.index(selected_display_ticker)
         selected_display_ticker = st.selectbox(
             "Einzelanalyse aus Ranking auswählen",
-            options=ranking_ticker_options,
-            index=ranking_select_index,
+            options=ranking_df["Ticker"].tolist(),
+            index=ranking_df["Ticker"].tolist().index(selected_display_ticker),
             key="selected_ranking_ticker_widget"
         )
         st.session_state.selected_ranking_ticker = selected_display_ticker

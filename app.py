@@ -6050,17 +6050,19 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
     else:
         st.info("Vor dem ersten Slot des Tages ist noch keine Watchlist automatisch fällig.")
 
+    st.session_state["__admin_widget_instance"] = st.session_state.get("__admin_widget_instance", 0) + 1
+    admin_widget_ns = f"admin_{st.session_state['__admin_widget_instance']}"
     ar1, ar2 = st.columns([1.2, 1.0])
     with ar1:
         selected_auto_slot = st.selectbox(
             "Auto-Run-Testslot",
             options=slot_options,
             index=slot_options.index(current_slot_label) if current_slot_label in slot_options else 0,
-            key="selected_auto_run_slot_widget"
+            key=f"selected_auto_run_slot_widget_{admin_widget_ns}"
         )
     with ar2:
         st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
+        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key=f"run_auto_slot_test_btn_{admin_widget_ns}"):
             st.session_state.auto_run_requested = True
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
@@ -6068,7 +6070,7 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
     st.markdown("#### Technik / Admin")
     test1, test2 = st.columns([1.2, 2.8])
     with test1:
-        if st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
+        if st.button("Telegram-Test senden", use_container_width=True, key=f"telegram_test_button_{admin_widget_ns}"):
             test_message = (
                 f"Capital Hill Test\n"
                 f"Version: {APP_VERSION}\n"
@@ -7440,14 +7442,10 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
 
     sel_col1, sel_col2 = st.columns([2, 1])
     with sel_col1:
-        ranking_ticker_options = ranking_df["Ticker"].tolist()
-        ranking_select_index = 0
-        if ranking_ticker_options and selected_display_ticker in ranking_ticker_options:
-            ranking_select_index = ranking_ticker_options.index(selected_display_ticker)
         selected_display_ticker = st.selectbox(
             "Einzelanalyse aus Ranking auswählen",
-            options=ranking_ticker_options,
-            index=ranking_select_index,
+            options=ranking_df["Ticker"].tolist(),
+            index=ranking_df["Ticker"].tolist().index(selected_display_ticker),
             key="selected_ranking_ticker_widget"
         )
         st.session_state.selected_ranking_ticker = selected_display_ticker

@@ -6051,17 +6051,18 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
     else:
         st.info("Vor dem ersten Slot des Tages ist noch keine Watchlist automatisch fällig.")
 
+    auto_run_key_ns = f"autorun_{st.session_state.get('workspace_mode', 'landing')}_{st.session_state.get('workspace_render_nonce', 0)}"
     ar1, ar2 = st.columns([1.2, 1.0])
     with ar1:
         selected_auto_slot = st.selectbox(
             "Auto-Run-Testslot",
             options=slot_options,
             index=slot_options.index(current_slot_label) if current_slot_label in slot_options else 0,
-            key="selected_auto_run_slot_widget"
+            key=f"selected_auto_run_slot_widget_{auto_run_key_ns}"
         )
     with ar2:
         st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
+        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key=f"run_auto_slot_test_btn_{auto_run_key_ns}"):
             st.session_state.auto_run_requested = True
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()

@@ -54,7 +54,9 @@ if _telegram_utils is not None and hasattr(_telegram_utils, "send_watchlist_aler
     send_watchlist_alerts = _telegram_utils.send_watchlist_alerts
 else:
     def send_watchlist_alerts(*args, **kwargs):
-        return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar"
+        if kwargs.get("return_diagnostics"):
+            return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar", 0, []
+        return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar", 0
 from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")

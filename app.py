@@ -54,7 +54,10 @@ if _telegram_utils is not None and hasattr(_telegram_utils, "send_watchlist_aler
     send_watchlist_alerts = _telegram_utils.send_watchlist_alerts
 else:
     def send_watchlist_alerts(*args, **kwargs):
-        return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar"
+        diagnostics = {"ok": False, "reason": "telegram_utils_missing", "sent_count": 0}
+        if kwargs.get("return_diagnostics"):
+            return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar", 0, diagnostics
+        return False, "Watchlist-Telegram-Funktion in telegram_utils nicht verfügbar", 0
 from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
@@ -6052,20 +6055,17 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
     else:
         st.info("Vor dem ersten Slot des Tages ist noch keine Watchlist automatisch fällig.")
 
-    _admin_widget_ns = st.session_state.get("_admin_widget_ns", 0) + 1
-    st.session_state["_admin_widget_ns"] = _admin_widget_ns
-
     ar1, ar2 = st.columns([1.2, 1.0])
     with ar1:
         selected_auto_slot = st.selectbox(
             "Auto-Run-Testslot",
             options=slot_options,
             index=slot_options.index(current_slot_label) if current_slot_label in slot_options else 0,
-            key=f"selected_auto_run_slot_widget_{_admin_widget_ns}"
+            key="selected_auto_run_slot_widget"
         )
     with ar2:
         st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key=f"run_auto_slot_test_btn_{_admin_widget_ns}"):
+        if st.button("Auto-Run-Test für Slot starten", use_container_width=True, key="run_auto_slot_test_btn"):
             st.session_state.auto_run_requested = True
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
@@ -6073,7 +6073,7 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
     st.markdown("#### Technik / Admin")
     test1, test2 = st.columns([1.2, 2.8])
     with test1:
-        if st.button("Telegram-Test senden", use_container_width=True, key=f"telegram_test_button_{_admin_widget_ns}"):
+        if st.button("Telegram-Test senden", use_container_width=True, key="telegram_test_button"):
             test_message = (
                 f"Capital Hill Test\n"
                 f"Version: {APP_VERSION}\n"

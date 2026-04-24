@@ -437,7 +437,6 @@ def append_auto_run_log(rows):
 
     try:
         ws = get_or_create_worksheet(sh, "Auto_Run_Log", rows=5000, cols=24)
-        existing = ws.get_all_values()
         headers = [
             "Run_Timestamp",
             "Berlin_Time",
@@ -456,11 +455,13 @@ def append_auto_run_log(rows):
             "Reason",
             "Message",
         ]
+        existing = ws.row_values(1)
         if not existing:
-            ws.append_row(headers, value_input_option="USER_ENTERED")
+            ws.update("A1:P1", [headers], value_input_option="USER_ENTERED")
 
-        for row in rows:
-            ws.append_row([row.get(h, "") for h in headers], value_input_option="USER_ENTERED")
+        batch_rows = [[row.get(h, "") for h in headers] for row in rows]
+        if batch_rows:
+            ws.append_rows(batch_rows, value_input_option="USER_ENTERED")
         return True, f"{len(rows)} Auto-Run-Logzeilen gespeichert."
     except Exception as e:
         return False, str(e)
@@ -519,12 +520,12 @@ def save_alert_history_df(df):
 
     try:
         ws = get_or_create_worksheet(sh, "Alert_History", rows=max(5000, len(df) + 20), cols=12)
-        ws.clear()
-        ws.append_row(cols, value_input_option="USER_ENTERED")
+        data = [cols]
         if df is not None and not df.empty:
-            data = df[cols].fillna("").astype(str).values.tolist()
-            for row in data:
-                ws.append_row(row, value_input_option="USER_ENTERED")
+            data.extend(df[cols].fillna("").astype(str).values.tolist())
+        ws.clear()
+        end_row = max(1, len(data))
+        ws.update(f"A1:H{end_row}", data, value_input_option="USER_ENTERED")
         return True, "Alert-History gespeichert"
     except Exception as e:
         return False, str(e)
@@ -605,6 +606,78 @@ def upsert_alert_history_entry(watchlist_name, watchlist_type, alert_mode, ticke
         df.loc[mask, "Last_Sent_Date"] = today
 
     return save_alert_history_df(df)
+
+
+def bulk_upsert_alert_history_entries(entries):
+    cols = [
+        "Watchlist_Name",
+        "Watchlist_Type",
+        "Alert_Mode",
+        "Ticker",
+        "Alert_Type",
+        "Alert_Signature",
+        "Last_Sent_At",
+        "Last_Sent_Date",
+    ]
+    if not entries:
+        return True, "Keine Alert-History-Updates nötig."
+
+    df, err = load_alert_history_df()
+    if err:
+        return False, err
+
+    if df is None or df.empty:
+        df = pd.DataFrame(columns=cols)
+
+    now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    key_map = {}
+    for i, row in df.iterrows():
+        key = (
+            str(row.get("Watchlist_Name", "")).strip().lower(),
+            str(row.get("Ticker", "")).strip().upper(),
+            str(row.get("Alert_Type", "")).strip(),
+        )
+        if key not in key_map:
+            key_map[key] = i
+
+    pending_new_rows = []
+    for entry in entries:
+        wl_name = str(entry.get("watchlist_name", "")).strip()
+        wl_type = str(entry.get("watchlist_type", "")).strip()
+        alert_mode = str(entry.get("alert_mode", "")).strip()
+        ticker = str(entry.get("ticker", "")).strip().upper()
+        alert_type = str(entry.get("alert_type", "")).strip()
+        alert_signature = str(entry.get("alert_signature", "")).strip()
+
+        if not wl_name or not ticker or not alert_type:
+            continue
+
+        key = (wl_name.lower(), ticker, alert_type)
+        if key in key_map:
+            row_idx = key_map[key]
+            df.loc[row_idx, "Watchlist_Type"] = wl_type
+            df.loc[row_idx, "Alert_Mode"] = alert_mode
+            df.loc[row_idx, "Alert_Signature"] = alert_signature
+            df.loc[row_idx, "Last_Sent_At"] = now_ts
+            df.loc[row_idx, "Last_Sent_Date"] = today
+        else:
+            pending_new_rows.append({
+                "Watchlist_Name": wl_name,
+                "Watchlist_Type": wl_type,
+                "Alert_Mode": alert_mode,
+                "Ticker": ticker,
+                "Alert_Type": alert_type,
+                "Alert_Signature": alert_signature,
+                "Last_Sent_At": now_ts,
+                "Last_Sent_Date": today,
+            })
+
+    if pending_new_rows:
+        df = pd.concat([df, pd.DataFrame(pending_new_rows)], ignore_index=True)
+
+    return save_alert_history_df(df[cols].copy())
 
 
 def build_export_row(result):

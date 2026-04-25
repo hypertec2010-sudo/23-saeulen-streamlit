@@ -7019,7 +7019,63 @@ if workspace_mode:
                         radar_batch_text = "\n".join(radar_top_tickers)
 
                         st.markdown("### Radar-Ergebnisse direkt nutzen")
-                        st.caption("Die aktuellen Top-Kandidaten lassen sich direkt in die Sofortanalyse übernehmen oder in die aktuell ausgewählte Watchlist schreiben.")
+                        st.caption("Die aktuellen Top-Kandidaten lassen sich direkt in die Sofortanalyse übernehmen oder in eine frei wählbare Watchlist schreiben.")
+                        radar_watchlists_df, radar_watchlists_err = load_watchlists_df()
+                        if radar_watchlists_err:
+                            st.warning(f"Watchlisten konnten für den Radar nicht geladen werden: {radar_watchlists_err}")
+                            radar_catalog_df = pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type"])
+                        elif radar_watchlists_df is None or radar_watchlists_df.empty:
+                            radar_catalog_df = pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type"])
+                        else:
+                            radar_catalog_df = (
+                                radar_watchlists_df[["Watchlist_Name", "Watchlist_Type"]]
+                                .fillna("")
+                                .astype(str)
+                                .query("Watchlist_Name != ''")
+                                .drop_duplicates()
+                                .sort_values(["Watchlist_Name", "Watchlist_Type"])
+                                .reset_index(drop=True)
+                            )
+
+                        radar_watchlist_options = []
+                        radar_watchlist_label_map = {}
+                        for _, _row in radar_catalog_df.iterrows():
+                            _wl_name = str(_row.get("Watchlist_Name", "") or "").strip()
+                            _wl_type = str(_row.get("Watchlist_Type", "Watchlist") or "Watchlist").strip() or "Watchlist"
+                            if _wl_name:
+                                _label = f"{_wl_name} | {_wl_type}"
+                                radar_watchlist_options.append(_label)
+                                radar_watchlist_label_map[_label] = (_wl_name, _wl_type)
+
+                        default_radar_watchlist_label = None
+                        current_selected_watchlist_name = str(st.session_state.get("selected_watchlist_name", "") or "").strip()
+                        current_selected_watchlist_type = str(st.session_state.get("selected_watchlist_type", "Watchlist") or "Watchlist").strip() or "Watchlist"
+                        if current_selected_watchlist_name:
+                            candidate_label = f"{current_selected_watchlist_name} | {current_selected_watchlist_type}"
+                            if candidate_label in radar_watchlist_options:
+                                default_radar_watchlist_label = candidate_label
+                        if default_radar_watchlist_label is None and radar_watchlist_options:
+                            default_radar_watchlist_label = radar_watchlist_options[0]
+
+                        if radar_watchlist_options:
+                            radar_target_watchlist_label = st.selectbox(
+                                "Ziel-Watchlist für Radar-Kandidaten",
+                                options=radar_watchlist_options,
+                                index=radar_watchlist_options.index(default_radar_watchlist_label) if default_radar_watchlist_label in radar_watchlist_options else 0,
+                                key="radar_target_watchlist_widget"
+                            )
+                            selected_watchlist_name_for_radar, selected_watchlist_type_for_radar = radar_watchlist_label_map.get(
+                                radar_target_watchlist_label,
+                                ("", "Watchlist")
+                            )
+                            st.caption(f"Aktuelles Ziel: {selected_watchlist_name_for_radar} ({selected_watchlist_type_for_radar})")
+                        else:
+                            selected_watchlist_name_for_radar, selected_watchlist_type_for_radar = "", "Watchlist"
+                            st.markdown(
+                                '<div class="empty-state"><div class="empty-state-title">Noch keine Watchlist vorhanden</div><div class="empty-state-text">Lege zuerst eine Watchlist oder Positions-Watchlist an. Danach kannst du Radar-Kandidaten direkt dorthin übernehmen.</div></div>',
+                                unsafe_allow_html=True,
+                            )
+
                         ra1, ra2 = st.columns(2)
                         with ra1:
                             if st.button("Top-Kandidaten in Sofortanalyse laden", use_container_width=True, key="radar_load_into_analysis_btn"):
@@ -7033,14 +7089,16 @@ if workspace_mode:
                                 else:
                                     st.info("Es sind keine Radar-Kandidaten zum Übernehmen vorhanden.")
                         with ra2:
-                            selected_watchlist_name_for_radar = str(st.session_state.get("selected_watchlist_name", "") or "").strip()
-                            selected_watchlist_type_for_radar = str(st.session_state.get("selected_watchlist_type", "Watchlist") or "Watchlist").strip() or "Watchlist"
-                            add_label = "Top-Kandidaten zur ausgewählten Watchlist hinzufügen"
+                            add_label = (
+                                f"Top-Kandidaten zu {selected_watchlist_name_for_radar} hinzufügen"
+                                if selected_watchlist_name_for_radar else
+                                "Top-Kandidaten zur Watchlist hinzufügen"
+                            )
                             if st.button(add_label, use_container_width=True, key="radar_add_to_watchlist_btn"):
                                 if not radar_top_tickers:
                                     st.info("Es sind keine Radar-Kandidaten zum Hinzufügen vorhanden.")
                                 elif not selected_watchlist_name_for_radar:
-                                    st.info("Bitte wähle oder erstelle zuerst oben eine Watchlist.")
+                                    st.info("Bitte lege zuerst eine Watchlist an oder wähle eine Ziel-Watchlist aus.")
                                 else:
                                     ok, msg = add_entries_to_watchlist(
                                         selected_watchlist_name_for_radar,

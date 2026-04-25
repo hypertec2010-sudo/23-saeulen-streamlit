@@ -6778,7 +6778,7 @@ if workspace_mode:
             <div class="mobile-form-card" style="border-left:5px solid #3b82f6;">
                 <div class="mobile-form-title">Kandidaten-Radar</div>
                 <div class="mobile-form-sub">
-                    Dieser neue Bereich soll dir täglich interessante Kaufkandidaten vorsortieren, bevor du sie tiefer analysierst. In dieser ersten Version bauen wir nur den Steuerblock und noch keinen fertigen Radar-Lauf.
+                    Dieser Bereich soll dir interessante Kaufkandidaten vorsortieren, bevor du sie tiefer analysierst. In dieser ersten lauffähigen Version ist nur <strong>Eigene Liste</strong> aktiv.
                 </div>
             </div>
             """,
@@ -6804,9 +6804,9 @@ if workspace_mode:
             st.session_state.radar_max_candidates = radar_max_candidates
         with rc3:
             st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-            if st.button("Kandidaten-Radar starten", use_container_width=True, type="primary", key="run_candidate_radar_btn"):
+            run_candidate_radar = st.button("Kandidaten-Radar starten", use_container_width=True, type="primary", key="run_candidate_radar_btn")
+            if run_candidate_radar:
                 st.session_state.radar_requested = True
-                st.info("Der Steuerblock ist angelegt. Im nächsten Schritt kommt der eigentliche Radar-Lauf mit Ranking-Tabelle.")
 
         if st.session_state.radar_universe == "Eigene Liste":
             radar_custom_input = st.text_area(
@@ -6817,19 +6817,107 @@ if workspace_mode:
                 key="radar_custom_input_widget"
             ).strip()
             st.session_state.radar_custom_input = radar_custom_input
+        else:
+            st.info("In V1 ist zunächst nur 'Eigene Liste' aktiv. Vorgefertigte Universen folgen im nächsten Schritt.")
 
         st.markdown(
             """
             <div class="section-card">
                 <div class="premium-title">V1 in diesem Schritt</div>
-                <div class="premium-value">Neuer Workspace + Steuerblock</div>
+                <div class="premium-value">Eigene Liste → Radar-Lauf → Top-Kandidaten heute</div>
                 <div class="premium-sub">
-                    Der eigentliche Radar-Lauf folgt als nächster Schritt. Danach kommen Top-Kandidaten heute, Übernahme in die Analyse und Übergabe an Watchlisten.
+                    Die bestehende Analyse-Logik wird auf deine Liste angewendet und als kompakte Kandidaten-Tabelle sortiert. Weitere Universen und Übergaben folgen danach.
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+
+        if st.session_state.get("radar_requested", False):
+            if st.session_state.radar_universe != "Eigene Liste":
+                st.warning("Bitte in V1 zunächst 'Eigene Liste' wählen.")
+            else:
+                radar_entries = split_batch_input(st.session_state.radar_custom_input)
+                if not radar_entries:
+                    st.warning("Bitte gib mindestens einen Ticker oder Firmennamen für den Radar-Lauf ein.")
+                else:
+                    resolved_radar_entries = []
+                    radar_resolution_rows = []
+                    for entry in radar_entries:
+                        resolved = resolve_input_to_ticker(entry, fallback=None)
+                        radar_resolution_rows.append({
+                            "Eingabe": entry,
+                            "Aufgelöst zu": resolved if resolved else "Nicht gefunden"
+                        })
+                        if resolved and resolved not in resolved_radar_entries:
+                            resolved_radar_entries.append(resolved)
+
+                    if not resolved_radar_entries:
+                        st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")
+                    else:
+                        radar_results = []
+                        radar_errors = []
+                        radar_progress = st.progress(0)
+                        radar_status = st.empty()
+                        for i, tkr in enumerate(resolved_radar_entries, start=1):
+                            radar_status.info(f"Radar analysiert {tkr} ({i}/{len(resolved_radar_entries)}) ...")
+                            try:
+                                radar_result = analyze_stock(
+                                    ticker=tkr,
+                                    horizon="Swing (1-4 Wochen)",
+                                    depot=10000,
+                                    risk_pct=1.0,
+                                    override=0.0,
+                                    buy_in_override=0.0,
+                                    smart_money_default=True,
+                                    strict_mode=True
+                                )
+                                radar_results.append(radar_result)
+                            except Exception as e:
+                                radar_errors.append((tkr, str(e)))
+                            radar_progress.progress(i / len(resolved_radar_entries))
+                        radar_progress.empty()
+                        radar_status.empty()
+
+                        if not radar_results:
+                            st.error("Der Radar-Lauf hat keine belastbaren Kandidaten geliefert.")
+                        else:
+                            trigger_rank_map = {
+                                "Aktiv": 5,
+                                "Nahe dran": 4,
+                                "Frühe Beobachtung": 3,
+                                "Beobachten": 2,
+                                "Passiv": 1,
+                                "Warten": 0,
+                            }
+                            radar_df = build_ranking_table(radar_results)
+                            radar_df["__trigger_sort"] = radar_df.get("Trigger-Status", pd.Series(dtype=str)).map(trigger_rank_map).fillna(0)
+                            radar_df = radar_df.sort_values(
+                                by=["__trigger_sort", "Einstieg jetzt attraktiv?", "Investment-Attraktivität", "Setup-Priorität"],
+                                ascending=[False, False, False, False]
+                            ).drop(columns=["__trigger_sort"], errors="ignore").reset_index(drop=True)
+                            radar_df = radar_df.head(int(st.session_state.radar_max_candidates))
+
+                            st.markdown("### Top-Kandidaten heute")
+                            st.caption("Sortiert nach Trigger-Nähe, Einstiegsqualität, Investment-Attraktivität und Setup-Priorität.")
+                            radar_cols = [c for c in [
+                                "Ticker", "Name", "Setup-Typ", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
+                                "Setup-Priorität", "Trigger-Status", "Watchlist-Priorität", "Top Red Flag", "Kurzfazit"
+                            ] if c in radar_df.columns]
+                            st.dataframe(
+                                style_ranking_table(radar_df[radar_cols].copy()),
+                                hide_index=True,
+                                use_container_width=True,
+                                height=min(520, 45 * len(radar_df) + 40)
+                            )
+
+                            if radar_resolution_rows:
+                                with st.expander("Aufgelöste Radar-Eingaben", expanded=False):
+                                    st.dataframe(pd.DataFrame(radar_resolution_rows), hide_index=True, use_container_width=True)
+
+                            if radar_errors:
+                                with st.expander("Nicht analysierbare Radar-Werte", expanded=False):
+                                    st.dataframe(pd.DataFrame(radar_errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
 
         st.stop()
     else:

@@ -6925,7 +6925,7 @@ if workspace_mode:
                                 "Setup-Priorität", "Trigger-Status", "Watchlist-Priorität", "Top Red Flag", "Kurzfazit"
                             ] if c in radar_df.columns]
                             st.dataframe(
-                                style_ranking_table(radar_df[radar_cols].copy()),
+                                style_ranking_df(radar_df[radar_cols].copy()),
                                 hide_index=True,
                                 use_container_width=True,
                                 height=min(520, 45 * len(radar_df) + 40)

@@ -6918,7 +6918,56 @@ if workspace_mode:
                             "Passiv": 1,
                             "Warten": 0,
                         }
+
+                        def build_radar_reason(r):
+                            trigger = str(r.get("trigger_status", "") or "").strip()
+                            setup_type_local = str(r.get("setup_type", "") or "").strip()
+                            entry_quality_local = str(r.get("entry_quality", "") or "").strip().lower()
+                            investment_case_local = float(r.get("investment_case_score", np.nan)) if pd.notna(r.get("investment_case_score", np.nan)) else np.nan
+                            trading_case_local = float(r.get("trading_case_score", np.nan)) if pd.notna(r.get("trading_case_score", np.nan)) else np.nan
+                            leadership_local = str(r.get("leadership_status", "") or "").strip()
+                            top_red_flag_local = str(r.get("top_red_flag", "") or "").strip()
+                            market_regime_local = str((r.get("market_info", {}) or {}).get("regime", "") or "").strip().upper()
+
+                            if trigger == "Aktiv":
+                                return "Trigger aktiv, Einstieg aktuell prüfbar"
+                            if trigger == "Nahe dran":
+                                return "Nahe am Einstieg, Timing fast da"
+                            if trigger == "Frühe Beobachtung":
+                                if setup_type_local and setup_type_local != "Kein sauberes Setup":
+                                    return f"{setup_type_local}-Setup vorhanden, aber noch zu früh"
+                                return "Setup vorhanden, aber noch zu früh"
+                            if top_red_flag_local not in {"", "-", "None"} and market_regime_local == "NEGATIV":
+                                return "Guter Wert, aber Marktumfeld und Risikoflag bremsen"
+                            if pd.notna(investment_case_local) and investment_case_local >= 78 and pd.notna(trading_case_local) and trading_case_local < 60:
+                                return "Starker Investment-Case, Timing noch nicht fertig"
+                            if leadership_local == "Leader":
+                                if setup_type_local and setup_type_local != "Kein sauberes Setup":
+                                    return f"Leader mit konstruktivem {setup_type_local}-Setup"
+                                return "Leader mit konstruktivem Gesamtbild"
+                            if setup_type_local == "Breakout":
+                                return "Breakout-Kandidat mit guter Struktur"
+                            if setup_type_local == "Breakout-Retest":
+                                return "Breakout-Retest mit möglichem Anschluss"
+                            if setup_type_local == "Pullback an MA20":
+                                return "Pullback-Kandidat an MA20"
+                            if setup_type_local == "Pullback an MA50":
+                                return "Pullback-Kandidat an MA50"
+                            if setup_type_local == "Trendfolge":
+                                return "Trendfolger mit konstruktiver Struktur"
+                            if pd.notna(trading_case_local) and trading_case_local >= 68:
+                                return "Gutes Timing und brauchbarer Einstiegs-Case"
+                            if entry_quality_local == "abwarten":
+                                return "Interessant, aber aktuell noch über der Entry-Zone"
+                            if entry_quality_local == "früh":
+                                return "Noch zu früh, Bestätigung fehlt"
+                            if top_red_flag_local not in {"", "-", "None"}:
+                                return f"Interessant, aber {top_red_flag_local[:52]}"
+                            return "Solider Kandidat für die tiefere Prüfung"
+
                         radar_df = build_ranking_table(radar_results)
+                        radar_reason_map = {str(r.get("ticker", "")): build_radar_reason(r) for r in radar_results}
+                        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map(radar_reason_map)
                         radar_df["__trigger_sort"] = radar_df.get("Trigger-Status", pd.Series(dtype=str)).map(trigger_rank_map).fillna(0)
 
                         radar_sort_cols = []
@@ -6945,7 +6994,7 @@ if workspace_mode:
                         st.caption("Sortiert nach Trigger-Nähe, Einstiegsqualität, Investment-Attraktivität und Setup-Priorität.")
                         radar_cols = [c for c in [
                             "Ticker", "Name", "Setup-Typ", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
-                            "Setup-Priorität", "Trigger-Status", "Watchlist-Priorität", "Top Red Flag", "Kurzfazit"
+                            "Setup-Priorität", "Trigger-Status", "Watchlist-Priorität", "Warum heute auffällig", "Top Red Flag"
                         ] if c in radar_df.columns]
                         st.dataframe(
                             style_ranking_df(radar_df[radar_cols].copy()),

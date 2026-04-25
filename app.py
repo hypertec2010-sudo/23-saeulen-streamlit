@@ -150,6 +150,18 @@ if "workspace_mode" not in st.session_state:
 if "ui_refresh_nonce" not in st.session_state:
     st.session_state.ui_refresh_nonce = 0
 
+if "radar_universe" not in st.session_state:
+    st.session_state.radar_universe = "US Basisliste"
+
+if "radar_max_candidates" not in st.session_state:
+    st.session_state.radar_max_candidates = 15
+
+if "radar_custom_input" not in st.session_state:
+    st.session_state.radar_custom_input = ""
+
+if "radar_requested" not in st.session_state:
+    st.session_state.radar_requested = False
+
 
 def trigger_ui_refresh(**state_updates):
     for key, value in state_updates.items():
@@ -6000,7 +6012,7 @@ with wc3:
 st.markdown("""</div>""", unsafe_allow_html=True)
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-st.markdown("""<div class="landing-mini-note">Tipp: Die drei Hauptkarten sind für den täglichen Schnellzugriff optimiert.</div>""", unsafe_allow_html=True)
+st.markdown("""<div class="landing-mini-note">Tipp: Die vier Hauptkarten sind für den täglichen Schnellzugriff optimiert.</div>""", unsafe_allow_html=True)
 
 st.markdown(
     """
@@ -6397,6 +6409,9 @@ elif workspace_mode == "Sofortanalyse":
 elif workspace_mode == "Watchlisten":
     st.markdown("<div class='section-accent purple'>Watchlisten aktiv</div>", unsafe_allow_html=True)
     st.caption("Hier organisierst du Beobachtungslisten und kannst sie direkt analysieren oder mit Telegram prüfen.")
+elif workspace_mode == "Kandidaten-Radar":
+    st.markdown("<div class='section-accent blue'>Kandidaten-Radar aktiv</div>", unsafe_allow_html=True)
+    st.caption("Neue Werte vorsortieren, bevor du sie tiefer in der Analyse oder Watchlist bearbeitest.")
 else:
     st.markdown("<div class='section-accent amber'>Positionen aktiv</div>", unsafe_allow_html=True)
     st.caption("Hier konzentrierst du dich auf bestehende Positionen und führst sie als Positions-Watchlisten.")
@@ -6750,6 +6765,66 @@ if workspace_mode:
             """,
             unsafe_allow_html=True,
         )
+    elif workspace_mode == "Kandidaten-Radar":
+        st.markdown(
+            """
+            <div class="mobile-form-card" style="border-left:5px solid #3b82f6;">
+                <div class="mobile-form-title">Kandidaten-Radar</div>
+                <div class="mobile-form-sub">
+                    Dieser neue Bereich soll dir täglich interessante Kaufkandidaten vorsortieren, bevor du sie tiefer analysierst. In dieser ersten Version bauen wir nur den Steuerblock und noch keinen fertigen Radar-Lauf.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        rc1, rc2, rc3 = st.columns([1.4, 0.8, 1.0])
+        with rc1:
+            radar_universe = st.selectbox(
+                "Universum",
+                options=["US Basisliste", "US Tech", "Europa", "Eigene Liste"],
+                index=["US Basisliste", "US Tech", "Europa", "Eigene Liste"].index(st.session_state.radar_universe if st.session_state.radar_universe in ["US Basisliste", "US Tech", "Europa", "Eigene Liste"] else "US Basisliste"),
+                key="radar_universe_widget"
+            )
+            st.session_state.radar_universe = radar_universe
+        with rc2:
+            radar_max_candidates = st.selectbox(
+                "Max. Kandidaten",
+                options=[10, 15, 20],
+                index=[10, 15, 20].index(st.session_state.radar_max_candidates if st.session_state.radar_max_candidates in [10, 15, 20] else 15),
+                key="radar_max_candidates_widget"
+            )
+            st.session_state.radar_max_candidates = radar_max_candidates
+        with rc3:
+            st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+            if st.button("Kandidaten-Radar starten", use_container_width=True, type="primary", key="run_candidate_radar_btn"):
+                st.session_state.radar_requested = True
+                st.info("Der Steuerblock ist angelegt. Im nächsten Schritt kommt der eigentliche Radar-Lauf mit Ranking-Tabelle.")
+
+        if st.session_state.radar_universe == "Eigene Liste":
+            radar_custom_input = st.text_area(
+                "Eigene Kandidatenliste",
+                value=st.session_state.radar_custom_input,
+                placeholder="Ein Wert pro Zeile oder durch Komma trennen, z. B.\nAAPL\nNVDA\nASML\nSAP",
+                height=110,
+                key="radar_custom_input_widget"
+            ).strip()
+            st.session_state.radar_custom_input = radar_custom_input
+
+        st.markdown(
+            """
+            <div class="section-card">
+                <div class="premium-title">V1 in diesem Schritt</div>
+                <div class="premium-value">Neuer Workspace + Steuerblock</div>
+                <div class="premium-sub">
+                    Der eigentliche Radar-Lauf folgt als nächster Schritt. Danach kommen Top-Kandidaten heute, Übernahme in die Analyse und Übergabe an Watchlisten.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.stop()
     else:
         st.markdown(
             """
@@ -9210,4 +9285,3 @@ if result is not None:
                 )
 
             st.caption("Diese erweiterte Sicht zeigt die zusätzlichen Diagnose- und Einordnungsbausteine der Entscheidung.")
-

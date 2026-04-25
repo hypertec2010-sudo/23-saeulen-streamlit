@@ -6786,10 +6786,14 @@ if workspace_mode:
         )
 
         us_tech_universe = [
-            "AAPL", "MSFT", "NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "ADI", "AMAT",
-            "LRCX", "KLAC", "INTC", "CRWD", "PANW", "SNPS", "CDNS", "ANET", "PLTR", "DDOG",
-            "MDB", "NOW", "TEAM", "SHOP", "ADBE", "CRM", "ORCL", "META", "GOOGL", "AMZN",
-            "TSM", "ASML", "ARM"
+            "AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CRM", "ADBE", "AMD", "CSCO", "IBM",
+            "QCOM", "TXN", "MU", "INTU", "AMAT", "ADI", "LRCX", "KLAC", "INTC", "PANW",
+            "CRWD", "SNPS", "CDNS", "ANET", "PLTR", "NOW", "ADSK", "TEAM", "ROP", "DELL",
+            "HPQ", "WDAY", "DDOG", "NET", "MDB", "ZS", "OKTA", "HUBS", "SHOP", "SQ",
+            "UBER", "ABNB", "META", "GOOGL", "AMZN", "NFLX", "TSM", "ASML", "ARM", "SMCI",
+            "APH", "FTNT", "MCHP", "NXPI", "MRVL", "ON", "STM", "MPWR", "GFS", "WDC",
+            "STX", "NTAP", "DOCU", "SNOW", "FICO", "TTD", "PINS", "SAP", "PATH", "ESTC",
+            "DT", "APP", "RBLX", "GEN", "AKAM"
         ]
 
         rc1, rc2, rc3 = st.columns([1.4, 0.8, 1.0])

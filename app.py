@@ -6994,18 +6994,52 @@ if workspace_mode:
                         radar_df = radar_df.drop(columns=["__trigger_sort"], errors="ignore").reset_index(drop=True)
                         radar_df = radar_df.head(int(st.session_state.radar_max_candidates))
 
-                        st.markdown("### Top-Kandidaten heute")
-                        st.caption("Sortiert nach Trigger-Nähe, Einstiegsqualität, Investment-Attraktivität und Setup-Priorität.")
+                        st.markdown("### Kandidaten nach Reifegrad")
+                        st.caption("Die Radar-Ergebnisse sind jetzt in sofort nutzbare Kaufkandidaten, vorbereitete Kandidaten und spätere Beobachtungswerte getrennt.")
                         radar_cols = [c for c in [
                             "Ticker", "Name", "Setup-Typ", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
                             "Setup-Priorität", "Trigger-Status", "Watchlist-Priorität", "Warum heute auffällig", "Top Red Flag"
                         ] if c in radar_df.columns]
-                        st.dataframe(
-                            style_ranking_df(radar_df[radar_cols].copy()),
-                            hide_index=True,
-                            use_container_width=True,
-                            height=min(520, 45 * len(radar_df) + 40)
+
+                        trigger_series = radar_df["Trigger-Status"].astype(str).fillna("") if "Trigger-Status" in radar_df.columns else pd.Series([""] * len(radar_df))
+                        entry_series = pd.to_numeric(radar_df["Einstieg jetzt attraktiv?"], errors="coerce") if "Einstieg jetzt attraktiv?" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
+                        invest_series = pd.to_numeric(radar_df["Investment-Attraktivität"], errors="coerce") if "Investment-Attraktivität" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
+
+                        mask_now = (
+                            trigger_series.isin(["Aktiv", "Nahe dran"])
+                            | (entry_series >= 68)
                         )
+                        mask_later = (
+                            trigger_series.isin(["Beobachten", "Passiv", "Warten"])
+                            | ((invest_series >= 70) & (entry_series < 60))
+                        )
+                        mask_near = ~(mask_now | mask_later)
+
+                        radar_now_df = radar_df[mask_now].copy().reset_index(drop=True)
+                        radar_near_df = radar_df[mask_near].copy().reset_index(drop=True)
+                        radar_later_df = radar_df[mask_later].copy().reset_index(drop=True)
+
+                        section_specs = [
+                            ("Jetzt spannend", "Aktive oder fast aktive Kandidaten mit brauchbarer Einstiegsreife.", radar_now_df),
+                            ("Nahe dran", "Interessante Kandidaten, bei denen Setup oder Timing noch einen Schritt brauchen.", radar_near_df),
+                            ("Später beobachten", "Gute Werte für die engere Watchlist, aber noch nicht reif für einen direkten Einstieg.", radar_later_df),
+                        ]
+
+                        for section_title, section_caption, section_df in section_specs:
+                            st.markdown(f"#### {section_title}")
+                            st.caption(section_caption)
+                            if section_df.empty:
+                                st.markdown(
+                                    '<div class="empty-state"><div class="empty-state-title">Aktuell keine Werte in dieser Stufe</div><div class="empty-state-text">Die momentane Radar-Auswahl liefert in diesem Reifegrad gerade keine Kandidaten.</div></div>',
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                st.dataframe(
+                                    style_ranking_df(section_df[radar_cols].copy()),
+                                    hide_index=True,
+                                    use_container_width=True,
+                                    height=min(340, 45 * len(section_df) + 40)
+                                )
 
                         if radar_resolution_rows and st.session_state.radar_universe == "Eigene Liste":
                             with st.expander("Aufgelöste Radar-Eingaben", expanded=False):

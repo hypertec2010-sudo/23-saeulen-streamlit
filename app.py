@@ -7040,11 +7040,72 @@ if workspace_mode:
 
                         radar_df = build_ranking_table(radar_results)
                         radar_reason_map = {str(r.get("ticker", "")): build_radar_reason(r) for r in radar_results}
+                        radar_result_map = {str(r.get("ticker", "")): r for r in radar_results}
                         radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map(radar_reason_map)
                         radar_df["__trigger_sort"] = radar_df.get("Trigger-Status", pd.Series(dtype=str)).map(trigger_rank_map).fillna(0)
 
+                        def compute_radar_style_sort(row):
+                            tkr = str(row.get("Ticker", "") or "")
+                            r = radar_result_map.get(tkr, {}) or {}
+                            trigger_score = float(row.get("__trigger_sort", 0) or 0)
+                            entry_score_local = pd.to_numeric(row.get("Einstieg jetzt attraktiv?", np.nan), errors="coerce")
+                            invest_score_local = pd.to_numeric(row.get("Investment-Attraktivität", np.nan), errors="coerce")
+                            setup_priority_local = pd.to_numeric(row.get("Setup-Priorität", np.nan), errors="coerce")
+                            leadership_local = pd.to_numeric(r.get("leadership_score", np.nan), errors="coerce")
+                            catalyst_local = pd.to_numeric(r.get("catalyst_score", np.nan), errors="coerce")
+                            short_term_local = pd.to_numeric(r.get("short_term_score", np.nan), errors="coerce")
+                            tb_local = pd.to_numeric(r.get("tb_score_100", np.nan), errors="coerce")
+                            exit_local = pd.to_numeric(r.get("exit_score", np.nan), errors="coerce")
+                            setup_conf_local = pd.to_numeric(r.get("setup_confidence", np.nan), errors="coerce")
+                            rebound_bonus = 0.0
+                            setup_type_local = str(r.get("setup_type", "") or "")
+                            if setup_type_local in {"Rebound", "Breakout-Retest", "Pullback an MA20", "Pullback an MA50"}:
+                                rebound_bonus = 8.0
+                            leader_bonus = 0.0
+                            if str(r.get("leadership_status", "") or "") == "Leader":
+                                leader_bonus = 8.0
+                            safe = lambda v, default=0.0: default if pd.isna(v) else float(v)
+                            style_name = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
+                            if style_name == "Leader":
+                                return (
+                                    trigger_score * 18
+                                    + safe(entry_score_local) * 0.32
+                                    + safe(setup_priority_local) * 0.24
+                                    + safe(leadership_local) * 0.18
+                                    + safe(invest_score_local) * 0.08
+                                    + safe(setup_conf_local) * 0.08
+                                    + leader_bonus
+                                )
+                            if style_name == "Turnaround":
+                                return (
+                                    trigger_score * 10
+                                    + safe(entry_score_local) * 0.18
+                                    + safe(invest_score_local) * 0.12
+                                    + safe(catalyst_local) * 0.20
+                                    + safe(short_term_local) * 0.18
+                                    + safe(tb_local) * 0.12
+                                    + (100 - safe(exit_local, 100)) * 0.08
+                                    + rebound_bonus
+                                )
+                            return (
+                                trigger_score * 14
+                                + safe(entry_score_local) * 0.26
+                                + safe(invest_score_local) * 0.18
+                                + safe(setup_priority_local) * 0.18
+                                + safe(leadership_local) * 0.10
+                                + safe(catalyst_local) * 0.08
+                                + safe(setup_conf_local) * 0.06
+                                + rebound_bonus * 0.5
+                                + leader_bonus * 0.5
+                            )
+
+                        radar_df["__style_sort"] = radar_df.apply(compute_radar_style_sort, axis=1)
+
                         radar_sort_cols = []
                         radar_sort_ascending = []
+                        if "__style_sort" in radar_df.columns:
+                            radar_sort_cols.append("__style_sort")
+                            radar_sort_ascending.append(False)
                         if "__trigger_sort" in radar_df.columns:
                             radar_sort_cols.append("__trigger_sort")
                             radar_sort_ascending.append(False)
@@ -7060,7 +7121,7 @@ if workspace_mode:
                         if radar_sort_cols:
                             radar_df = radar_df.sort_values(by=radar_sort_cols, ascending=radar_sort_ascending)
 
-                        radar_df = radar_df.drop(columns=["__trigger_sort"], errors="ignore").reset_index(drop=True)
+                        radar_df = radar_df.drop(columns=["__trigger_sort", "__style_sort"], errors="ignore").reset_index(drop=True)
                         radar_df = radar_df.head(int(st.session_state.radar_max_candidates))
 
                         st.markdown("### Kandidaten nach Reifegrad")

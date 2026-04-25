@@ -6901,6 +6901,7 @@ if workspace_mode:
         )
 
         if st.session_state.get("radar_requested", False):
+            st.session_state.radar_requested = False
             if st.session_state.radar_universe == "Eigene Liste":
                 radar_entries = split_batch_input(st.session_state.radar_custom_input)
                 radar_resolution_rows = []

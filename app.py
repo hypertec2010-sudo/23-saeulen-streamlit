@@ -162,6 +162,9 @@ if "radar_custom_input" not in st.session_state:
 if "radar_requested" not in st.session_state:
     st.session_state.radar_requested = False
 
+if "radar_screening_style" not in st.session_state:
+    st.session_state.radar_screening_style = "Leader"
+
 
 def trigger_ui_refresh(**state_updates):
     for key, value in state_updates.items():
@@ -6838,7 +6841,7 @@ if workspace_mode:
             "Halbleiter": (semiconductor_universe, "Halbleiter", "Fokusliste für Chipdesigner, Ausrüster und Halbleiterfertiger."),
         }
 
-        rc1, rc2, rc3 = st.columns([1.4, 0.8, 1.0])
+        rc1, rc2, rc3, rc4 = st.columns([1.3, 1.0, 0.7, 1.0])
         with rc1:
             radar_universe = st.selectbox(
                 "Universum",
@@ -6848,6 +6851,15 @@ if workspace_mode:
             )
             st.session_state.radar_universe = radar_universe
         with rc2:
+            style_options = ["Leader", "Turnaround", "Ausgewogen"]
+            radar_screening_style = st.selectbox(
+                "Screening-Stil",
+                options=style_options,
+                index=style_options.index(st.session_state.radar_screening_style if st.session_state.radar_screening_style in style_options else "Leader"),
+                key="radar_screening_style_widget"
+            )
+            st.session_state.radar_screening_style = radar_screening_style
+        with rc3:
             radar_max_candidates = st.selectbox(
                 "Max. Kandidaten",
                 options=[10, 15, 20],
@@ -6855,11 +6867,18 @@ if workspace_mode:
                 key="radar_max_candidates_widget"
             )
             st.session_state.radar_max_candidates = radar_max_candidates
-        with rc3:
+        with rc4:
             st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
             run_candidate_radar = st.button("Kandidaten-Radar starten", use_container_width=True, type="primary", key="run_candidate_radar_btn")
             if run_candidate_radar:
                 st.session_state.radar_requested = True
+
+        style_note_map = {
+            "Leader": "Bevorzugt bestätigte Stärke, Leadership und saubere Trend-Setups.",
+            "Turnaround": "Für den nächsten Schritt nur als Suchstil vorgemerkt. Die Gewichtung folgt im nächsten Ausbau.",
+            "Ausgewogen": "Mittelweg zwischen bestätigter Stärke und früheren Chancen. Die Gewichtung folgt im nächsten Ausbau.",
+        }
+        st.caption(f"Aktiver Screening-Stil: {st.session_state.radar_screening_style} | {style_note_map.get(st.session_state.radar_screening_style, '')}")
 
         if st.session_state.radar_universe == "Eigene Liste":
             radar_custom_input = st.text_area(

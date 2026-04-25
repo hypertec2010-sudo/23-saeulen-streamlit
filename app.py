@@ -6875,8 +6875,8 @@ if workspace_mode:
 
         style_note_map = {
             "Leader": "Bevorzugt bestätigte Stärke, Leadership und saubere Trend-Setups.",
-            "Turnaround": "Für den nächsten Schritt nur als Suchstil vorgemerkt. Die Gewichtung folgt im nächsten Ausbau.",
-            "Ausgewogen": "Mittelweg zwischen bestätigter Stärke und früheren Chancen. Die Gewichtung folgt im nächsten Ausbau.",
+            "Turnaround": "Bevorzugt frühe Drehkandidaten, Rebounds und technische Erholungsfenster.",
+            "Ausgewogen": "Mittelweg zwischen bestätigter Stärke und früheren Chancen.",
         }
         st.caption(f"Aktiver Screening-Stil: {st.session_state.radar_screening_style} | {style_note_map.get(st.session_state.radar_screening_style, '')}")
 
@@ -7006,6 +7006,8 @@ if workspace_mode:
                             short_term_local = pd.to_numeric(r.get("short_term_score", np.nan), errors="coerce")
                             tb_local = pd.to_numeric(r.get("tb_score_100", np.nan), errors="coerce")
                             exit_local = pd.to_numeric(r.get("exit_score", np.nan), errors="coerce")
+                            setup_conf_local = pd.to_numeric(r.get("setup_confidence", np.nan), errors="coerce")
+                            setup_priority_local = pd.to_numeric(r.get("setup_priority_score", np.nan), errors="coerce")
 
                             if style_name_local == "Turnaround":
                                 if setup_type_local == "Rebound":
@@ -7032,41 +7034,58 @@ if workspace_mode:
                                     return f"Früher Kandidat, aber noch Gegenwind: {top_red_flag_local[:40]}"
                                 return "Früher technischer Kandidat vor voller Bestätigung"
 
-                            if trigger == "Aktiv":
-                                return "Trigger aktiv, Einstieg aktuell prüfbar"
+                            if style_name_local == "Leader":
+                                if leadership_local == "Leader" and setup_type_local and setup_type_local != "Kein sauberes Setup":
+                                    return f"Leader mit sauberem {setup_type_local}-Setup"
+                                if leadership_local == "Leader":
+                                    return "Leader mit bestätigter Stärke"
+                                if trigger in {"Aktiv", "Jetzt prüfbar"} and pd.notna(setup_conf_local) and setup_conf_local >= 65:
+                                    return "Bestätigtes Setup, Einstieg jetzt konkret prüfbar"
+                                if trigger in {"Nahe dran", "Fast prüfbar"} and pd.notna(setup_priority_local) and setup_priority_local >= 65:
+                                    return "Starker Leader-Kandidat, Trigger fast vollständig"
+                                if setup_type_local == "Breakout":
+                                    return "Breakout-Leader mit sauberer Struktur"
+                                if setup_type_local == "Trendfolge":
+                                    return "Trendführer mit stabiler Fortsetzungsstruktur"
+                                if setup_type_local == "Pullback an MA20":
+                                    return "Leader im konstruktiven Pullback an MA20"
+                                if pd.notna(trading_case_local) and trading_case_local >= 70 and pd.notna(investment_case_local) and investment_case_local >= 72:
+                                    return "Bestätigte Stärke bei gutem Timing-Fenster"
+                                if top_red_flag_local not in {"", "-", "None"}:
+                                    return f"Leader-Qualität vorhanden, aber noch Bremse: {top_red_flag_local[:42]}"
+                                return "Bestätigter Stärke-Kandidat mit sauberem Gesamtbild"
+
+                            if trigger in {"Aktiv", "Jetzt prüfbar"}:
+                                return "Gutes Gesamtbild mit direkt prüfbarem Einstieg"
                             if trigger in {"Nahe dran", "Fast prüfbar"}:
-                                return "Nahe am Einstieg, Timing fast da"
+                                return "Ausgewogener Kandidat, Timing fast vollständig"
+                            if pd.notna(investment_case_local) and investment_case_local >= 78 and pd.notna(trading_case_local) and trading_case_local < 60:
+                                return "Starker Investment-Case, Timing zieht noch nicht ganz mit"
+                            if leadership_local == "Leader" and pd.notna(catalyst_local) and catalyst_local >= 60:
+                                return "Leader-Qualität mit zusätzlichem Katalysator"
+                            if setup_type_local == "Breakout":
+                                return "Starker Kandidat mit Breakout-Charakter"
+                            if setup_type_local == "Breakout-Retest":
+                                return "Retest-Kandidat mit ausgewogenem Chance-Risiko-Profil"
+                            if setup_type_local == "Pullback an MA20":
+                                return "Qualitätswert im konstruktiven Pullback an MA20"
+                            if setup_type_local == "Pullback an MA50":
+                                return "Rücksetzer an MA50, aber Grundbild bleibt intakt"
+                            if setup_type_local == "Trendfolge":
+                                return "Solider Trendfolger mit brauchbarer Struktur"
                             if trigger in {"Frühe Beobachtung", "Früh interessant"}:
                                 if setup_type_local and setup_type_local != "Kein sauberes Setup":
-                                    return f"{setup_type_local}-Setup vorhanden, aber noch zu früh"
-                                return "Setup vorhanden, aber noch zu früh"
+                                    return f"{setup_type_local}-Ansatz vorhanden, aber noch nicht reif genug"
+                                return "Früher Kandidat mit gemischtem Timing"
                             if top_red_flag_local not in {"", "-", "None"} and market_regime_local == "NEGATIV":
-                                return "Guter Wert, aber Marktumfeld und Risikoflag bremsen"
-                            if pd.notna(investment_case_local) and investment_case_local >= 78 and pd.notna(trading_case_local) and trading_case_local < 60:
-                                return "Starker Investment-Case, Timing noch nicht fertig"
-                            if leadership_local == "Leader":
-                                if setup_type_local and setup_type_local != "Kein sauberes Setup":
-                                    return f"Leader mit konstruktivem {setup_type_local}-Setup"
-                                return "Leader mit konstruktivem Gesamtbild"
-                            if setup_type_local == "Breakout":
-                                return "Breakout-Kandidat mit guter Struktur"
-                            if setup_type_local == "Breakout-Retest":
-                                return "Breakout-Retest mit möglichem Anschluss"
-                            if setup_type_local == "Pullback an MA20":
-                                return "Pullback-Kandidat an MA20"
-                            if setup_type_local == "Pullback an MA50":
-                                return "Pullback-Kandidat an MA50"
-                            if setup_type_local == "Trendfolge":
-                                return "Trendfolger mit konstruktiver Struktur"
-                            if pd.notna(trading_case_local) and trading_case_local >= 68:
-                                return "Gutes Timing und brauchbarer Einstiegs-Case"
+                                return "Ordentlicher Kandidat, aber Marktumfeld und Risiko bremsen"
                             if entry_quality_local == "abwarten":
                                 return "Interessant, aber aktuell noch über der Entry-Zone"
                             if entry_quality_local == "früh":
-                                return "Noch zu früh, Bestätigung fehlt"
+                                return "Interessant, aber Bestätigung fehlt noch"
                             if top_red_flag_local not in {"", "-", "None"}:
-                                return f"Interessant, aber {top_red_flag_local[:52]}"
-                            return "Solider Kandidat für die tiefere Prüfung"
+                                return f"Ausgewogener Kandidat, aber {top_red_flag_local[:52]}"
+                            return "Ausgewogener Kandidat mit brauchbarem Gesamtbild"
 
                         radar_df = build_ranking_table(radar_results)
                         radar_reason_map = {str(r.get("ticker", "")): build_radar_reason(r) for r in radar_results}

@@ -6993,6 +6993,7 @@ if workspace_mode:
                         }
 
                         def build_radar_reason(r):
+                            style_name_local = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
                             trigger = str(r.get("trigger_status", "") or "").strip()
                             setup_type_local = str(r.get("setup_type", "") or "").strip()
                             entry_quality_local = str(r.get("entry_quality", "") or "").strip().lower()
@@ -7001,6 +7002,35 @@ if workspace_mode:
                             leadership_local = str(r.get("leadership_status", "") or "").strip()
                             top_red_flag_local = str(r.get("top_red_flag", "") or "").strip()
                             market_regime_local = str((r.get("market_info", {}) or {}).get("regime", "") or "").strip().upper()
+                            catalyst_local = pd.to_numeric(r.get("catalyst_score", np.nan), errors="coerce")
+                            short_term_local = pd.to_numeric(r.get("short_term_score", np.nan), errors="coerce")
+                            tb_local = pd.to_numeric(r.get("tb_score_100", np.nan), errors="coerce")
+                            exit_local = pd.to_numeric(r.get("exit_score", np.nan), errors="coerce")
+
+                            if style_name_local == "Turnaround":
+                                if setup_type_local == "Rebound":
+                                    return "Frühe technische Drehung mit Rebound-Charakter"
+                                if setup_type_local == "Breakout-Retest":
+                                    return "Rückeroberung läuft, Bestätigung über Retest möglich"
+                                if setup_type_local == "Pullback an MA20":
+                                    return "Frischer Stabilisierungsversuch nahe MA20"
+                                if setup_type_local == "Pullback an MA50":
+                                    return "Pullback an MA50 kann zur Trenddrehung werden"
+                                if trigger in {"Aktiv", "Jetzt prüfbar"}:
+                                    return "Turnaround-Setup ist jetzt erstmals konkret prüfbar"
+                                if trigger in {"Nahe dran", "Fast prüfbar"}:
+                                    return "Frühe Drehung sichtbar, aber Bestätigung fehlt noch knapp"
+                                if pd.notna(catalyst_local) and catalyst_local >= 65:
+                                    return "Katalysator verbessert das Turnaround-Fenster"
+                                if pd.notna(short_term_local) and short_term_local >= 60 and pd.notna(tb_local) and tb_local >= 58:
+                                    return "Kurzfristbild dreht, obwohl der Titel noch nicht voll bestätigt ist"
+                                if pd.notna(exit_local) and exit_local <= 35:
+                                    return "Exit-Druck ist begrenzt, Raum für technische Erholung vorhanden"
+                                if entry_quality_local == "früh":
+                                    return "Noch zu früh, aber erste Drehansätze werden sichtbar"
+                                if top_red_flag_local not in {"", "-", "None"}:
+                                    return f"Früher Kandidat, aber noch Gegenwind: {top_red_flag_local[:40]}"
+                                return "Früher technischer Kandidat vor voller Bestätigung"
 
                             if trigger == "Aktiv":
                                 return "Trigger aktiv, Einstieg aktuell prüfbar"

@@ -7015,6 +7015,44 @@ if workspace_mode:
                             with st.expander("Nicht analysierbare Radar-Werte", expanded=False):
                                 st.dataframe(pd.DataFrame(radar_errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
 
+                        radar_top_tickers = radar_df["Ticker"].astype(str).tolist() if "Ticker" in radar_df.columns else []
+                        radar_batch_text = "\n".join(radar_top_tickers)
+
+                        st.markdown("### Radar-Ergebnisse direkt nutzen")
+                        st.caption("Die aktuellen Top-Kandidaten lassen sich direkt in die Sofortanalyse übernehmen oder in die aktuell ausgewählte Watchlist schreiben.")
+                        ra1, ra2 = st.columns(2)
+                        with ra1:
+                            if st.button("Top-Kandidaten in Sofortanalyse laden", use_container_width=True, key="radar_load_into_analysis_btn"):
+                                if radar_top_tickers:
+                                    st.session_state.batch_input = radar_batch_text
+                                    st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
+                                    st.session_state.analysis_mode_run = "Mehrere Aktien vergleichen"
+                                    st.session_state.workspace_mode = "Sofortanalyse"
+                                    st.success(f"{len(radar_top_tickers)} Radar-Kandidaten wurden in die Sofortanalyse übernommen.")
+                                    st.rerun()
+                                else:
+                                    st.info("Es sind keine Radar-Kandidaten zum Übernehmen vorhanden.")
+                        with ra2:
+                            selected_watchlist_name_for_radar = str(st.session_state.get("selected_watchlist_name", "") or "").strip()
+                            selected_watchlist_type_for_radar = str(st.session_state.get("selected_watchlist_type", "Watchlist") or "Watchlist").strip() or "Watchlist"
+                            add_label = "Top-Kandidaten zur ausgewählten Watchlist hinzufügen"
+                            if st.button(add_label, use_container_width=True, key="radar_add_to_watchlist_btn"):
+                                if not radar_top_tickers:
+                                    st.info("Es sind keine Radar-Kandidaten zum Hinzufügen vorhanden.")
+                                elif not selected_watchlist_name_for_radar:
+                                    st.info("Bitte wähle oder erstelle zuerst oben eine Watchlist.")
+                                else:
+                                    ok, msg = add_entries_to_watchlist(
+                                        selected_watchlist_name_for_radar,
+                                        selected_watchlist_type_for_radar,
+                                        radar_top_tickers,
+                                        check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich")
+                                    )
+                                    if ok:
+                                        st.success(msg)
+                                    else:
+                                        st.error(msg)
+
         st.stop()
     else:
         st.markdown(

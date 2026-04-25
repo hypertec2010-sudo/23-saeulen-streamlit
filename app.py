@@ -5986,7 +5986,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown("""<div class="landing-cards-wrap">""", unsafe_allow_html=True)
-wc1, wc2, wc3 = st.columns(3)
+wc1, wc2, wc3, wc4 = st.columns(4)
 with wc1:
     if st.button(
         "🔎 Sofortanalyse\nEinzelaktie oder Vergleich",
@@ -6008,6 +6008,13 @@ with wc3:
         key="workspace_position_btn"
     ):
         st.session_state.workspace_mode = "Positionen"
+with wc4:
+    if st.button(
+        "🎯 Kandidaten-Radar\nInteressante Werte vorsortieren",
+        use_container_width=True,
+        key="workspace_candidate_radar_btn"
+    ):
+        st.session_state.workspace_mode = "Kandidaten-Radar"
 
 st.markdown("""</div>""", unsafe_allow_html=True)
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)

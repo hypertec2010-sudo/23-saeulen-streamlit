@@ -6809,13 +6809,41 @@ if workspace_mode:
             "STX", "NTAP", "DOCU", "SNOW", "FICO", "TTD", "PINS", "SAP", "PATH", "ESTC",
             "DT", "APP", "RBLX", "GEN", "AKAM"
         ]
+        us_basis_universe = [
+            "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "BRK-B", "JPM", "LLY", "V",
+            "XOM", "UNH", "AVGO", "MA", "COST", "WMT", "JNJ", "PG", "HD", "ABBV",
+            "BAC", "KO", "MRK", "PEP", "CVX", "ADBE", "CRM", "NFLX", "AMD", "ORCL",
+            "LIN", "TMO", "MCD", "GE", "CAT", "AMAT", "GS", "AXP", "NOW", "PM"
+        ]
+        europa_quality_universe = [
+            "SAP", "ASML", "NESN.SW", "NOVO-B.CO", "MC.PA", "SU.PA", "AIR.PA", "SIE.DE", "DTE.DE", "ALV.DE",
+            "MUV2.DE", "RMS.PA", "OR.PA", "SAN.PA", "BN.PA", "DG.PA", "EL.PA", "SAF.PA", "CS.PA", "ULVR.L",
+            "AZN.L", "SHEL.L", "REL.L", "LSEG.L", "DGE.L", "GSK.L", "ABBN.SW", "ROG.SW", "SIKA.SW", "UHR.SW",
+            "ISP.MI", "UCG.MI", "IBE.MC", "IBE.MC", "FER.MC", "RACE.MI", "NDA-FI.HE", "DSY.PA", "KER.PA", "HEI.DE"
+        ]
+        semiconductor_universe = [
+            "NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "ADI", "AMAT", "LRCX", "KLAC",
+            "INTC", "MCHP", "NXPI", "MRVL", "ON", "MPWR", "GFS", "SWKS", "QRVO", "TER",
+            "TSM", "ASML", "ASM.AS", "BE Semiconductor Industries NV", "ARM"
+        ]
+        semiconductor_universe = [
+            "NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "ADI", "AMAT", "LRCX", "KLAC",
+            "INTC", "MCHP", "NXPI", "MRVL", "ON", "MPWR", "GFS", "SWKS", "QRVO", "TER",
+            "TSM", "ASML", "ARM", "STM", "ENTG"
+        ]
+        radar_universe_map = {
+            "US Tech": (us_tech_universe, "US Tech Fokus", "Breites Tech- und Plattformuniversum mit 75 vordefinierten Werten."),
+            "US Basisliste": (us_basis_universe, "US Basisliste", "Große US-Standardwerte als breiter Startscreen für neue Ideen."),
+            "Europa Qualität": (europa_quality_universe, "Europa Qualität", "Europäische Qualitäts- und Large-Cap-Werte mit stabiler Marktstellung."),
+            "Halbleiter": (semiconductor_universe, "Halbleiter", "Fokusliste für Chipdesigner, Ausrüster und Halbleiterfertiger."),
+        }
 
         rc1, rc2, rc3 = st.columns([1.4, 0.8, 1.0])
         with rc1:
             radar_universe = st.selectbox(
                 "Universum",
-                options=["US Basisliste", "US Tech", "Europa", "Eigene Liste"],
-                index=["US Basisliste", "US Tech", "Europa", "Eigene Liste"].index(st.session_state.radar_universe if st.session_state.radar_universe in ["US Basisliste", "US Tech", "Europa", "Eigene Liste"] else "US Tech"),
+                options=["US Tech", "US Basisliste", "Europa Qualität", "Halbleiter", "Eigene Liste"],
+                index=["US Tech", "US Basisliste", "Europa Qualität", "Halbleiter", "Eigene Liste"].index(st.session_state.radar_universe if st.session_state.radar_universe in ["US Tech", "US Basisliste", "Europa Qualität", "Halbleiter", "Eigene Liste"] else "US Tech"),
                 key="radar_universe_widget"
             )
             st.session_state.radar_universe = radar_universe
@@ -6841,28 +6869,29 @@ if workspace_mode:
                 key="radar_custom_input_widget"
             ).strip()
             st.session_state.radar_custom_input = radar_custom_input
-        elif st.session_state.radar_universe == "US Tech":
+        elif st.session_state.radar_universe in radar_universe_map:
+            active_universe, active_label, active_desc = radar_universe_map[st.session_state.radar_universe]
             st.markdown(
                 f"""
                 <div class="section-card">
                     <div class="premium-title">Aktives Start-Universum</div>
-                    <div class="premium-value">US Tech Fokus</div>
+                    <div class="premium-value">{active_label}</div>
                     <div class="premium-sub">
-                        {len(us_tech_universe)} vordefinierte Tech- und Plattformwerte werden mit der bestehenden Analyse-Engine gescannt und anschließend nach Trigger-Nähe, Einstiegsqualität und Investment-Attraktivität sortiert.
+                        {len(active_universe)} vordefinierte Werte werden mit der bestehenden Analyse-Engine gescannt und anschließend nach Trigger-Nähe, Einstiegsqualität und Investment-Attraktivität sortiert. {active_desc}
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            st.caption("Beispielwerte: " + ", ".join(us_tech_universe[:12]) + " …")
+            st.caption("Beispielwerte: " + ", ".join(active_universe[:12]) + " …")
         else:
-            st.info("Im nächsten Schritt folgen weitere feste Universen. Aktuell sind 'US Tech' und 'Eigene Liste' aktiv.")
+            st.info("Bitte wähle ein Radar-Universum oder nutze eine eigene Liste.")
 
         st.markdown(
             """
             <div class="section-card">
                 <div class="premium-title">V1 in diesem Schritt</div>
-                <div class="premium-value">US Tech oder Eigene Liste → Radar-Lauf → Top-Kandidaten heute</div>
+                <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Radar-Lauf → Top-Kandidaten heute</div>
                 <div class="premium-sub">
                     Die bestehende Analyse-Logik wird auf ein erstes Start-Universum oder deine eigene Liste angewendet und als kompakte Kandidaten-Tabelle sortiert.
                 </div>
@@ -6888,15 +6917,15 @@ if workspace_mode:
                         })
                         if resolved and resolved not in resolved_radar_entries:
                             resolved_radar_entries.append(resolved)
-            elif st.session_state.radar_universe == "US Tech":
-                resolved_radar_entries = list(us_tech_universe)
+            elif st.session_state.radar_universe in radar_universe_map:
+                resolved_radar_entries = list(radar_universe_map[st.session_state.radar_universe][0])
                 radar_resolution_rows = [{"Eingabe": tkr, "Aufgelöst zu": tkr} for tkr in resolved_radar_entries]
             else:
                 resolved_radar_entries = []
                 radar_resolution_rows = []
-                st.warning("Dieses Universum folgt im nächsten Schritt. Aktuell sind 'US Tech' und 'Eigene Liste' nutzbar.")
+                st.warning("Bitte wähle ein gültiges Radar-Universum oder nutze eine eigene Liste.")
 
-            if st.session_state.radar_universe in {"US Tech", "Eigene Liste"}:
+            if st.session_state.radar_universe in set(radar_universe_map.keys()) | {"Eigene Liste"}:
                 if not resolved_radar_entries:
                     if st.session_state.radar_universe == "Eigene Liste":
                         st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")

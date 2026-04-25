@@ -1258,11 +1258,11 @@ def style_ranking_df(df):
 
     def trigger_style(v):
         val = str(v or "").strip().lower()
-        if val in {"aktiv", "nahe dran"}:
+        if val in {"aktiv", "nahe dran", "jetzt prüfbar", "fast prüfbar"}:
             return "background-color: rgba(34,197,94,0.28); color: white; font-weight:700;"
-        if val in {"frühe beobachtung", "beobachten", "warten"}:
+        if val in {"frühe beobachtung", "beobachten", "warten", "früh interessant", "weiter beobachten", "noch warten"}:
             return "background-color: rgba(245,158,11,0.28); color: white; font-weight:700;"
-        if val in {"passiv"}:
+        if val in {"passiv", "aktuell kein fokus"}:
             return "background-color: rgba(239,68,68,0.28); color: white; font-weight:700;"
         return ""
 
@@ -1345,6 +1345,20 @@ def display_conv_label(conv):
         "-": "-",
     }
     return mapping.get(str(conv or ""), str(conv or "-"))
+
+
+def display_trigger_status_label(status):
+    mapping = {
+        "Aktiv": "Jetzt prüfbar",
+        "Nahe dran": "Fast prüfbar",
+        "Frühe Beobachtung": "Früh interessant",
+        "Beobachten": "Weiter beobachten",
+        "Passiv": "Aktuell kein Fokus",
+        "Warten": "Noch warten",
+        "Nicht anwendbar": "Nicht anwendbar",
+        "-": "-",
+    }
+    return mapping.get(str(status or ""), str(status or "-"))
 
 
 def display_stb_label(signal):
@@ -3719,7 +3733,7 @@ def build_ranking_table(results):
             "Setup-Confidence": r.get("setup_confidence", np.nan),
             "Entry-Lage": r.get("entry_quality", "-"),
             "Valides Setup": "Ja" if r.get("valid_trade_setup", False) else "Nein",
-            "Trigger-Status": r.get("trigger_status", "-"),
+            "Trigger-Status": display_trigger_status_label(r.get("trigger_status", "-")),
             "Watchlist-Priorität": r.get("watchlist_priority", "-"),
             "Kurzfrist-Timing": r.get("tb_score_100", normalize_tb_score_100(r.get("tb_score", np.nan))),
             "Fundamental-Confidence": round(confidence_info.get("coverage", 0) * 100),
@@ -6916,11 +6930,17 @@ if workspace_mode:
                     else:
                         trigger_rank_map = {
                             "Aktiv": 5,
+                            "Jetzt prüfbar": 5,
                             "Nahe dran": 4,
+                            "Fast prüfbar": 4,
                             "Frühe Beobachtung": 3,
+                            "Früh interessant": 3,
                             "Beobachten": 2,
+                            "Weiter beobachten": 2,
                             "Passiv": 1,
+                            "Aktuell kein Fokus": 1,
                             "Warten": 0,
+                            "Noch warten": 0,
                         }
 
                         def build_radar_reason(r):
@@ -6935,9 +6955,9 @@ if workspace_mode:
 
                             if trigger == "Aktiv":
                                 return "Trigger aktiv, Einstieg aktuell prüfbar"
-                            if trigger == "Nahe dran":
+                            if trigger in {"Nahe dran", "Fast prüfbar"}:
                                 return "Nahe am Einstieg, Timing fast da"
-                            if trigger == "Frühe Beobachtung":
+                            if trigger in {"Frühe Beobachtung", "Früh interessant"}:
                                 if setup_type_local and setup_type_local != "Kein sauberes Setup":
                                     return f"{setup_type_local}-Setup vorhanden, aber noch zu früh"
                                 return "Setup vorhanden, aber noch zu früh"
@@ -7006,11 +7026,11 @@ if workspace_mode:
                         invest_series = pd.to_numeric(radar_df["Investment-Attraktivität"], errors="coerce") if "Investment-Attraktivität" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
 
                         mask_now = (
-                            trigger_series.isin(["Aktiv", "Nahe dran"])
+                            trigger_series.isin(["Aktiv", "Jetzt prüfbar", "Nahe dran", "Fast prüfbar"])
                             | (entry_series >= 68)
                         )
                         mask_later = (
-                            trigger_series.isin(["Beobachten", "Passiv", "Warten"])
+                            trigger_series.isin(["Beobachten", "Weiter beobachten", "Passiv", "Aktuell kein Fokus", "Warten", "Noch warten"])
                             | ((invest_series >= 70) & (entry_series < 60))
                         )
                         mask_near = ~(mask_now | mask_later)
@@ -8481,7 +8501,7 @@ if result is not None:
         decision_meta = (
             f"Positionsmodus | Risiko: {shorten_text(risk_note, 42)}"
             if position_mode
-            else f"Marktumfeld: {market_regime_label(market_info['regime'])} | Trigger-Status: {trigger_status} | Priorität: {watchlist_priority}"
+            else f"Marktumfeld: {market_regime_label(market_info['regime'])} | Trigger-Status: {display_trigger_status_label(trigger_status)} | Priorität: {watchlist_priority}"
         )
         st.markdown(
             f"""
@@ -8966,7 +8986,7 @@ if result is not None:
     exec_confirmation = (
         leadership_status_display if str(leadership_status_display).strip() not in {"", "-", "None"} else
         sector_trend_text_display if str(sector_trend_text_display).strip() not in {"", "-", "None", "nicht belastbar"} else
-        trigger_status if str(trigger_status).strip() not in {"", "-", "None"} else
+        display_trigger_status_label(trigger_status) if str(trigger_status).strip() not in {"", "-", "None"} else
         "noch kein zusätzlicher Bestätigungsfaktor"
     )
 
@@ -9465,7 +9485,7 @@ if result is not None:
                 st.info("Dieser Bereich ist vor allem für den Watchlist-Modus gedacht. Im Positionsmodus sind Trigger nur nachrangig relevant.")
             else:
                 w1, w2, w3 = st.columns(3)
-                w1.metric("Trigger-Status", trigger_status)
+                w1.metric("Trigger-Status", display_trigger_status_label(trigger_status))
                 w2.metric("Watchlist-Priorität", watchlist_priority)
                 w3.metric("Nächster Trigger", next_trigger)
 

@@ -6892,10 +6892,30 @@ if workspace_mode:
                             }
                             radar_df = build_ranking_table(radar_results)
                             radar_df["__trigger_sort"] = radar_df.get("Trigger-Status", pd.Series(dtype=str)).map(trigger_rank_map).fillna(0)
-                            radar_df = radar_df.sort_values(
-                                by=["__trigger_sort", "Einstieg jetzt attraktiv?", "Investment-Attraktivität", "Setup-Priorität"],
-                                ascending=[False, False, False, False]
-                            ).drop(columns=["__trigger_sort"], errors="ignore").reset_index(drop=True)
+
+                            radar_sort_cols = []
+                            radar_sort_ascending = []
+
+                            if "__trigger_sort" in radar_df.columns:
+                                radar_sort_cols.append("__trigger_sort")
+                                radar_sort_ascending.append(False)
+                            if "Einstieg jetzt attraktiv?" in radar_df.columns:
+                                radar_sort_cols.append("Einstieg jetzt attraktiv?")
+                                radar_sort_ascending.append(False)
+                            if "Investment-Attraktivität" in radar_df.columns:
+                                radar_sort_cols.append("Investment-Attraktivität")
+                                radar_sort_ascending.append(False)
+                            if "Setup-Priorität" in radar_df.columns:
+                                radar_sort_cols.append("Setup-Priorität")
+                                radar_sort_ascending.append(False)
+
+                            if radar_sort_cols:
+                                radar_df = radar_df.sort_values(
+                                    by=radar_sort_cols,
+                                    ascending=radar_sort_ascending
+                                )
+
+                            radar_df = radar_df.drop(columns=["__trigger_sort"], errors="ignore").reset_index(drop=True)
                             radar_df = radar_df.head(int(st.session_state.radar_max_candidates))
 
                             st.markdown("### Top-Kandidaten heute")

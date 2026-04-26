@@ -7243,7 +7243,30 @@ if workspace_mode:
                                 st.dataframe(pd.DataFrame(radar_errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
 
                         radar_top_tickers = radar_df["Ticker"].astype(str).tolist() if "Ticker" in radar_df.columns else []
-                        radar_batch_text = "\n".join(radar_top_tickers)
+                        radar_name_map = {}
+                        if "Ticker" in radar_df.columns and "Name" in radar_df.columns:
+                            for _, _radar_row in radar_df[["Ticker", "Name"]].drop_duplicates().iterrows():
+                                _rt = str(_radar_row.get("Ticker", "") or "").strip()
+                                _rn = str(_radar_row.get("Name", "") or "").strip()
+                                if _rt:
+                                    radar_name_map[_rt] = _rn
+                        radar_selection_options = []
+                        for _rt in radar_top_tickers:
+                            _rn = radar_name_map.get(_rt, "")
+                            radar_selection_options.append(f"{_rt} | {_rn}" if _rn else _rt)
+                        radar_selection_default = radar_selection_options[: min(len(radar_selection_options), 15)]
+                        selected_radar_labels = st.multiselect(
+                            "Welche Radar-Kandidaten möchtest du übernehmen?",
+                            options=radar_selection_options,
+                            default=radar_selection_default,
+                            key="radar_selected_candidates_widget"
+                        ) if radar_selection_options else []
+                        selected_radar_tickers = []
+                        for _label in selected_radar_labels:
+                            _ticker = str(_label).split(" | ", 1)[0].strip()
+                            if _ticker and _ticker not in selected_radar_tickers:
+                                selected_radar_tickers.append(_ticker)
+                        radar_batch_text = "\n".join(selected_radar_tickers)
 
                         st.markdown("### Radar-Ergebnisse direkt nutzen")
                         st.caption("Die aktuellen Top-Kandidaten lassen sich direkt in die Sofortanalyse übernehmen oder in eine frei wählbare Watchlist schreiben.")
@@ -7305,32 +7328,36 @@ if workspace_mode:
 
                         ra1, ra2 = st.columns(2)
                         with ra1:
-                            if st.button("Top-Kandidaten in Sofortanalyse laden", use_container_width=True, key="radar_load_into_analysis_btn"):
-                                if radar_top_tickers:
+                            if st.button("Ausgewählte Kandidaten in Sofortanalyse laden", use_container_width=True, key="radar_load_into_analysis_btn"):
+                                if selected_radar_tickers:
                                     st.session_state.batch_input = radar_batch_text
                                     st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
                                     st.session_state.analysis_mode_run = "Mehrere Aktien vergleichen"
                                     st.session_state.workspace_mode = "Sofortanalyse"
-                                    st.success(f"{len(radar_top_tickers)} Radar-Kandidaten wurden in die Sofortanalyse übernommen.")
+                                    st.success(f"{len(selected_radar_tickers)} ausgewählte Radar-Kandidaten wurden in die Sofortanalyse übernommen.")
                                     st.rerun()
+                                elif radar_top_tickers:
+                                    st.info("Bitte wähle zuerst mindestens einen Radar-Kandidaten aus.")
                                 else:
                                     st.info("Es sind keine Radar-Kandidaten zum Übernehmen vorhanden.")
                         with ra2:
                             add_label = (
-                                f"Top-Kandidaten zu {selected_watchlist_name_for_radar} hinzufügen"
+                                f"Ausgewählte Kandidaten zu {selected_watchlist_name_for_radar} hinzufügen"
                                 if selected_watchlist_name_for_radar else
-                                "Top-Kandidaten zur Watchlist hinzufügen"
+                                "Ausgewählte Kandidaten zur Watchlist hinzufügen"
                             )
                             if st.button(add_label, use_container_width=True, key="radar_add_to_watchlist_btn"):
                                 if not radar_top_tickers:
                                     st.info("Es sind keine Radar-Kandidaten zum Hinzufügen vorhanden.")
+                                elif not selected_radar_tickers:
+                                    st.info("Bitte wähle zuerst mindestens einen Radar-Kandidaten aus.")
                                 elif not selected_watchlist_name_for_radar:
                                     st.info("Bitte lege zuerst eine Watchlist an oder wähle eine Ziel-Watchlist aus.")
                                 else:
                                     ok, msg = add_entries_to_watchlist(
                                         selected_watchlist_name_for_radar,
                                         selected_watchlist_type_for_radar,
-                                        radar_top_tickers,
+                                        selected_radar_tickers,
                                         check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich")
                                     )
                                     if ok:

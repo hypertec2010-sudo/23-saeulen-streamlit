@@ -6835,19 +6835,32 @@ if workspace_mode:
             "CRUS", "AMKR", "FORM", "IPGP", "NVMI", "ACLS", "POWI", "WOLF", "MTSI", "RMBS",
             "CAMT", "SITM", "ASX", "ASM.AS", "BESI.AS"
         ]
+        us_small_mid_caps_universe = [
+            "APP", "AFRM", "BILL", "CFLT", "CRSP", "CYBR", "DOCN", "DUOL", "ESTC", "FIVN",
+            "FROG", "GLBE", "GWRE", "IOT", "JFROG", "MDB", "MGNI", "NET", "OKTA", "PCOR",
+            "PLTR", "RBLX", "S", "SE", "SNOW", "SOFI", "U", "WIX", "ZI", "ZM",
+            "RKLB", "IONQ", "ASTS", "CELH", "ELF", "ONON", "CAVA", "HIMS", "NU", "PINS",
+            "DASH", "TTD", "ROKU", "ETSY", "CHWY", "DKNG", "HOOD", "ABNB", "UBER", "LYFT",
+            "FSLY", "TASK", "COUR", "ASAN", "MNDY", "BROS", "CVNA", "CROX", "ACLS", "ALGM",
+            "LSCC", "FORM", "SITM", "POWI", "WOLF", "COHR", "IPGP", "CAMT", "MTSI", "NVMI",
+            "INSM", "AXSM", "EXAS", "HALO", "SRPT", "ALKS", "MEDP", "RXRX", "TWST", "NTLA"
+        ]
         radar_universe_map = {
             "US Tech": (us_tech_universe, "US Tech Fokus", "Breites Tech- und Plattformuniversum mit rund 95 vordefinierten Werten."),
             "US Basisliste": (us_basis_universe, "US Basisliste", "Große US-Standardwerte als breiter Startscreen für neue Ideen."),
             "Europa Qualität & Leader": (europa_quality_universe, "Europa Qualität & Leader", "Breitere Europa-Liste mit Qualitätswerten, Large Caps und führenden Marktpositionen."),
             "Halbleiter": (semiconductor_universe, "Halbleiter", "Breite Halbleiterliste mit Designern, Ausrüstern, Foundries und Spezialwerten."),
+            "US Small & Mid Caps": (us_small_mid_caps_universe, "US Small & Mid Caps", "Breiteres US-Universum aus Small- und Mid-Caps mit Fokus auf Liquidität, Wachstum und frühere Radar-Chancen."),
         }
 
         rc1, rc2, rc3, rc4 = st.columns([1.3, 1.0, 0.7, 1.0])
         with rc1:
+            radar_universe_options = ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Halbleiter", "US Small & Mid Caps", "Eigene Liste"]
+            radar_universe_current = st.session_state.radar_universe if st.session_state.radar_universe in radar_universe_options else ("Europa Qualität & Leader" if st.session_state.radar_universe == "Europa Qualität" else "US Tech")
             radar_universe = st.selectbox(
                 "Universum",
-                options=["US Tech", "US Basisliste", "Europa Qualität & Leader", "Halbleiter", "Eigene Liste"],
-                index=["US Tech", "US Basisliste", "Europa Qualität & Leader", "Halbleiter", "Eigene Liste"].index(st.session_state.radar_universe if st.session_state.radar_universe in ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Halbleiter", "Eigene Liste"] else ("Europa Qualität & Leader" if st.session_state.radar_universe == "Europa Qualität" else "US Tech")),
+                options=radar_universe_options,
+                index=radar_universe_options.index(radar_universe_current),
                 key="radar_universe_widget"
             )
             st.session_state.radar_universe = radar_universe

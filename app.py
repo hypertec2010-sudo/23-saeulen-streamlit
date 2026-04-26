@@ -7232,6 +7232,16 @@ if workspace_mode:
                                 )
                             else:
                                 section_select_df = section_df[radar_cols].copy()
+                                if "Investment-Attraktivität" in section_select_df.columns:
+                                    section_select_df["Investment-Attraktivität"] = section_select_df["Investment-Attraktivität"].apply(radar_score_badge)
+                                if "Einstieg jetzt attraktiv?" in section_select_df.columns:
+                                    section_select_df["Einstieg jetzt attraktiv?"] = section_select_df["Einstieg jetzt attraktiv?"].apply(radar_score_badge)
+                                if "Setup-Priorität" in section_select_df.columns:
+                                    section_select_df["Setup-Priorität"] = section_select_df["Setup-Priorität"].apply(radar_score_badge)
+                                if "Trigger-Status" in section_select_df.columns:
+                                    section_select_df["Trigger-Status"] = section_select_df["Trigger-Status"].apply(radar_trigger_badge)
+                                if "Watchlist-Priorität" in section_select_df.columns:
+                                    section_select_df["Watchlist-Priorität"] = section_select_df["Watchlist-Priorität"].apply(radar_priority_badge)
                                 section_select_df.insert(
                                     0,
                                     "Übernehmen",

@@ -7218,6 +7218,10 @@ if workspace_mode:
                             ("Später beobachten", "Gute Werte für die engere Watchlist, aber noch nicht reif für einen direkten Einstieg.", radar_later_df),
                         ]
 
+                        radar_top_tickers = radar_df["Ticker"].astype(str).tolist() if "Ticker" in radar_df.columns else []
+                        radar_default_selected = radar_top_tickers[: min(len(radar_top_tickers), 15)]
+                        selected_radar_tickers = []
+
                         for section_title, section_caption, section_df in section_specs:
                             st.markdown(f"#### {section_title}")
                             st.caption(section_caption)
@@ -7227,12 +7231,29 @@ if workspace_mode:
                                     unsafe_allow_html=True,
                                 )
                             else:
-                                st.dataframe(
-                                    style_ranking_df(section_df[radar_cols].copy()),
+                                section_select_df = section_df[radar_cols].copy()
+                                section_select_df.insert(
+                                    0,
+                                    "Übernehmen",
+                                    section_select_df["Ticker"].astype(str).isin(radar_default_selected) if "Ticker" in section_select_df.columns else False
+                                )
+                                editor_key = f"radar_select_editor_{re.sub(r'[^a-z0-9]+', '_', section_title.lower())}"
+                                edited_section_df = st.data_editor(
+                                    section_select_df,
                                     hide_index=True,
                                     use_container_width=True,
-                                    height=min(340, 45 * len(section_df) + 40)
+                                    height=min(340, 45 * len(section_select_df) + 40),
+                                    key=editor_key,
+                                    column_config={
+                                        "Übernehmen": st.column_config.CheckboxColumn("Auswahl", help="Diesen Kandidaten für Analyse oder Watchlist übernehmen")
+                                    },
+                                    disabled=[c for c in section_select_df.columns if c != "Übernehmen"]
                                 )
+                                if "Übernehmen" in edited_section_df.columns and "Ticker" in edited_section_df.columns:
+                                    for _ticker in edited_section_df.loc[edited_section_df["Übernehmen"] == True, "Ticker"].astype(str).tolist():
+                                        _ticker = _ticker.strip()
+                                        if _ticker and _ticker not in selected_radar_tickers:
+                                            selected_radar_tickers.append(_ticker)
 
                         if radar_resolution_rows and st.session_state.radar_universe == "Eigene Liste":
                             with st.expander("Aufgelöste Radar-Eingaben", expanded=False):
@@ -7242,33 +7263,10 @@ if workspace_mode:
                             with st.expander("Nicht analysierbare Radar-Werte", expanded=False):
                                 st.dataframe(pd.DataFrame(radar_errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
 
-                        radar_top_tickers = radar_df["Ticker"].astype(str).tolist() if "Ticker" in radar_df.columns else []
-                        radar_name_map = {}
-                        if "Ticker" in radar_df.columns and "Name" in radar_df.columns:
-                            for _, _radar_row in radar_df[["Ticker", "Name"]].drop_duplicates().iterrows():
-                                _rt = str(_radar_row.get("Ticker", "") or "").strip()
-                                _rn = str(_radar_row.get("Name", "") or "").strip()
-                                if _rt:
-                                    radar_name_map[_rt] = _rn
-                        radar_selection_options = []
-                        for _rt in radar_top_tickers:
-                            _rn = radar_name_map.get(_rt, "")
-                            radar_selection_options.append(f"{_rt} | {_rn}" if _rn else _rt)
-                        radar_selection_default = radar_selection_options[: min(len(radar_selection_options), 15)]
-                        selected_radar_labels = st.multiselect(
-                            "Welche Radar-Kandidaten möchtest du übernehmen?",
-                            options=radar_selection_options,
-                            default=radar_selection_default,
-                            key="radar_selected_candidates_widget"
-                        ) if radar_selection_options else []
-                        selected_radar_tickers = []
-                        for _label in selected_radar_labels:
-                            _ticker = str(_label).split(" | ", 1)[0].strip()
-                            if _ticker and _ticker not in selected_radar_tickers:
-                                selected_radar_tickers.append(_ticker)
                         radar_batch_text = "\n".join(selected_radar_tickers)
 
                         st.markdown("### Radar-Ergebnisse direkt nutzen")
+                        st.caption("Auswahl direkt links in den Radar-Zeilen treffen. Nur markierte Werte werden übernommen.")
                         st.caption("Die aktuellen Top-Kandidaten lassen sich direkt in die Sofortanalyse übernehmen oder in eine frei wählbare Watchlist schreiben.")
                         radar_watchlists_df, radar_watchlists_err = load_watchlists_df()
                         if radar_watchlists_err:

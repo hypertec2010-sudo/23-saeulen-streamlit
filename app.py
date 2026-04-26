@@ -165,6 +165,9 @@ if "radar_requested" not in st.session_state:
 if "radar_screening_style" not in st.session_state:
     st.session_state.radar_screening_style = "Leader"
 
+if "radar_last_payload" not in st.session_state:
+    st.session_state.radar_last_payload = None
+
 
 def trigger_ui_refresh(**state_updates):
     for key, value in state_updates.items():
@@ -6933,33 +6936,41 @@ if workspace_mode:
             unsafe_allow_html=True,
         )
 
-        if st.session_state.get("radar_requested", False):
-            st.session_state.radar_requested = False
-            if st.session_state.radar_universe == "Eigene Liste":
-                radar_entries = split_batch_input(st.session_state.radar_custom_input)
-                radar_resolution_rows = []
-                if not radar_entries:
-                    st.warning("Bitte gib mindestens einen Ticker oder Firmennamen für den Radar-Lauf ein.")
-                    resolved_radar_entries = []
+        if st.session_state.get("radar_requested", False) or st.session_state.get("radar_last_payload") is not None:
+            if st.session_state.get("radar_requested", False):
+                st.session_state.radar_requested = False
+                if st.session_state.radar_universe == "Eigene Liste":
+                    radar_entries = split_batch_input(st.session_state.radar_custom_input)
+                    radar_resolution_rows = []
+                    if not radar_entries:
+                        st.warning("Bitte gib mindestens einen Ticker oder Firmennamen für den Radar-Lauf ein.")
+                        resolved_radar_entries = []
+                    else:
+                        resolved_radar_entries = []
+                        for entry in radar_entries:
+                            resolved = resolve_input_to_ticker(entry, fallback=None)
+                            radar_resolution_rows.append({
+                                "Eingabe": entry,
+                                "Aufgelöst zu": resolved if resolved else "Nicht gefunden"
+                            })
+                            if resolved and resolved not in resolved_radar_entries:
+                                resolved_radar_entries.append(resolved)
+                elif st.session_state.radar_universe in radar_universe_map:
+                    resolved_radar_entries = list(radar_universe_map[st.session_state.radar_universe][0])
+                    radar_resolution_rows = [{"Eingabe": tkr, "Aufgelöst zu": tkr} for tkr in resolved_radar_entries]
                 else:
                     resolved_radar_entries = []
-                    for entry in radar_entries:
-                        resolved = resolve_input_to_ticker(entry, fallback=None)
-                        radar_resolution_rows.append({
-                            "Eingabe": entry,
-                            "Aufgelöst zu": resolved if resolved else "Nicht gefunden"
-                        })
-                        if resolved and resolved not in resolved_radar_entries:
-                            resolved_radar_entries.append(resolved)
-            elif st.session_state.radar_universe in radar_universe_map:
-                resolved_radar_entries = list(radar_universe_map[st.session_state.radar_universe][0])
-                radar_resolution_rows = [{"Eingabe": tkr, "Aufgelöst zu": tkr} for tkr in resolved_radar_entries]
+                    radar_resolution_rows = []
+                    st.warning("Bitte wähle ein gültiges Radar-Universum oder nutze eine eigene Liste.")
             else:
-                resolved_radar_entries = []
-                radar_resolution_rows = []
-                st.warning("Bitte wähle ein gültiges Radar-Universum oder nutze eine eigene Liste.")
+                radar_cached_payload = st.session_state.get("radar_last_payload") or {}
+                radar_results = list(radar_cached_payload.get("radar_results", []) or [])
+                radar_errors = list(radar_cached_payload.get("radar_errors", []) or [])
+                radar_resolution_rows = list(radar_cached_payload.get("radar_resolution_rows", []) or [])
+                resolved_radar_entries = [str(r.get("ticker", "") or "").strip() for r in radar_results if str(r.get("ticker", "") or "").strip()]
 
             if st.session_state.radar_universe in set(radar_universe_map.keys()) | {"Eigene Liste"}:
+
                 if not resolved_radar_entries:
                     if st.session_state.radar_universe == "Eigene Liste":
                         st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")
@@ -6991,6 +7002,15 @@ if workspace_mode:
                     if not radar_results:
                         st.error("Der Radar-Lauf hat keine belastbaren Kandidaten geliefert.")
                     else:
+                        st.session_state.radar_last_payload = {
+                            "radar_results": radar_results,
+                            "radar_errors": radar_errors,
+                            "radar_resolution_rows": radar_resolution_rows,
+                            "radar_universe": st.session_state.radar_universe,
+                            "radar_screening_style": st.session_state.radar_screening_style,
+                            "radar_max_candidates": st.session_state.radar_max_candidates,
+                        }
+
                         trigger_rank_map = {
                             "Aktiv": 5,
                             "Jetzt prüfbar": 5,

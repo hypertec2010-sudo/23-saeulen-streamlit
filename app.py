@@ -7101,6 +7101,49 @@ if workspace_mode:
                                 return f"Ausgewogener Kandidat, aber {top_red_flag_local[:52]}"
                             return "Ausgewogener Kandidat mit brauchbarem Gesamtbild"
 
+
+
+                        def radar_score_badge(value):
+                            try:
+                                v = float(value)
+                            except Exception:
+                                s = str(value).strip()
+                                return s if s else "-"
+                            if v >= 75:
+                                icon = "🟢"
+                            elif v >= 55:
+                                icon = "🟡"
+                            else:
+                                icon = "🔴"
+                            return f"{icon} {int(round(v))}"
+
+                        def radar_trigger_badge(value):
+                            s = str(value or "").strip()
+                            mapping = {
+                                "Jetzt prüfbar": "🟢 Jetzt prüfbar",
+                                "Fast prüfbar": "🟡 Fast prüfbar",
+                                "Früh interessant": "🟠 Früh interessant",
+                                "Weiter beobachten": "🔵 Weiter beobachten",
+                                "Aktuell kein Fokus": "⚪ Aktuell kein Fokus",
+                                "Noch warten": "⚪ Noch warten",
+                                "Aktiv": "🟢 Aktiv",
+                                "Nahe dran": "🟡 Nahe dran",
+                                "Frühe Beobachtung": "🟠 Frühe Beobachtung",
+                                "Beobachten": "🔵 Beobachten",
+                                "Passiv": "⚪ Passiv",
+                                "Warten": "⚪ Warten",
+                            }
+                            return mapping.get(s, s if s else "-")
+
+                        def radar_priority_badge(value):
+                            s = str(value or "").strip()
+                            mapping = {
+                                "Hoch": "🟢 Hoch",
+                                "Mittel": "🟡 Mittel",
+                                "Niedrig": "⚪ Niedrig",
+                            }
+                            return mapping.get(s, s if s else "-")
+
                         radar_df = build_ranking_table(radar_results)
                         radar_reason_map = {str(r.get("ticker", "")): build_radar_reason(r) for r in radar_results}
                         radar_result_map = {str(r.get("ticker", "")): r for r in radar_results}

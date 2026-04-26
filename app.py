@@ -6810,7 +6810,9 @@ if workspace_mode:
             "UBER", "ABNB", "META", "GOOGL", "AMZN", "NFLX", "TSM", "ASML", "ARM", "SMCI",
             "APH", "FTNT", "MCHP", "NXPI", "MRVL", "ON", "STM", "MPWR", "GFS", "WDC",
             "STX", "NTAP", "DOCU", "SNOW", "FICO", "TTD", "PINS", "SAP", "PATH", "ESTC",
-            "DT", "APP", "RBLX", "GEN", "AKAM"
+            "DT", "APP", "RBLX", "GEN", "AKAM", "ZI", "BILL", "PAYC", "TYL", "MANH",
+            "CYBR", "S", "IOT", "PCOR", "GWRE", "AFRM", "DOCN", "WK", "CFLT", "ENPH",
+            "SEDG", "GLW", "JBL", "FSLR", "COHR", "CIEN", "JNPR", "FFIV", "TER", "ENTG"
         ]
         us_basis_universe = [
             "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "BRK-B", "JPM", "LLY", "V",
@@ -6822,31 +6824,30 @@ if workspace_mode:
             "SAP", "ASML", "NESN.SW", "NOVO-B.CO", "MC.PA", "SU.PA", "AIR.PA", "SIE.DE", "DTE.DE", "ALV.DE",
             "MUV2.DE", "RMS.PA", "OR.PA", "SAN.PA", "BN.PA", "DG.PA", "EL.PA", "SAF.PA", "CS.PA", "ULVR.L",
             "AZN.L", "SHEL.L", "REL.L", "LSEG.L", "DGE.L", "GSK.L", "ABBN.SW", "ROG.SW", "SIKA.SW", "UHR.SW",
-            "ISP.MI", "UCG.MI", "IBE.MC", "IBE.MC", "FER.MC", "RACE.MI", "NDA-FI.HE", "DSY.PA", "KER.PA", "HEI.DE"
+            "NOVN.SW", "ZURN.SW", "CFR.SW", "ADYEN.AS", "WKL.AS", "PRX.AS", "HEIA.AS", "CAP.PA", "DSY.PA", "KER.PA",
+            "RACE.MI", "MONC.MI", "UCG.MI", "ISP.MI", "PRY.MI", "ENEL.MI", "IBE.MC", "ITX.MC", "FER.MC", "AMS.MC",
+            "HEI.DE", "IFX.DE", "DB1.DE", "RHM.DE", "RI.PA", "HO.PA", "AI.PA", "KER.PA", "LONN.SW", "HOLN.SW"
         ]
         semiconductor_universe = [
             "NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "ADI", "AMAT", "LRCX", "KLAC",
             "INTC", "MCHP", "NXPI", "MRVL", "ON", "MPWR", "GFS", "SWKS", "QRVO", "TER",
-            "TSM", "ASML", "ASM.AS", "BE Semiconductor Industries NV", "ARM"
-        ]
-        semiconductor_universe = [
-            "NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "ADI", "AMAT", "LRCX", "KLAC",
-            "INTC", "MCHP", "NXPI", "MRVL", "ON", "MPWR", "GFS", "SWKS", "QRVO", "TER",
-            "TSM", "ASML", "ARM", "STM", "ENTG"
+            "TSM", "ASML", "ARM", "STM", "ENTG", "COHR", "ONTO", "LSCC", "ALGM", "SLAB",
+            "CRUS", "AMKR", "FORM", "IPGP", "NVMI", "ACLS", "POWI", "WOLF", "MTSI", "RMBS",
+            "CAMT", "SITM", "ASX", "ASM.AS", "BESI.AS"
         ]
         radar_universe_map = {
-            "US Tech": (us_tech_universe, "US Tech Fokus", "Breites Tech- und Plattformuniversum mit 75 vordefinierten Werten."),
+            "US Tech": (us_tech_universe, "US Tech Fokus", "Breites Tech- und Plattformuniversum mit rund 95 vordefinierten Werten."),
             "US Basisliste": (us_basis_universe, "US Basisliste", "Große US-Standardwerte als breiter Startscreen für neue Ideen."),
-            "Europa Qualität": (europa_quality_universe, "Europa Qualität", "Europäische Qualitäts- und Large-Cap-Werte mit stabiler Marktstellung."),
-            "Halbleiter": (semiconductor_universe, "Halbleiter", "Fokusliste für Chipdesigner, Ausrüster und Halbleiterfertiger."),
+            "Europa Qualität & Leader": (europa_quality_universe, "Europa Qualität & Leader", "Breitere Europa-Liste mit Qualitätswerten, Large Caps und führenden Marktpositionen."),
+            "Halbleiter": (semiconductor_universe, "Halbleiter", "Breite Halbleiterliste mit Designern, Ausrüstern, Foundries und Spezialwerten."),
         }
 
         rc1, rc2, rc3, rc4 = st.columns([1.3, 1.0, 0.7, 1.0])
         with rc1:
             radar_universe = st.selectbox(
                 "Universum",
-                options=["US Tech", "US Basisliste", "Europa Qualität", "Halbleiter", "Eigene Liste"],
-                index=["US Tech", "US Basisliste", "Europa Qualität", "Halbleiter", "Eigene Liste"].index(st.session_state.radar_universe if st.session_state.radar_universe in ["US Tech", "US Basisliste", "Europa Qualität", "Halbleiter", "Eigene Liste"] else "US Tech"),
+                options=["US Tech", "US Basisliste", "Europa Qualität & Leader", "Halbleiter", "Eigene Liste"],
+                index=["US Tech", "US Basisliste", "Europa Qualität & Leader", "Halbleiter", "Eigene Liste"].index(st.session_state.radar_universe if st.session_state.radar_universe in ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Halbleiter", "Eigene Liste"] else ("Europa Qualität & Leader" if st.session_state.radar_universe == "Europa Qualität" else "US Tech")),
                 key="radar_universe_widget"
             )
             st.session_state.radar_universe = radar_universe

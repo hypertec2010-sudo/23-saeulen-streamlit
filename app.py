@@ -7283,7 +7283,13 @@ if workspace_mode:
 
                         radar_top_tickers = radar_df["Ticker"].astype(str).tolist() if "Ticker" in radar_df.columns else []
                         radar_default_selected = radar_top_tickers[: min(len(radar_top_tickers), 15)]
-                        selected_radar_tickers = []
+                        radar_selection_signature = "|".join(radar_top_tickers)
+
+                        if st.session_state.get("radar_selection_signature") != radar_selection_signature:
+                            st.session_state.radar_selection_signature = radar_selection_signature
+                            st.session_state.radar_selected_tickers = radar_default_selected.copy()
+
+                        selected_radar_tickers = list(st.session_state.get("radar_selected_tickers", radar_default_selected.copy()))
 
                         for section_title, section_caption, section_df in section_specs:
                             st.markdown(f"#### {section_title}")
@@ -7305,28 +7311,50 @@ if workspace_mode:
                                     section_select_df["Trigger-Status"] = section_select_df["Trigger-Status"].apply(radar_trigger_badge)
                                 if "Watchlist-Priorität" in section_select_df.columns:
                                     section_select_df["Watchlist-Priorität"] = section_select_df["Watchlist-Priorität"].apply(radar_priority_badge)
+
+                                section_tickers = section_select_df["Ticker"].astype(str).tolist() if "Ticker" in section_select_df.columns else []
                                 section_select_df.insert(
                                     0,
                                     "Übernehmen",
-                                    section_select_df["Ticker"].astype(str).isin(radar_default_selected) if "Ticker" in section_select_df.columns else False
+                                    section_select_df["Ticker"].astype(str).isin(selected_radar_tickers) if "Ticker" in section_select_df.columns else False
                                 )
-                                editor_key = f"radar_select_editor_{re.sub(r'[^a-z0-9]+', '_', section_title.lower())}"
-                                edited_section_df = st.data_editor(
-                                    section_select_df,
-                                    hide_index=True,
-                                    use_container_width=True,
-                                    height=min(340, 45 * len(section_select_df) + 40),
-                                    key=editor_key,
-                                    column_config={
-                                        "Übernehmen": st.column_config.CheckboxColumn("Auswahl", help="Diesen Kandidaten für Analyse oder Watchlist übernehmen")
-                                    },
-                                    disabled=[c for c in section_select_df.columns if c != "Übernehmen"]
-                                )
-                                if "Übernehmen" in edited_section_df.columns and "Ticker" in edited_section_df.columns:
-                                    for _ticker in edited_section_df.loc[edited_section_df["Übernehmen"] == True, "Ticker"].astype(str).tolist():
-                                        _ticker = _ticker.strip()
-                                        if _ticker and _ticker not in selected_radar_tickers:
-                                            selected_radar_tickers.append(_ticker)
+
+                                section_slug = re.sub(r'[^a-z0-9]+', '_', section_title.lower())
+                                form_key = f"radar_select_form_{section_slug}"
+                                editor_key = f"radar_select_editor_{section_slug}"
+
+                                with st.form(form_key, clear_on_submit=False):
+                                    edited_section_df = st.data_editor(
+                                        section_select_df,
+                                        hide_index=True,
+                                        use_container_width=True,
+                                        height=min(340, 45 * len(section_select_df) + 40),
+                                        key=editor_key,
+                                        column_config={
+                                            "Übernehmen": st.column_config.CheckboxColumn("Auswahl", help="Diesen Kandidaten für Analyse oder Watchlist übernehmen")
+                                        },
+                                        disabled=[c for c in section_select_df.columns if c != "Übernehmen"]
+                                    )
+                                    apply_section_selection = st.form_submit_button("Auswahl in diesem Block übernehmen", use_container_width=True)
+
+                                if apply_section_selection and "Übernehmen" in edited_section_df.columns and "Ticker" in edited_section_df.columns:
+                                    updated_selected = [t for t in st.session_state.get("radar_selected_tickers", radar_default_selected.copy()) if t not in section_tickers]
+                                    updated_selected.extend(
+                                        [
+                                            str(_ticker).strip()
+                                            for _ticker in edited_section_df.loc[edited_section_df["Übernehmen"] == True, "Ticker"].astype(str).tolist()
+                                            if str(_ticker).strip()
+                                        ]
+                                    )
+                                    deduped_selected = []
+                                    seen_selected = set()
+                                    for _ticker in updated_selected:
+                                        if _ticker not in seen_selected:
+                                            deduped_selected.append(_ticker)
+                                            seen_selected.add(_ticker)
+                                    st.session_state.radar_selected_tickers = deduped_selected
+                                    selected_radar_tickers = deduped_selected
+                                    st.rerun()
 
                         if radar_resolution_rows and st.session_state.radar_universe == "Eigene Liste":
                             with st.expander("Aufgelöste Radar-Eingaben", expanded=False):

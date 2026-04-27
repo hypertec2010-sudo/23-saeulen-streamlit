@@ -5561,6 +5561,7 @@ def _legacy_analyze_stock(
         "balance_score": balance_score,
         "sentiment_score": sentiment_score,
         "risk_score": risk_score,
+        "base_company": base_company,
         "company": company,
         "setup": setup,
         "setup_adj": setup_adj,
@@ -8273,6 +8274,7 @@ if result is not None:
     balance_score = result["balance_score"]
     sentiment_score = result["sentiment_score"]
     risk_score = result["risk_score"]
+    base_company = result.get("base_company", result["company"])
     company = result["company"]
     setup_adj = result["setup_adj"]
     investment = result["investment"]
@@ -9653,6 +9655,55 @@ if result is not None:
                 ],
             })
             st.dataframe(fund_df, hide_index=True, use_container_width=True)
+
+            st.markdown("**Herleitung von Company Quality**")
+            company_breakdown_df = pd.DataFrame({
+                "Baustein": [
+                    "Qualität",
+                    "Wachstum",
+                    "Growth Quality",
+                    "Bewertung",
+                    "Bilanz",
+                    "Sentiment",
+                    "Risiko",
+                    "Rohwert vor Horizon-Glättung",
+                    "Endwert Company Quality"
+                ],
+                "Wert": [
+                    f"{quality_score}/100",
+                    f"{growth_score}/100",
+                    f"{growth_quality}/100",
+                    f"{valuation_score}/100",
+                    f"{balance_score}/100",
+                    f"{sentiment_score}/100",
+                    f"{risk_score}/100",
+                    f"{base_company}/100",
+                    f"{company}/100",
+                ],
+                "Einordnung": [
+                    "Profitabilität, Margen und Kapitalrendite",
+                    "Umsatz- und Gewinnwachstum",
+                    "Wachstum mit Cashflow- und Margenqualität",
+                    "KGV, PEG, KUV, KBV und Upside",
+                    "Liquidität und Verschuldung",
+                    "Analystenmeinung und Target-Bild",
+                    "Beta, Short-Quote und ATR-Risiko",
+                    "Fundamentaler Rohwert vor der Horizon-Anpassung",
+                    "Tatsächlich verwendeter Company-Qualitätswert im Modell"
+                ],
+            })
+            st.dataframe(company_breakdown_df, hide_index=True, use_container_width=True)
+
+            if "Kurzfrist" in horizon or "Swing" in horizon:
+                st.info(
+                    f"Für den aktuellen Horizont ({horizon}) wird Company Quality bewusst geglättet. "
+                    f"Rohwert fundamental: {base_company}/100 | verwendeter Endwert: {company}/100."
+                )
+            elif base_company != company:
+                st.info(
+                    f"Company Quality wurde für den aktuellen Horizont angepasst. "
+                    f"Rohwert fundamental: {base_company}/100 | verwendeter Endwert: {company}/100."
+                )
 
             st.markdown("**Strukturierte Red Flags**")
             st.dataframe(red_flags_df, hide_index=True, use_container_width=True)

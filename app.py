@@ -6831,6 +6831,16 @@ if workspace_mode:
             "RACE.MI", "MONC.MI", "UCG.MI", "ISP.MI", "PRY.MI", "ENEL.MI", "IBE.MC", "ITX.MC", "FER.MC", "AMS.MC",
             "HEI.DE", "IFX.DE", "DB1.DE", "RHM.DE", "RI.PA", "HO.PA", "AI.PA", "KER.PA", "LONN.SW", "HOLN.SW"
         ]
+        europa_small_mid_quality_universe = [
+            "NEM.DE", "BC8.DE", "COK.DE", "EVD.DE", "AFX.DE", "SIX2.DE", "FPE3.DE", "KRN.DE", "GXI.DE", "JUN3.DE",
+            "G24.DE", "HAG.DE", "EVT.DE", "R3NK.DE", "PNE3.DE", "VAR1.DE", "VOS.DE", "WAF.DE", "DEQ.DE", "NDA.DE",
+            "SOI.PA", "VIRP.PA", "SESL.PA", "IPS.PA", "EKI.PA", "RCO.PA", "UBI.PA", "EDEN.PA", "RXL.PA", "GET.PA",
+            "IMCD.AS", "ASM.AS", "BESI.AS", "ASRNL.AS", "RAND.AS", "WKL.AS", "AD.AS", "FAGR.BR", "ACKB.BR", "SOF.BR",
+            "LIFCO-B.ST", "ADDT-B.ST", "THULE.ST", "MIPS.ST", "NIBE-B.ST", "INDU-C.ST", "VITR.ST", "AAK.ST", "ALFA.ST", "SHB-A.ST",
+            "DEMANT.CO", "GN.CO", "BAVA.CO", "CHEMM.CO", "NETC.CO", "RATO-B.ST", "SALM.OL", "TOM.OL", "KCR.HE", "VALMT.HE",
+            "HUH1V.HE", "KEMIRA.HE", "METSB.HE", "TEL2-B.ST", "INDT.ST", "DIA.MI", "ERG.MI", "BFF.MI", "IP.MI", "REY.MI",
+            "AMP.MC", "VID.MC", "LOG.MC", "CLNX.MC", "ANA.MC", "AUTO.MC", "TLGO.MC", "WISE.L", "LGEN.L", "WEIR.L"
+        ]
         semiconductor_universe = [
             "NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "ADI", "AMAT", "LRCX", "KLAC",
             "INTC", "MCHP", "NXPI", "MRVL", "ON", "MPWR", "GFS", "SWKS", "QRVO", "TER",
@@ -6854,11 +6864,12 @@ if workspace_mode:
             "Europa Qualität & Leader": (europa_quality_universe, "Europa Qualität & Leader", "Breitere Europa-Liste mit Qualitätswerten, Large Caps und führenden Marktpositionen."),
             "Halbleiter": (semiconductor_universe, "Halbleiter", "Breite Halbleiterliste mit Designern, Ausrüstern, Foundries und Spezialwerten."),
             "US Small & Mid Caps": (us_small_mid_caps_universe, "US Small & Mid Caps", "Breiteres US-Universum aus Small- und Mid-Caps mit Fokus auf Liquidität, Wachstum und frühere Radar-Chancen."),
+            "Europa Small & Mid Caps Qualität": (europa_small_mid_quality_universe, "Europa Small & Mid Caps Qualität", "Breiteres Europa-Universum aus Small- und Mid-Caps mit Qualitäts- und Leader-Fokus."),
         }
 
         rc1, rc2, rc3, rc4 = st.columns([1.3, 1.0, 0.7, 1.0])
         with rc1:
-            radar_universe_options = ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Halbleiter", "US Small & Mid Caps", "Eigene Liste"]
+            radar_universe_options = ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Europa Small & Mid Caps Qualität", "Halbleiter", "US Small & Mid Caps", "Eigene Liste"]
             radar_universe_current = st.session_state.radar_universe if st.session_state.radar_universe in radar_universe_options else ("Europa Qualität & Leader" if st.session_state.radar_universe == "Europa Qualität" else "US Tech")
             radar_universe = st.selectbox(
                 "Universum",

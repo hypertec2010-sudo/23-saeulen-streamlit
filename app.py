@@ -7301,10 +7301,10 @@ if workspace_mode:
                 if st.session_state.get("radar_selection_signature") != radar_selection_signature:
                     st.session_state.radar_selection_signature = radar_selection_signature
                     st.session_state.radar_selected_tickers = radar_default_selected.copy()
+                    for _ticker in radar_top_tickers:
+                        st.session_state[f"radar_pick_{_ticker}"] = _ticker in radar_default_selected
 
-                selected_radar_tickers = list(st.session_state.get("radar_selected_tickers", radar_default_selected.copy()))
-                updated_selected = []
-                seen_selected = set()
+                selected_radar_tickers = []
 
                 st.markdown("### Radar-Auswahl")
                 st.caption("Werte direkt links in den Zeilen markieren oder abwählen. Die Auswahl bleibt erhalten; es wird keine neue Radar-Analyse gestartet.")
@@ -7318,48 +7318,39 @@ if workspace_mode:
                             unsafe_allow_html=True,
                         )
                     else:
-                        section_select_df = section_df[radar_cols].copy()
-                        if "Investment-Attraktivität" in section_select_df.columns:
-                            section_select_df["Investment-Attraktivität"] = section_select_df["Investment-Attraktivität"].apply(radar_score_badge)
-                        if "Einstieg jetzt attraktiv?" in section_select_df.columns:
-                            section_select_df["Einstieg jetzt attraktiv?"] = section_select_df["Einstieg jetzt attraktiv?"].apply(radar_score_badge)
-                        if "Setup-Priorität" in section_select_df.columns:
-                            section_select_df["Setup-Priorität"] = section_select_df["Setup-Priorität"].apply(radar_score_badge)
-                        if "Trigger-Status" in section_select_df.columns:
-                            section_select_df["Trigger-Status"] = section_select_df["Trigger-Status"].apply(radar_trigger_badge)
-                        if "Watchlist-Priorität" in section_select_df.columns:
-                            section_select_df["Watchlist-Priorität"] = section_select_df["Watchlist-Priorität"].apply(radar_priority_badge)
+                        header_cols = st.columns([0.8, 1.0, 2.0, 1.7, 1.9, 1.6, 1.6, 1.8, 2.6])
+                        headers = ["Auswahl", "Ticker", "Name", "Setup-Typ", "Investment", "Einstieg", "Setup-Priorität", "Trigger", "Warum heute auffällig"]
+                        for _col, _hdr in zip(header_cols, headers):
+                            _col.markdown(f"**{_hdr}**")
 
-                        section_select_df.insert(
-                            0,
-                            "Übernehmen",
-                            section_select_df["Ticker"].astype(str).isin(selected_radar_tickers) if "Ticker" in section_select_df.columns else False
-                        )
+                        for _, _row in section_df.iterrows():
+                            _ticker = str(_row.get("Ticker", "")).strip()
+                            if not _ticker:
+                                continue
+                            checkbox_key = f"radar_pick_{_ticker}"
+                            if checkbox_key not in st.session_state:
+                                st.session_state[checkbox_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
 
-                        section_slug = re.sub(r'[^a-z0-9]+', '_', section_title.lower())
-                        editor_key = f"radar_select_editor_{section_slug}"
+                            row_cols = st.columns([0.8, 1.0, 2.0, 1.7, 1.9, 1.6, 1.6, 1.8, 2.6])
+                            is_selected = row_cols[0].checkbox("", value=bool(st.session_state.get(checkbox_key, False)), key=checkbox_key, label_visibility="collapsed")
+                            if is_selected:
+                                selected_radar_tickers.append(_ticker)
 
-                        edited_section_df = st.data_editor(
-                            section_select_df,
-                            hide_index=True,
-                            use_container_width=True,
-                            height=min(340, 45 * len(section_select_df) + 40),
-                            key=editor_key,
-                            column_config={
-                                "Übernehmen": st.column_config.CheckboxColumn("Auswahl", help="Diesen Kandidaten für Analyse oder Watchlist übernehmen")
-                            },
-                            disabled=[c for c in section_select_df.columns if c != "Übernehmen"]
-                        )
+                            row_cols[1].write(_ticker)
+                            row_cols[2].write(str(_row.get("Name", "-")))
+                            row_cols[3].write(str(_row.get("Setup-Typ", "-")))
+                            row_cols[4].write(radar_score_badge(_row.get("Investment-Attraktivität", "-")))
+                            row_cols[5].write(radar_score_badge(_row.get("Einstieg jetzt attraktiv?", "-")))
+                            row_cols[6].write(radar_score_badge(_row.get("Setup-Priorität", "-")))
+                            row_cols[7].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
+                            row_cols[8].write(str(_row.get("Warum heute auffällig", _row.get("Kurzfazit", "-"))))
 
-                        if edited_section_df is not None and "Übernehmen" in edited_section_df.columns and "Ticker" in edited_section_df.columns:
-                            for _ticker in edited_section_df.loc[edited_section_df["Übernehmen"] == True, "Ticker"].astype(str).tolist():
-                                _ticker = str(_ticker).strip()
-                                if _ticker and _ticker not in seen_selected:
-                                    updated_selected.append(_ticker)
-                                    seen_selected.add(_ticker)
+                        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-                st.session_state.radar_selected_tickers = updated_selected
-                selected_radar_tickers = updated_selected
+                # stabil und in Radar-Reihenfolge halten
+                seen_selected = set()
+                selected_radar_tickers = [t for t in radar_top_tickers if t in selected_radar_tickers and not (t in seen_selected or seen_selected.add(t))]
+                st.session_state.radar_selected_tickers = selected_radar_tickers
                 st.caption(f"Aktuell markiert: {len(selected_radar_tickers)} Werte")
 
                 if radar_resolution_rows and st.session_state.radar_universe == "Eigene Liste":

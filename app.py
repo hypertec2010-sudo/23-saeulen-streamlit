@@ -7293,6 +7293,7 @@ if workspace_mode:
                             ("Später beobachten", "Gute Werte für die engere Watchlist, aber noch nicht reif für einen direkten Einstieg.", radar_later_df),
                         ]
 
+
                         radar_top_tickers = radar_df["Ticker"].astype(str).tolist() if "Ticker" in radar_df.columns else []
                         radar_default_selected = radar_top_tickers[: min(len(radar_top_tickers), 15)]
                         radar_selection_signature = "|".join(radar_top_tickers)
@@ -7302,40 +7303,42 @@ if workspace_mode:
                             st.session_state.radar_selected_tickers = radar_default_selected.copy()
 
                         selected_radar_tickers = list(st.session_state.get("radar_selected_tickers", radar_default_selected.copy()))
+                        edited_section_dfs = {}
 
-                        for section_title, section_caption, section_df in section_specs:
-                            st.markdown(f"#### {section_title}")
-                            st.caption(section_caption)
-                            if section_df.empty:
-                                st.markdown(
-                                    '<div class="empty-state"><div class="empty-state-title">Aktuell keine Werte in dieser Stufe</div><div class="empty-state-text">Die momentane Radar-Auswahl liefert in diesem Reifegrad gerade keine Kandidaten.</div></div>',
-                                    unsafe_allow_html=True,
-                                )
-                            else:
-                                section_select_df = section_df[radar_cols].copy()
-                                if "Investment-Attraktivität" in section_select_df.columns:
-                                    section_select_df["Investment-Attraktivität"] = section_select_df["Investment-Attraktivität"].apply(radar_score_badge)
-                                if "Einstieg jetzt attraktiv?" in section_select_df.columns:
-                                    section_select_df["Einstieg jetzt attraktiv?"] = section_select_df["Einstieg jetzt attraktiv?"].apply(radar_score_badge)
-                                if "Setup-Priorität" in section_select_df.columns:
-                                    section_select_df["Setup-Priorität"] = section_select_df["Setup-Priorität"].apply(radar_score_badge)
-                                if "Trigger-Status" in section_select_df.columns:
-                                    section_select_df["Trigger-Status"] = section_select_df["Trigger-Status"].apply(radar_trigger_badge)
-                                if "Watchlist-Priorität" in section_select_df.columns:
-                                    section_select_df["Watchlist-Priorität"] = section_select_df["Watchlist-Priorität"].apply(radar_priority_badge)
+                        st.markdown("### Radar-Auswahl")
+                        st.caption("Werte direkt links in den Zeilen markieren oder abwählen. Erst mit dem globalen Button unten wird die Auswahl übernommen.")
 
-                                section_tickers = section_select_df["Ticker"].astype(str).tolist() if "Ticker" in section_select_df.columns else []
-                                section_select_df.insert(
-                                    0,
-                                    "Übernehmen",
-                                    section_select_df["Ticker"].astype(str).isin(selected_radar_tickers) if "Ticker" in section_select_df.columns else False
-                                )
+                        with st.form("radar_global_selection_form", clear_on_submit=False):
+                            for section_title, section_caption, section_df in section_specs:
+                                st.markdown(f"#### {section_title}")
+                                st.caption(section_caption)
+                                if section_df.empty:
+                                    st.markdown(
+                                        '<div class="empty-state"><div class="empty-state-title">Aktuell keine Werte in dieser Stufe</div><div class="empty-state-text">Die momentane Radar-Auswahl liefert in diesem Reifegrad gerade keine Kandidaten.</div></div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                else:
+                                    section_select_df = section_df[radar_cols].copy()
+                                    if "Investment-Attraktivität" in section_select_df.columns:
+                                        section_select_df["Investment-Attraktivität"] = section_select_df["Investment-Attraktivität"].apply(radar_score_badge)
+                                    if "Einstieg jetzt attraktiv?" in section_select_df.columns:
+                                        section_select_df["Einstieg jetzt attraktiv?"] = section_select_df["Einstieg jetzt attraktiv?"].apply(radar_score_badge)
+                                    if "Setup-Priorität" in section_select_df.columns:
+                                        section_select_df["Setup-Priorität"] = section_select_df["Setup-Priorität"].apply(radar_score_badge)
+                                    if "Trigger-Status" in section_select_df.columns:
+                                        section_select_df["Trigger-Status"] = section_select_df["Trigger-Status"].apply(radar_trigger_badge)
+                                    if "Watchlist-Priorität" in section_select_df.columns:
+                                        section_select_df["Watchlist-Priorität"] = section_select_df["Watchlist-Priorität"].apply(radar_priority_badge)
 
-                                section_slug = re.sub(r'[^a-z0-9]+', '_', section_title.lower())
-                                form_key = f"radar_select_form_{section_slug}"
-                                editor_key = f"radar_select_editor_{section_slug}"
+                                    section_select_df.insert(
+                                        0,
+                                        "Übernehmen",
+                                        section_select_df["Ticker"].astype(str).isin(selected_radar_tickers) if "Ticker" in section_select_df.columns else False
+                                    )
 
-                                with st.form(form_key, clear_on_submit=False):
+                                    section_slug = re.sub(r'[^a-z0-9]+', '_', section_title.lower())
+                                    editor_key = f"radar_select_editor_{section_slug}"
+
                                     edited_section_df = st.data_editor(
                                         section_select_df,
                                         hide_index=True,
@@ -7347,26 +7350,24 @@ if workspace_mode:
                                         },
                                         disabled=[c for c in section_select_df.columns if c != "Übernehmen"]
                                     )
-                                    apply_section_selection = st.form_submit_button("Auswahl in diesem Block übernehmen", use_container_width=True)
+                                    edited_section_dfs[section_title] = edited_section_df
 
-                                if apply_section_selection and "Übernehmen" in edited_section_df.columns and "Ticker" in edited_section_df.columns:
-                                    updated_selected = [t for t in st.session_state.get("radar_selected_tickers", radar_default_selected.copy()) if t not in section_tickers]
-                                    updated_selected.extend(
-                                        [
-                                            str(_ticker).strip()
-                                            for _ticker in edited_section_df.loc[edited_section_df["Übernehmen"] == True, "Ticker"].astype(str).tolist()
-                                            if str(_ticker).strip()
-                                        ]
-                                    )
-                                    deduped_selected = []
-                                    seen_selected = set()
-                                    for _ticker in updated_selected:
-                                        if _ticker not in seen_selected:
-                                            deduped_selected.append(_ticker)
-                                            seen_selected.add(_ticker)
-                                    st.session_state.radar_selected_tickers = deduped_selected
-                                    selected_radar_tickers = deduped_selected
-                                    st.rerun()
+                            apply_global_selection = st.form_submit_button("Auswahl übernehmen", use_container_width=True)
+
+                        if apply_global_selection:
+                            updated_selected = []
+                            seen_selected = set()
+                            for _section_title, _edited_df in edited_section_dfs.items():
+                                if _edited_df is None or "Übernehmen" not in _edited_df.columns or "Ticker" not in _edited_df.columns:
+                                    continue
+                                for _ticker in _edited_df.loc[_edited_df["Übernehmen"] == True, "Ticker"].astype(str).tolist():
+                                    _ticker = str(_ticker).strip()
+                                    if _ticker and _ticker not in seen_selected:
+                                        updated_selected.append(_ticker)
+                                        seen_selected.add(_ticker)
+                            st.session_state.radar_selected_tickers = updated_selected
+                            selected_radar_tickers = updated_selected
+                            st.success(f"Auswahl übernommen: {len(updated_selected)} Werte markiert.")
 
                         if radar_resolution_rows and st.session_state.radar_universe == "Eigene Liste":
                             with st.expander("Aufgelöste Radar-Eingaben", expanded=False):

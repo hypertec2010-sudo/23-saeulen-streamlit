@@ -6948,7 +6948,13 @@ if workspace_mode:
         )
 
         if st.session_state.get("radar_requested", False) or st.session_state.get("radar_last_payload") is not None:
-            if st.session_state.get("radar_requested", False):
+            radar_should_run = bool(st.session_state.get("radar_requested", False))
+            radar_results = []
+            radar_errors = []
+            radar_resolution_rows = []
+            resolved_radar_entries = []
+
+            if radar_should_run:
                 st.session_state.radar_requested = False
                 if st.session_state.radar_universe == "Eigene Liste":
                     radar_entries = split_batch_input(st.session_state.radar_custom_input)
@@ -6982,45 +6988,46 @@ if workspace_mode:
 
             if st.session_state.radar_universe in set(radar_universe_map.keys()) | {"Eigene Liste"}:
 
-                if not resolved_radar_entries:
-                    if st.session_state.radar_universe == "Eigene Liste":
-                        st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")
-                else:
-                    radar_results = []
-                    radar_errors = []
-                    radar_progress = st.progress(0)
-                    radar_status = st.empty()
-                    for i, tkr in enumerate(resolved_radar_entries, start=1):
-                        radar_status.info(f"Radar analysiert {tkr} ({i}/{len(resolved_radar_entries)}) ...")
-                        try:
-                            radar_result = analyze_stock(
-                                ticker=tkr,
-                                horizon="Swing (1-4 Wochen)",
-                                depot=10000,
-                                risk_pct=1.0,
-                                override=0.0,
-                                buy_in_override=0.0,
-                                smart_money_default=True,
-                                strict_mode=True
-                            )
-                            radar_results.append(radar_result)
-                        except Exception as e:
-                            radar_errors.append((tkr, str(e)))
-                        radar_progress.progress(i / len(resolved_radar_entries))
-                    radar_progress.empty()
-                    radar_status.empty()
-
-                    if not radar_results:
-                        st.error("Der Radar-Lauf hat keine belastbaren Kandidaten geliefert.")
+                if radar_should_run:
+                    if not resolved_radar_entries:
+                        if st.session_state.radar_universe == "Eigene Liste":
+                            st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")
                     else:
-                        st.session_state.radar_last_payload = {
-                            "radar_results": radar_results,
-                            "radar_errors": radar_errors,
-                            "radar_resolution_rows": radar_resolution_rows,
-                            "radar_universe": st.session_state.radar_universe,
-                            "radar_screening_style": st.session_state.radar_screening_style,
-                            "radar_max_candidates": st.session_state.radar_max_candidates,
-                        }
+                        radar_results = []
+                        radar_errors = []
+                        radar_progress = st.progress(0)
+                        radar_status = st.empty()
+                        for i, tkr in enumerate(resolved_radar_entries, start=1):
+                            radar_status.info(f"Radar analysiert {tkr} ({i}/{len(resolved_radar_entries)}) ...")
+                            try:
+                                radar_result = analyze_stock(
+                                    ticker=tkr,
+                                    horizon="Swing (1-4 Wochen)",
+                                    depot=10000,
+                                    risk_pct=1.0,
+                                    override=0.0,
+                                    buy_in_override=0.0,
+                                    smart_money_default=True,
+                                    strict_mode=True
+                                )
+                                radar_results.append(radar_result)
+                            except Exception as e:
+                                radar_errors.append((tkr, str(e)))
+                            radar_progress.progress(i / len(resolved_radar_entries))
+                        radar_progress.empty()
+                        radar_status.empty()
+
+                        if not radar_results:
+                            st.error("Der Radar-Lauf hat keine belastbaren Kandidaten geliefert.")
+                        else:
+                            st.session_state.radar_last_payload = {
+                                "radar_results": radar_results,
+                                "radar_errors": radar_errors,
+                                "radar_resolution_rows": radar_resolution_rows,
+                                "radar_universe": st.session_state.radar_universe,
+                                "radar_screening_style": st.session_state.radar_screening_style,
+                                "radar_max_candidates": st.session_state.radar_max_candidates,
+                            }
 
                         trigger_rank_map = {
                             "Aktiv": 5,

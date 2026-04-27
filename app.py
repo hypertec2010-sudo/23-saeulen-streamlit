@@ -7769,13 +7769,30 @@ def style_ranking_table(df):
             return "background-color: #ff8a65; color: #2b0f08; font-weight: 800;"
         return "background-color: #ff1744; color: #ffffff; font-weight: 800;"
 
-    score_cols = [c for c in [
+    def inverse_score_bg(v):
+        num = parse_num(v)
+        if num is None:
+            return ""
+        if num >= 85:
+            return "background-color: #ff1744; color: #ffffff; font-weight: 800;"
+        if num >= 75:
+            return "background-color: #ff8a65; color: #2b0f08; font-weight: 800;"
+        if num >= 65:
+            return "background-color: #ffd54f; color: #2b1700; font-weight: 800;"
+        if num >= 55:
+            return "background-color: #fff176; color: #2b2200; font-weight: 800;"
+        if num >= 45:
+            return "background-color: #b2ff59; color: #18240a; font-weight: 800;"
+        if num >= 35:
+            return "background-color: #2eeb70; color: #08130b; font-weight: 800;"
+        return "background-color: #00c853; color: #ffffff; font-weight: 800;"
+
+    positive_score_cols = [c for c in [
         "Investment-Attraktivität",
         "Einstieg jetzt attraktiv?",
         "Trade-Struktur",
         "Kurzfrist-Timing",
         "Setup-Confidence",
-        "Exit-Score",
         "Leadership",
         "Sektor-Stärke",
         "Industrie-Stärke",
@@ -7787,19 +7804,26 @@ def style_ranking_table(df):
         "Setup-Priorität",
         "Volumenqualität",
         "Akkumulation",
-        "Distribution",
         "Pullback-Dry-up",
         "Breakout-Volumen",
         "Katalysator",
         "Event-Score",
-        "Event-Risiko",
         "Institutionelle Qualität",
         "Cashflow-Stabilität",
         "Margenstabilität",
     ] if c in df.columns]
 
-    for col in score_cols:
+    inverse_score_cols = [c for c in [
+        "Exit-Score",
+        "Distribution",
+        "Event-Risiko",
+    ] if c in df.columns]
+
+    for col in positive_score_cols:
         styled = styled.map(score_bg, subset=[col])
+
+    for col in inverse_score_cols:
+        styled = styled.map(inverse_score_bg, subset=[col])
 
     def style_valid(v):
         s = str(v).strip().lower()

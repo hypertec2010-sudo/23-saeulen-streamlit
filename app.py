@@ -5561,7 +5561,6 @@ def _legacy_analyze_stock(
         "balance_score": balance_score,
         "sentiment_score": sentiment_score,
         "risk_score": risk_score,
-        "base_company": base_company,
         "company": company,
         "setup": setup,
         "setup_adj": setup_adj,
@@ -6949,13 +6948,7 @@ if workspace_mode:
         )
 
         if st.session_state.get("radar_requested", False) or st.session_state.get("radar_last_payload") is not None:
-            radar_should_run = bool(st.session_state.get("radar_requested", False))
-            radar_results = []
-            radar_errors = []
-            radar_resolution_rows = []
-            resolved_radar_entries = []
-
-            if radar_should_run:
+            if st.session_state.get("radar_requested", False):
                 st.session_state.radar_requested = False
                 if st.session_state.radar_universe == "Eigene Liste":
                     radar_entries = split_batch_input(st.session_state.radar_custom_input)
@@ -6989,46 +6982,45 @@ if workspace_mode:
 
             if st.session_state.radar_universe in set(radar_universe_map.keys()) | {"Eigene Liste"}:
 
-                if radar_should_run:
-                    if not resolved_radar_entries:
-                        if st.session_state.radar_universe == "Eigene Liste":
-                            st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")
-                    else:
-                        radar_results = []
-                        radar_errors = []
-                        radar_progress = st.progress(0)
-                        radar_status = st.empty()
-                        for i, tkr in enumerate(resolved_radar_entries, start=1):
-                            radar_status.info(f"Radar analysiert {tkr} ({i}/{len(resolved_radar_entries)}) ...")
-                            try:
-                                radar_result = analyze_stock(
-                                    ticker=tkr,
-                                    horizon="Swing (1-4 Wochen)",
-                                    depot=10000,
-                                    risk_pct=1.0,
-                                    override=0.0,
-                                    buy_in_override=0.0,
-                                    smart_money_default=True,
-                                    strict_mode=True
-                                )
-                                radar_results.append(radar_result)
-                            except Exception as e:
-                                radar_errors.append((tkr, str(e)))
-                            radar_progress.progress(i / len(resolved_radar_entries))
-                        radar_progress.empty()
-                        radar_status.empty()
+                if not resolved_radar_entries:
+                    if st.session_state.radar_universe == "Eigene Liste":
+                        st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")
+                else:
+                    radar_results = []
+                    radar_errors = []
+                    radar_progress = st.progress(0)
+                    radar_status = st.empty()
+                    for i, tkr in enumerate(resolved_radar_entries, start=1):
+                        radar_status.info(f"Radar analysiert {tkr} ({i}/{len(resolved_radar_entries)}) ...")
+                        try:
+                            radar_result = analyze_stock(
+                                ticker=tkr,
+                                horizon="Swing (1-4 Wochen)",
+                                depot=10000,
+                                risk_pct=1.0,
+                                override=0.0,
+                                buy_in_override=0.0,
+                                smart_money_default=True,
+                                strict_mode=True
+                            )
+                            radar_results.append(radar_result)
+                        except Exception as e:
+                            radar_errors.append((tkr, str(e)))
+                        radar_progress.progress(i / len(resolved_radar_entries))
+                    radar_progress.empty()
+                    radar_status.empty()
 
-                        if not radar_results:
-                            st.error("Der Radar-Lauf hat keine belastbaren Kandidaten geliefert.")
-                        else:
-                            st.session_state.radar_last_payload = {
-                                "radar_results": radar_results,
-                                "radar_errors": radar_errors,
-                                "radar_resolution_rows": radar_resolution_rows,
-                                "radar_universe": st.session_state.radar_universe,
-                                "radar_screening_style": st.session_state.radar_screening_style,
-                                "radar_max_candidates": st.session_state.radar_max_candidates,
-                            }
+                    if not radar_results:
+                        st.error("Der Radar-Lauf hat keine belastbaren Kandidaten geliefert.")
+                    else:
+                        st.session_state.radar_last_payload = {
+                            "radar_results": radar_results,
+                            "radar_errors": radar_errors,
+                            "radar_resolution_rows": radar_resolution_rows,
+                            "radar_universe": st.session_state.radar_universe,
+                            "radar_screening_style": st.session_state.radar_screening_style,
+                            "radar_max_candidates": st.session_state.radar_max_candidates,
+                        }
 
                         trigger_rank_map = {
                             "Aktiv": 5,
@@ -7310,39 +7302,40 @@ if workspace_mode:
 
                         selected_radar_tickers = list(st.session_state.get("radar_selected_tickers", radar_default_selected.copy()))
 
-                        edited_section_frames = {}
-                        with st.form("radar_selection_form_global", clear_on_submit=False):
-                            for section_title, section_caption, section_df in section_specs:
-                                st.markdown(f"#### {section_title}")
-                                st.caption(section_caption)
-                                if section_df.empty:
-                                    st.markdown(
-                                        '<div class="empty-state"><div class="empty-state-title">Aktuell keine Werte in dieser Stufe</div><div class="empty-state-text">Die momentane Radar-Auswahl liefert in diesem Reifegrad gerade keine Kandidaten.</div></div>',
-                                        unsafe_allow_html=True,
-                                    )
-                                else:
-                                    section_select_df = section_df[radar_cols].copy()
-                                    if "Investment-Attraktivität" in section_select_df.columns:
-                                        section_select_df["Investment-Attraktivität"] = section_select_df["Investment-Attraktivität"].apply(radar_score_badge)
-                                    if "Einstieg jetzt attraktiv?" in section_select_df.columns:
-                                        section_select_df["Einstieg jetzt attraktiv?"] = section_select_df["Einstieg jetzt attraktiv?"].apply(radar_score_badge)
-                                    if "Setup-Priorität" in section_select_df.columns:
-                                        section_select_df["Setup-Priorität"] = section_select_df["Setup-Priorität"].apply(radar_score_badge)
-                                    if "Trigger-Status" in section_select_df.columns:
-                                        section_select_df["Trigger-Status"] = section_select_df["Trigger-Status"].apply(radar_trigger_badge)
-                                    if "Watchlist-Priorität" in section_select_df.columns:
-                                        section_select_df["Watchlist-Priorität"] = section_select_df["Watchlist-Priorität"].apply(radar_priority_badge)
+                        for section_title, section_caption, section_df in section_specs:
+                            st.markdown(f"#### {section_title}")
+                            st.caption(section_caption)
+                            if section_df.empty:
+                                st.markdown(
+                                    '<div class="empty-state"><div class="empty-state-title">Aktuell keine Werte in dieser Stufe</div><div class="empty-state-text">Die momentane Radar-Auswahl liefert in diesem Reifegrad gerade keine Kandidaten.</div></div>',
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                section_select_df = section_df[radar_cols].copy()
+                                if "Investment-Attraktivität" in section_select_df.columns:
+                                    section_select_df["Investment-Attraktivität"] = section_select_df["Investment-Attraktivität"].apply(radar_score_badge)
+                                if "Einstieg jetzt attraktiv?" in section_select_df.columns:
+                                    section_select_df["Einstieg jetzt attraktiv?"] = section_select_df["Einstieg jetzt attraktiv?"].apply(radar_score_badge)
+                                if "Setup-Priorität" in section_select_df.columns:
+                                    section_select_df["Setup-Priorität"] = section_select_df["Setup-Priorität"].apply(radar_score_badge)
+                                if "Trigger-Status" in section_select_df.columns:
+                                    section_select_df["Trigger-Status"] = section_select_df["Trigger-Status"].apply(radar_trigger_badge)
+                                if "Watchlist-Priorität" in section_select_df.columns:
+                                    section_select_df["Watchlist-Priorität"] = section_select_df["Watchlist-Priorität"].apply(radar_priority_badge)
 
-                                    section_select_df.insert(
-                                        0,
-                                        "Übernehmen",
-                                        section_select_df["Ticker"].astype(str).isin(selected_radar_tickers) if "Ticker" in section_select_df.columns else False
-                                    )
+                                section_tickers = section_select_df["Ticker"].astype(str).tolist() if "Ticker" in section_select_df.columns else []
+                                section_select_df.insert(
+                                    0,
+                                    "Übernehmen",
+                                    section_select_df["Ticker"].astype(str).isin(selected_radar_tickers) if "Ticker" in section_select_df.columns else False
+                                )
 
-                                    section_slug = re.sub(r'[^a-z0-9]+', '_', section_title.lower())
-                                    editor_key = f"radar_select_editor_{section_slug}"
+                                section_slug = re.sub(r'[^a-z0-9]+', '_', section_title.lower())
+                                form_key = f"radar_select_form_{section_slug}"
+                                editor_key = f"radar_select_editor_{section_slug}"
 
-                                    edited_section_frames[section_title] = st.data_editor(
+                                with st.form(form_key, clear_on_submit=False):
+                                    edited_section_df = st.data_editor(
                                         section_select_df,
                                         hide_index=True,
                                         use_container_width=True,
@@ -7353,23 +7346,26 @@ if workspace_mode:
                                         },
                                         disabled=[c for c in section_select_df.columns if c != "Übernehmen"]
                                     )
+                                    apply_section_selection = st.form_submit_button("Auswahl in diesem Block übernehmen", use_container_width=True)
 
-                            apply_all_section_selection = st.form_submit_button("Auswahl übernehmen", use_container_width=True)
-
-                        if apply_all_section_selection:
-                            updated_selected = []
-                            seen_selected = set()
-                            for _section_title, _edited_df in edited_section_frames.items():
-                                if "Übernehmen" not in _edited_df.columns or "Ticker" not in _edited_df.columns:
-                                    continue
-                                for _ticker in _edited_df.loc[_edited_df["Übernehmen"] == True, "Ticker"].astype(str).tolist():
-                                    _ticker = str(_ticker).strip()
-                                    if _ticker and _ticker not in seen_selected:
-                                        updated_selected.append(_ticker)
-                                        seen_selected.add(_ticker)
-                            st.session_state.radar_selected_tickers = updated_selected
-                            selected_radar_tickers = updated_selected
-                            st.success(f"Auswahl aktualisiert: {len(updated_selected)} Werte markiert.")
+                                if apply_section_selection and "Übernehmen" in edited_section_df.columns and "Ticker" in edited_section_df.columns:
+                                    updated_selected = [t for t in st.session_state.get("radar_selected_tickers", radar_default_selected.copy()) if t not in section_tickers]
+                                    updated_selected.extend(
+                                        [
+                                            str(_ticker).strip()
+                                            for _ticker in edited_section_df.loc[edited_section_df["Übernehmen"] == True, "Ticker"].astype(str).tolist()
+                                            if str(_ticker).strip()
+                                        ]
+                                    )
+                                    deduped_selected = []
+                                    seen_selected = set()
+                                    for _ticker in updated_selected:
+                                        if _ticker not in seen_selected:
+                                            deduped_selected.append(_ticker)
+                                            seen_selected.add(_ticker)
+                                    st.session_state.radar_selected_tickers = deduped_selected
+                                    selected_radar_tickers = deduped_selected
+                                    st.rerun()
 
                         if radar_resolution_rows and st.session_state.radar_universe == "Eigene Liste":
                             with st.expander("Aufgelöste Radar-Eingaben", expanded=False):
@@ -8274,7 +8270,6 @@ if result is not None:
     balance_score = result["balance_score"]
     sentiment_score = result["sentiment_score"]
     risk_score = result["risk_score"]
-    base_company = result.get("base_company", result["company"])
     company = result["company"]
     setup_adj = result["setup_adj"]
     investment = result["investment"]
@@ -9656,54 +9651,99 @@ if result is not None:
             })
             st.dataframe(fund_df, hide_index=True, use_container_width=True)
 
-            st.markdown("**Herleitung von Company Quality**")
-            company_breakdown_df = pd.DataFrame({
-                "Baustein": [
-                    "Qualität",
-                    "Wachstum",
-                    "Growth Quality",
-                    "Bewertung",
-                    "Bilanz",
-                    "Sentiment",
-                    "Risiko",
-                    "Rohwert vor Horizon-Glättung",
-                    "Endwert Company Quality"
-                ],
-                "Wert": [
-                    f"{quality_score}/100",
-                    f"{growth_score}/100",
-                    f"{growth_quality}/100",
-                    f"{valuation_score}/100",
-                    f"{balance_score}/100",
-                    f"{sentiment_score}/100",
-                    f"{risk_score}/100",
-                    f"{base_company}/100",
-                    f"{company}/100",
-                ],
-                "Einordnung": [
-                    "Profitabilität, Margen und Kapitalrendite",
-                    "Umsatz- und Gewinnwachstum",
-                    "Wachstum mit Cashflow- und Margenqualität",
-                    "KGV, PEG, KUV, KBV und Upside",
-                    "Liquidität und Verschuldung",
-                    "Analystenmeinung und Target-Bild",
-                    "Beta, Short-Quote und ATR-Risiko",
-                    "Fundamentaler Rohwert vor der Horizon-Anpassung",
-                    "Tatsächlich verwendeter Company-Qualitätswert im Modell"
-                ],
-            })
-            st.dataframe(company_breakdown_df, hide_index=True, use_container_width=True)
+            turnaround_score = 0
+            turnaround_notes = []
+            turnaround_setup = str(setup_type or "").strip()
+            turnaround_entry = str(entry_quality or "").strip().lower()
+            turnaround_regime = str(market_info.get("regime", "")).strip().upper()
 
-            if "Kurzfrist" in horizon or "Swing" in horizon:
-                st.info(
-                    f"Für den aktuellen Horizont ({horizon}) wird Company Quality bewusst geglättet. "
-                    f"Rohwert fundamental: {base_company}/100 | verwendeter Endwert: {company}/100."
-                )
-            elif base_company != company:
-                st.info(
-                    f"Company Quality wurde für den aktuellen Horizont angepasst. "
-                    f"Rohwert fundamental: {base_company}/100 | verwendeter Endwert: {company}/100."
-                )
+            if turnaround_setup == "Rebound":
+                turnaround_score += 22
+                turnaround_notes.append("Klares Rebound-Setup erkannt")
+            elif turnaround_setup == "Breakout-Retest":
+                turnaround_score += 18
+                turnaround_notes.append("Retest nach früher Stärke kann Drehung bestätigen")
+            elif turnaround_setup in {"Pullback an MA20", "Pullback an MA50"}:
+                turnaround_score += 14
+                turnaround_notes.append("Pullback-Struktur kann konstruktive Stabilisierung zeigen")
+
+            if short_term_score >= 65:
+                turnaround_score += 16
+                turnaround_notes.append("Kurzfristbild dreht bereits konstruktiv")
+            elif short_term_score >= 52:
+                turnaround_score += 9
+                turnaround_notes.append("Kurzfristbild stabilisiert sich")
+
+            if tb_score_100 >= 65:
+                turnaround_score += 14
+                turnaround_notes.append("Timing-Board liefert erste Bestätigung")
+            elif tb_score_100 >= 52:
+                turnaround_score += 8
+                turnaround_notes.append("Timing verbessert sich")
+
+            if catalyst_score_display >= 65:
+                turnaround_score += 14
+                turnaround_notes.append("Katalysator stützt das Drehfenster")
+            elif catalyst_score_display >= 52:
+                turnaround_score += 8
+                turnaround_notes.append("Katalysator neutral bis leicht hilfreich")
+
+            if volume_quality_display >= 60:
+                turnaround_score += 10
+                turnaround_notes.append("Volumen bestätigt die Stabilisierung")
+            elif volume_quality_display >= 50:
+                turnaround_score += 5
+
+            if turnaround_entry == "gut":
+                turnaround_score += 10
+                turnaround_notes.append("Entry-Lage bereits brauchbar")
+            elif turnaround_entry == "abwarten":
+                turnaround_score += 5
+                turnaround_notes.append("Timing fast da, aber noch nicht ideal")
+
+            if pd.notna(price) and pd.notna(ma20) and price > ma20:
+                turnaround_score += 8
+                turnaround_notes.append("Kurs über MA20")
+            if pd.notna(price) and pd.notna(ma50) and price > ma50:
+                turnaround_score += 8
+                turnaround_notes.append("Kurs über MA50")
+
+            if exit_score_display < 30:
+                turnaround_score += 10
+            elif exit_score_display < 45:
+                turnaround_score += 5
+            elif exit_score_display >= 65:
+                turnaround_score -= 10
+                turnaround_notes.append("Exit-Druck bleibt erhöht")
+
+            if turnaround_regime == "NEGATIV":
+                turnaround_score -= 10
+                turnaround_notes.append("Marktumfeld bleibt Gegenwind")
+            elif turnaround_regime == "POSITIV":
+                turnaround_score += 4
+
+            if event_risk_score_display >= 70:
+                turnaround_score -= 8
+                turnaround_notes.append("Event-Risiko macht den Turnaround fragiler")
+
+            turnaround_score = int(round(clamp(turnaround_score, 0, 100)))
+            if turnaround_score >= 72:
+                turnaround_text = "Frühe Drehung konstruktiv"
+            elif turnaround_score >= 58:
+                turnaround_text = "Turnaround-Fenster offen"
+            elif turnaround_score >= 45:
+                turnaround_text = "Erste Stabilisierung, noch fragil"
+            else:
+                turnaround_text = "Noch kein sauberer Turnaround"
+
+            st.markdown("**Turnaround-Check**")
+            st.caption("Zusätzliche Lesart für frühe Drehkandidaten. Dieser Block ergänzt die Hauptanalyse, ersetzt sie aber nicht.")
+            ta1, ta2, ta3 = st.columns(3)
+            ta1.metric("Turnaround-Fenster", f"{turnaround_score}/100", turnaround_text)
+            ta2.metric("Kurzfristbild", f"{short_term_score}/100", tb_timing_text)
+            ta3.metric("Dreh-Setup", turnaround_setup if turnaround_setup else "-")
+            if turnaround_notes:
+                st.markdown("- " + "\n- ".join(turnaround_notes[:5]))
 
             st.markdown("**Strukturierte Red Flags**")
             st.dataframe(red_flags_df, hide_index=True, use_container_width=True)

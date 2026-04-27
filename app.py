@@ -6948,7 +6948,8 @@ if workspace_mode:
         )
 
         if st.session_state.get("radar_requested", False) or st.session_state.get("radar_last_payload") is not None:
-            if st.session_state.get("radar_requested", False):
+            radar_should_run_analysis = bool(st.session_state.get("radar_requested", False))
+            if radar_should_run_analysis:
                 st.session_state.radar_requested = False
                 if st.session_state.radar_universe == "Eigene Liste":
                     radar_entries = split_batch_input(st.session_state.radar_custom_input)
@@ -6973,6 +6974,8 @@ if workspace_mode:
                     resolved_radar_entries = []
                     radar_resolution_rows = []
                     st.warning("Bitte wähle ein gültiges Radar-Universum oder nutze eine eigene Liste.")
+                radar_results = []
+                radar_errors = []
             else:
                 radar_cached_payload = st.session_state.get("radar_last_payload") or {}
                 radar_results = list(radar_cached_payload.get("radar_results", []) or [])
@@ -6985,9 +6988,7 @@ if workspace_mode:
                 if not resolved_radar_entries:
                     if st.session_state.radar_universe == "Eigene Liste":
                         st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")
-                else:
-                    radar_results = []
-                    radar_errors = []
+                elif radar_should_run_analysis:
                     radar_progress = st.progress(0)
                     radar_status = st.empty()
                     for i, tkr in enumerate(resolved_radar_entries, start=1):

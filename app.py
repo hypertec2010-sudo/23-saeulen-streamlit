@@ -7247,6 +7247,41 @@ if workspace_mode:
                 radar_near_df = sort_section_df(radar_df[mask_near].copy())
                 radar_later_df = sort_section_df(radar_df[mask_later].copy())
 
+                def radar_score_badge(value):
+                    try:
+                        num = float(str(value).replace('%', '').replace(',', '.').strip())
+                    except Exception:
+                        return str(value) if str(value).strip() else '-'
+                    if num >= 75:
+                        return f"🟢 {int(round(num))}"
+                    if num >= 55:
+                        return f"🟡 {int(round(num))}"
+                    return f"🔴 {int(round(num))}"
+
+                def radar_trigger_badge(value):
+                    raw = str(value).strip()
+                    s = raw.lower()
+                    if s in {"aktiv", "jetzt prüfbar"}:
+                        return f"🟢 {raw}"
+                    if s in {"nahe dran", "fast prüfbar"}:
+                        return f"🟡 {raw}"
+                    if s in {"frühe beobachtung", "früh interessant", "beobachten", "weiter beobachten"}:
+                        return f"🟠 {raw}"
+                    if s in {"passiv", "aktuell kein fokus", "warten", "noch warten"}:
+                        return f"🔴 {raw}"
+                    return raw if raw else '-'
+
+                def radar_priority_badge(value):
+                    raw = str(value).strip()
+                    s = raw.lower()
+                    if s == 'hoch':
+                        return f"🟢 {raw}"
+                    if s == 'mittel':
+                        return f"🟡 {raw}"
+                    if s == 'niedrig':
+                        return f"🔴 {raw}"
+                    return raw if raw else '-'
+
                 section_specs = [
                     ("Jetzt spannend", "Aktive oder direkt prüfbare Kandidaten mit brauchbarer Einstiegsreife.", radar_now_df),
                     ("Nahe dran", "Interessante Kandidaten, bei denen Timing oder Bestätigung noch einen Schritt brauchen.", radar_near_df),

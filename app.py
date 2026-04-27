@@ -6947,8 +6947,18 @@ if workspace_mode:
             unsafe_allow_html=True,
         )
 
-        if st.session_state.get("radar_requested", False) or st.session_state.get("radar_last_payload") is not None:
+
+        radar_payload = st.session_state.get("radar_last_payload") or {}
+        radar_payload_matches = (
+            radar_payload.get("radar_universe") == st.session_state.radar_universe
+            and radar_payload.get("radar_screening_style") == st.session_state.radar_screening_style
+            and radar_payload.get("radar_max_candidates") == st.session_state.radar_max_candidates
+        )
+        radar_should_show = bool(st.session_state.get("radar_requested", False) or radar_payload_matches)
+
+        if radar_should_show:
             radar_should_run_analysis = bool(st.session_state.get("radar_requested", False))
+
             if radar_should_run_analysis:
                 st.session_state.radar_requested = False
                 if st.session_state.radar_universe == "Eigene Liste":
@@ -6974,21 +6984,14 @@ if workspace_mode:
                     resolved_radar_entries = []
                     radar_resolution_rows = []
                     st.warning("Bitte wähle ein gültiges Radar-Universum oder nutze eine eigene Liste.")
+
                 radar_results = []
                 radar_errors = []
-            else:
-                radar_cached_payload = st.session_state.get("radar_last_payload") or {}
-                radar_results = list(radar_cached_payload.get("radar_results", []) or [])
-                radar_errors = list(radar_cached_payload.get("radar_errors", []) or [])
-                radar_resolution_rows = list(radar_cached_payload.get("radar_resolution_rows", []) or [])
-                resolved_radar_entries = [str(r.get("ticker", "") or "").strip() for r in radar_results if str(r.get("ticker", "") or "").strip()]
-
-            if st.session_state.radar_universe in set(radar_universe_map.keys()) | {"Eigene Liste"}:
 
                 if not resolved_radar_entries:
                     if st.session_state.radar_universe == "Eigene Liste":
                         st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")
-                elif radar_should_run_analysis:
+                else:
                     radar_progress = st.progress(0)
                     radar_status = st.empty()
                     for i, tkr in enumerate(resolved_radar_entries, start=1):
@@ -7011,9 +7014,7 @@ if workspace_mode:
                     radar_progress.empty()
                     radar_status.empty()
 
-                    if not radar_results:
-                        st.error("Der Radar-Lauf hat keine belastbaren Kandidaten geliefert.")
-                    else:
+                    if radar_results:
                         st.session_state.radar_last_payload = {
                             "radar_results": radar_results,
                             "radar_errors": radar_errors,
@@ -7022,7 +7023,17 @@ if workspace_mode:
                             "radar_screening_style": st.session_state.radar_screening_style,
                             "radar_max_candidates": st.session_state.radar_max_candidates,
                         }
+                        radar_payload = st.session_state.radar_last_payload
+                        radar_payload_matches = True
+                    else:
+                        st.error("Der Radar-Lauf hat keine belastbaren Kandidaten geliefert.")
+            else:
+                radar_results = list(radar_payload.get("radar_results", []) or [])
+                radar_errors = list(radar_payload.get("radar_errors", []) or [])
+                radar_resolution_rows = list(radar_payload.get("radar_resolution_rows", []) or [])
+                resolved_radar_entries = [str(r.get("ticker", "") or "").strip() for r in radar_results if str(r.get("ticker", "") or "").strip()]
 
+            if radar_payload_matches and radar_results:
                 trigger_rank_map = {
                     "Aktiv": 5,
                     "Jetzt prüfbar": 5,
@@ -7052,129 +7063,52 @@ if workspace_mode:
                     short_term_local = pd.to_numeric(r.get("short_term_score", np.nan), errors="coerce")
                     tb_local = pd.to_numeric(r.get("tb_score_100", np.nan), errors="coerce")
                     exit_local = pd.to_numeric(r.get("exit_score", np.nan), errors="coerce")
-                    setup_conf_local = pd.to_numeric(r.get("setup_confidence", np.nan), errors="coerce")
-                    setup_priority_local = pd.to_numeric(r.get("setup_priority_score", np.nan), errors="coerce")
 
                     if style_name_local == "Turnaround":
                         if setup_type_local == "Rebound":
                             return "Frühe technische Drehung mit Rebound-Charakter"
                         if setup_type_local == "Breakout-Retest":
                             return "Rückeroberung läuft, Bestätigung über Retest möglich"
-                        if setup_type_local == "Pullback an MA20":
-                            return "Frischer Stabilisierungsversuch nahe MA20"
-                        if setup_type_local == "Pullback an MA50":
-                            return "Pullback an MA50 kann zur Trenddrehung werden"
-                        if trigger in {"Aktiv", "Jetzt prüfbar"}:
-                            return "Turnaround-Setup ist jetzt erstmals konkret prüfbar"
-                        if trigger in {"Nahe dran", "Fast prüfbar"}:
-                            return "Frühe Drehung sichtbar, aber Bestätigung fehlt noch knapp"
-                        if pd.notna(catalyst_local) and catalyst_local >= 65:
+                        if setup_type_local in {"Pullback an MA20", "Pullback an MA50"}:
+                            return f"Frischer Stabilisierungsversuch nahe {setup_type_local.split()[-1]}"
+                        if pd.notna(catalyst_local) and catalyst_local >= 70:
                             return "Katalysator verbessert das Turnaround-Fenster"
                         if pd.notna(short_term_local) and short_term_local >= 60 and pd.notna(tb_local) and tb_local >= 58:
                             return "Kurzfristbild dreht, obwohl der Titel noch nicht voll bestätigt ist"
-                        if pd.notna(exit_local) and exit_local <= 35:
-                            return "Exit-Druck ist begrenzt, Raum für technische Erholung vorhanden"
-                        if entry_quality_local == "früh":
+                        if trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"}:
                             return "Noch zu früh, aber erste Drehansätze werden sichtbar"
-                        if top_red_flag_local not in {"", "-", "None"}:
-                            return f"Früher Kandidat, aber noch Gegenwind: {top_red_flag_local[:40]}"
-                        return "Früher technischer Kandidat vor voller Bestätigung"
+                        return "Frühe technische Drehung mit noch fragiler Bestätigung"
 
                     if style_name_local == "Leader":
-                        if leadership_local == "Leader" and setup_type_local and setup_type_local != "Kein sauberes Setup":
-                            return f"Leader mit sauberem {setup_type_local}-Setup"
+                        if leadership_local == "Leader" and trigger in {"Aktiv", "Jetzt prüfbar"}:
+                            return "Leader mit bestätigter Stärke und direkt prüfbarem Einstieg"
                         if leadership_local == "Leader":
                             return "Leader mit bestätigter Stärke"
-                        if trigger in {"Aktiv", "Jetzt prüfbar"} and pd.notna(setup_conf_local) and setup_conf_local >= 65:
-                            return "Bestätigtes Setup, Einstieg jetzt konkret prüfbar"
-                        if trigger in {"Nahe dran", "Fast prüfbar"} and pd.notna(setup_priority_local) and setup_priority_local >= 65:
-                            return "Starker Leader-Kandidat, Trigger fast vollständig"
-                        if setup_type_local == "Breakout":
+                        if setup_type_local in {"Breakout", "Range-Breakout"} and trigger in {"Aktiv", "Jetzt prüfbar"}:
                             return "Breakout-Leader mit sauberer Struktur"
-                        if setup_type_local == "Trendfolge":
+                        if setup_type_local in {"Trendfolge", "Pullback an MA20", "Pullback an MA50"}:
                             return "Trendführer mit stabiler Fortsetzungsstruktur"
-                        if setup_type_local == "Pullback an MA20":
-                            return "Leader im konstruktiven Pullback an MA20"
-                        if pd.notna(trading_case_local) and trading_case_local >= 70 and pd.notna(investment_case_local) and investment_case_local >= 72:
-                            return "Bestätigte Stärke bei gutem Timing-Fenster"
-                        if top_red_flag_local not in {"", "-", "None"}:
-                            return f"Leader-Qualität vorhanden, aber noch Bremse: {top_red_flag_local[:42]}"
-                        return "Bestätigter Stärke-Kandidat mit sauberem Gesamtbild"
+                        if pd.notna(trading_case_local) and trading_case_local >= 70:
+                            return "Bestätigtes Setup, Einstieg jetzt konkret prüfbar"
+                        if pd.notna(investment_case_local) and investment_case_local >= 75:
+                            return "Starker Qualitäts- und Leadership-Kandidat"
+                        return "Konstruktiver Leader-Kandidat mit bestätigter Stärke"
 
-                    if trigger in {"Aktiv", "Jetzt prüfbar"}:
+                    if trigger in {"Aktiv", "Jetzt prüfbar"} and pd.notna(trading_case_local) and trading_case_local >= 70:
                         return "Gutes Gesamtbild mit direkt prüfbarem Einstieg"
                     if trigger in {"Nahe dran", "Fast prüfbar"}:
                         return "Ausgewogener Kandidat, Timing fast vollständig"
-                    if pd.notna(investment_case_local) and investment_case_local >= 78 and pd.notna(trading_case_local) and trading_case_local < 60:
+                    if pd.notna(investment_case_local) and investment_case_local >= 75 and pd.notna(trading_case_local) and trading_case_local < 65:
                         return "Starker Investment-Case, Timing zieht noch nicht ganz mit"
-                    if leadership_local == "Leader" and pd.notna(catalyst_local) and catalyst_local >= 60:
-                        return "Leader-Qualität mit zusätzlichem Katalysator"
-                    if setup_type_local == "Breakout":
-                        return "Starker Kandidat mit Breakout-Charakter"
-                    if setup_type_local == "Breakout-Retest":
-                        return "Retest-Kandidat mit ausgewogenem Chance-Risiko-Profil"
-                    if setup_type_local == "Pullback an MA20":
-                        return "Qualitätswert im konstruktiven Pullback an MA20"
-                    if setup_type_local == "Pullback an MA50":
-                        return "Rücksetzer an MA50, aber Grundbild bleibt intakt"
-                    if setup_type_local == "Trendfolge":
-                        return "Solider Trendfolger mit brauchbarer Struktur"
-                    if trigger in {"Frühe Beobachtung", "Früh interessant"}:
-                        if setup_type_local and setup_type_local != "Kein sauberes Setup":
-                            return f"{setup_type_local}-Ansatz vorhanden, aber noch nicht reif genug"
-                        return "Früher Kandidat mit gemischtem Timing"
-                    if top_red_flag_local not in {"", "-", "None"} and market_regime_local == "NEGATIV":
-                        return "Ordentlicher Kandidat, aber Marktumfeld und Risiko bremsen"
-                    if entry_quality_local == "abwarten":
-                        return "Interessant, aber aktuell noch über der Entry-Zone"
-                    if entry_quality_local == "früh":
-                        return "Interessant, aber Bestätigung fehlt noch"
-                    if top_red_flag_local not in {"", "-", "None"}:
-                        return f"Ausgewogener Kandidat, aber {top_red_flag_local[:52]}"
+                    if setup_type_local in {"Pullback an MA20", "Pullback an MA50"}:
+                        return f"Qualitätswert im konstruktiven {setup_type_local}"
+                    if leadership_local == "Leader":
+                        return "Leader mit brauchbarem Gesamtbild"
+                    if market_regime_local == "NEGATIV":
+                        return "Guter Wert, aber das Marktumfeld bremst aktuell"
+                    if top_red_flag_local and top_red_flag_local != "-":
+                        return f"Interessant, aber gebremst durch: {shorten_text(top_red_flag_local, 44)}"
                     return "Ausgewogener Kandidat mit brauchbarem Gesamtbild"
-
-
-
-                def radar_score_badge(value):
-                    try:
-                        v = float(value)
-                    except Exception:
-                        s = str(value).strip()
-                        return s if s else "-"
-                    if v >= 75:
-                        icon = "🟢"
-                    elif v >= 55:
-                        icon = "🟡"
-                    else:
-                        icon = "🔴"
-                    return f"{icon} {int(round(v))}"
-
-                def radar_trigger_badge(value):
-                    s = str(value or "").strip()
-                    mapping = {
-                        "Jetzt prüfbar": "🟢 Jetzt prüfbar",
-                        "Fast prüfbar": "🟡 Fast prüfbar",
-                        "Früh interessant": "🟠 Früh interessant",
-                        "Weiter beobachten": "🔵 Weiter beobachten",
-                        "Aktuell kein Fokus": "⚪ Aktuell kein Fokus",
-                        "Noch warten": "⚪ Noch warten",
-                        "Aktiv": "🟢 Aktiv",
-                        "Nahe dran": "🟡 Nahe dran",
-                        "Frühe Beobachtung": "🟠 Frühe Beobachtung",
-                        "Beobachten": "🔵 Beobachten",
-                        "Passiv": "⚪ Passiv",
-                        "Warten": "⚪ Warten",
-                    }
-                    return mapping.get(s, s if s else "-")
-
-                def radar_priority_badge(value):
-                    s = str(value or "").strip()
-                    mapping = {
-                        "Hoch": "🟢 Hoch",
-                        "Mittel": "🟡 Mittel",
-                        "Niedrig": "⚪ Niedrig",
-                    }
-                    return mapping.get(s, s if s else "-")
 
                 radar_df = build_ranking_table(radar_results)
                 radar_reason_map = {str(r.get("ticker", "")): build_radar_reason(r) for r in radar_results}
@@ -7239,64 +7173,98 @@ if workspace_mode:
 
                 radar_df["__style_sort"] = radar_df.apply(compute_radar_style_sort, axis=1)
 
-                radar_sort_cols = []
-                radar_sort_ascending = []
-                if "__style_sort" in radar_df.columns:
-                    radar_sort_cols.append("__style_sort")
-                    radar_sort_ascending.append(False)
-                if "__trigger_sort" in radar_df.columns:
-                    radar_sort_cols.append("__trigger_sort")
-                    radar_sort_ascending.append(False)
-                if "Einstieg jetzt attraktiv?" in radar_df.columns:
-                    radar_sort_cols.append("Einstieg jetzt attraktiv?")
-                    radar_sort_ascending.append(False)
-                if "Investment-Attraktivität" in radar_df.columns:
-                    radar_sort_cols.append("Investment-Attraktivität")
-                    radar_sort_ascending.append(False)
-                if "Setup-Priorität" in radar_df.columns:
-                    radar_sort_cols.append("Setup-Priorität")
-                    radar_sort_ascending.append(False)
-                if radar_sort_cols:
-                    radar_df = radar_df.sort_values(by=radar_sort_cols, ascending=radar_sort_ascending)
-
-                radar_df = radar_df.drop(columns=["__trigger_sort", "__style_sort"], errors="ignore").reset_index(drop=True)
-                radar_df = radar_df.head(int(st.session_state.radar_max_candidates))
-
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("Die Radar-Ergebnisse sind jetzt in sofort nutzbare Kaufkandidaten, vorbereitete Kandidaten und spätere Beobachtungswerte getrennt.")
-                radar_cols = [c for c in [
-                    "Ticker", "Name", "Setup-Typ", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
-                    "Setup-Priorität", "Trigger-Status", "Watchlist-Priorität", "Warum heute auffällig", "Top Red Flag"
-                ] if c in radar_df.columns]
+                st.caption("Aufbau, Darstellung und Auswahl sind jetzt für alle Listen identisch. Die Einteilung erfolgt immer zuerst über den vollständigen Radar-Lauf und wird erst danach je Abschnitt begrenzt.")
+
+                sort_col1, sort_col2 = st.columns([1.4, 1.0])
+                with sort_col1:
+                    radar_sort_display = st.selectbox(
+                        "Sortieren nach",
+                        options=[
+                            "Radar-Score",
+                            "Investment-Attraktivität",
+                            "Einstieg jetzt attraktiv?",
+                            "Setup-Priorität",
+                            "Trigger-Stufe",
+                            "Ticker",
+                        ],
+                        index=0,
+                        key="radar_sort_display_widget"
+                    )
+                with sort_col2:
+                    radar_sort_order = st.selectbox(
+                        "Sortierreihenfolge",
+                        options=["Absteigend", "Aufsteigend"],
+                        index=0,
+                        key="radar_sort_order_widget"
+                    )
+
+                radar_sort_key_map = {
+                    "Radar-Score": "__style_sort",
+                    "Investment-Attraktivität": "Investment-Attraktivität",
+                    "Einstieg jetzt attraktiv?": "Einstieg jetzt attraktiv?",
+                    "Setup-Priorität": "Setup-Priorität",
+                    "Trigger-Stufe": "__trigger_sort",
+                    "Ticker": "Ticker",
+                }
+                radar_user_sort_col = radar_sort_key_map.get(radar_sort_display, "__style_sort")
+                radar_user_sort_ascending = (radar_sort_order == "Aufsteigend")
 
                 trigger_series = radar_df["Trigger-Status"].astype(str).fillna("") if "Trigger-Status" in radar_df.columns else pd.Series([""] * len(radar_df))
                 entry_series = pd.to_numeric(radar_df["Einstieg jetzt attraktiv?"], errors="coerce") if "Einstieg jetzt attraktiv?" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
                 invest_series = pd.to_numeric(radar_df["Investment-Attraktivität"], errors="coerce") if "Investment-Attraktivität" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
 
                 mask_now = (
-                    trigger_series.isin(["Aktiv", "Jetzt prüfbar", "Nahe dran", "Fast prüfbar"])
-                    | (entry_series >= 68)
+                    trigger_series.isin(["Aktiv", "Jetzt prüfbar"])
+                    | (entry_series >= 75)
                 )
-                mask_later = (
-                    trigger_series.isin(["Beobachten", "Weiter beobachten", "Passiv", "Aktuell kein Fokus", "Warten", "Noch warten"])
-                    | ((invest_series >= 70) & (entry_series < 60))
+                mask_near = (
+                    trigger_series.isin(["Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"])
+                    | ((entry_series >= 58) & (invest_series >= 60) & ~mask_now)
                 )
-                mask_near = ~(mask_now | mask_later)
+                mask_later = ~(mask_now | mask_near)
 
-                radar_now_df = radar_df[mask_now].copy().reset_index(drop=True)
-                radar_near_df = radar_df[mask_near].copy().reset_index(drop=True)
-                radar_later_df = radar_df[mask_later].copy().reset_index(drop=True)
+                def sort_section_df(df_section):
+                    if df_section is None or df_section.empty:
+                        return df_section
+                    sort_cols = []
+                    sort_orders = []
+                    if radar_user_sort_col in df_section.columns:
+                        sort_cols.append(radar_user_sort_col)
+                        sort_orders.append(radar_user_sort_ascending)
+                    if radar_user_sort_col != "__style_sort" and "__style_sort" in df_section.columns:
+                        sort_cols.append("__style_sort")
+                        sort_orders.append(False)
+                    if radar_user_sort_col != "__trigger_sort" and "__trigger_sort" in df_section.columns:
+                        sort_cols.append("__trigger_sort")
+                        sort_orders.append(False)
+                    if "Ticker" in df_section.columns and "Ticker" not in sort_cols:
+                        sort_cols.append("Ticker")
+                        sort_orders.append(True)
+                    return df_section.sort_values(by=sort_cols, ascending=sort_orders).reset_index(drop=True)
+
+                radar_now_df = sort_section_df(radar_df[mask_now].copy())
+                radar_near_df = sort_section_df(radar_df[mask_near].copy())
+                radar_later_df = sort_section_df(radar_df[mask_later].copy())
 
                 section_specs = [
-                    ("Jetzt spannend", "Aktive oder fast aktive Kandidaten mit brauchbarer Einstiegsreife.", radar_now_df),
-                    ("Nahe dran", "Interessante Kandidaten, bei denen Setup oder Timing noch einen Schritt brauchen.", radar_near_df),
+                    ("Jetzt spannend", "Aktive oder direkt prüfbare Kandidaten mit brauchbarer Einstiegsreife.", radar_now_df),
+                    ("Nahe dran", "Interessante Kandidaten, bei denen Timing oder Bestätigung noch einen Schritt brauchen.", radar_near_df),
                     ("Später beobachten", "Gute Werte für die engere Watchlist, aber noch nicht reif für einen direkten Einstieg.", radar_later_df),
                 ]
 
+                section_display_frames = []
+                for _, _, _df in section_specs:
+                    if _df is not None and not _df.empty:
+                        section_display_frames.append(_df.head(int(st.session_state.radar_max_candidates)))
+                if section_display_frames:
+                    radar_display_df = pd.concat(section_display_frames, ignore_index=True).drop_duplicates(subset=["Ticker"], keep="first")
+                else:
+                    radar_display_df = pd.DataFrame(columns=radar_df.columns)
 
-                radar_top_tickers = radar_df["Ticker"].astype(str).tolist() if "Ticker" in radar_df.columns else []
+                radar_top_tickers = radar_display_df["Ticker"].astype(str).tolist() if "Ticker" in radar_display_df.columns else []
                 radar_default_selected = radar_top_tickers[: min(len(radar_top_tickers), 15)]
-                radar_selection_signature = "|".join(radar_top_tickers)
+                radar_selection_signature = f"{st.session_state.radar_universe}|{st.session_state.radar_screening_style}|{st.session_state.radar_max_candidates}|" + "|".join(radar_top_tickers)
 
                 if st.session_state.get("radar_selection_signature") != radar_selection_signature:
                     st.session_state.radar_selection_signature = radar_selection_signature
@@ -7307,12 +7275,13 @@ if workspace_mode:
                 selected_radar_tickers = []
 
                 st.markdown("### Radar-Auswahl")
-                st.caption("Werte direkt links in den Zeilen markieren oder abwählen. Die Auswahl bleibt erhalten; es wird keine neue Radar-Analyse gestartet.")
+                st.caption("Werte direkt links in den Zeilen markieren oder abwählen. Das Verhalten ist für alle Listen identisch; die Auswahl startet keine neue Radar-Analyse.")
 
                 for section_title, section_caption, section_df in section_specs:
+                    section_df = section_df.head(int(st.session_state.radar_max_candidates)) if section_df is not None and not section_df.empty else section_df
                     st.markdown(f"#### {section_title}")
                     st.caption(section_caption)
-                    if section_df.empty:
+                    if section_df is None or section_df.empty:
                         st.markdown(
                             '<div class="empty-state"><div class="empty-state-title">Aktuell keine Werte in dieser Stufe</div><div class="empty-state-text">Die momentane Radar-Auswahl liefert in diesem Reifegrad gerade keine Kandidaten.</div></div>',
                             unsafe_allow_html=True,
@@ -7332,7 +7301,12 @@ if workspace_mode:
                                 st.session_state[checkbox_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
 
                             row_cols = st.columns([0.8, 1.0, 2.0, 1.7, 1.9, 1.6, 1.6, 1.8, 2.6])
-                            is_selected = row_cols[0].checkbox("", value=bool(st.session_state.get(checkbox_key, False)), key=checkbox_key, label_visibility="collapsed")
+                            is_selected = row_cols[0].checkbox(
+                                "",
+                                value=bool(st.session_state.get(checkbox_key, False)),
+                                key=checkbox_key,
+                                label_visibility="collapsed"
+                            )
                             if is_selected:
                                 selected_radar_tickers.append(_ticker)
 
@@ -7347,7 +7321,6 @@ if workspace_mode:
 
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-                # stabil und in Radar-Reihenfolge halten
                 seen_selected = set()
                 selected_radar_tickers = [t for t in radar_top_tickers if t in selected_radar_tickers and not (t in seen_selected or seen_selected.add(t))]
                 st.session_state.radar_selected_tickers = selected_radar_tickers
@@ -7365,7 +7338,7 @@ if workspace_mode:
 
                 st.markdown("### Radar-Ergebnisse direkt nutzen")
                 st.caption("Auswahl direkt links in den Radar-Zeilen treffen. Nur markierte Werte werden übernommen.")
-                st.caption("Die aktuellen Top-Kandidaten lassen sich direkt in die Sofortanalyse übernehmen oder in eine frei wählbare Watchlist schreiben.")
+                st.caption("Die aktuellen Radar-Kandidaten lassen sich direkt in die Sofortanalyse übernehmen oder in eine frei wählbare Watchlist schreiben.")
                 radar_watchlists_df, radar_watchlists_err = load_watchlists_df()
                 if radar_watchlists_err:
                     st.warning(f"Watchlisten konnten für den Radar nicht geladen werden: {radar_watchlists_err}")
@@ -7455,13 +7428,16 @@ if workspace_mode:
                                 selected_watchlist_type_for_radar,
                                 selected_radar_tickers,
                                 check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich")
-                                )
+                            )
                             if ok:
                                 st.success(msg)
                             else:
                                 st.error(msg)
+            elif not radar_should_run_analysis:
+                st.info("Bitte für das aktuell gewählte Universum den Button „Kandidaten-Radar starten“ drücken.")
 
         st.stop()
+
     else:
         st.markdown(
             """

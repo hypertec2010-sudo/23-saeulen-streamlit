@@ -3754,12 +3754,42 @@ def detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=120):
 
 
 
+def classify_chart_zones_against_price(zones, current_price, max_supports=2, max_resistances=2, max_active=1):
+    supports, resistances, active_zones = [], [], []
+    if pd.isna(current_price):
+        return supports, resistances, active_zones
+
+    for z in zones or []:
+        try:
+            low = float(z.get("low", np.nan))
+            high = float(z.get("high", np.nan))
+            if pd.isna(low) or pd.isna(high):
+                continue
+            zone = dict(z)
+            if high < current_price:
+                zone["zone_type"] = "support"
+                supports.append(zone)
+            elif low > current_price:
+                zone["zone_type"] = "resistance"
+                resistances.append(zone)
+            else:
+                zone["zone_type"] = "active"
+                active_zones.append(zone)
+        except Exception:
+            continue
+
+    supports = sorted(supports, key=lambda z: abs(current_price - float(z.get("mid", current_price))))[:max_supports]
+    resistances = sorted(resistances, key=lambda z: abs(float(z.get("mid", current_price)) - current_price))[:max_resistances]
+    active_zones = sorted(active_zones, key=lambda z: abs(float(z.get("mid", current_price)) - current_price))[:max_active]
+    return supports, resistances, active_zones
+
+
+
 def build_chart_structures(df):
     pivot_highs, pivot_lows = detect_chart_pivots(df, left=3, right=3)
-    resistance_zones = cluster_chart_price_levels(pivot_highs, tolerance_pct=1.5, min_touches=2)
-    support_zones = cluster_chart_price_levels(pivot_lows, tolerance_pct=1.5, min_touches=2)
+    pivot_zones = cluster_chart_price_levels(pivot_highs + pivot_lows, tolerance_pct=1.5, min_touches=2)
     current_price = float(pd.to_numeric(df["Close"], errors="coerce").iloc[-1]) if df is not None and not df.empty else np.nan
-    supports, resistances = filter_chart_relevant_zones(support_zones + resistance_zones, current_price, max_supports=2, max_resistances=2)
+    supports, resistances, active_zones = classify_chart_zones_against_price(pivot_zones, current_price, max_supports=2, max_resistances=2, max_active=1)
     channel = detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=min(120, max(40, len(df) - 5)))
 
     if channel:
@@ -3769,8 +3799,11 @@ def build_chart_structures(df):
     return {
         "pivot_highs": pivot_highs,
         "pivot_lows": pivot_lows,
+        "zones": pivot_zones,
         "supports": supports,
         "resistances": resistances,
+        "active_zones": active_zones,
+        "current_price": current_price,
         "channel": channel,
     }
 
@@ -3778,7 +3811,7 @@ def build_chart_structures(df):
 
 
 
-def add_sr_zones_to_plotly(fig, df, supports, resistances):
+def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None):
     if df is None or df.empty:
         return
     x0 = df.index.min()
@@ -3841,6 +3874,33 @@ def add_sr_zones_to_plotly(fig, df, supports, resistances):
         )
 
 
+    for idx, z in enumerate(active_zones or [], start=1):
+        label = f"Z{idx} aktiv ({z['touches']}x)"
+        fig.add_shape(
+            type="rect",
+            x0=x0,
+            x1=x1,
+            y0=z["low"],
+            y1=z["high"],
+            line=dict(width=0),
+            fillcolor="rgba(59,130,246,0.18)",
+            layer="below",
+            row=1,
+            col=1
+        )
+        fig.add_annotation(
+            x=x1,
+            y=z["mid"],
+            text=label,
+            showarrow=False,
+            xanchor="left",
+            font=dict(size=10, color="#dbeafe"),
+            bgcolor="rgba(30,64,175,0.34)",
+            bordercolor="rgba(191,219,254,0.28)",
+            borderpad=3,
+            row=1,
+            col=1
+        )
 
 
 def add_trend_channel_to_plotly(fig, df, channel):
@@ -3913,6 +3973,7 @@ def summarize_chart_structures(df, structures):
 
     supports = structures.get("supports", []) or []
     resistances = structures.get("resistances", []) or []
+    active_zones = structures.get("active_zones", []) or []
     channel = structures.get("channel")
 
     if supports:
@@ -3927,6 +3988,12 @@ def summarize_chart_structures(df, structures):
                 summaries.append(f"Kurs unter S1 bei {s_mid:.2f} - Support wurde zuletzt unterschritten.")
             else:
                 summaries.append(f"Nächster Support S1 liegt bei {s_mid:.2f}, Abstand {dist_pct:.1f}%.")
+
+    if active_zones:
+        z0 = active_zones[0]
+        z_mid = float(z0.get("mid", np.nan))
+        if pd.notna(z_mid):
+            summaries.append(f"Kurs handelt aktuell in einer aktiven Zone um {z_mid:.2f}.")
 
     if resistances:
         r1 = resistances[0]
@@ -3989,6 +4056,7 @@ def evaluate_chart_structure_bias(df, structures):
 
     supports = structures.get("supports", []) or []
     resistances = structures.get("resistances", []) or []
+    active_zones = structures.get("active_zones", []) or []
     channel = structures.get("channel")
 
     if supports:
@@ -4006,6 +4074,12 @@ def evaluate_chart_structure_bias(df, structures):
                 result["tradeability_bias"] -= 2
                 result["notes_neg"].append("Kurs unter Support S1")
                 result["summary"].append(f"S1 bei {s_mid:.2f} wurde unterschritten.")
+
+    if active_zones:
+        z0 = active_zones[0]
+        z_mid = float(z0.get("mid", np.nan))
+        if pd.notna(z_mid):
+            summaries.append(f"Kurs handelt aktuell in einer aktiven Zone um {z_mid:.2f}.")
 
     if resistances:
         r1 = resistances[0]
@@ -4110,7 +4184,7 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
         try:
             structures = structures or build_chart_structures(chart_df)
             if show_sr:
-                add_sr_zones_to_plotly(fig, chart_df, structures.get("supports", []), structures.get("resistances", []))
+                add_sr_zones_to_plotly(fig, chart_df, structures.get("supports", []), structures.get("resistances", []), structures.get("active_zones", []))
             if show_channel:
                 add_trend_channel_to_plotly(fig, chart_df, structures.get("channel"))
         except Exception:
@@ -10546,7 +10620,7 @@ if result is not None:
                 "Zeitraum",
                 ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
                 index=2,
-                key="chart_range"
+                key=f"chart_range_{ticker}"
             )
 
             chart_overlay_col1, chart_overlay_col2 = st.columns(2)

@@ -4,6 +4,7 @@ import os
 import re
 import json
 import base64
+import hashlib
 import warnings
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
@@ -175,6 +176,44 @@ def trigger_ui_refresh(**state_updates):
     st.session_state.ui_refresh_nonce += 1
     st.rerun()
 
+
+RADAR_SNAPSHOT_FILE = Path("radar_snapshot_store.json")
+
+
+def _radar_snapshot_digest(raw_text):
+    try:
+        return hashlib.sha1(str(raw_text or "").encode("utf-8")).hexdigest()[:16]
+    except Exception:
+        return "default"
+
+
+def _radar_snapshot_signature(universe, style, max_candidates, custom_text=""):
+    custom_digest = _radar_snapshot_digest(custom_text if str(universe or "") == "Eigene Liste" else "")
+    return f"{universe}|{style}|{max_candidates}|{custom_digest}"
+
+
+def load_radar_snapshot(signature):
+    try:
+        if not RADAR_SNAPSHOT_FILE.exists():
+            return {}
+        payload = json.loads(RADAR_SNAPSHOT_FILE.read_text(encoding="utf-8"))
+        return dict(payload.get(str(signature), {}) or {})
+    except Exception:
+        return {}
+
+
+def save_radar_snapshot(signature, payload):
+    try:
+        existing = {}
+        if RADAR_SNAPSHOT_FILE.exists():
+            existing = json.loads(RADAR_SNAPSHOT_FILE.read_text(encoding="utf-8"))
+            if not isinstance(existing, dict):
+                existing = {}
+        existing[str(signature)] = payload
+        RADAR_SNAPSHOT_FILE.write_text(json.dumps(existing, ensure_ascii=False), encoding="utf-8")
+        return True
+    except Exception:
+        return False
 
 
 
@@ -6984,12 +7023,21 @@ if workspace_mode:
         )
 
 
+        radar_input_signature = _radar_snapshot_signature(
+            st.session_state.radar_universe,
+            st.session_state.radar_screening_style,
+            st.session_state.radar_max_candidates,
+            st.session_state.radar_custom_input if st.session_state.radar_universe == "Eigene Liste" else "",
+        )
         radar_payload = st.session_state.get("radar_last_payload") or {}
         radar_payload_matches = (
-            radar_payload.get("radar_universe") == st.session_state.radar_universe
-            and radar_payload.get("radar_screening_style") == st.session_state.radar_screening_style
-            and radar_payload.get("radar_max_candidates") == st.session_state.radar_max_candidates
+            radar_payload.get("radar_input_signature") == radar_input_signature
         )
+        if not radar_payload_matches:
+            radar_snapshot_payload = load_radar_snapshot(radar_input_signature)
+            if radar_snapshot_payload:
+                radar_payload = radar_snapshot_payload
+                radar_payload_matches = True
         radar_should_show = bool(st.session_state.get("radar_requested", False) or radar_payload_matches)
 
         if radar_should_show:
@@ -7058,6 +7106,9 @@ if workspace_mode:
                             "radar_universe": st.session_state.radar_universe,
                             "radar_screening_style": st.session_state.radar_screening_style,
                             "radar_max_candidates": st.session_state.radar_max_candidates,
+                            "radar_input_signature": radar_input_signature,
+                            "radar_generated_at": get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
+                            "radar_source": "live",
                         }
                         radar_payload = st.session_state.radar_last_payload
                         radar_payload_matches = True
@@ -7067,9 +7118,18 @@ if workspace_mode:
                 radar_results = list(radar_payload.get("radar_results", []) or [])
                 radar_errors = list(radar_payload.get("radar_errors", []) or [])
                 radar_resolution_rows = list(radar_payload.get("radar_resolution_rows", []) or [])
+                radar_prebuilt_rows = list(radar_payload.get("radar_display_rows", []) or [])
                 resolved_radar_entries = [str(r.get("ticker", "") or "").strip() for r in radar_results if str(r.get("ticker", "") or "").strip()]
+                if not resolved_radar_entries and radar_prebuilt_rows:
+                    resolved_radar_entries = [str(r.get("Ticker", "") or "").strip() for r in radar_prebuilt_rows if str(r.get("Ticker", "") or "").strip()]
 
-            if radar_payload_matches and radar_results:
+            if radar_payload_matches and (radar_results or radar_payload.get("radar_display_rows")):
+                radar_prebuilt_rows = list(radar_payload.get("radar_display_rows", []) or [])
+                radar_generated_at = str(radar_payload.get("radar_generated_at", "") or "").strip()
+                radar_source = str(radar_payload.get("radar_source", "snapshot") or "snapshot").strip()
+                if radar_generated_at:
+                    source_label = "vorgefertigter Stand" if radar_source == "snapshot" else "letzter Radar-Lauf"
+                    st.info(f"Zeige {source_label} vom {radar_generated_at} (Berlin). Für neue Daten bitte bewusst neu starten.")
                 trigger_rank_map = {
                     "Aktiv": 5,
                     "Jetzt prüfbar": 5,
@@ -7146,11 +7206,15 @@ if workspace_mode:
                         return f"Interessant, aber gebremst durch: {shorten_text(top_red_flag_local, 44)}"
                     return "Ausgewogener Kandidat mit brauchbarem Gesamtbild"
 
-                radar_df = build_ranking_table(radar_results)
-                radar_reason_map = {str(r.get("ticker", "")): build_radar_reason(r) for r in radar_results}
-                radar_result_map = {str(r.get("ticker", "")): r for r in radar_results}
-                radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map(radar_reason_map)
-                radar_df["__trigger_sort"] = radar_df.get("Trigger-Status", pd.Series(dtype=str)).map(trigger_rank_map).fillna(0)
+                if radar_prebuilt_rows:
+                    radar_df = pd.DataFrame(radar_prebuilt_rows)
+                    radar_result_map = {str(r.get("ticker", "")): r for r in radar_results} if radar_results else {}
+                else:
+                    radar_df = build_ranking_table(radar_results)
+                    radar_reason_map = {str(r.get("ticker", "")): build_radar_reason(r) for r in radar_results}
+                    radar_result_map = {str(r.get("ticker", "")): r for r in radar_results}
+                    radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map(radar_reason_map)
+                    radar_df["__trigger_sort"] = radar_df.get("Trigger-Status", pd.Series(dtype=str)).map(trigger_rank_map).fillna(0)
 
                 def compute_radar_style_sort(row):
                     tkr = str(row.get("Ticker", "") or "")
@@ -7207,7 +7271,24 @@ if workspace_mode:
                         + leader_bonus * 0.5
                     )
 
-                radar_df["__style_sort"] = radar_df.apply(compute_radar_style_sort, axis=1)
+                if "__style_sort" not in radar_df.columns or radar_df["__style_sort"].isna().all():
+                    radar_df["__style_sort"] = radar_df.apply(compute_radar_style_sort, axis=1)
+
+                if not radar_prebuilt_rows and not radar_df.empty:
+                    radar_snapshot_payload = {
+                        "radar_display_rows": radar_df.to_dict("records"),
+                        "radar_errors": radar_errors,
+                        "radar_resolution_rows": radar_resolution_rows,
+                        "radar_universe": st.session_state.radar_universe,
+                        "radar_screening_style": st.session_state.radar_screening_style,
+                        "radar_max_candidates": st.session_state.radar_max_candidates,
+                        "radar_input_signature": radar_input_signature,
+                        "radar_generated_at": get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
+                        "radar_source": "snapshot",
+                    }
+                    st.session_state.radar_last_payload = radar_snapshot_payload
+                    radar_payload = radar_snapshot_payload
+                    save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
                 st.caption("Aufbau, Darstellung und Auswahl sind jetzt für alle Listen identisch. Die Einteilung erfolgt immer zuerst über den vollständigen Radar-Lauf und wird erst danach je Abschnitt begrenzt.")

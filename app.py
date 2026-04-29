@@ -3512,12 +3512,65 @@ def cluster_chart_price_levels(points, tolerance_pct=1.5, min_touches=2):
 
 
 
+
 def filter_chart_relevant_zones(zones, current_price, max_supports=2, max_resistances=2):
-    supports = [z for z in zones if pd.notna(z.get("mid", np.nan)) and z["mid"] < current_price]
-    resistances = [z for z in zones if pd.notna(z.get("mid", np.nan)) and z["mid"] > current_price]
-    supports = sorted(supports, key=lambda z: abs(current_price - z["mid"]))[:max_supports]
-    resistances = sorted(resistances, key=lambda z: abs(current_price - z["mid"]))[:max_resistances]
+    if current_price is None or pd.isna(current_price):
+        return [], []
+
+    def _zone_rank(z):
+        mid = float(z.get("mid", np.nan))
+        touches = int(z.get("touches", 0) or 0)
+        width_pct = float(z.get("width_pct", np.nan)) if pd.notna(z.get("width_pct", np.nan)) else np.nan
+        dist_pct = abs((current_price - mid) / current_price) * 100 if pd.notna(mid) and current_price else 999.0
+
+        score = 0.0
+        score += min(touches, 5) * 12.0
+        score += max(0.0, 22.0 - dist_pct * 2.0)
+
+        if pd.notna(width_pct):
+            if width_pct <= 1.8:
+                score += 10.0
+            elif width_pct <= 3.0:
+                score += 6.0
+            elif width_pct > 6.0:
+                score -= 6.0
+
+        return score
+
+    filtered = []
+    for z in zones:
+        mid = z.get("mid", np.nan)
+        low = z.get("low", np.nan)
+        high = z.get("high", np.nan)
+        touches = int(z.get("touches", 0) or 0)
+
+        if pd.isna(mid) or pd.isna(low) or pd.isna(high):
+            continue
+        if touches < 2:
+            continue
+
+        width_pct = ((high / low) - 1) * 100 if low and low > 0 else np.nan
+        dist_pct = abs((current_price - mid) / current_price) * 100 if current_price else np.nan
+
+        if pd.notna(width_pct) and width_pct > 8.0:
+            continue
+        if pd.notna(dist_pct) and dist_pct > 22.0:
+            continue
+
+        z2 = dict(z)
+        z2["width_pct"] = width_pct
+        z2["dist_pct"] = dist_pct
+        z2["_rank"] = _zone_rank(z2)
+        filtered.append(z2)
+
+    supports = [z for z in filtered if z["mid"] < current_price]
+    resistances = [z for z in filtered if z["mid"] > current_price]
+
+    supports = sorted(supports, key=lambda z: (-z["_rank"], abs(current_price - z["mid"])))[:max_supports]
+    resistances = sorted(resistances, key=lambda z: (-z["_rank"], abs(current_price - z["mid"])))[:max_resistances]
+
     return supports, resistances
+
 
 
 
@@ -3700,6 +3753,7 @@ def detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=120):
 
 
 
+
 def build_chart_structures(df):
     pivot_highs, pivot_lows = detect_chart_pivots(df, left=3, right=3)
     resistance_zones = cluster_chart_price_levels(pivot_highs, tolerance_pct=1.5, min_touches=2)
@@ -3707,6 +3761,11 @@ def build_chart_structures(df):
     current_price = float(pd.to_numeric(df["Close"], errors="coerce").iloc[-1]) if df is not None and not df.empty else np.nan
     supports, resistances = filter_chart_relevant_zones(support_zones + resistance_zones, current_price, max_supports=2, max_resistances=2)
     channel = detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=min(120, max(40, len(df) - 5)))
+
+    if channel:
+        channel["label"] = "Aufwaertskanal" if channel.get("type") == "uptrend" else "Abwaertskanal"
+        channel["quality"] = "hoch" if channel.get("source") == "pivot" else "mittel"
+
     return {
         "pivot_highs": pivot_highs,
         "pivot_lows": pivot_lows,
@@ -3717,34 +3776,130 @@ def build_chart_structures(df):
 
 
 
+
+
 def add_sr_zones_to_plotly(fig, df, supports, resistances):
     if df is None or df.empty:
         return
     x0 = df.index.min()
     x1 = df.index.max()
-    for z in supports:
-        fig.add_shape(type="rect", x0=x0, x1=x1, y0=z["low"], y1=z["high"], line=dict(width=0), fillcolor="rgba(34,197,94,0.20)", layer="below", row=1, col=1)
-        fig.add_annotation(x=x1, y=z["mid"], text=f"Support ({z['touches']})", showarrow=False, xanchor="left", font=dict(size=10, color="#86efac"), row=1, col=1)
-    for z in resistances:
-        fig.add_shape(type="rect", x0=x0, x1=x1, y0=z["low"], y1=z["high"], line=dict(width=0), fillcolor="rgba(239,68,68,0.20)", layer="below", row=1, col=1)
-        fig.add_annotation(x=x1, y=z["mid"], text=f"Widerstand ({z['touches']})", showarrow=False, xanchor="left", font=dict(size=10, color="#fca5a5"), row=1, col=1)
+
+    for idx, z in enumerate(supports, start=1):
+        label = f"S{idx} ({z['touches']}x)"
+        fig.add_shape(
+            type="rect",
+            x0=x0,
+            x1=x1,
+            y0=z["low"],
+            y1=z["high"],
+            line=dict(width=0),
+            fillcolor="rgba(34,197,94,0.24)",
+            layer="below",
+            row=1,
+            col=1
+        )
+        fig.add_annotation(
+            x=x1,
+            y=z["mid"],
+            text=label,
+            showarrow=False,
+            xanchor="left",
+            font=dict(size=10, color="#bbf7d0"),
+            bgcolor="rgba(22,101,52,0.42)",
+            bordercolor="rgba(187,247,208,0.30)",
+            borderpad=3,
+            row=1,
+            col=1
+        )
+
+    for idx, z in enumerate(resistances, start=1):
+        label = f"R{idx} ({z['touches']}x)"
+        fig.add_shape(
+            type="rect",
+            x0=x0,
+            x1=x1,
+            y0=z["low"],
+            y1=z["high"],
+            line=dict(width=0),
+            fillcolor="rgba(239,68,68,0.24)",
+            layer="below",
+            row=1,
+            col=1
+        )
+        fig.add_annotation(
+            x=x1,
+            y=z["mid"],
+            text=label,
+            showarrow=False,
+            xanchor="left",
+            font=dict(size=10, color="#fecaca"),
+            bgcolor="rgba(127,29,29,0.42)",
+            bordercolor="rgba(254,202,202,0.30)",
+            borderpad=3,
+            row=1,
+            col=1
+        )
+
 
 
 
 def add_trend_channel_to_plotly(fig, df, channel):
     if not channel or df is None or df.empty:
         return
+
     x_vals = np.arange(len(df), dtype=float)
     x_dates = df.index
     slope = channel["slope"]
     lower_intercept = channel["lower_intercept"]
     upper_intercept = channel["upper_intercept"]
+
     lower_y = slope * x_vals + lower_intercept
     upper_y = slope * x_vals + upper_intercept
+
     lower_name = "Trendkanal unten" if channel.get("source") == "pivot" else "Trendkanal unten (Reg.)"
     upper_name = "Trendkanal oben" if channel.get("source") == "pivot" else "Trendkanal oben (Reg.)"
-    fig.add_trace(go.Scatter(x=x_dates, y=lower_y, mode="lines", name=lower_name, line=dict(dash="dash", width=2.0, color="rgba(34,197,94,0.95)")), row=1, col=1)
-    fig.add_trace(go.Scatter(x=x_dates, y=upper_y, mode="lines", name=upper_name, line=dict(dash="dash", width=2.0, color="rgba(239,68,68,0.95)")), row=1, col=1)
+
+    fig.add_trace(
+        go.Scatter(
+            x=x_dates,
+            y=lower_y,
+            mode="lines",
+            name=lower_name,
+            line=dict(dash="dash", width=2.2, color="rgba(34,197,94,0.95)")
+        ),
+        row=1,
+        col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x_dates,
+            y=upper_y,
+            mode="lines",
+            name=upper_name,
+            line=dict(dash="dash", width=2.2, color="rgba(239,68,68,0.95)")
+        ),
+        row=1,
+        col=1
+    )
+
+    label = channel.get("label", "Trendkanal")
+    quality = channel.get("quality", "")
+    label_text = f"{label} | Qualitaet: {quality}" if quality else label
+
+    fig.add_annotation(
+        x=x_dates[-1],
+        y=float((lower_y[-1] + upper_y[-1]) / 2.0),
+        text=label_text,
+        showarrow=False,
+        xanchor="right",
+        font=dict(size=10, color="#dbeafe"),
+        bgcolor="rgba(30,41,59,0.58)",
+        bordercolor="rgba(147,197,253,0.24)",
+        borderpad=4,
+        row=1,
+        col=1
+    )
+
 
 
 def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False):

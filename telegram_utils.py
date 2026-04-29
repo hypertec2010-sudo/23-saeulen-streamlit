@@ -272,6 +272,124 @@ def _classify_change(label, old_value, new_value, watchlist_type, numeric=False)
     return "🟡 geändert", f"<b>{_esc(label)}</b> {_esc(old_str)} -&gt; {_esc(new_str)}"
 
 
+def _normalize_state_label(value):
+    return _norm_text(value).lower()
+
+
+def _material_trigger_change(old_value, new_value):
+    old_s = _normalize_state_label(old_value)
+    new_s = _normalize_state_label(new_value)
+    if old_s == new_s:
+        return False
+    stage_rank = {
+        "jetzt prüfbar": 5,
+        "aktiv": 5,
+        "fast prüfbar": 4,
+        "nahe dran": 4,
+        "früh interessant": 3,
+        "frühe beobachtung": 3,
+        "weiter beobachten": 2,
+        "beobachten": 2,
+        "noch warten": 1,
+        "warten": 1,
+        "aktuell kein fokus": 0,
+        "passiv": 0,
+    }
+    return stage_rank.get(old_s, -99) != stage_rank.get(new_s, -99)
+
+
+def _material_priority_change(old_value, new_value):
+    return _rank_priority(old_value) != _rank_priority(new_value)
+
+
+def _material_text_change(label, old_value, new_value, watchlist_type):
+    old_s = _normalize_state_label(old_value)
+    new_s = _normalize_state_label(new_value)
+    if old_s == new_s:
+        return False
+    if label == "trigger_status":
+        return _material_trigger_change(old_value, new_value)
+    if label == "watchlist_priority":
+        return _material_priority_change(old_value, new_value)
+    if label == "emp":
+        action_rank = {
+            "buy / accumulate": 5,
+            "buy candidate / timing prüfen": 4,
+            "watch / einstieg prüfen": 4,
+            "beobachten": 2,
+            "avoid / wait": 0,
+            "halten / ggf. ausbauen": 5,
+            "halten / ausbauen": 5,
+            "halten / eng beobachten": 3,
+            "halten / risiko prüfen": 2,
+            "risiko reduzieren / stopp prüfen": 0,
+            "veto - earnings < 7 tage": 0,
+        }
+        return action_rank.get(old_s, -99) != action_rank.get(new_s, -99)
+    if watchlist_type == "Positions-Watchlist" and label in {"position_action", "exit_action", "partial_profit_action", "stop_action", "risk_note", "exit_reason_top"}:
+        return True
+    return old_s != new_s
+
+
+def _safe_float(value):
+    try:
+        return float(str(value).replace('%', '').replace(',', '.'))
+    except Exception:
+        return None
+
+
+def _is_material_change(result, previous_signature, watchlist_type):
+    if not previous_signature:
+        return True
+    prev = _parse_signature(previous_signature, watchlist_type)
+    if watchlist_type == "Positions-Watchlist":
+        checks = [
+            ("position_action", prev.get("position_action", "-"), result.get("position_action", "-"), False, 0),
+            ("exit_action", prev.get("exit_action", "-"), result.get("exit_action", "-"), False, 0),
+            ("exit_reason_top", prev.get("exit_reason_top", "-"), result.get("exit_reason_top", "-"), False, 0),
+            ("partial_profit_action", prev.get("partial_profit_action", "-"), result.get("partial_profit_action", "-"), False, 0),
+            ("stop_action", prev.get("stop_action", "-"), result.get("stop_action", "-"), False, 0),
+            ("risk_note", prev.get("risk_note", "-"), result.get("risk_note", "-"), False, 0),
+            ("exit_score", prev.get("exit_score", "-"), result.get("exit_score", "-"), True, 5.0),
+            ("setup_confidence", prev.get("setup_confidence", "-"), result.get("setup_confidence", "-"), True, 4.0),
+        ]
+    else:
+        checks = [
+            ("trigger_status", prev.get("trigger_status", "-"), result.get("trigger_status", "-"), False, 0),
+            ("watchlist_priority", prev.get("watchlist_priority", "-"), result.get("watchlist_priority", "-"), False, 0),
+            ("emp", prev.get("emp", "-"), result.get("emp", "-"), False, 0),
+            ("entry_quality", prev.get("entry_quality", "-"), result.get("entry_quality", "-"), False, 0),
+            ("trading_case_score", prev.get("trading_case_score", "-"), result.get("trading_case_score", "-"), True, 5.0),
+            ("investment_case_score", prev.get("investment_case_score", "-"), result.get("investment_case_score", "-"), True, 5.0),
+            ("setup_confidence", prev.get("setup_confidence", "-"), result.get("setup_confidence", "-"), True, 4.0),
+        ]
+    for label, old_value, new_value, numeric, threshold in checks:
+        if numeric:
+            old_num = _safe_float(old_value)
+            new_num = _safe_float(new_value)
+            if old_num is None or new_num is None:
+                if str(old_value) != str(new_value):
+                    return True
+            elif abs(new_num - old_num) >= threshold:
+                return True
+        else:
+            if _material_text_change(label, old_value, new_value, watchlist_type):
+                return True
+    return False
+
+
+def _build_change_summary(result, previous_signature, watchlist_type, max_items=3):
+    change_lines = _build_change_lines(result, previous_signature, watchlist_type)
+    if not change_lines:
+        return "Keine wesentliche Änderung"
+    compact = []
+    for raw in change_lines[:max_items]:
+        txt = raw.replace('<b>', '').replace('</b>', '')
+        txt = txt.replace(' -&gt; ', ' -> ')
+        compact.append(txt)
+    return " | ".join(compact)
+
+
 def _build_change_lines(result, previous_signature, watchlist_type):
     if not previous_signature:
         return []
@@ -334,7 +452,7 @@ def build_watchlist_telegram_text(result, watchlist_name, watchlist_type, alert_
 
     change_lines = _build_change_lines(result, previous_signature, watchlist_type)
     if change_lines:
-        lines.extend(["", "<b>🔄 WAS HAT SICH GEÄNDERT</b>"])
+        lines.extend(["", f"<b>🔄 ÄNDERUNG:</b> {_esc(_build_change_summary(result, previous_signature, watchlist_type))}", "<b>🔍 DETAILS</b>"])
         lines.extend(change_lines)
 
     lines.extend(["", "<b>📊 AKTUELLER STAND</b>", _b("Modus:", mode), _b("Setup:", setup_type)])
@@ -673,8 +791,11 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
         if should_alert_for_watchlist_result(result, watchlist_type, alert_mode):
             matched += 1
 
-            # Never resend an unchanged signature.
+            # Never resend an unchanged signature or immaterial changes.
             if _is_same_signature(same_type_entry, alert_signature) or _is_same_signature(any_entry, alert_signature) or alert_key in queued_keys:
+                suppressed += 1
+                continue
+            if previous_signature and not _is_material_change(result, previous_signature, watchlist_type):
                 suppressed += 1
                 continue
 

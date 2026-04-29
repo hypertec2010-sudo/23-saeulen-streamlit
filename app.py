@@ -3445,7 +3445,190 @@ def infer_data_source_flags(info):
     }
 
 
-def build_candlestick_chart(chart_df, ticker, ccy):
+def detect_chart_pivots(df, left=3, right=3):
+    highs = []
+    lows = []
+    if df is None or df.empty or len(df) < left + right + 3:
+        return highs, lows
+
+    high = pd.to_numeric(df["High"], errors="coerce").reset_index(drop=True)
+    low = pd.to_numeric(df["Low"], errors="coerce").reset_index(drop=True)
+
+    for i in range(left, len(df) - right):
+        current_high = high.iloc[i]
+        current_low = low.iloc[i]
+        if pd.isna(current_high) or pd.isna(current_low):
+            continue
+
+        high_left = high.iloc[i-left:i]
+        high_right = high.iloc[i+1:i+1+right]
+        low_left = low.iloc[i-left:i]
+        low_right = low.iloc[i+1:i+1+right]
+
+        if len(high_left.dropna()) == left and len(high_right.dropna()) == right:
+            if current_high >= high_left.max() and current_high >= high_right.max():
+                highs.append((i, float(current_high)))
+
+        if len(low_left.dropna()) == left and len(low_right.dropna()) == right:
+            if current_low <= low_left.min() and current_low <= low_right.min():
+                lows.append((i, float(current_low)))
+
+    return highs, lows
+
+
+
+def cluster_chart_price_levels(points, tolerance_pct=1.5, min_touches=2):
+    if not points:
+        return []
+
+    prices = sorted([float(p) for _, p in points if pd.notna(p)])
+    if not prices:
+        return []
+
+    clusters = []
+    current_cluster = [prices[0]]
+
+    for price in prices[1:]:
+        cluster_mean = float(np.mean(current_cluster))
+        tolerance_abs = cluster_mean * (tolerance_pct / 100)
+        if abs(price - cluster_mean) <= tolerance_abs:
+            current_cluster.append(price)
+        else:
+            clusters.append(current_cluster)
+            current_cluster = [price]
+
+    clusters.append(current_cluster)
+
+    zones = []
+    for cluster in clusters:
+        if len(cluster) >= min_touches:
+            zones.append({
+                "low": float(min(cluster)),
+                "high": float(max(cluster)),
+                "mid": float(np.mean(cluster)),
+                "touches": int(len(cluster)),
+            })
+    return zones
+
+
+
+def filter_chart_relevant_zones(zones, current_price, max_supports=2, max_resistances=2):
+    supports = [z for z in zones if pd.notna(z.get("mid", np.nan)) and z["mid"] < current_price]
+    resistances = [z for z in zones if pd.notna(z.get("mid", np.nan)) and z["mid"] > current_price]
+    supports = sorted(supports, key=lambda z: abs(current_price - z["mid"]))[:max_supports]
+    resistances = sorted(resistances, key=lambda z: abs(current_price - z["mid"]))[:max_resistances]
+    return supports, resistances
+
+
+
+def fit_chart_line(points):
+    if len(points) < 2:
+        return None
+    x = np.array([p[0] for p in points], dtype=float)
+    y = np.array([p[1] for p in points], dtype=float)
+    if len(np.unique(x)) < 2:
+        return None
+    slope, intercept = np.polyfit(x, y, 1)
+    return float(slope), float(intercept)
+
+
+
+def detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=120):
+    if df is None or df.empty:
+        return None
+    last_idx = len(df) - 1
+    recent_highs = [(i, p) for i, p in pivot_highs if i >= last_idx - lookback]
+    recent_lows = [(i, p) for i, p in pivot_lows if i >= last_idx - lookback]
+
+    if len(recent_lows) >= 2:
+        recent_lows = sorted(recent_lows, key=lambda x: x[0])[-4:]
+        low_prices = [p for _, p in recent_lows]
+        if all(low_prices[i] >= low_prices[i-1] for i in range(1, len(low_prices))):
+            line = fit_chart_line(recent_lows)
+            if line:
+                slope, intercept = line
+                if abs(slope) > 0.01:
+                    offsets = []
+                    for i, p in recent_highs:
+                        offsets.append(float(p - (slope * i + intercept)))
+                    if offsets:
+                        upper_offset = max(offsets)
+                        return {
+                            "type": "uptrend",
+                            "slope": slope,
+                            "lower_intercept": intercept,
+                            "upper_intercept": intercept + upper_offset,
+                        }
+
+    if len(recent_highs) >= 2:
+        recent_highs = sorted(recent_highs, key=lambda x: x[0])[-4:]
+        high_prices = [p for _, p in recent_highs]
+        if all(high_prices[i] <= high_prices[i-1] for i in range(1, len(high_prices))):
+            line = fit_chart_line(recent_highs)
+            if line:
+                slope, intercept = line
+                if abs(slope) > 0.01:
+                    offsets = []
+                    for i, p in recent_lows:
+                        offsets.append(float(p - (slope * i + intercept)))
+                    if offsets:
+                        lower_offset = min(offsets)
+                        return {
+                            "type": "downtrend",
+                            "slope": slope,
+                            "upper_intercept": intercept,
+                            "lower_intercept": intercept + lower_offset,
+                        }
+    return None
+
+
+
+def build_chart_structures(df):
+    pivot_highs, pivot_lows = detect_chart_pivots(df, left=3, right=3)
+    resistance_zones = cluster_chart_price_levels(pivot_highs, tolerance_pct=1.5, min_touches=2)
+    support_zones = cluster_chart_price_levels(pivot_lows, tolerance_pct=1.5, min_touches=2)
+    current_price = float(pd.to_numeric(df["Close"], errors="coerce").iloc[-1]) if df is not None and not df.empty else np.nan
+    supports, resistances = filter_chart_relevant_zones(support_zones + resistance_zones, current_price, max_supports=2, max_resistances=2)
+    channel = detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=min(120, max(40, len(df) - 5)))
+    return {
+        "pivot_highs": pivot_highs,
+        "pivot_lows": pivot_lows,
+        "supports": supports,
+        "resistances": resistances,
+        "channel": channel,
+    }
+
+
+
+def add_sr_zones_to_plotly(fig, df, supports, resistances):
+    if df is None or df.empty:
+        return
+    x0 = df.index.min()
+    x1 = df.index.max()
+    for z in supports:
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=z["low"], y1=z["high"], line=dict(width=0), fillcolor="rgba(34,197,94,0.14)", layer="below", row=1, col=1)
+        fig.add_annotation(x=x1, y=z["mid"], text=f"Support ({z['touches']})", showarrow=False, xanchor="left", font=dict(size=10, color="#86efac"), row=1, col=1)
+    for z in resistances:
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=z["low"], y1=z["high"], line=dict(width=0), fillcolor="rgba(239,68,68,0.14)", layer="below", row=1, col=1)
+        fig.add_annotation(x=x1, y=z["mid"], text=f"Widerstand ({z['touches']})", showarrow=False, xanchor="left", font=dict(size=10, color="#fca5a5"), row=1, col=1)
+
+
+
+def add_trend_channel_to_plotly(fig, df, channel):
+    if not channel or df is None or df.empty:
+        return
+    x_vals = np.arange(len(df), dtype=float)
+    x_dates = df.index
+    slope = channel["slope"]
+    lower_intercept = channel["lower_intercept"]
+    upper_intercept = channel["upper_intercept"]
+    lower_y = slope * x_vals + lower_intercept
+    upper_y = slope * x_vals + upper_intercept
+    fig.add_trace(go.Scatter(x=x_dates, y=lower_y, mode="lines", name="Trendkanal unten", line=dict(dash="dash", width=1.4, color="rgba(96,165,250,0.9)")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=x_dates, y=upper_y, mode="lines", name="Trendkanal oben", line=dict(dash="dash", width=1.4, color="rgba(96,165,250,0.9)")), row=1, col=1)
+
+
+def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False):
     fig = make_subplots(
         rows=2,
         cols=1,
@@ -3495,6 +3678,16 @@ def build_candlestick_chart(chart_df, ticker, ccy):
         row=2,
         col=1
     )
+
+    if show_sr or show_channel:
+        try:
+            structures = build_chart_structures(chart_df)
+            if show_sr:
+                add_sr_zones_to_plotly(fig, chart_df, structures.get("supports", []), structures.get("resistances", []))
+            if show_channel:
+                add_trend_channel_to_plotly(fig, chart_df, structures.get("channel"))
+        except Exception:
+            pass
 
     fig.update_layout(
         title="",
@@ -9880,8 +10073,14 @@ if result is not None:
                 key="chart_range"
             )
 
+            chart_overlay_col1, chart_overlay_col2 = st.columns(2)
+            with chart_overlay_col1:
+                show_sr_zones = st.checkbox("Unterstützung / Widerstand anzeigen", value=True, key=f"show_sr_{ticker}")
+            with chart_overlay_col2:
+                show_trend_channel = st.checkbox("Trendkanal anzeigen", value=False, key=f"show_channel_{ticker}")
+
             chart_df = compute_chart_df(df, chart_range)
-            fig = build_candlestick_chart(chart_df, ticker, ccy)
+            fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel)
             st.plotly_chart(fig, use_container_width=True)
 
             perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan

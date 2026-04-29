@@ -7405,17 +7405,26 @@ if workspace_mode:
                     ("Später beobachten", "Gute Werte für die engere Watchlist, aber noch nicht reif für einen direkten Einstieg.", radar_later_df),
                 ]
 
+                radar_limit = int(st.session_state.radar_max_candidates)
+                remaining_slots = radar_limit
+                limited_section_specs = []
                 section_display_frames = []
-                for _, _, _df in section_specs:
-                    if _df is not None and not _df.empty:
-                        section_display_frames.append(_df.head(int(st.session_state.radar_max_candidates)))
+                for _title, _caption, _df in section_specs:
+                    if _df is None or _df.empty or remaining_slots <= 0:
+                        limited_df = _df.iloc[0:0].copy() if _df is not None else _df
+                    else:
+                        limited_df = _df.head(remaining_slots).copy()
+                        remaining_slots -= len(limited_df)
+                    limited_section_specs.append((_title, _caption, limited_df))
+                    if limited_df is not None and not limited_df.empty:
+                        section_display_frames.append(limited_df)
                 if section_display_frames:
                     radar_display_df = pd.concat(section_display_frames, ignore_index=True).drop_duplicates(subset=["Ticker"], keep="first")
                 else:
                     radar_display_df = pd.DataFrame(columns=radar_df.columns)
 
                 radar_top_tickers = radar_display_df["Ticker"].astype(str).tolist() if "Ticker" in radar_display_df.columns else []
-                radar_default_selected = radar_top_tickers[: min(len(radar_top_tickers), 15)]
+                radar_default_selected = radar_top_tickers.copy()
                 radar_selection_signature = f"{st.session_state.radar_universe}|{st.session_state.radar_screening_style}|{st.session_state.radar_max_candidates}|" + "|".join(radar_top_tickers)
 
                 if st.session_state.get("radar_selection_signature") != radar_selection_signature:
@@ -7429,8 +7438,7 @@ if workspace_mode:
                 st.markdown("### Radar-Auswahl")
                 st.caption("Werte direkt links in den Zeilen markieren oder abwählen. Das Verhalten ist für alle Listen identisch; die Auswahl startet keine neue Radar-Analyse.")
 
-                for section_title, section_caption, section_df in section_specs:
-                    section_df = section_df.head(int(st.session_state.radar_max_candidates)) if section_df is not None and not section_df.empty else section_df
+                for section_title, section_caption, section_df in limited_section_specs:
                     st.markdown(f"#### {section_title}")
                     st.caption(section_caption)
                     if section_df is None or section_df.empty:

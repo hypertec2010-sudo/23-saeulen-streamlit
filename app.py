@@ -282,17 +282,33 @@ def get_radar_universe_map():
 
 
 def get_radar_snapshot_jobs():
-    return [
-        {"job_id": "radar_us_tech_leader", "label": "US Tech | Leader | 15", "universe": "US Tech", "style": "Leader", "max_candidates": 15, "slot": "10:30", "enabled": True},
-        {"job_id": "radar_semis_leader", "label": "Halbleiter | Leader | 15", "universe": "Halbleiter", "style": "Leader", "max_candidates": 15, "slot": "10:40", "enabled": True},
-        {"job_id": "radar_europe_balanced", "label": "Europa Qualität & Leader | Ausgewogen | 15", "universe": "Europa Qualität & Leader", "style": "Ausgewogen", "max_candidates": 15, "slot": "10:50", "enabled": True},
-        {"job_id": "radar_us_sm_turnaround", "label": "US Small & Mid Caps | Turnaround | 15", "universe": "US Small & Mid Caps", "style": "Turnaround", "max_candidates": 15, "slot": "11:00", "enabled": True},
-        {"job_id": "radar_eu_sm_turnaround", "label": "Europa Small & Mid Caps Qualität | Turnaround | 15", "universe": "Europa Small & Mid Caps Qualität", "style": "Turnaround", "max_candidates": 15, "slot": "11:10", "enabled": True},
+    base_jobs = [
+        {"job_key": "us_tech_leader", "label": "US Tech | Leader | 15", "universe": "US Tech", "style": "Leader", "max_candidates": 15},
+        {"job_key": "semis_leader", "label": "Halbleiter | Leader | 15", "universe": "Halbleiter", "style": "Leader", "max_candidates": 15},
+        {"job_key": "europe_balanced", "label": "Europa Qualität & Leader | Ausgewogen | 15", "universe": "Europa Qualität & Leader", "style": "Ausgewogen", "max_candidates": 15},
+        {"job_key": "us_sm_turnaround", "label": "US Small & Mid Caps | Turnaround | 15", "universe": "US Small & Mid Caps", "style": "Turnaround", "max_candidates": 15},
+        {"job_key": "eu_sm_turnaround", "label": "Europa Small & Mid Caps Qualität | Turnaround | 15", "universe": "Europa Small & Mid Caps Qualität", "style": "Turnaround", "max_candidates": 15},
     ]
+    slot_groups = [
+        ("10:30", ["10:30", "10:40", "10:50", "11:00", "11:10"]),
+        ("15:40", ["15:40", "15:50", "16:00", "16:10", "16:20"]),
+        ("18:30", ["18:30", "18:40", "18:50", "19:00", "19:10"]),
+    ]
+    jobs = []
+    for slot_group, run_times in slot_groups:
+        for idx, base_job in enumerate(base_jobs):
+            job = dict(base_job)
+            job["job_id"] = f"radar_{slot_group.replace(':', '')}_{job.pop('job_key')}"
+            job["slot_group"] = slot_group
+            job["run_at"] = run_times[idx]
+            job["enabled"] = True
+            jobs.append(job)
+    return jobs
 
 
 def get_due_radar_jobs_for_slot(slot_label):
-    jobs = [j for j in get_radar_snapshot_jobs() if j.get("enabled") and str(j.get("slot", "")).strip() == str(slot_label or "").strip()]
+    slot_label = str(slot_label or "").strip()
+    jobs = [j for j in get_radar_snapshot_jobs() if j.get("enabled") and str(j.get("slot_group", "")).strip() == slot_label]
     return jobs
 
 
@@ -422,8 +438,9 @@ def run_radar_snapshot_job(job):
             "radar_max_candidates": max_candidates,
             "radar_input_signature": signature,
             "radar_generated_at": get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
-            "radar_source": "auto_run",
+            "radar_source": str(job.get("source", "auto_run") or "auto_run"),
             "radar_job_id": str(job.get("job_id", "manual_job")),
+            "radar_run_at": str(job.get("run_at", job.get("slot_group", "")) or ""),
         }
         save_radar_snapshot(signature, payload)
         return True, f"Snapshot gespeichert ({len(results)} Werte analysiert)", {"analyzed_count": len(results), "errors": errors, "resolution_rows": resolution_rows, "signature": signature}
@@ -6394,7 +6411,7 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
 
         st.markdown("#### Radar Snapshot Jobs")
         radar_jobs = get_radar_snapshot_jobs()
-        radar_jobs_df = pd.DataFrame(radar_jobs)[["label", "slot", "enabled"]] if radar_jobs else pd.DataFrame()
+        radar_jobs_df = pd.DataFrame(radar_jobs)[["label", "slot_group", "run_at", "enabled"]] if radar_jobs else pd.DataFrame()
         if not radar_jobs_df.empty:
             st.dataframe(radar_jobs_df, hide_index=True, use_container_width=True, height=min(260, 45 * len(radar_jobs_df) + 40))
         rj1, rj2 = st.columns([1.7, 1.1])
@@ -6409,6 +6426,8 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
                     st.warning("Kein Radar-Job ausgewählt.")
                 else:
                     with st.spinner("Radar-Snapshot wird vorbereitet …"):
+                        selected_job = dict(selected_job)
+                        selected_job["source"] = "manual"
                         ok, msg, meta = run_radar_snapshot_job(selected_job)
                     if ok:
                         st.success(f"{selected_radar_job_label}: {msg}")
@@ -7951,14 +7970,17 @@ if st.session_state.get("auto_run_requested", False):
     slot_label = st.session_state.get("auto_run_slot_label", "")
     berlin_now = get_current_berlin_time()
     due_df, due_err = get_due_watchlists_for_slot(slot_label)
+    due_radar_jobs = get_due_radar_jobs_for_slot(slot_label)
 
     if due_err:
         st.error(f"Auto-Run fehlgeschlagen: {due_err}")
         st.session_state.auto_run_requested = False
         st.stop()
 
-    if due_df is None or due_df.empty:
-        st.info(f"Für den Slot {slot_label} sind aktuell keine Watchlisten fällig.")
+    watchlist_due_empty = due_df is None or due_df.empty
+    radar_due_empty = not due_radar_jobs
+    if watchlist_due_empty and radar_due_empty:
+        st.info(f"Für den Slot {slot_label} sind aktuell weder Watchlisten noch Radar-Jobs fällig.")
         st.session_state.auto_run_requested = False
         st.stop()
 
@@ -7968,15 +7990,68 @@ if st.session_state.get("auto_run_requested", False):
     auto_run_rows = []
     total_sent = 0
 
-    for _, wl_row in due_df.iterrows():
-        wl_name = str(wl_row.get("Watchlist_Name", "")).strip()
-        wl_type = str(wl_row.get("Watchlist_Type", "Watchlist")).strip() or "Watchlist"
-        wl_alert_mode = str(wl_row.get("Alert_Mode", "Standard")).strip() or "Standard"
-        wl_freq = str(wl_row.get("Check_Frequency", "4x täglich")).strip() or "4x täglich"
+    if due_df is not None and not due_df.empty:
+        st.markdown("**Watchlisten in diesem Slot**")
+        st.dataframe(
+            due_df[["Watchlist_Name", "Watchlist_Type", "Alert_Mode", "Check_Frequency"]],
+            hide_index=True,
+            use_container_width=True,
+        )
 
-        tickers, tick_err = get_watchlist_tickers(wl_name)
-        if tick_err:
-            st.error(f"{wl_name}: {tick_err}")
+        for _, wl_row in due_df.iterrows():
+            wl_name = str(wl_row.get("Watchlist_Name", "")).strip()
+            wl_type = str(wl_row.get("Watchlist_Type", "Watchlist")).strip() or "Watchlist"
+            wl_alert_mode = str(wl_row.get("Alert_Mode", "Standard")).strip() or "Standard"
+            wl_freq = str(wl_row.get("Check_Frequency", "4x täglich")).strip() or "4x täglich"
+
+            tickers, tick_err = get_watchlist_tickers(wl_name)
+            if tick_err:
+                st.error(f"{wl_name}: {tick_err}")
+                auto_run_rows.append({
+                    "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
+                    "Slot": slot_label,
+                    "Watchlist_Name": wl_name,
+                    "Watchlist_Type": wl_type,
+                    "Alert_Mode": wl_alert_mode,
+                    "Check_Frequency": wl_freq,
+                    "Ticker_Count": 0,
+                    "Analyzed_Count": 0,
+                    "Sent_Count": 0,
+                    "Status": "Fehler",
+                    "Message": tick_err,
+                })
+                continue
+
+            results = []
+            analyze_errors = []
+            for tkr in tickers:
+                try:
+                    result = analyze_stock(
+                        ticker=tkr,
+                        horizon="Swing (1-4 Wochen)",
+                        depot=10000,
+                        risk_pct=1.0,
+                        override=0.0,
+                        buy_in_override=0.0 if wl_type != "Positions-Watchlist" else 0.0,
+                        smart_money_default=True,
+                        strict_mode=True
+                    )
+                    results.append(result)
+                except Exception as e:
+                    analyze_errors.append(f"{tkr}: {e}")
+
+            ok, msg, sent_count = send_watchlist_alerts(results, wl_name, wl_type, wl_alert_mode) if results else (False, "Keine auswertbaren Ergebnisse", 0)
+
+            if ok:
+                st.success(f"{wl_name}: {msg}")
+            else:
+                if "Keine" in msg or "unterdrückt" in msg:
+                    st.info(f"{wl_name}: {msg}")
+                else:
+                    st.error(f"{wl_name}: {msg}")
+
+            total_sent += int(sent_count or 0)
             auto_run_rows.append({
                 "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
@@ -7985,57 +8060,40 @@ if st.session_state.get("auto_run_requested", False):
                 "Watchlist_Type": wl_type,
                 "Alert_Mode": wl_alert_mode,
                 "Check_Frequency": wl_freq,
-                "Ticker_Count": 0,
-                "Analyzed_Count": 0,
-                "Sent_Count": 0,
-                "Status": "Fehler",
-                "Message": tick_err,
+                "Ticker_Count": len(tickers),
+                "Analyzed_Count": len(results),
+                "Sent_Count": int(sent_count or 0),
+                "Status": "OK" if ok else "Info",
+                "Message": msg + (f" | Analysefehler: {' ; '.join(analyze_errors[:2])}" if analyze_errors else ""),
             })
-            continue
 
-        results = []
-        analyze_errors = []
-        for tkr in tickers:
-            try:
-                result = analyze_stock(
-                    ticker=tkr,
-                    horizon="Swing (1-4 Wochen)",
-                    depot=10000,
-                    risk_pct=1.0,
-                    override=0.0,
-                    buy_in_override=0.0 if wl_type != "Positions-Watchlist" else 0.0,
-                    smart_money_default=True,
-                    strict_mode=True
-                )
-                results.append(result)
-            except Exception as e:
-                analyze_errors.append(f"{tkr}: {e}")
-
-        ok, msg, sent_count = send_watchlist_alerts(results, wl_name, wl_type, wl_alert_mode) if results else (False, "Keine auswertbaren Ergebnisse", 0)
-
-        if ok:
-            st.success(f"{wl_name}: {msg}")
-        else:
-            if "Keine" in msg or "unterdrückt" in msg:
-                st.info(f"{wl_name}: {msg}")
+    if due_radar_jobs:
+        st.markdown("**Radar-Snapshot-Jobs in diesem Slot**")
+        st.dataframe(pd.DataFrame(due_radar_jobs)[["label", "run_at"]], hide_index=True, use_container_width=True)
+        for radar_job in due_radar_jobs:
+            radar_job = dict(radar_job)
+            radar_job["source"] = "auto_run"
+            ok, msg, meta = run_radar_snapshot_job(radar_job)
+            analyzed_count = int((meta or {}).get("analyzed_count", 0) or 0)
+            error_count = len((meta or {}).get("errors", []) or [])
+            if ok:
+                st.success(f"Radar {radar_job.get('label')}: {msg}")
             else:
-                st.error(f"{wl_name}: {msg}")
-
-        total_sent += int(sent_count or 0)
-        auto_run_rows.append({
-            "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
-            "Slot": slot_label,
-            "Watchlist_Name": wl_name,
-            "Watchlist_Type": wl_type,
-            "Alert_Mode": wl_alert_mode,
-            "Check_Frequency": wl_freq,
-            "Ticker_Count": len(tickers),
-            "Analyzed_Count": len(results),
-            "Sent_Count": int(sent_count or 0),
-            "Status": "OK" if ok else "Info",
-            "Message": msg + (f" | Analysefehler: {' ; '.join(analyze_errors[:2])}" if analyze_errors else ""),
-        })
+                st.error(f"Radar {radar_job.get('label')}: {msg}")
+            auto_run_rows.append({
+                "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
+                "Slot": slot_label,
+                "Watchlist_Name": f"RADAR | {radar_job.get('label', radar_job.get('job_id', 'Job'))}",
+                "Watchlist_Type": "Radar Snapshot",
+                "Alert_Mode": radar_job.get("style", "-"),
+                "Check_Frequency": radar_job.get("run_at", radar_job.get("slot_group", slot_label)),
+                "Ticker_Count": 0,
+                "Analyzed_Count": analyzed_count,
+                "Sent_Count": 0,
+                "Status": "OK" if ok else "Fehler",
+                "Message": msg + (f" | Fehler: {error_count}" if error_count else ""),
+            })
 
     log_ok, log_msg = append_auto_run_log(auto_run_rows)
     if log_ok:
@@ -8050,7 +8108,6 @@ if st.session_state.get("auto_run_requested", False):
 
     st.session_state.auto_run_requested = False
     st.stop()
-
 
 
 

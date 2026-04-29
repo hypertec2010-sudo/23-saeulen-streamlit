@@ -6908,6 +6908,42 @@ if workspace_mode:
         }
         st.caption(f"Aktiver Screening-Stil: {st.session_state.radar_screening_style} | {style_note_map.get(st.session_state.radar_screening_style, '')}")
 
+
+        def radar_score_badge(value):
+            try:
+                num = float(str(value).replace('%', '').replace(',', '.').strip())
+            except Exception:
+                return str(value) if str(value).strip() else '-'
+            if num >= 75:
+                return f"🟢 {int(round(num))}"
+            if num >= 55:
+                return f"🟡 {int(round(num))}"
+            return f"🔴 {int(round(num))}"
+
+        def radar_trigger_badge(value):
+            raw = str(value).strip()
+            s = raw.lower()
+            if s in {"aktiv", "jetzt prüfbar"}:
+                return f"🟢 {raw}"
+            if s in {"nahe dran", "fast prüfbar"}:
+                return f"🟡 {raw}"
+            if s in {"frühe beobachtung", "früh interessant", "beobachten", "weiter beobachten"}:
+                return f"🟠 {raw}"
+            if s in {"passiv", "aktuell kein fokus", "warten", "noch warten"}:
+                return f"🔴 {raw}"
+            return raw if raw else '-'
+
+        def radar_priority_badge(value):
+            raw = str(value).strip()
+            s = raw.lower()
+            if s == 'hoch':
+                return f"🟢 {raw}"
+            if s == 'mittel':
+                return f"🟡 {raw}"
+            if s == 'niedrig':
+                return f"🔴 {raw}"
+            return raw if raw else '-'
+
         if st.session_state.radar_universe == "Eigene Liste":
             radar_custom_input = st.text_area(
                 "Eigene Kandidatenliste",

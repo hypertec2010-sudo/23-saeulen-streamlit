@@ -3606,10 +3606,10 @@ def add_sr_zones_to_plotly(fig, df, supports, resistances):
     x0 = df.index.min()
     x1 = df.index.max()
     for z in supports:
-        fig.add_shape(type="rect", x0=x0, x1=x1, y0=z["low"], y1=z["high"], line=dict(width=0), fillcolor="rgba(34,197,94,0.14)", layer="below", row=1, col=1)
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=z["low"], y1=z["high"], line=dict(width=0), fillcolor="rgba(34,197,94,0.20)", layer="below", row=1, col=1)
         fig.add_annotation(x=x1, y=z["mid"], text=f"Support ({z['touches']})", showarrow=False, xanchor="left", font=dict(size=10, color="#86efac"), row=1, col=1)
     for z in resistances:
-        fig.add_shape(type="rect", x0=x0, x1=x1, y0=z["low"], y1=z["high"], line=dict(width=0), fillcolor="rgba(239,68,68,0.14)", layer="below", row=1, col=1)
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=z["low"], y1=z["high"], line=dict(width=0), fillcolor="rgba(239,68,68,0.20)", layer="below", row=1, col=1)
         fig.add_annotation(x=x1, y=z["mid"], text=f"Widerstand ({z['touches']})", showarrow=False, xanchor="left", font=dict(size=10, color="#fca5a5"), row=1, col=1)
 
 

@@ -3964,6 +3964,97 @@ def summarize_chart_structures(df, structures):
     return summaries
 
 
+
+
+def evaluate_chart_structure_bias(df, structures):
+    """
+    Leichte Zusatzlesart aus S/R-Zonen und Trendkanal.
+    Gibt nur kleine Adjustments zur operativen Einordnung zurück.
+    """
+    result = {
+        "bias": 0,
+        "setup_bias": 0,
+        "tradeability_bias": 0,
+        "notes_pos": [],
+        "notes_neg": [],
+        "summary": [],
+    }
+    if df is None or df.empty or not structures:
+        return result
+
+    try:
+        current_price = float(pd.to_numeric(df["Close"], errors="coerce").iloc[-1])
+    except Exception:
+        return result
+
+    supports = structures.get("supports", []) or []
+    resistances = structures.get("resistances", []) or []
+    channel = structures.get("channel")
+
+    if supports:
+        s1 = supports[0]
+        s_mid = float(s1.get("mid", np.nan))
+        if pd.notna(s_mid) and s_mid > 0:
+            dist_pct = ((current_price / s_mid) - 1.0) * 100.0
+            if 0 <= dist_pct <= 1.6:
+                result["bias"] += 2
+                result["setup_bias"] += 2
+                result["notes_pos"].append("Kurs nahe Support S1")
+                result["summary"].append(f"Support S1 stützt bei {s_mid:.2f}.")
+            elif current_price < s_mid:
+                result["bias"] -= 2
+                result["tradeability_bias"] -= 2
+                result["notes_neg"].append("Kurs unter Support S1")
+                result["summary"].append(f"S1 bei {s_mid:.2f} wurde unterschritten.")
+
+    if resistances:
+        r1 = resistances[0]
+        r_mid = float(r1.get("mid", np.nan))
+        if pd.notna(r_mid) and r_mid > 0:
+            dist_pct = ((r_mid / current_price) - 1.0) * 100.0
+            if 0 <= dist_pct <= 1.6:
+                result["bias"] -= 1
+                result["tradeability_bias"] -= 1
+                result["notes_neg"].append("Kurs direkt an Widerstand R1")
+                result["summary"].append(f"R1 liegt direkt bei {r_mid:.2f}.")
+            elif current_price > r_mid:
+                result["bias"] += 2
+                result["setup_bias"] += 1
+                result["notes_pos"].append("Ausbruch über Widerstand R1")
+                result["summary"].append(f"R1 bei {r_mid:.2f} wurde überschritten.")
+
+    if channel:
+        try:
+            idx_last = len(df) - 1
+            slope = float(channel.get("slope", 0.0))
+            lower = slope * idx_last + float(channel.get("lower_intercept", 0.0))
+            upper = slope * idx_last + float(channel.get("upper_intercept", 0.0))
+            if upper > lower:
+                pos = (current_price - lower) / (upper - lower)
+                label = str(channel.get("label", "Trendkanal")).strip()
+                if str(channel.get("type")) == "uptrend":
+                    if pos <= 0.30:
+                        result["bias"] += 1
+                        result["setup_bias"] += 1
+                        result["notes_pos"].append("Im unteren Bereich eines Aufwaertskanals")
+                    elif pos >= 0.82:
+                        result["bias"] -= 1
+                        result["tradeability_bias"] -= 1
+                        result["notes_neg"].append("Im oberen Bereich eines Aufwaertskanals")
+                elif str(channel.get("type")) == "downtrend":
+                    result["bias"] -= 2
+                    result["tradeability_bias"] -= 1
+                    result["notes_neg"].append(label)
+                result["summary"].append(f"Chart laeuft in {label.lower()}.")
+        except Exception:
+            pass
+
+    result["bias"] = int(max(-4, min(4, result["bias"])))
+    result["setup_bias"] = int(max(-3, min(3, result["setup_bias"])))
+    result["tradeability_bias"] = int(max(-3, min(3, result["tradeability_bias"])))
+    return result
+
+
 def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None):
     fig = make_subplots(
         rows=2,
@@ -5993,6 +6084,39 @@ def _legacy_analyze_stock(
     stb_signal, stb_empf = tb_signal_label(stb_score)
     stb_text = ", ".join(stb_items) if stb_items else "keine positiven Kurzfrist-Signale"
 
+    chart_structures_analysis = None
+    chart_bias_info = {
+        "bias": 0,
+        "setup_bias": 0,
+        "tradeability_bias": 0,
+        "notes_pos": [],
+        "notes_neg": [],
+        "summary": [],
+    }
+    try:
+        chart_analysis_df = compute_chart_df(df, "1 Jahr")
+        chart_structures_analysis = build_chart_structures(chart_analysis_df)
+        chart_bias_info = evaluate_chart_structure_bias(chart_analysis_df, chart_structures_analysis)
+    except Exception:
+        chart_structures_analysis = None
+        chart_bias_info = {
+            "bias": 0,
+            "setup_bias": 0,
+            "tradeability_bias": 0,
+            "notes_pos": [],
+            "notes_neg": [],
+            "summary": [],
+        }
+
+    if chart_bias_info.get("bias", 0) or chart_bias_info.get("setup_bias", 0) or chart_bias_info.get("tradeability_bias", 0):
+        trading_case_score = round(clamp(trading_case_score + chart_bias_info.get("bias", 0)))
+        setup_confidence = round(clamp(setup_confidence + chart_bias_info.get("setup_bias", 0)))
+        tradeability_score = round(clamp(tradeability_score + chart_bias_info.get("tradeability_bias", 0)))
+        trading_case_text = trading_case_label(trading_case_score)
+        tradeability_text = tradeability_label(tradeability_score)
+        setup_confidence_text = setup_confidence_label(setup_confidence)
+
+
     # ---------- Explanations ----------
     strengths, weaknesses, decision_summary = build_decision_explanation(
         setup=setup_adj,
@@ -6009,6 +6133,20 @@ def _legacy_analyze_stock(
         kb=kb,
         position_mode=position_mode
     )
+
+    chart_pos_notes = chart_bias_info.get("notes_pos", [])[:2]
+    chart_neg_notes = chart_bias_info.get("notes_neg", [])[:2]
+    for _note in chart_pos_notes:
+        if _note not in strengths:
+            strengths.append(f"Chart: {_note}.")
+    for _note in chart_neg_notes:
+        if _note not in weaknesses:
+            weaknesses.append(f"Chart: {_note}.")
+    strengths = strengths[:5]
+    weaknesses = weaknesses[:5]
+    if chart_bias_info.get("summary"):
+        decision_summary = f"{decision_summary} Chart-Kontext: {' '.join(chart_bias_info.get('summary', [])[:2])}"
+
 
     rows = []
     for line in tb_details:
@@ -6559,6 +6697,8 @@ def _legacy_analyze_stock(
         "short_pct": short_pct,
         "market_cap": market_cap,
         "short_thesis": short_thesis,
+        "chart_bias_info": chart_bias_info,
+        "chart_structures_analysis": chart_structures_analysis,
         "emp": emp,
         "conv": conv,
     }

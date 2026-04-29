@@ -3875,7 +3875,7 @@ def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None):
 
 
     for idx, z in enumerate(active_zones or [], start=1):
-        label = f"Z{idx} aktiv ({z['touches']}x)"
+        label = f"Aktive Zone {idx} ({z['touches']}x)"
         fig.add_shape(
             type="rect",
             x0=x0,

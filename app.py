@@ -217,6 +217,221 @@ def save_radar_snapshot(signature, payload):
 
 
 
+def get_radar_universe_map():
+    us_tech_universe = [
+        "AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CRM", "ADBE", "AMD", "CSCO", "IBM",
+        "QCOM", "TXN", "MU", "INTU", "AMAT", "ADI", "LRCX", "KLAC", "INTC", "PANW",
+        "CRWD", "SNPS", "CDNS", "ANET", "PLTR", "NOW", "ADSK", "TEAM", "ROP", "DELL",
+        "HPQ", "WDAY", "DDOG", "NET", "MDB", "ZS", "OKTA", "HUBS", "SHOP", "SQ",
+        "UBER", "ABNB", "META", "GOOGL", "AMZN", "NFLX", "TSM", "ASML", "ARM", "SMCI",
+        "APH", "FTNT", "MCHP", "NXPI", "MRVL", "ON", "STM", "MPWR", "GFS", "WDC",
+        "STX", "NTAP", "DOCU", "SNOW", "FICO", "TTD", "PINS", "SAP", "PATH", "ESTC",
+        "DT", "APP", "RBLX", "GEN", "AKAM", "ZI", "BILL", "PAYC", "TYL", "MANH",
+        "CYBR", "S", "IOT", "PCOR", "GWRE", "AFRM", "DOCN", "WK", "CFLT", "ENPH",
+        "SEDG", "GLW", "JBL", "FSLR", "COHR", "CIEN", "JNPR", "FFIV", "TER", "ENTG"
+    ]
+    us_basis_universe = [
+        "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "BRK-B", "JPM", "LLY", "V",
+        "XOM", "UNH", "AVGO", "MA", "COST", "WMT", "JNJ", "PG", "HD", "ABBV",
+        "BAC", "KO", "MRK", "PEP", "CVX", "ADBE", "CRM", "NFLX", "AMD", "ORCL",
+        "LIN", "TMO", "MCD", "GE", "CAT", "AMAT", "GS", "AXP", "NOW", "PM"
+    ]
+    europa_quality_universe = [
+        "SAP", "ASML", "NESN.SW", "NOVO-B.CO", "MC.PA", "SU.PA", "AIR.PA", "SIE.DE", "DTE.DE", "ALV.DE",
+        "MUV2.DE", "RMS.PA", "OR.PA", "SAN.PA", "BN.PA", "DG.PA", "EL.PA", "SAF.PA", "CS.PA", "ULVR.L",
+        "AZN.L", "SHEL.L", "REL.L", "LSEG.L", "DGE.L", "GSK.L", "ABBN.SW", "ROG.SW", "SIKA.SW", "UHR.SW",
+        "NOVN.SW", "ZURN.SW", "CFR.SW", "ADYEN.AS", "WKL.AS", "PRX.AS", "HEIA.AS", "CAP.PA", "DSY.PA", "KER.PA",
+        "RACE.MI", "MONC.MI", "UCG.MI", "ISP.MI", "PRY.MI", "ENEL.MI", "IBE.MC", "ITX.MC", "FER.MC", "AMS.MC",
+        "HEI.DE", "IFX.DE", "DB1.DE", "RHM.DE", "RI.PA", "HO.PA", "AI.PA", "KER.PA", "LONN.SW", "HOLN.SW"
+    ]
+    europa_small_mid_quality_universe = [
+        "NEM.DE", "BC8.DE", "COK.DE", "EVD.DE", "AFX.DE", "SIX2.DE", "FPE3.DE", "KRN.DE", "GXI.DE", "JUN3.DE",
+        "G24.DE", "HAG.DE", "EVT.DE", "R3NK.DE", "PNE3.DE", "VAR1.DE", "VOS.DE", "WAF.DE", "DEQ.DE", "NDA.DE",
+        "SOI.PA", "VIRP.PA", "SESL.PA", "IPS.PA", "EKI.PA", "RCO.PA", "UBI.PA", "EDEN.PA", "RXL.PA", "GET.PA",
+        "IMCD.AS", "ASM.AS", "BESI.AS", "ASRNL.AS", "RAND.AS", "WKL.AS", "AD.AS", "FAGR.BR", "ACKB.BR", "SOF.BR",
+        "LIFCO-B.ST", "ADDT-B.ST", "THULE.ST", "MIPS.ST", "NIBE-B.ST", "INDU-C.ST", "VITR.ST", "AAK.ST", "ALFA.ST", "SHB-A.ST",
+        "DEMANT.CO", "GN.CO", "BAVA.CO", "CHEMM.CO", "NETC.CO", "RATO-B.ST", "SALM.OL", "TOM.OL", "KCR.HE", "VALMT.HE",
+        "HUH1V.HE", "KEMIRA.HE", "METSB.HE", "TEL2-B.ST", "INDT.ST", "DIA.MI", "ERG.MI", "BFF.MI", "IP.MI", "REY.MI",
+        "AMP.MC", "VID.MC", "LOG.MC", "CLNX.MC", "ANA.MC", "AUTO.MC", "TLGO.MC", "WISE.L", "LGEN.L", "WEIR.L"
+    ]
+    semiconductor_universe = [
+        "NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "ADI", "AMAT", "LRCX", "KLAC",
+        "INTC", "MCHP", "NXPI", "MRVL", "ON", "MPWR", "GFS", "SWKS", "QRVO", "TER",
+        "TSM", "ASML", "ARM", "STM", "ENTG", "COHR", "ONTO", "LSCC", "ALGM", "SLAB",
+        "CRUS", "AMKR", "FORM", "IPGP", "NVMI", "ACLS", "POWI", "WOLF", "MTSI", "RMBS",
+        "CAMT", "SITM", "ASX", "ASM.AS", "BESI.AS"
+    ]
+    us_small_mid_caps_universe = [
+        "APP", "AFRM", "BILL", "CFLT", "CRSP", "CYBR", "DOCN", "DUOL", "ESTC", "FIVN",
+        "FROG", "GLBE", "GWRE", "IOT", "JFROG", "MDB", "MGNI", "NET", "OKTA", "PCOR",
+        "PLTR", "RBLX", "S", "SE", "SNOW", "SOFI", "U", "WIX", "ZI", "ZM",
+        "RKLB", "IONQ", "ASTS", "CELH", "ELF", "ONON", "CAVA", "HIMS", "NU", "PINS",
+        "DASH", "TTD", "ROKU", "ETSY", "CHWY", "DKNG", "HOOD", "ABNB", "UBER", "LYFT",
+        "FSLY", "TASK", "COUR", "ASAN", "MNDY", "BROS", "CVNA", "CROX", "ACLS", "ALGM",
+        "LSCC", "FORM", "SITM", "POWI", "WOLF", "COHR", "IPGP", "CAMT", "MTSI", "NVMI",
+        "INSM", "AXSM", "EXAS", "HALO", "SRPT", "ALKS", "MEDP", "RXRX", "TWST", "NTLA"
+    ]
+    return {
+        "US Tech": (us_tech_universe, "US Tech Fokus", "Breites Tech- und Plattformuniversum mit rund 95 vordefinierten Werten."),
+        "US Basisliste": (us_basis_universe, "US Basisliste", "Große US-Standardwerte als breiter Startscreen für neue Ideen."),
+        "Europa Qualität & Leader": (europa_quality_universe, "Europa Qualität & Leader", "Breitere Europa-Liste mit Qualitätswerten, Large Caps und führenden Marktpositionen."),
+        "Halbleiter": (semiconductor_universe, "Halbleiter", "Breite Halbleiterliste mit Designern, Ausrüstern, Foundries und Spezialwerten."),
+        "US Small & Mid Caps": (us_small_mid_caps_universe, "US Small & Mid Caps", "Breiteres US-Universum aus Small- und Mid-Caps mit Fokus auf Liquidität, Wachstum und frühere Radar-Chancen."),
+        "Europa Small & Mid Caps Qualität": (europa_small_mid_quality_universe, "Europa Small & Mid Caps Qualität", "Breiteres Europa-Universum aus Small- und Mid-Caps mit Qualitäts- und Leader-Fokus."),
+    }
+
+
+def get_radar_snapshot_jobs():
+    return [
+        {"job_id": "radar_us_tech_leader", "label": "US Tech | Leader | 15", "universe": "US Tech", "style": "Leader", "max_candidates": 15, "slot": "10:30", "enabled": True},
+        {"job_id": "radar_semis_leader", "label": "Halbleiter | Leader | 15", "universe": "Halbleiter", "style": "Leader", "max_candidates": 15, "slot": "10:40", "enabled": True},
+        {"job_id": "radar_europe_balanced", "label": "Europa Qualität & Leader | Ausgewogen | 15", "universe": "Europa Qualität & Leader", "style": "Ausgewogen", "max_candidates": 15, "slot": "10:50", "enabled": True},
+        {"job_id": "radar_us_sm_turnaround", "label": "US Small & Mid Caps | Turnaround | 15", "universe": "US Small & Mid Caps", "style": "Turnaround", "max_candidates": 15, "slot": "11:00", "enabled": True},
+        {"job_id": "radar_eu_sm_turnaround", "label": "Europa Small & Mid Caps Qualität | Turnaround | 15", "universe": "Europa Small & Mid Caps Qualität", "style": "Turnaround", "max_candidates": 15, "slot": "11:10", "enabled": True},
+    ]
+
+
+def get_due_radar_jobs_for_slot(slot_label):
+    jobs = [j for j in get_radar_snapshot_jobs() if j.get("enabled") and str(j.get("slot", "")).strip() == str(slot_label or "").strip()]
+    return jobs
+
+
+def build_radar_reason_shared(result, style_name_local):
+    trigger = str(result.get("trigger_status", "") or "")
+    setup_type_local = str(result.get("setup_type", "") or "")
+    leadership_local = str(result.get("leadership_status", "") or "")
+    top_red_flag_local = str(result.get("top_red_flag", "") or "")
+    market_regime_local = str((result.get("market_info", {}) or {}).get("regime", "") or "")
+    catalyst_local = pd.to_numeric(result.get("catalyst_score", np.nan), errors="coerce")
+    short_term_local = pd.to_numeric(result.get("short_term_score", np.nan), errors="coerce")
+    tb_local = pd.to_numeric(result.get("tb_score_100", np.nan), errors="coerce")
+    invest_local = pd.to_numeric(result.get("investment_case_score", np.nan), errors="coerce")
+    trade_local = pd.to_numeric(result.get("trading_case_score", np.nan), errors="coerce")
+    if style_name_local == "Turnaround":
+        if trigger in {"Aktiv", "Jetzt prüfbar"} and setup_type_local in {"Rebound", "Breakout-Retest"}:
+            return "Frühe technische Drehung mit Rebound-Charakter"
+        if setup_type_local == "Breakout-Retest":
+            return "Rückeroberung läuft, Bestätigung über Retest möglich"
+        if setup_type_local in {"Pullback an MA20", "Pullback an MA50"}:
+            return f"Frischer Stabilisierungsversuch nahe {setup_type_local.split()[-1]}"
+        if pd.notna(catalyst_local) and catalyst_local >= 70:
+            return "Katalysator verbessert das Turnaround-Fenster"
+        if pd.notna(short_term_local) and short_term_local >= 60 and pd.notna(tb_local) and tb_local >= 58:
+            return "Kurzfristbild dreht, obwohl der Titel noch nicht voll bestätigt ist"
+        if trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"}:
+            return "Noch zu früh, aber erste Drehansätze werden sichtbar"
+        return "Frühe technische Drehung mit noch fragiler Bestätigung"
+    if style_name_local == "Leader":
+        if leadership_local == "Leader" and trigger in {"Aktiv", "Jetzt prüfbar"}:
+            return "Leader mit bestätigter Stärke und direkt prüfbarem Einstieg"
+        if leadership_local == "Leader":
+            return "Leader mit bestätigter Stärke"
+        if setup_type_local in {"Breakout", "Range-Breakout"} and trigger in {"Aktiv", "Jetzt prüfbar"}:
+            return "Breakout-Leader mit sauberer Struktur"
+        if setup_type_local in {"Trendfolge", "Pullback an MA20", "Pullback an MA50"}:
+            return "Trendführer mit stabiler Fortsetzungsstruktur"
+        if pd.notna(trade_local) and trade_local >= 70:
+            return "Bestätigtes Setup, Einstieg jetzt konkret prüfbar"
+        if pd.notna(invest_local) and invest_local >= 75:
+            return "Starker Qualitäts- und Leadership-Kandidat"
+        return "Konstruktiver Leader-Kandidat mit bestätigter Stärke"
+    if trigger in {"Aktiv", "Jetzt prüfbar"} and pd.notna(trade_local) and trade_local >= 70:
+        return "Gutes Gesamtbild mit direkt prüfbarem Einstieg"
+    if trigger in {"Nahe dran", "Fast prüfbar"}:
+        return "Ausgewogener Kandidat, Timing fast vollständig"
+    if pd.notna(invest_local) and invest_local >= 75 and pd.notna(trade_local) and trade_local < 65:
+        return "Starker Investment-Case, Timing zieht noch nicht ganz mit"
+    if setup_type_local in {"Pullback an MA20", "Pullback an MA50"}:
+        return f"Qualitätswert im konstruktiven {setup_type_local}"
+    if leadership_local == "Leader":
+        return "Leader mit brauchbarem Gesamtbild"
+    if market_regime_local == "NEGATIV":
+        return "Guter Wert, aber das Marktumfeld bremst aktuell"
+    if top_red_flag_local and top_red_flag_local != "-":
+        return f"Interessant, aber gebremst durch: {shorten_text(top_red_flag_local, 44)}"
+    return "Ausgewogener Kandidat mit brauchbarem Gesamtbild"
+
+
+def compute_radar_style_sort_shared(row, result_map, style_name):
+    tkr = str(row.get("Ticker", "") or "")
+    r = result_map.get(tkr, {}) or {}
+    trigger_rank_map = {"Aktiv": 6, "Jetzt prüfbar": 6, "Nahe dran": 5, "Fast prüfbar": 5, "Frühe Beobachtung": 4, "Früh interessant": 4, "Beobachten": 3, "Weiter beobachten": 3, "Passiv": 2, "Aktuell kein Fokus": 2, "Warten": 1, "Noch warten": 1}
+    trigger_score = float(trigger_rank_map.get(str(row.get("Trigger-Status", "") or ""), 0))
+    entry_score_local = pd.to_numeric(row.get("Einstieg jetzt attraktiv?", np.nan), errors="coerce")
+    invest_score_local = pd.to_numeric(row.get("Investment-Attraktivität", np.nan), errors="coerce")
+    setup_priority_local = pd.to_numeric(row.get("Setup-Priorität", np.nan), errors="coerce")
+    leadership_local = pd.to_numeric(r.get("leadership_score", np.nan), errors="coerce")
+    catalyst_local = pd.to_numeric(r.get("catalyst_score", np.nan), errors="coerce")
+    short_term_local = pd.to_numeric(r.get("short_term_score", np.nan), errors="coerce")
+    tb_local = pd.to_numeric(r.get("tb_score_100", np.nan), errors="coerce")
+    exit_local = pd.to_numeric(r.get("exit_score", np.nan), errors="coerce")
+    setup_conf_local = pd.to_numeric(r.get("setup_confidence", np.nan), errors="coerce")
+    rebound_bonus = 8.0 if str(r.get("setup_type", "") or "") in {"Rebound", "Breakout-Retest", "Pullback an MA20", "Pullback an MA50"} else 0.0
+    leader_bonus = 8.0 if str(r.get("leadership_status", "") or "") == "Leader" else 0.0
+    safe = lambda v, default=0.0: default if pd.isna(v) else float(v)
+    if style_name == "Leader":
+        return trigger_score * 18 + safe(entry_score_local) * 0.32 + safe(setup_priority_local) * 0.24 + safe(leadership_local) * 0.18 + safe(invest_score_local) * 0.08 + safe(setup_conf_local) * 0.08 + leader_bonus
+    if style_name == "Turnaround":
+        return trigger_score * 10 + safe(entry_score_local) * 0.18 + safe(invest_score_local) * 0.12 + safe(catalyst_local) * 0.20 + safe(short_term_local) * 0.18 + safe(tb_local) * 0.12 + (100 - safe(exit_local, 100)) * 0.08 + rebound_bonus
+    return trigger_score * 14 + safe(entry_score_local) * 0.26 + safe(invest_score_local) * 0.18 + safe(setup_priority_local) * 0.18 + safe(leadership_local) * 0.10 + safe(catalyst_local) * 0.08 + safe(setup_conf_local) * 0.06 + rebound_bonus * 0.5 + leader_bonus * 0.5
+
+
+def run_radar_snapshot_job(job):
+    try:
+        universe = str(job.get("universe", "") or "").strip()
+        style_name = str(job.get("style", "Leader") or "Leader").strip()
+        max_candidates = int(job.get("max_candidates", 15) or 15)
+        custom_text = str(job.get("custom_text", "") or "")
+        universe_map = get_radar_universe_map()
+        if universe == "Eigene Liste":
+            raw_entries = split_batch_input(custom_text)
+        else:
+            raw_entries = list((universe_map.get(universe) or ([], "", ""))[0])
+        if not raw_entries:
+            return False, "Keine Radar-Kandidaten im Job definiert", {"analyzed_count": 0}
+        resolved_entries = []
+        resolution_rows = []
+        for entry in raw_entries:
+            fallback = entry if looks_like_real_ticker(entry) else None
+            resolved = resolve_input_to_ticker(entry, fallback=fallback)
+            resolution_rows.append({"Eingabe": entry, "Aufgelöst zu": resolved if resolved else "Nicht gefunden"})
+            if resolved and resolved not in resolved_entries:
+                resolved_entries.append(resolved)
+        if not resolved_entries:
+            return False, "Keine auflösbaren Kandidaten", {"analyzed_count": 0, "resolution_rows": resolution_rows}
+        results = []
+        errors = []
+        for tkr in resolved_entries:
+            try:
+                results.append(analyze_stock(ticker=tkr, horizon="Swing (1-4 Wochen)", depot=10000, risk_pct=1.0, override=0.0, buy_in_override=0.0, smart_money_default=True, strict_mode=True))
+            except Exception as e:
+                errors.append((tkr, str(e)))
+        if not results:
+            return False, "Keine auswertbaren Ergebnisse", {"analyzed_count": 0, "resolution_rows": resolution_rows, "errors": errors}
+        radar_df = build_ranking_table(results)
+        result_map = {str(r.get("ticker", "")): r for r in results}
+        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): build_radar_reason_shared(r, style_name) for r in results})
+        radar_df["__style_sort"] = radar_df.apply(lambda row: compute_radar_style_sort_shared(row, result_map, style_name), axis=1)
+        signature = _radar_snapshot_signature(universe, style_name, max_candidates, custom_text)
+        payload = {
+            "radar_display_rows": radar_df.to_dict("records"),
+            "radar_errors": errors,
+            "radar_resolution_rows": resolution_rows,
+            "radar_universe": universe,
+            "radar_screening_style": style_name,
+            "radar_max_candidates": max_candidates,
+            "radar_input_signature": signature,
+            "radar_generated_at": get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
+            "radar_source": "auto_run",
+            "radar_job_id": str(job.get("job_id", "manual_job")),
+        }
+        save_radar_snapshot(signature, payload)
+        return True, f"Snapshot gespeichert ({len(results)} Werte analysiert)", {"analyzed_count": len(results), "errors": errors, "resolution_rows": resolution_rows, "signature": signature}
+    except Exception as e:
+        return False, str(e), {"analyzed_count": 0}
+
+
+
 # ---------- UI Theme / CSS ----------
 st.markdown("""
 <style>
@@ -6177,6 +6392,31 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
     with test2:
         st.caption("Technischer Test unabhängig von Marktlogik, Alert-History und Watchlist-Regeln.")
 
+        st.markdown("#### Radar Snapshot Jobs")
+        radar_jobs = get_radar_snapshot_jobs()
+        radar_jobs_df = pd.DataFrame(radar_jobs)[["label", "slot", "enabled"]] if radar_jobs else pd.DataFrame()
+        if not radar_jobs_df.empty:
+            st.dataframe(radar_jobs_df, hide_index=True, use_container_width=True, height=min(260, 45 * len(radar_jobs_df) + 40))
+        rj1, rj2 = st.columns([1.7, 1.1])
+        with rj1:
+            radar_job_labels = [j.get("label", j.get("job_id", "Job")) for j in radar_jobs]
+            selected_radar_job_label = st.selectbox("Radar-Job manuell vorberechnen", options=radar_job_labels, key="selected_radar_job_widget") if radar_job_labels else ""
+        with rj2:
+            st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+            if st.button("Radar-Snapshot jetzt berechnen", use_container_width=True, key="run_selected_radar_job_btn"):
+                selected_job = next((j for j in radar_jobs if j.get("label", j.get("job_id")) == selected_radar_job_label), None)
+                if not selected_job:
+                    st.warning("Kein Radar-Job ausgewählt.")
+                else:
+                    with st.spinner("Radar-Snapshot wird vorbereitet …"):
+                        ok, msg, meta = run_radar_snapshot_job(selected_job)
+                    if ok:
+                        st.success(f"{selected_radar_job_label}: {msg}")
+                    else:
+                        st.error(f"{selected_radar_job_label}: {msg}")
+                    if isinstance(meta, dict):
+                        st.caption(f"Analysiert: {meta.get('analyzed_count', 0)} | Fehler: {len(meta.get('errors', []) or [])}")
+
 st.markdown(
     """
     <style>
@@ -6844,67 +7084,7 @@ if workspace_mode:
             unsafe_allow_html=True,
         )
 
-        us_tech_universe = [
-            "AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CRM", "ADBE", "AMD", "CSCO", "IBM",
-            "QCOM", "TXN", "MU", "INTU", "AMAT", "ADI", "LRCX", "KLAC", "INTC", "PANW",
-            "CRWD", "SNPS", "CDNS", "ANET", "PLTR", "NOW", "ADSK", "TEAM", "ROP", "DELL",
-            "HPQ", "WDAY", "DDOG", "NET", "MDB", "ZS", "OKTA", "HUBS", "SHOP", "SQ",
-            "UBER", "ABNB", "META", "GOOGL", "AMZN", "NFLX", "TSM", "ASML", "ARM", "SMCI",
-            "APH", "FTNT", "MCHP", "NXPI", "MRVL", "ON", "STM", "MPWR", "GFS", "WDC",
-            "STX", "NTAP", "DOCU", "SNOW", "FICO", "TTD", "PINS", "SAP", "PATH", "ESTC",
-            "DT", "APP", "RBLX", "GEN", "AKAM", "ZI", "BILL", "PAYC", "TYL", "MANH",
-            "CYBR", "S", "IOT", "PCOR", "GWRE", "AFRM", "DOCN", "WK", "CFLT", "ENPH",
-            "SEDG", "GLW", "JBL", "FSLR", "COHR", "CIEN", "JNPR", "FFIV", "TER", "ENTG"
-        ]
-        us_basis_universe = [
-            "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "BRK-B", "JPM", "LLY", "V",
-            "XOM", "UNH", "AVGO", "MA", "COST", "WMT", "JNJ", "PG", "HD", "ABBV",
-            "BAC", "KO", "MRK", "PEP", "CVX", "ADBE", "CRM", "NFLX", "AMD", "ORCL",
-            "LIN", "TMO", "MCD", "GE", "CAT", "AMAT", "GS", "AXP", "NOW", "PM"
-        ]
-        europa_quality_universe = [
-            "SAP", "ASML", "NESN.SW", "NOVO-B.CO", "MC.PA", "SU.PA", "AIR.PA", "SIE.DE", "DTE.DE", "ALV.DE",
-            "MUV2.DE", "RMS.PA", "OR.PA", "SAN.PA", "BN.PA", "DG.PA", "EL.PA", "SAF.PA", "CS.PA", "ULVR.L",
-            "AZN.L", "SHEL.L", "REL.L", "LSEG.L", "DGE.L", "GSK.L", "ABBN.SW", "ROG.SW", "SIKA.SW", "UHR.SW",
-            "NOVN.SW", "ZURN.SW", "CFR.SW", "ADYEN.AS", "WKL.AS", "PRX.AS", "HEIA.AS", "CAP.PA", "DSY.PA", "KER.PA",
-            "RACE.MI", "MONC.MI", "UCG.MI", "ISP.MI", "PRY.MI", "ENEL.MI", "IBE.MC", "ITX.MC", "FER.MC", "AMS.MC",
-            "HEI.DE", "IFX.DE", "DB1.DE", "RHM.DE", "RI.PA", "HO.PA", "AI.PA", "KER.PA", "LONN.SW", "HOLN.SW"
-        ]
-        europa_small_mid_quality_universe = [
-            "NEM.DE", "BC8.DE", "COK.DE", "EVD.DE", "AFX.DE", "SIX2.DE", "FPE3.DE", "KRN.DE", "GXI.DE", "JUN3.DE",
-            "G24.DE", "HAG.DE", "EVT.DE", "R3NK.DE", "PNE3.DE", "VAR1.DE", "VOS.DE", "WAF.DE", "DEQ.DE", "NDA.DE",
-            "SOI.PA", "VIRP.PA", "SESL.PA", "IPS.PA", "EKI.PA", "RCO.PA", "UBI.PA", "EDEN.PA", "RXL.PA", "GET.PA",
-            "IMCD.AS", "ASM.AS", "BESI.AS", "ASRNL.AS", "RAND.AS", "WKL.AS", "AD.AS", "FAGR.BR", "ACKB.BR", "SOF.BR",
-            "LIFCO-B.ST", "ADDT-B.ST", "THULE.ST", "MIPS.ST", "NIBE-B.ST", "INDU-C.ST", "VITR.ST", "AAK.ST", "ALFA.ST", "SHB-A.ST",
-            "DEMANT.CO", "GN.CO", "BAVA.CO", "CHEMM.CO", "NETC.CO", "RATO-B.ST", "SALM.OL", "TOM.OL", "KCR.HE", "VALMT.HE",
-            "HUH1V.HE", "KEMIRA.HE", "METSB.HE", "TEL2-B.ST", "INDT.ST", "DIA.MI", "ERG.MI", "BFF.MI", "IP.MI", "REY.MI",
-            "AMP.MC", "VID.MC", "LOG.MC", "CLNX.MC", "ANA.MC", "AUTO.MC", "TLGO.MC", "WISE.L", "LGEN.L", "WEIR.L"
-        ]
-        semiconductor_universe = [
-            "NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "ADI", "AMAT", "LRCX", "KLAC",
-            "INTC", "MCHP", "NXPI", "MRVL", "ON", "MPWR", "GFS", "SWKS", "QRVO", "TER",
-            "TSM", "ASML", "ARM", "STM", "ENTG", "COHR", "ONTO", "LSCC", "ALGM", "SLAB",
-            "CRUS", "AMKR", "FORM", "IPGP", "NVMI", "ACLS", "POWI", "WOLF", "MTSI", "RMBS",
-            "CAMT", "SITM", "ASX", "ASM.AS", "BESI.AS"
-        ]
-        us_small_mid_caps_universe = [
-            "APP", "AFRM", "BILL", "CFLT", "CRSP", "CYBR", "DOCN", "DUOL", "ESTC", "FIVN",
-            "FROG", "GLBE", "GWRE", "IOT", "JFROG", "MDB", "MGNI", "NET", "OKTA", "PCOR",
-            "PLTR", "RBLX", "S", "SE", "SNOW", "SOFI", "U", "WIX", "ZI", "ZM",
-            "RKLB", "IONQ", "ASTS", "CELH", "ELF", "ONON", "CAVA", "HIMS", "NU", "PINS",
-            "DASH", "TTD", "ROKU", "ETSY", "CHWY", "DKNG", "HOOD", "ABNB", "UBER", "LYFT",
-            "FSLY", "TASK", "COUR", "ASAN", "MNDY", "BROS", "CVNA", "CROX", "ACLS", "ALGM",
-            "LSCC", "FORM", "SITM", "POWI", "WOLF", "COHR", "IPGP", "CAMT", "MTSI", "NVMI",
-            "INSM", "AXSM", "EXAS", "HALO", "SRPT", "ALKS", "MEDP", "RXRX", "TWST", "NTLA"
-        ]
-        radar_universe_map = {
-            "US Tech": (us_tech_universe, "US Tech Fokus", "Breites Tech- und Plattformuniversum mit rund 95 vordefinierten Werten."),
-            "US Basisliste": (us_basis_universe, "US Basisliste", "Große US-Standardwerte als breiter Startscreen für neue Ideen."),
-            "Europa Qualität & Leader": (europa_quality_universe, "Europa Qualität & Leader", "Breitere Europa-Liste mit Qualitätswerten, Large Caps und führenden Marktpositionen."),
-            "Halbleiter": (semiconductor_universe, "Halbleiter", "Breite Halbleiterliste mit Designern, Ausrüstern, Foundries und Spezialwerten."),
-            "US Small & Mid Caps": (us_small_mid_caps_universe, "US Small & Mid Caps", "Breiteres US-Universum aus Small- und Mid-Caps mit Fokus auf Liquidität, Wachstum und frühere Radar-Chancen."),
-            "Europa Small & Mid Caps Qualität": (europa_small_mid_quality_universe, "Europa Small & Mid Caps Qualität", "Breiteres Europa-Universum aus Small- und Mid-Caps mit Qualitäts- und Leader-Fokus."),
-        }
+        radar_universe_map = get_radar_universe_map()
 
         rc1, rc2, rc3, rc4 = st.columns([1.3, 1.0, 0.7, 1.0])
         with rc1:

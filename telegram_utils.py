@@ -7,14 +7,19 @@ import streamlit as st
 from logging_utils import get_alert_history_entry, upsert_alert_history_entry
 
 try:
-    from logging_utils import has_any_alert_history_for_ticker as _has_any_alert_history_for_ticker
+    from logging_utils import load_alert_history_df as _load_alert_history_df
 except Exception:
-    _has_any_alert_history_for_ticker = None
+    _load_alert_history_df = None
 
 try:
     from logging_utils import bulk_upsert_alert_history_entries as _bulk_upsert_alert_history_entries
 except Exception:
     _bulk_upsert_alert_history_entries = None
+
+try:
+    from logging_utils import has_any_alert_history_for_ticker as _has_any_alert_history_for_ticker
+except Exception:
+    _has_any_alert_history_for_ticker = None
 
 
 WATCHLIST_ALERT_TYPES = [
@@ -471,40 +476,104 @@ def send_telegram_message(message_text):
         return False, str(e)
 
 
-def _collect_history_entries_for_ticker(watchlist_name, ticker, watchlist_type):
-    watchlist_name = _norm_text(watchlist_name)
-    ticker = _norm_ticker(ticker)
-    alert_types = POSITION_ALERT_TYPES if watchlist_type == "Positions-Watchlist" else WATCHLIST_ALERT_TYPES
-    entries = {}
-    read_ok = True
-    read_error = ""
-    for alert_type in alert_types:
+def _history_cache_from_sheet():
+    if not callable(_load_alert_history_df):
+        return None, 'load_alert_history_df nicht verfügbar'
+    try:
+        df, err = _load_alert_history_df()
+    except Exception as e:
+        return None, str(e)
+    if err:
+        return None, str(err)
+
+    by_type = {}
+    latest_any = {}
+    if df is None or getattr(df, 'empty', True):
+        return {"by_type": by_type, "latest_any": latest_any}, None
+
+    for _, row in df.iterrows():
+        wl = _norm_text(row.get('Watchlist_Name', '')).lower()
+        tk = _norm_ticker(row.get('Ticker', ''))
+        at = _norm_text(row.get('Alert_Type', ''))
+        date_key = _norm_text(row.get('Last_Sent_At', '')) or _norm_text(row.get('Last_Sent_Date', ''))
+        entry = row.to_dict()
+        type_key = (wl, tk, at)
+        any_key = (wl, tk)
+        prev = by_type.get(type_key)
+        if prev is None or str(prev.get('Last_Sent_At', '') or prev.get('Last_Sent_Date', '')) <= date_key:
+            by_type[type_key] = entry
+        prev_any = latest_any.get(any_key)
+        if prev_any is None or str(prev_any.get('Last_Sent_At', '') or prev_any.get('Last_Sent_Date', '')) <= date_key:
+            latest_any[any_key] = entry
+    return {"by_type": by_type, "latest_any": latest_any}, None
+
+
+def _cache_get_entry(history_cache, watchlist_name, ticker, alert_type=None):
+    if not history_cache:
+        return None
+    wl = _norm_text(watchlist_name).lower()
+    tk = _norm_ticker(ticker)
+    if alert_type is None:
+        return history_cache.get('latest_any', {}).get((wl, tk))
+    return history_cache.get('by_type', {}).get((wl, tk, _norm_text(alert_type)))
+
+
+def _cache_has_any(history_cache, watchlist_name, ticker):
+    return _cache_get_entry(history_cache, watchlist_name, ticker, None) is not None
+
+
+def _cache_upsert(history_cache, watchlist_name, watchlist_type, alert_mode, ticker, alert_type, alert_signature):
+    if not history_cache:
+        return
+    now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    today = datetime.now().strftime('%Y-%m-%d')
+    entry = {
+        'Watchlist_Name': watchlist_name,
+        'Watchlist_Type': watchlist_type,
+        'Alert_Mode': alert_mode,
+        'Ticker': _norm_ticker(ticker),
+        'Alert_Type': alert_type,
+        'Alert_Signature': alert_signature,
+        'Last_Sent_At': now_ts,
+        'Last_Sent_Date': today,
+    }
+    wl = _norm_text(watchlist_name).lower()
+    tk = _norm_ticker(ticker)
+    at = _norm_text(alert_type)
+    history_cache.setdefault('by_type', {})[(wl, tk, at)] = entry
+    history_cache.setdefault('latest_any', {})[(wl, tk)] = entry
+
+
+def _is_same_signature(history_entry, signature):
+    if not history_entry:
+        return False
+    return _norm_text(history_entry.get('Alert_Signature', '')) == _norm_text(signature)
+
+
+def _persist_history_updates(history_updates):
+    if not history_updates:
+        return True, None
+    if callable(_bulk_upsert_alert_history_entries):
         try:
-            entry = get_alert_history_entry(watchlist_name, ticker, alert_type)
+            entries = [
+                {
+                    'watchlist_name': wl_name,
+                    'watchlist_type': wl_type,
+                    'alert_mode': al_mode,
+                    'ticker': ticker,
+                    'alert_type': alert_type,
+                    'alert_signature': alert_signature,
+                }
+                for wl_name, wl_type, al_mode, ticker, alert_type, alert_signature in history_updates
+            ]
+            return _bulk_upsert_alert_history_entries(entries)
         except Exception as e:
-            read_ok = False
-            read_error = str(e)
-            entry = None
-        if entry:
-            entries[alert_type] = entry
-    return entries, read_ok, read_error
-
-
-def _get_previous_history_entry_any_from_entries(entries):
-    best_entry = None
-    best_key = ""
-    for entry in (entries or {}).values():
-        if not entry:
-            continue
-        date_key = str(entry.get("Last_Sent_Date", ""))
-        if date_key >= best_key:
-            best_key = date_key
-            best_entry = entry
-    return best_entry
-
-
-def _has_prior_history_any_from_entries(entries):
-    return bool(entries)
+            return False, str(e)
+    for wl_name, wl_type, al_mode, ticker, alert_type, alert_signature in history_updates:
+        ok, err = upsert_alert_history_entry(wl_name, wl_type, al_mode, ticker, alert_type, alert_signature)
+        if not ok:
+            return False, err
+    return True, None
 
 
 def _get_previous_history_entry_any(watchlist_name, ticker, watchlist_type):
@@ -543,32 +612,20 @@ def _send_chunked_messages(header_lines, item_texts):
         return 0, []
     sent = 0
     errors = []
-
-    chunks = []
-    base_header = "\n".join(header_lines)
-    current_items = []
-    current = base_header
+    current = "\n".join(header_lines)
     for item in item_texts:
         candidate = current + "\n\n" + item if current else item
-        if len(candidate) > MAX_TELEGRAM_MESSAGE_LEN and current_items:
-            chunks.append(list(current_items))
-            current_items = [item]
-            current = base_header + "\n\n" + item
+        if len(candidate) > MAX_TELEGRAM_MESSAGE_LEN and current:
+            ok, err = send_telegram_message(current)
+            if ok:
+                sent += 1
+            else:
+                errors.append(err)
+            current = "\n".join(header_lines) + "\n\n" + item
         else:
-            current_items.append(item)
             current = candidate
-    if current_items:
-        chunks.append(list(current_items))
-
-    total = len(chunks)
-    for idx, chunk_items in enumerate(chunks, start=1):
-        chunk_header = list(header_lines)
-        if total > 1:
-            chunk_header.append(f"📄 <b>TEIL:</b> {idx}/{total}")
-        msg = "\n".join(chunk_header)
-        if chunk_items:
-            msg += "\n\n" + "\n\n".join(chunk_items)
-        ok, err = send_telegram_message(msg)
+    if current:
+        ok, err = send_telegram_message(current)
         if ok:
             sent += 1
         else:
@@ -590,51 +647,34 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
     info_sent = 0
     errors = []
 
+    history_cache, history_err = _history_cache_from_sheet()
+    history_safe_mode = history_cache is not None and not history_err
+    if not history_safe_mode:
+        errors.append(f"History-Cache: {history_err or 'nicht verfügbar'}")
+
     alert_items = []
     first_check_items = []
     history_updates = []
-
-    history_cache = {}
+    queued_keys = set()
 
     for result in results:
         ticker = _norm_ticker(result.get("ticker", "-"))
-        if ticker not in history_cache:
-            ticker_history_entries, history_read_ok, history_read_error = _collect_history_entries_for_ticker(watchlist_name, ticker, watchlist_type)
-            history_cache[ticker] = {
-                "entries": ticker_history_entries,
-                "read_ok": history_read_ok,
-                "read_error": history_read_error,
-            }
-        ticker_history_blob = history_cache.get(ticker, {})
-        ticker_history_entries = ticker_history_blob.get("entries", {})
-        history_read_ok = bool(ticker_history_blob.get("read_ok", True))
-        history_read_error = str(ticker_history_blob.get("read_error", "") or "")
-        previous_any = _has_prior_history_any_from_entries(ticker_history_entries)
+        alert_type = get_alert_type_label(result, watchlist_type)
+        alert_signature = build_alert_signature(result, watchlist_type)
+        same_type_entry = _cache_get_entry(history_cache, watchlist_name, ticker, alert_type) if history_safe_mode else None
+        any_entry = _cache_get_entry(history_cache, watchlist_name, ticker, None) if history_safe_mode else None
+        previous_signature = None
+        if same_type_entry:
+            previous_signature = same_type_entry.get("Alert_Signature")
+        elif any_entry:
+            previous_signature = any_entry.get("Alert_Signature")
 
-        if not history_read_ok and history_read_error:
-            errors.append(f"History-Read {ticker}: {history_read_error}")
-
+        alert_key = (ticker, alert_type, alert_signature)
         if should_alert_for_watchlist_result(result, watchlist_type, alert_mode):
             matched += 1
-            alert_type = get_alert_type_label(result, watchlist_type)
-            alert_signature = build_alert_signature(result, watchlist_type)
 
-            history_entry_same_type = ticker_history_entries.get(alert_type)
-            history_entry_any = _get_previous_history_entry_any_from_entries(ticker_history_entries)
-
-            same_day = False
-            same_signature = False
-            previous_signature = None
-
-            if history_entry_same_type:
-                same_day = str(history_entry_same_type.get("Last_Sent_Date", "")) == datetime.now().strftime("%Y-%m-%d")
-                same_signature = str(history_entry_same_type.get("Alert_Signature", "")) == alert_signature
-                previous_signature = history_entry_same_type.get("Alert_Signature")
-
-            if not previous_signature and history_entry_any:
-                previous_signature = history_entry_any.get("Alert_Signature")
-
-            if same_day and same_signature:
+            # Never resend an unchanged signature.
+            if _is_same_signature(same_type_entry, alert_signature) or _is_same_signature(any_entry, alert_signature) or alert_key in queued_keys:
                 suppressed += 1
                 continue
 
@@ -647,44 +687,23 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
                     previous_signature=previous_signature,
                 )
             )
-            history_updates.append({"watchlist_name": watchlist_name, "watchlist_type": watchlist_type, "alert_mode": alert_mode, "ticker": ticker, "alert_type": alert_type, "alert_signature": alert_signature})
-            ticker_history_entries[alert_type] = {
-                "Watchlist_Name": watchlist_name,
-                "Ticker": ticker,
-                "Alert_Type": alert_type,
-                "Alert_Signature": alert_signature,
-                "Last_Sent_Date": datetime.now().strftime("%Y-%m-%d"),
-            }
-
+            queued_keys.add(alert_key)
+            history_updates.append((watchlist_name, watchlist_type, alert_mode, ticker, alert_type, alert_signature))
+            _cache_upsert(history_cache, watchlist_name, watchlist_type, alert_mode, ticker, alert_type, alert_signature)
         else:
-            if not previous_any and watchlist_type != "Positions-Watchlist":
-                if not history_read_ok:
+            # First-checks only when history is available and clean. Otherwise we risk endless duplicates.
+            if watchlist_type != "Positions-Watchlist" and history_safe_mode and not _cache_has_any(history_cache, watchlist_name, ticker):
+                first_alert_type = "Neue Watchlist-Aufnahme"
+                first_signature = alert_signature
+                first_key = (ticker, first_alert_type, first_signature)
+                first_entry = _cache_get_entry(history_cache, watchlist_name, ticker, first_alert_type)
+                if _is_same_signature(first_entry, first_signature) or first_key in queued_keys:
                     suppressed += 1
                     continue
-
-                alert_type = "Neue Watchlist-Aufnahme"
-                alert_signature = build_alert_signature(result, watchlist_type)
-                history_entry = ticker_history_entries.get(alert_type)
-
-                already_sent_today = False
-                same_signature = False
-                if history_entry:
-                    already_sent_today = str(history_entry.get("Last_Sent_Date", "")) == datetime.now().strftime("%Y-%m-%d")
-                    same_signature = str(history_entry.get("Alert_Signature", "")) == alert_signature
-
-                if already_sent_today and same_signature:
-                    suppressed += 1
-                    continue
-
                 first_check_items.append(build_new_watchlist_entry_text(result, watchlist_name, watchlist_type, alert_mode))
-                history_updates.append({"watchlist_name": watchlist_name, "watchlist_type": watchlist_type, "alert_mode": alert_mode, "ticker": ticker, "alert_type": alert_type, "alert_signature": alert_signature})
-                ticker_history_entries[alert_type] = {
-                    "Watchlist_Name": watchlist_name,
-                    "Ticker": ticker,
-                    "Alert_Type": alert_type,
-                    "Alert_Signature": alert_signature,
-                    "Last_Sent_Date": datetime.now().strftime("%Y-%m-%d"),
-                }
+                queued_keys.add(first_key)
+                history_updates.append((watchlist_name, watchlist_type, alert_mode, ticker, first_alert_type, first_signature))
+                _cache_upsert(history_cache, watchlist_name, watchlist_type, alert_mode, ticker, first_alert_type, first_signature)
                 info_sent += 1
 
     sent = 0
@@ -711,22 +730,9 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
         errors.extend(errs)
 
     if sent > 0 and history_updates:
-        if callable(_bulk_upsert_alert_history_entries):
-            hist_ok, hist_err = _bulk_upsert_alert_history_entries(history_updates)
-            if not hist_ok:
-                errors.append(f"History: {hist_err}")
-        else:
-            for entry in history_updates:
-                hist_ok, hist_err = upsert_alert_history_entry(
-                    entry.get("watchlist_name", ""),
-                    entry.get("watchlist_type", ""),
-                    entry.get("alert_mode", ""),
-                    entry.get("ticker", ""),
-                    entry.get("alert_type", ""),
-                    entry.get("alert_signature", ""),
-                )
-                if not hist_ok:
-                    errors.append(f"History: {hist_err}")
+        hist_ok, hist_err = _persist_history_updates(history_updates)
+        if not hist_ok and hist_err:
+            errors.append(f"History: {hist_err}")
 
     diagnostics = {
         "matched": int(matched or 0),
@@ -740,7 +746,7 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
     if matched == 0 and info_sent == 0:
         diagnostics["reason"] = "Keine alert-relevanten Werte"
         result_tuple = (False, "Keine alert-relevanten Werte in dieser Watchlist gefunden.", 0)
-    elif sent > 0 and not errors:
+    elif sent > 0 and not [e for e in errors if e.startswith('Telegram') or e.startswith('History')]:
         parts = []
         if matched > 0:
             parts.append(f"{matched} Alert-Kandidaten")
@@ -748,7 +754,9 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
             parts.append(f"{info_sent} Erst-Checks")
         msg = f"{', '.join(parts)} für '{watchlist_name}' gesendet."
         if suppressed > 0:
-            msg += f" {suppressed} doppelte Meldungen wurden unterdrückt."
+            msg += f" {suppressed} unveränderte Meldungen wurden unterdrückt."
+        if history_err:
+            msg += " History war nicht vollständig verfügbar; Erstchecks wurden vorsichtshalber nicht erzeugt."
         diagnostics["reason"] = "Alerts gesendet"
         result_tuple = (True, msg, sent)
     elif sent > 0:
@@ -756,10 +764,10 @@ def send_watchlist_alerts(results, watchlist_name, watchlist_type, alert_mode="S
         result_tuple = (True, f"{sent} Telegram-Nachrichten gesendet, einzelne Fehler: {' | '.join(errors[:2])}", sent)
     elif suppressed > 0:
         diagnostics["reason"] = "Nur Dubletten unterdrückt"
-        result_tuple = (False, f"Keine neuen Alerts gesendet. {suppressed} doppelte Meldungen wurden unterdrückt.", 0)
+        result_tuple = (False, f"Keine neuen Alerts gesendet. {suppressed} unveränderte Meldungen wurden unterdrückt.", 0)
     else:
-        diagnostics["reason"] = "Telegram-Versand fehlgeschlagen"
-        result_tuple = (False, f"Telegram-Versand fehlgeschlagen: {' | '.join(errors[:2])}", 0)
+        diagnostics["reason"] = "Telegram-Versand fehlgeschlagen" if errors else "Keine alert-relevanten Werte"
+        result_tuple = (False, f"Telegram-Versand fehlgeschlagen: {' | '.join(errors[:2])}" if errors else "Keine alert-relevanten Werte in dieser Watchlist gefunden.", 0)
 
     if return_diagnostics:
         return result_tuple[0], result_tuple[1], result_tuple[2], diagnostics

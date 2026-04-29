@@ -3901,8 +3901,70 @@ def add_trend_channel_to_plotly(fig, df, channel):
     )
 
 
+def summarize_chart_structures(df, structures):
+    summaries = []
+    if df is None or df.empty or not structures:
+        return summaries
 
-def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False):
+    try:
+        current_price = float(pd.to_numeric(df["Close"], errors="coerce").iloc[-1])
+    except Exception:
+        return summaries
+
+    supports = structures.get("supports", []) or []
+    resistances = structures.get("resistances", []) or []
+    channel = structures.get("channel")
+
+    if supports:
+        s1 = supports[0]
+        s_mid = float(s1.get("mid", np.nan))
+        s_touches = int(s1.get("touches", 0) or 0)
+        if pd.notna(s_mid) and s_mid > 0:
+            dist_pct = ((current_price / s_mid) - 1.0) * 100.0
+            if abs(dist_pct) <= 1.5:
+                summaries.append(f"Kurs aktuell nahe Support S1 ({s_touches}x) bei {s_mid:.2f}.")
+            elif current_price < s_mid:
+                summaries.append(f"Kurs unter S1 bei {s_mid:.2f} - Support wurde zuletzt unterschritten.")
+            else:
+                summaries.append(f"Nächster Support S1 liegt bei {s_mid:.2f}, Abstand {dist_pct:.1f}%.")
+
+    if resistances:
+        r1 = resistances[0]
+        r_mid = float(r1.get("mid", np.nan))
+        r_touches = int(r1.get("touches", 0) or 0)
+        if pd.notna(r_mid) and r_mid > 0:
+            dist_pct = ((r_mid / current_price) - 1.0) * 100.0
+            if abs(dist_pct) <= 1.5:
+                summaries.append(f"Kurs läuft direkt an Widerstand R1 ({r_touches}x) bei {r_mid:.2f}.")
+            elif current_price > r_mid:
+                summaries.append(f"Kurs über R1 bei {r_mid:.2f} - Ausbruch über den nächsten Widerstand.")
+            else:
+                summaries.append(f"Nächster Widerstand R1 liegt bei {r_mid:.2f}, Abstand {dist_pct:.1f}%.")
+
+    if channel:
+        try:
+            idx = len(df) - 1
+            slope = float(channel.get("slope", 0.0))
+            lower = slope * idx + float(channel.get("lower_intercept", 0.0))
+            upper = slope * idx + float(channel.get("upper_intercept", 0.0))
+            if upper > lower and current_price > 0:
+                pos = (current_price - lower) / (upper - lower)
+                label = channel.get("label", "Trendkanal")
+                quality = channel.get("quality", "")
+                quality_txt = f" ({quality})" if quality else ""
+                if pos <= 0.25:
+                    summaries.append(f"Kurs im unteren Bereich des {label.lower()}{quality_txt} - eher supportnah.")
+                elif pos >= 0.75:
+                    summaries.append(f"Kurs im oberen Bereich des {label.lower()}{quality_txt} - eher widerstandsnah.")
+                else:
+                    summaries.append(f"Kurs bewegt sich im mittleren Bereich des {label.lower()}{quality_txt}.")
+        except Exception:
+            pass
+
+    return summaries
+
+
+def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None):
     fig = make_subplots(
         rows=2,
         cols=1,
@@ -3955,7 +4017,7 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
 
     if show_sr or show_channel:
         try:
-            structures = build_chart_structures(chart_df)
+            structures = structures or build_chart_structures(chart_df)
             if show_sr:
                 add_sr_zones_to_plotly(fig, chart_df, structures.get("supports", []), structures.get("resistances", []))
             if show_channel:
@@ -10354,8 +10416,21 @@ if result is not None:
                 show_trend_channel = st.checkbox("Trendkanal anzeigen", value=False, key=f"show_channel_{ticker}")
 
             chart_df = compute_chart_df(df, chart_range)
-            fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel)
+            chart_structures = None
+            if show_sr_zones or show_trend_channel:
+                try:
+                    chart_structures = build_chart_structures(chart_df)
+                except Exception:
+                    chart_structures = None
+            fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
             st.plotly_chart(fig, use_container_width=True)
+
+            if chart_structures:
+                chart_text_items = summarize_chart_structures(chart_df, chart_structures)
+                if chart_text_items:
+                    st.markdown("**Technische Einordnung aus dem Chart**")
+                    for _item in chart_text_items[:3]:
+                        st.markdown(f"- {_item}")
 
             perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
             perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan

@@ -3533,9 +3533,111 @@ def fit_chart_line(points):
 
 
 
+
 def detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=120):
     if df is None or df.empty:
         return None
+
+    close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+    if close.empty or len(close) < 25:
+        return None
+
+    last_idx = len(df) - 1
+    recent_highs = sorted([(i, p) for i, p in pivot_highs if i >= last_idx - lookback], key=lambda x: x[0])[-6:]
+    recent_lows = sorted([(i, p) for i, p in pivot_lows if i >= last_idx - lookback], key=lambda x: x[0])[-6:]
+
+    price_span = float(close.max() - close.min()) if len(close) else 0.0
+    last_price = float(close.iloc[-1]) if len(close) else 0.0
+    min_slope = max(price_span * 0.0010, last_price * 0.00025) if price_span > 0 else 0.0
+
+    def _mostly_rising(points):
+        if len(points) < 3:
+            return False
+        prices = [p for _, p in points]
+        rises = sum(prices[i] >= prices[i-1] for i in range(1, len(prices)))
+        return rises >= max(2, len(prices) - 2)
+
+    def _mostly_falling(points):
+        if len(points) < 3:
+            return False
+        prices = [p for _, p in points]
+        falls = sum(prices[i] <= prices[i-1] for i in range(1, len(prices)))
+        return falls >= max(2, len(prices) - 2)
+
+    # 1) Pivot-basierter Kanal, wenn sauber vorhanden
+    if _mostly_rising(recent_lows):
+        line = fit_chart_line(recent_lows)
+        if line:
+            slope, intercept = line
+            if slope > min_slope:
+                offsets = [float(p - (slope * i + intercept)) for i, p in recent_highs]
+                positive_offsets = [x for x in offsets if pd.notna(x)]
+                if positive_offsets:
+                    upper_offset = max(positive_offsets)
+                    if upper_offset > max(price_span * 0.015, last_price * 0.01):
+                        return {
+                            "type": "uptrend",
+                            "source": "pivot",
+                            "slope": slope,
+                            "lower_intercept": intercept,
+                            "upper_intercept": intercept + upper_offset,
+                        }
+
+    if _mostly_falling(recent_highs):
+        line = fit_chart_line(recent_highs)
+        if line:
+            slope, intercept = line
+            if slope < -min_slope:
+                offsets = [float(p - (slope * i + intercept)) for i, p in recent_lows]
+                negative_offsets = [x for x in offsets if pd.notna(x)]
+                if negative_offsets:
+                    lower_offset = min(negative_offsets)
+                    if abs(lower_offset) > max(price_span * 0.015, last_price * 0.01):
+                        return {
+                            "type": "downtrend",
+                            "source": "pivot",
+                            "slope": slope,
+                            "upper_intercept": intercept,
+                            "lower_intercept": intercept + lower_offset,
+                        }
+
+    # 2) Robuster Fallback: Regressionskanal über Schlusskurse
+    reg_lookback = min(max(60, lookback), len(close))
+    reg_close = close.tail(reg_lookback)
+    if len(reg_close) < 25:
+        return None
+
+    x = np.arange(len(reg_close), dtype=float)
+    y = reg_close.to_numpy(dtype=float)
+    slope, intercept = np.polyfit(x, y, 1)
+
+    residuals = y - (slope * x + intercept)
+    channel_half_width = float(np.std(residuals) * 1.6) if len(residuals) else 0.0
+
+    if not np.isfinite(channel_half_width) or channel_half_width <= 0:
+        return None
+
+    # zu enge Kanäle unterdrücken
+    min_width = max(float(reg_close.iloc[-1]) * 0.008, price_span * 0.01 if price_span > 0 else 0.0)
+    if channel_half_width < min_width:
+        channel_half_width = min_width
+
+    # in globale Indizes umrechnen
+    global_start_idx = len(df) - len(reg_close)
+    global_intercept = intercept - slope * global_start_idx
+
+    if abs(slope) < max(min_slope * 0.35, last_price * 0.00008):
+        channel_type = "sideways"
+    else:
+        channel_type = "uptrend" if slope > 0 else "downtrend"
+
+    return {
+        "type": channel_type,
+        "source": "regression",
+        "slope": float(slope),
+        "lower_intercept": float(global_intercept - channel_half_width),
+        "upper_intercept": float(global_intercept + channel_half_width),
+    }
 
     close = pd.to_numeric(df["Close"], errors="coerce").dropna()
     if close.empty:
@@ -3639,8 +3741,10 @@ def add_trend_channel_to_plotly(fig, df, channel):
     upper_intercept = channel["upper_intercept"]
     lower_y = slope * x_vals + lower_intercept
     upper_y = slope * x_vals + upper_intercept
-    fig.add_trace(go.Scatter(x=x_dates, y=lower_y, mode="lines", name="Trendkanal unten", line=dict(dash="dash", width=1.4, color="rgba(96,165,250,0.9)")), row=1, col=1)
-    fig.add_trace(go.Scatter(x=x_dates, y=upper_y, mode="lines", name="Trendkanal oben", line=dict(dash="dash", width=1.4, color="rgba(96,165,250,0.9)")), row=1, col=1)
+    lower_name = "Trendkanal unten" if channel.get("source") == "pivot" else "Trendkanal unten (Reg.)"
+    upper_name = "Trendkanal oben" if channel.get("source") == "pivot" else "Trendkanal oben (Reg.)"
+    fig.add_trace(go.Scatter(x=x_dates, y=lower_y, mode="lines", name=lower_name, line=dict(dash="dash", width=2.0, color="rgba(34,197,94,0.95)")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=x_dates, y=upper_y, mode="lines", name=upper_name, line=dict(dash="dash", width=2.0, color="rgba(239,68,68,0.95)")), row=1, col=1)
 
 
 def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False):

@@ -3536,23 +3536,41 @@ def fit_chart_line(points):
 def detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=120):
     if df is None or df.empty:
         return None
-    last_idx = len(df) - 1
-    recent_highs = [(i, p) for i, p in pivot_highs if i >= last_idx - lookback]
-    recent_lows = [(i, p) for i, p in pivot_lows if i >= last_idx - lookback]
 
-    if len(recent_lows) >= 2:
-        recent_lows = sorted(recent_lows, key=lambda x: x[0])[-4:]
-        low_prices = [p for _, p in recent_lows]
-        if all(low_prices[i] >= low_prices[i-1] for i in range(1, len(low_prices))):
-            line = fit_chart_line(recent_lows)
-            if line:
-                slope, intercept = line
-                if abs(slope) > 0.01:
-                    offsets = []
-                    for i, p in recent_highs:
-                        offsets.append(float(p - (slope * i + intercept)))
-                    if offsets:
-                        upper_offset = max(offsets)
+    close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+    if close.empty:
+        return None
+
+    last_idx = len(df) - 1
+    recent_highs = sorted([(i, p) for i, p in pivot_highs if i >= last_idx - lookback], key=lambda x: x[0])[-6:]
+    recent_lows = sorted([(i, p) for i, p in pivot_lows if i >= last_idx - lookback], key=lambda x: x[0])[-6:]
+
+    price_span = float(close.max() - close.min()) if len(close) else 0.0
+    min_slope = max(price_span * 0.0015, float(close.iloc[-1]) * 0.0004) if price_span > 0 else 0.0
+
+    def _mostly_rising(points):
+        if len(points) < 3:
+            return False
+        prices = [p for _, p in points]
+        rises = sum(prices[i] >= prices[i-1] for i in range(1, len(prices)))
+        return rises >= max(2, len(prices) - 2)
+
+    def _mostly_falling(points):
+        if len(points) < 3:
+            return False
+        prices = [p for _, p in points]
+        falls = sum(prices[i] <= prices[i-1] for i in range(1, len(prices)))
+        return falls >= max(2, len(prices) - 2)
+
+    if _mostly_rising(recent_lows):
+        line = fit_chart_line(recent_lows)
+        if line:
+            slope, intercept = line
+            if slope > min_slope:
+                offsets = [float(p - (slope * i + intercept)) for i, p in recent_highs]
+                if offsets:
+                    upper_offset = max(offsets)
+                    if upper_offset > price_span * 0.03:
                         return {
                             "type": "uptrend",
                             "slope": slope,
@@ -3560,25 +3578,22 @@ def detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=120):
                             "upper_intercept": intercept + upper_offset,
                         }
 
-    if len(recent_highs) >= 2:
-        recent_highs = sorted(recent_highs, key=lambda x: x[0])[-4:]
-        high_prices = [p for _, p in recent_highs]
-        if all(high_prices[i] <= high_prices[i-1] for i in range(1, len(high_prices))):
-            line = fit_chart_line(recent_highs)
-            if line:
-                slope, intercept = line
-                if abs(slope) > 0.01:
-                    offsets = []
-                    for i, p in recent_lows:
-                        offsets.append(float(p - (slope * i + intercept)))
-                    if offsets:
-                        lower_offset = min(offsets)
+    if _mostly_falling(recent_highs):
+        line = fit_chart_line(recent_highs)
+        if line:
+            slope, intercept = line
+            if slope < -min_slope:
+                offsets = [float(p - (slope * i + intercept)) for i, p in recent_lows]
+                if offsets:
+                    lower_offset = min(offsets)
+                    if abs(lower_offset) > price_span * 0.03:
                         return {
                             "type": "downtrend",
                             "slope": slope,
                             "upper_intercept": intercept,
                             "lower_intercept": intercept + lower_offset,
                         }
+
     return None
 
 

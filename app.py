@@ -3785,240 +3785,6 @@ def classify_chart_zones_against_price(zones, current_price, max_supports=2, max
 
 
 
-
-
-def detect_chart_events(df, supports=None, resistances=None, active_zones=None, channel=None):
-    events = []
-    if df is None or df.empty or len(df) < 3:
-        return events
-
-    try:
-        open_s = pd.to_numeric(df["Open"], errors="coerce")
-        high_s = pd.to_numeric(df["High"], errors="coerce")
-        low_s = pd.to_numeric(df["Low"], errors="coerce")
-        close_s = pd.to_numeric(df["Close"], errors="coerce")
-        vol_s = pd.to_numeric(df["Volume"], errors="coerce")
-        current_open = float(open_s.iloc[-1])
-        current_high = float(high_s.iloc[-1])
-        current_low = float(low_s.iloc[-1])
-        current_close = float(close_s.iloc[-1])
-        prev_close = float(close_s.iloc[-2])
-        vol_ma20 = float(vol_s.rolling(20).mean().iloc[-1]) if len(vol_s) >= 20 and pd.notna(vol_s.rolling(20).mean().iloc[-1]) else np.nan
-        current_vol = float(vol_s.iloc[-1]) if pd.notna(vol_s.iloc[-1]) else np.nan
-    except Exception:
-        return events
-
-    def near(price, level, pct=0.6):
-        try:
-            return abs(float(price) - float(level)) <= float(level) * (pct / 100.0)
-        except Exception:
-            return False
-
-    def add_event(code, label, text, strength="mittel", tone="neutral", price=np.nan):
-        events.append({
-            "code": code,
-            "label": label,
-            "text": text,
-            "strength": strength,
-            "tone": tone,
-            "price": price,
-        })
-
-    r1 = (resistances or [None])[0]
-    s1 = (supports or [None])[0]
-
-    if r1:
-        r_low = float(r1.get("low", np.nan))
-        r_high = float(r1.get("high", np.nan))
-        r_mid = float(r1.get("mid", np.nan))
-        if pd.notna(r_high) and pd.notna(prev_close) and pd.notna(current_close):
-            if prev_close <= r_high and current_close > r_high * 1.002:
-                vol_ok = (pd.notna(current_vol) and pd.notna(vol_ma20) and current_vol >= vol_ma20 * 1.05)
-                add_event(
-                    "breakout_r1",
-                    "Breakout über R1",
-                    "Kurs bricht über den ersten Widerstand aus.",
-                    strength="hoch" if vol_ok else "mittel",
-                    tone="bullish",
-                    price=current_close,
-                )
-            elif current_high >= r_low * 0.998 and current_close < r_mid and current_close <= current_open:
-                add_event(
-                    "rejection_r1",
-                    "Rejection an R1",
-                    "Widerstand wurde angelaufen, aber der Kurs wurde darunter zurückgewiesen.",
-                    strength="mittel",
-                    tone="bearish",
-                    price=current_close,
-                )
-            elif near(current_close, r_mid, pct=0.7):
-                add_event(
-                    "near_r1",
-                    "Nahe R1",
-                    "Kurs handelt direkt an einem relevanten Widerstand.",
-                    strength="niedrig",
-                    tone="neutral",
-                    price=current_close,
-                )
-
-    if s1:
-        s_low = float(s1.get("low", np.nan))
-        s_high = float(s1.get("high", np.nan))
-        s_mid = float(s1.get("mid", np.nan))
-        if pd.notna(s_low) and pd.notna(prev_close) and pd.notna(current_close):
-            if prev_close >= s_low and current_close < s_low * 0.998:
-                vol_ok = (pd.notna(current_vol) and pd.notna(vol_ma20) and current_vol >= vol_ma20 * 1.05)
-                add_event(
-                    "breakdown_s1",
-                    "Bruch unter S1",
-                    "Kurs fällt unter die erste Support-Zone.",
-                    strength="hoch" if vol_ok else "mittel",
-                    tone="bearish",
-                    price=current_close,
-                )
-            elif current_low <= s_high * 1.002 and current_close > s_mid and current_close >= current_open:
-                add_event(
-                    "defended_s1",
-                    "Support an S1 verteidigt",
-                    "Kurs testet die erste Support-Zone und schließt wieder darüber.",
-                    strength="mittel",
-                    tone="bullish",
-                    price=current_close,
-                )
-            elif near(current_close, s_mid, pct=0.7):
-                add_event(
-                    "near_s1",
-                    "Nahe S1",
-                    "Kurs handelt direkt an einem relevanten Support.",
-                    strength="niedrig",
-                    tone="neutral",
-                    price=current_close,
-                )
-
-    if channel:
-        try:
-            idx_last = len(df) - 1
-            slope = float(channel["slope"])
-            lower_val = slope * idx_last + float(channel["lower_intercept"])
-            upper_val = slope * idx_last + float(channel["upper_intercept"])
-            channel_width = max(upper_val - lower_val, 1e-9)
-            pos = (current_close - lower_val) / channel_width
-            if current_close > upper_val * 1.003:
-                add_event(
-                    "channel_break_up",
-                    "Kanalbruch nach oben",
-                    "Kurs schließt über der oberen Kanalbegrenzung.",
-                    strength="mittel",
-                    tone="bullish",
-                    price=current_close,
-                )
-            elif current_close < lower_val * 0.997:
-                add_event(
-                    "channel_break_down",
-                    "Kanalbruch nach unten",
-                    "Kurs schließt unter der unteren Kanalbegrenzung.",
-                    strength="mittel",
-                    tone="bearish",
-                    price=current_close,
-                )
-            elif pos >= 0.85:
-                add_event(
-                    "channel_upper",
-                    "Oberer Kanalbereich",
-                    "Kurs handelt im oberen Bereich des Trendkanals.",
-                    strength="niedrig",
-                    tone="neutral",
-                    price=current_close,
-                )
-            elif pos <= 0.15:
-                add_event(
-                    "channel_lower",
-                    "Unterer Kanalbereich",
-                    "Kurs handelt im unteren Bereich des Trendkanals.",
-                    strength="niedrig",
-                    tone="neutral",
-                    price=current_close,
-                )
-        except Exception:
-            pass
-
-    priority = {
-        "breakout_r1": 100,
-        "breakdown_s1": 100,
-        "channel_break_up": 90,
-        "channel_break_down": 90,
-        "rejection_r1": 80,
-        "defended_s1": 80,
-        "near_r1": 50,
-        "near_s1": 50,
-        "channel_upper": 40,
-        "channel_lower": 40,
-    }
-    deduped = []
-    seen = set()
-    for evt in sorted(events, key=lambda e: priority.get(e.get("code", ""), 0), reverse=True):
-        code = str(evt.get("code", "")).strip()
-        if code and code not in seen:
-            deduped.append(evt)
-            seen.add(code)
-    return deduped[:4]
-
-
-def add_chart_events_to_plotly(fig, df, events):
-    if df is None or df.empty or not events:
-        return
-    x_last = df.index[-1]
-    palette = {
-        "bullish": dict(color="rgba(34,197,94,0.95)", bgcolor="rgba(20,83,45,0.48)", symbol="triangle-up"),
-        "bearish": dict(color="rgba(239,68,68,0.95)", bgcolor="rgba(127,29,29,0.48)", symbol="triangle-down"),
-        "neutral": dict(color="rgba(59,130,246,0.95)", bgcolor="rgba(30,64,175,0.42)", symbol="diamond"),
-    }
-    used_y = []
-
-    for idx, evt in enumerate(events[:3], start=1):
-        tone = evt.get("tone", "neutral")
-        style = palette.get(tone, palette["neutral"])
-        y = evt.get("price", np.nan)
-        if pd.isna(y):
-            try:
-                y = float(pd.to_numeric(df["Close"], errors="coerce").iloc[-1])
-            except Exception:
-                continue
-        y = float(y)
-        while any(abs(y - prev) <= max(abs(prev) * 0.01, 0.5) for prev in used_y):
-            y *= 1.01
-        used_y.append(y)
-
-        fig.add_trace(
-            go.Scatter(
-                x=[x_last],
-                y=[y],
-                mode="markers",
-                marker=dict(size=11, symbol=style["symbol"], color=style["color"]),
-                name=evt.get("label", f"Signal {idx}"),
-                showlegend=False,
-                hovertemplate=f"{evt.get('label', '')}<extra></extra>",
-            ),
-            row=1,
-            col=1
-        )
-        fig.add_annotation(
-            x=x_last,
-            y=y,
-            text=evt.get("label", f"Signal {idx}"),
-            showarrow=True,
-            arrowhead=1,
-            arrowsize=1,
-            arrowwidth=1,
-            ax=36,
-            ay=-24 - (idx - 1) * 18,
-            font=dict(size=10, color="#f8fafc"),
-            bgcolor=style["bgcolor"],
-            bordercolor=style["color"],
-            borderpad=3,
-            row=1,
-            col=1
-        )
 def build_chart_structures(df):
     pivot_highs, pivot_lows = detect_chart_pivots(df, left=3, right=3)
     pivot_zones = cluster_chart_price_levels(pivot_highs + pivot_lows, tolerance_pct=1.5, min_touches=2)
@@ -4030,8 +3796,6 @@ def build_chart_structures(df):
         channel["label"] = "Aufwaertskanal" if channel.get("type") == "uptrend" else "Abwaertskanal"
         channel["quality"] = "hoch" if channel.get("source") == "pivot" else "mittel"
 
-    events = detect_chart_events(df, supports=supports, resistances=resistances, active_zones=active_zones, channel=channel)
-
     return {
         "pivot_highs": pivot_highs,
         "pivot_lows": pivot_lows,
@@ -4041,21 +3805,33 @@ def build_chart_structures(df):
         "active_zones": active_zones,
         "current_price": current_price,
         "channel": channel,
-        "events": events,
     }
 
 
 
 
 
-def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None):
+
+
+def format_chart_zone_label(prefix, idx, zone, ccy=""):
+    try:
+        low = float(zone.get("low", np.nan))
+        high = float(zone.get("high", np.nan))
+        touches = int(zone.get("touches", 0))
+        ccy_suffix = f" {ccy}".strip()
+        return f"{prefix}{idx} ({touches}x) | {low:.2f} bis {high:.2f}{(' ' + ccy) if ccy else ''}"
+    except Exception:
+        touches = zone.get("touches", "?")
+        return f"{prefix}{idx} ({touches}x)"
+
+def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None, ccy=""):
     if df is None or df.empty:
         return
     x0 = df.index.min()
     x1 = df.index.max()
 
     for idx, z in enumerate(supports, start=1):
-        label = f"S{idx} ({z['touches']}x)"
+        label = format_chart_zone_label("S", idx, z, ccy=ccy)
         fig.add_shape(
             type="rect",
             x0=x0,
@@ -4083,7 +3859,7 @@ def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None):
         )
 
     for idx, z in enumerate(resistances, start=1):
-        label = f"R{idx} ({z['touches']}x)"
+        label = format_chart_zone_label("R", idx, z, ccy=ccy)
         fig.add_shape(
             type="rect",
             x0=x0,
@@ -4112,7 +3888,7 @@ def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None):
 
 
     for idx, z in enumerate(active_zones or [], start=1):
-        label = f"Aktive Zone {idx} ({z['touches']}x)"
+        label = format_chart_zone_label("Aktive Zone ", idx, z, ccy=ccy)
         fig.add_shape(
             type="rect",
             x0=x0,
@@ -4212,12 +3988,6 @@ def summarize_chart_structures(df, structures):
     resistances = structures.get("resistances", []) or []
     active_zones = structures.get("active_zones", []) or []
     channel = structures.get("channel")
-    events = structures.get("events", []) or []
-
-    for evt in events[:2]:
-        txt = str(evt.get("text", "")).strip()
-        if txt:
-            summaries.append(txt)
 
     if supports:
         s1 = supports[0]
@@ -4301,12 +4071,6 @@ def evaluate_chart_structure_bias(df, structures):
     resistances = structures.get("resistances", []) or []
     active_zones = structures.get("active_zones", []) or []
     channel = structures.get("channel")
-    events = structures.get("events", []) or []
-
-    for evt in events[:2]:
-        txt = str(evt.get("text", "")).strip()
-        if txt:
-            summaries.append(txt)
 
     if supports:
         s1 = supports[0]
@@ -4436,7 +4200,6 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
                 add_sr_zones_to_plotly(fig, chart_df, structures.get("supports", []), structures.get("resistances", []), structures.get("active_zones", []))
             if show_channel:
                 add_trend_channel_to_plotly(fig, chart_df, structures.get("channel"))
-            add_chart_events_to_plotly(fig, chart_df, structures.get("events", []))
         except Exception:
             pass
 

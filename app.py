@@ -8393,7 +8393,7 @@ if workspace_mode:
                     radar_display_df = pd.DataFrame(columns=radar_df.columns)
 
                 radar_top_tickers = radar_display_df["Ticker"].astype(str).tolist() if "Ticker" in radar_display_df.columns else []
-                radar_default_selected = radar_top_tickers.copy()
+                radar_default_selected = []
                 radar_selection_signature = f"{st.session_state.radar_universe}|{st.session_state.radar_screening_style}|{st.session_state.radar_max_candidates}|" + "|".join(radar_top_tickers)
 
                 if st.session_state.get("radar_selection_signature") != radar_selection_signature:
@@ -8405,7 +8405,7 @@ if workspace_mode:
                 selected_radar_tickers = []
 
                 st.markdown("### Radar-Auswahl")
-                st.caption("Werte direkt links in den Zeilen markieren oder abwählen. Das Verhalten ist für alle Listen identisch; die Auswahl startet keine neue Radar-Analyse.")
+                st.caption("Werte direkt links in den Zeilen markieren. Standardmäßig ist zunächst nichts vorausgewählt; die Auswahl startet keine neue Radar-Analyse.")
 
                 for section_title, section_caption, section_df in limited_section_specs:
                     st.markdown(f"#### {section_title}")

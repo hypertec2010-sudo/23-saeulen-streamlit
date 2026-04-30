@@ -3785,11 +3785,22 @@ def classify_chart_zones_against_price(zones, current_price, max_supports=2, max
 
 
 
-def build_chart_structures(df):
-    pivot_highs, pivot_lows = detect_chart_pivots(df, left=3, right=3)
-    pivot_zones = cluster_chart_price_levels(pivot_highs + pivot_lows, tolerance_pct=1.5, min_touches=2)
+def build_chart_structures(df, sr_basis_df=None):
+    basis_df = sr_basis_df if sr_basis_df is not None and not sr_basis_df.empty else df
+
+    pivot_highs_basis, pivot_lows_basis = detect_chart_pivots(basis_df, left=3, right=3)
+    pivot_zones = cluster_chart_price_levels(pivot_highs_basis + pivot_lows_basis, tolerance_pct=1.5, min_touches=2)
+
     current_price = float(pd.to_numeric(df["Close"], errors="coerce").iloc[-1]) if df is not None and not df.empty else np.nan
-    supports, resistances, active_zones = classify_chart_zones_against_price(pivot_zones, current_price, max_supports=2, max_resistances=2, max_active=1)
+    supports, resistances, active_zones = classify_chart_zones_against_price(
+        pivot_zones,
+        current_price,
+        max_supports=2,
+        max_resistances=2,
+        max_active=1,
+    )
+
+    pivot_highs, pivot_lows = detect_chart_pivots(df, left=3, right=3)
     channel = detect_chart_trend_channel(df, pivot_highs, pivot_lows, lookback=min(120, max(40, len(df) - 5)))
 
     if channel:
@@ -3799,12 +3810,15 @@ def build_chart_structures(df):
     return {
         "pivot_highs": pivot_highs,
         "pivot_lows": pivot_lows,
+        "pivot_highs_basis": pivot_highs_basis,
+        "pivot_lows_basis": pivot_lows_basis,
         "zones": pivot_zones,
         "supports": supports,
         "resistances": resistances,
         "active_zones": active_zones,
         "current_price": current_price,
         "channel": channel,
+        "sr_basis_label": "1 Jahr" if sr_basis_df is not None and not sr_basis_df.empty else "Chart-Zeitraum",
     }
 
 
@@ -10643,14 +10657,18 @@ if result is not None:
                 show_trend_channel = st.checkbox("Trendkanal anzeigen", value=False, key=f"show_channel_{ticker}")
 
             chart_df = compute_chart_df(df, chart_range)
+            chart_sr_basis_df = compute_chart_df(df, "1 Jahr")
             chart_structures = None
             if show_sr_zones or show_trend_channel:
                 try:
-                    chart_structures = build_chart_structures(chart_df)
+                    chart_structures = build_chart_structures(chart_df, sr_basis_df=chart_sr_basis_df)
                 except Exception:
                     chart_structures = None
             fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
             st.plotly_chart(fig, use_container_width=True)
+
+            if chart_structures and show_sr_zones:
+                st.caption(f"S/R-Zonen werden aus dem Basisfenster {chart_structures.get('sr_basis_label', '1 Jahr')} berechnet; der gewählte Zeitraum steuert nur die Anzeige.")
 
             if chart_structures:
                 chart_text_items = summarize_chart_structures(chart_df, chart_structures)

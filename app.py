@@ -11367,16 +11367,64 @@ if result is not None:
                 press_ui = result.get("short_term_pressure_score", np.nan)
                 stretch_ui = result.get("stretch_risk_score", np.nan)
                 fail_ui = result.get("failed_breakout_score", np.nan)
-                if pd.isna(mom_roll_ui):
-                    mom_roll_ui = max(18, round(result.get("momentum_collapse_score", 0) * 0.9 + result.get("exit_trigger_score", 0) * 0.25))
-                if pd.isna(rej_ui):
-                    rej_ui = 18
-                if pd.isna(press_ui):
-                    press_ui = max(16, round(result.get("distribution_score", 0) * 0.8 + result.get("exit_trigger_score", 0) * 0.2))
-                if pd.isna(stretch_ui):
-                    stretch_ui = 22 if pd.notna(atr_pct_ui) and atr_pct_ui >= 5 else 16
-                if pd.isna(fail_ui):
-                    fail_ui = 18
+
+                # Weiche UI-Fallbacks: nicht nur fehlende Werte, sondern auch unplausible 0-Werte abfedern.
+                if pd.isna(mom_roll_ui) or float(mom_roll_ui) <= 0:
+                    mom_base = 18
+                    if pd.notna(result.get("momentum_collapse_score", np.nan)):
+                        mom_base += float(result.get("momentum_collapse_score", 0)) * 0.45
+                    if pd.notna(ret1_ui) and ret1_ui < 0:
+                        mom_base += min(10, abs(float(ret1_ui)) * 2.5)
+                    if pd.notna(ret5_ui) and ret5_ui < 0:
+                        mom_base += min(12, abs(float(ret5_ui)) * 1.6)
+                    mom_roll_ui = round(clamp(mom_base, 12, 100))
+
+                if pd.isna(rej_ui) or float(rej_ui) <= 0:
+                    rej_base = 14
+                    if pd.notna(ret1_ui) and ret1_ui < -1.0:
+                        rej_base += 8
+                    if pd.notna(ret5_ui) and ret5_ui > 8 and pd.notna(ret1_ui) and ret1_ui < 0:
+                        rej_base += 10
+                    if pd.notna(result.get("event_risk_score", np.nan)) and float(result.get("event_risk_score", 0)) >= 60:
+                        rej_base += 6
+                    rej_ui = round(clamp(rej_base, 10, 100))
+
+                if pd.isna(press_ui) or float(press_ui) <= 0:
+                    press_base = 16
+                    if pd.notna(result.get("distribution_score", np.nan)):
+                        press_base += float(result.get("distribution_score", 0)) * 0.55
+                    if pd.notna(ret1_ui) and ret1_ui < 0:
+                        press_base += min(8, abs(float(ret1_ui)) * 2.0)
+                    if pd.notna(ret5_ui) and ret5_ui < 0:
+                        press_base += min(10, abs(float(ret5_ui)) * 1.2)
+                    press_ui = round(clamp(press_base, 12, 100))
+
+                if pd.isna(stretch_ui) or float(stretch_ui) <= 0:
+                    stretch_base = 14
+                    if pd.notna(atr_pct_ui):
+                        if atr_pct_ui >= 10:
+                            stretch_base += 16
+                        elif atr_pct_ui >= 7:
+                            stretch_base += 12
+                        elif atr_pct_ui >= 5:
+                            stretch_base += 8
+                        elif atr_pct_ui >= 3.5:
+                            stretch_base += 4
+                    if pd.notna(ret5_ui) and ret5_ui >= 8:
+                        stretch_base += 10
+                    elif pd.notna(ret5_ui) and ret5_ui >= 4:
+                        stretch_base += 6
+                    stretch_ui = round(clamp(stretch_base, 10, 100))
+
+                if pd.isna(fail_ui) or float(fail_ui) <= 0:
+                    fail_base = 12
+                    if pd.notna(ret5_ui) and ret5_ui > 10 and pd.notna(ret1_ui) and ret1_ui < -1.5:
+                        fail_base += 16
+                    elif pd.notna(ret5_ui) and ret5_ui > 6 and pd.notna(ret1_ui) and ret1_ui < 0:
+                        fail_base += 8
+                    if pd.notna(result.get("exit_trigger_score", np.nan)) and float(result.get("exit_trigger_score", 0)) >= 20:
+                        fail_base += 6
+                    fail_ui = round(clamp(fail_base, 8, 100))
                 chart_event_risk_ui = clamp(mom_roll_ui * 0.30 + rej_ui * 0.20 + press_ui * 0.20 + stretch_ui * 0.15 + fail_ui * 0.15)
                 ui_tactical_risk = round(clamp(chart_event_risk_ui * 0.68 + ui_instrument_risk * 0.32))
                 if ui_instrument_risk >= 55:
@@ -11418,7 +11466,7 @@ if result is not None:
                     else:
                         ui_tactical_ok.append("Kein markanter kurzfristiger Volumendruck")
 
-            st.caption(f"Tactical-Block v31e | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
+            st.caption(f"Tactical-Block v31f | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
 
             px1, px2, px3, px4 = st.columns(4)
             with px1:
@@ -11491,15 +11539,15 @@ if result is not None:
             st.markdown("**Tactical Teilkomponenten**")
             tx1, tx2, tx3, tx4, tx5, tx6 = st.columns(6)
             with tx1:
-                render_tactical_risk_card("Momentum Roll-over", result.get('momentum_rollover_score', 0), "Kritisch, wenn Momentum klar abrollt")
+                render_tactical_risk_card("Momentum Roll-over", mom_roll_ui if 'mom_roll_ui' in locals() and pd.notna(mom_roll_ui) else result.get('momentum_rollover_score', 0), "Kritisch, wenn Momentum klar abrollt")
             with tx2:
-                render_tactical_risk_card("Rejection", result.get('resistance_rejection_score', 0), "Nahe Hoch / Widerstand")
+                render_tactical_risk_card("Rejection", rej_ui if 'rej_ui' in locals() and pd.notna(rej_ui) else result.get('resistance_rejection_score', 0), "Nahe Hoch / Widerstand")
             with tx3:
-                render_tactical_risk_card("Kurzfrist-Druck", result.get('short_term_pressure_score', 0), "Volumen- und Abgabedruck")
+                render_tactical_risk_card("Kurzfrist-Druck", press_ui if 'press_ui' in locals() and pd.notna(press_ui) else result.get('short_term_pressure_score', 0), "Volumen- und Abgabedruck")
             with tx4:
-                render_tactical_risk_card("Stretch-Risiko", result.get('stretch_risk_score', 0), "Ruecksetzergefahr nach Dehnung")
+                render_tactical_risk_card("Stretch-Risiko", stretch_ui if 'stretch_ui' in locals() and pd.notna(stretch_ui) else result.get('stretch_risk_score', 0), "Ruecksetzergefahr nach Dehnung")
             with tx5:
-                render_tactical_risk_card("Fehlausbruch", result.get('failed_breakout_score', 0), "Breakout ohne Follow-through")
+                render_tactical_risk_card("Fehlausbruch", fail_ui if 'fail_ui' in locals() and pd.notna(fail_ui) else result.get('failed_breakout_score', 0), "Breakout ohne Follow-through")
             with tx6:
                 render_tactical_risk_card("Titel-/Volatilitaets-Risiko", ui_instrument_risk if pd.notna(ui_instrument_risk) else 0, "Kurzfrist-/Gap-Risiko des Titels")
 

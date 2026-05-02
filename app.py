@@ -6404,38 +6404,45 @@ def _legacy_analyze_stock(
     exit_trigger_score = min(100, exit_trigger_score)
 
     # ---------- Kurzfristiger Exit- / De-Risking-Layer ----------
-    momentum_rollover_score = 0
-    if pd.notna(rsi) and rsi < 60:
+    # bewusst weich kalibriert: neutral startet nicht bei 0, damit fruehe Warnstufen sichtbar werden
+    momentum_rollover_score = 24
+    if pd.notna(rsi) and rsi < 62:
         momentum_rollover_score += 6
-    if pd.notna(rsi) and rsi < 55:
+    if pd.notna(rsi) and rsi < 58:
+        momentum_rollover_score += 8
+    if pd.notna(rsi) and rsi < 54:
         momentum_rollover_score += 10
     if pd.notna(macd_hist_current) and pd.notna(macd_hist_prev) and macd_hist_current < macd_hist_prev:
-        momentum_rollover_score += 10
-    if pd.notna(macd_v) and pd.notna(signal_v) and macd_v < signal_v:
         momentum_rollover_score += 8
+    if pd.notna(macd_v) and pd.notna(signal_v) and macd_v < signal_v:
+        momentum_rollover_score += 10
     if pd.notna(price) and pd.notna(ma20) and price < ma20:
-        momentum_rollover_score += 16
-    if pd.notna(ret5) and ret5 < 0:
+        momentum_rollover_score += 14
+    if pd.notna(ret5) and ret5 < -0.5:
+        momentum_rollover_score += 8
+    if pd.notna(ret5) and ret5 < -2:
         momentum_rollover_score += 10
     if pd.notna(ret1) and pd.notna(ret2) and ret1 < 0 and ret2 < 0:
         momentum_rollover_score += 8
+    if healthy_trend_context and pd.notna(rsi) and rsi >= 58 and pd.notna(price) and pd.notna(ma20) and price >= ma20:
+        momentum_rollover_score = max(14, momentum_rollover_score - 8)
     momentum_rollover_score = min(100, momentum_rollover_score)
 
     dist_to_ma20_pct = ((price / ma20) - 1) * 100 if pd.notna(price) and pd.notna(ma20) and ma20 != 0 else np.nan
     upper_bb_stretch = pd.notna(bb_upper) and pd.notna(price) and price >= bb_upper * 0.995
-    stretch_risk_score = 8
-    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 3.5:
-        stretch_risk_score += 10
-    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 5:
-        stretch_risk_score += 12
-    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 8:
-        stretch_risk_score += 16
-    if pd.notna(rsi) and rsi >= 66:
+    stretch_risk_score = 18
+    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 2.5:
         stretch_risk_score += 8
-    if pd.notna(rsi) and rsi >= 70:
+    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 4:
         stretch_risk_score += 10
-    if pd.notna(rsi) and rsi >= 76:
+    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 6.5:
         stretch_risk_score += 14
+    if pd.notna(rsi) and rsi >= 64:
+        stretch_risk_score += 6
+    if pd.notna(rsi) and rsi >= 69:
+        stretch_risk_score += 8
+    if pd.notna(rsi) and rsi >= 75:
+        stretch_risk_score += 12
     if upper_bb_stretch:
         stretch_risk_score += 10
     if strong_winner_context:
@@ -6444,46 +6451,52 @@ def _legacy_analyze_stock(
 
     near_high52 = pd.notna(high52) and pd.notna(price) and high52 > 0 and price >= high52 * 0.985
     near_prev20_high = pd.notna(prev20_high) and pd.notna(price) and prev20_high > 0 and price >= prev20_high * 0.985
-    resistance_rejection_score = 8 if (near_high52 or near_prev20_high) else 0
+    resistance_rejection_score = 18 if (near_high52 or near_prev20_high) else 14
     if down_day and (near_high52 or near_prev20_high):
-        resistance_rejection_score += 14
+        resistance_rejection_score += 12
     if down_day and high_volume and (near_high52 or near_prev20_high):
         resistance_rejection_score += 16
     if upper_bb_stretch and pd.notna(ret1) and ret1 < 0:
         resistance_rejection_score += 10
-    if pd.notna(price) and pd.notna(ma20) and pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 4.5 and pd.notna(ret1) and ret1 < 0:
+    if pd.notna(price) and pd.notna(ma20) and pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 4 and pd.notna(ret1) and ret1 < 0:
         resistance_rejection_score += 8
+    if not (near_high52 or near_prev20_high) and healthy_trend_context:
+        resistance_rejection_score = max(10, resistance_rejection_score - 6)
     resistance_rejection_score = min(100, resistance_rejection_score)
 
-    short_term_pressure_score = 6 if (down_day and pd.notna(ret1) and ret1 < 0) else 0
+    short_term_pressure_score = 18 if (down_day and pd.notna(ret1) and ret1 < 0) else 14
     if down_day and high_volume:
-        short_term_pressure_score += 16
+        short_term_pressure_score += 14
     if dist_day_1:
-        short_term_pressure_score += 18
+        short_term_pressure_score += 16
     if dist_day_prev:
         short_term_pressure_score += 10
-    if pd.notna(ret5) and ret5 < -1.5:
+    if pd.notna(ret5) and ret5 < -1.0:
         short_term_pressure_score += 8
-    if pd.notna(ret5) and ret5 < -3:
+    if pd.notna(ret5) and ret5 < -2.5:
         short_term_pressure_score += 10
-    if pd.notna(vol_ratio) and vol_ratio > 1.10 and pd.notna(ret5) and ret5 < 0:
+    if pd.notna(vol_ratio) and vol_ratio > 1.08 and pd.notna(ret5) and ret5 < 0:
         short_term_pressure_score += 8
     if pd.notna(price) and pd.notna(ma20) and price < ma20:
         short_term_pressure_score += 8
+    if healthy_trend_context and not dist_day_1 and not high_volume:
+        short_term_pressure_score = max(12, short_term_pressure_score - 8)
     short_term_pressure_score = min(100, short_term_pressure_score)
 
-    failed_breakout_score = 0
+    failed_breakout_score = 16
     failed_breakout = False
     if pd.notna(prev20_high) and pd.notna(prev_close) and pd.notna(price):
         failed_breakout = prev_close > prev20_high * 1.002 and price < prev20_high * 0.998
     if failed_breakout:
-        failed_breakout_score += 24
+        failed_breakout_score += 22
     if failed_breakout and high_volume:
         failed_breakout_score += 12
     if pd.notna(ret5) and ret5 < 0 and (near_prev20_high or breakout_context):
         failed_breakout_score += 10
     if breakout_context and pd.notna(ret1) and ret1 < -0.8:
         failed_breakout_score += 8
+    if not breakout_context and not near_prev20_high:
+        failed_breakout_score = max(8, failed_breakout_score - 8)
     failed_breakout_score = min(100, failed_breakout_score)
 
     tactical_exit_risk = round(clamp(
@@ -11211,15 +11224,70 @@ if result is not None:
                 td1.metric("Primärziel aus Setup", ui_target_text(technical_target_1, ccy))
                 td2.metric("Sekundärziel aus Setup", ui_target_text(technical_target_2, ccy, "kein zweites Setup-Ziel"))
 
+        def tactical_risk_class(score):
+            try:
+                s = float(score)
+            except Exception:
+                return "blue"
+            if s >= 70:
+                return "red"
+            if s >= 45:
+                return "amber"
+            return "green"
+
+        def render_tactical_risk_card(label, score, sub=""):
+            tone = tactical_risk_class(score)
+            st.markdown(
+                f"""
+                <div class="horizon-card {tone}" style="min-height:118px;">
+                    <div class="horizon-top">
+                        <div class="horizon-label">{label}</div>
+                        <div class="horizon-icon">{'🔴' if tone == 'red' else '🟠' if tone == 'amber' else '🟢'}</div>
+                    </div>
+                    <div class="horizon-value">{fmt_num(score,0)}/100</div>
+                    <div class="horizon-sub">{sub}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
         with t7:
             st.subheader("Position & taktische Warnsignale")
             st.markdown('<div class="panel-caption">Struktureller Exit fuer Positionen plus schneller Tactical-Exit-Layer fuer drohende Ruecksetzer. Die taktischen Signale werden auch ohne eingetragene Position angezeigt.</div>', unsafe_allow_html=True)
 
             px1, px2, px3, px4 = st.columns(4)
-            px1.metric("Exit-Score", f"{exit_score_display}/100")
-            px2.metric("Exit-Aktion", exit_action_display)
-            px3.metric("Tactical Exit Risk", f"{result.get('tactical_exit_risk', 0)}/100", result.get("tactical_exit_text", "-"))
-            px4.metric("Tactical Aktion", result.get("tactical_exit_action", "-"))
+            with px1:
+                render_tactical_risk_card("Exit-Score", exit_score_display, exit_score_text_display)
+            with px2:
+                st.markdown(
+                    f"""
+                    <div class="horizon-card {ui_action_chip_class(exit_action_display)}" style="min-height:118px;">
+                        <div class="horizon-top">
+                            <div class="horizon-label">Exit-Aktion</div>
+                            <div class="horizon-icon">🎯</div>
+                        </div>
+                        <div class="horizon-value" style="font-size:1.05rem;">{exit_action_display}</div>
+                        <div class="horizon-sub">{exit_score_text_display}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with px3:
+                render_tactical_risk_card("Tactical Exit Risk", result.get('tactical_exit_risk', 0), result.get("tactical_exit_text", "-"))
+            with px4:
+                st.markdown(
+                    f"""
+                    <div class="horizon-card {ui_action_chip_class(result.get('tactical_exit_action', '-'))}" style="min-height:118px;">
+                        <div class="horizon-top">
+                            <div class="horizon-label">Tactical Aktion</div>
+                            <div class="horizon-icon">⚡</div>
+                        </div>
+                        <div class="horizon-value" style="font-size:1.05rem;">{result.get('tactical_exit_action', '-')}</div>
+                        <div class="horizon-sub">{result.get('tactical_exit_text', '-')}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             st.markdown(f"**Taktischer Hauptgrund:** {result.get('tactical_exit_reason_top', '-')}")
             crit_col, watch_col, ok_col = st.columns(3)
@@ -11255,12 +11323,18 @@ if result is not None:
             exs4.metric("Distribution", f"{result.get('distribution_score', 0)}/100")
             exs5.metric("Trigger", f"{result.get('exit_trigger_score', 0)}/100")
 
+            st.markdown("**Tactical Teilkomponenten**")
             tx1, tx2, tx3, tx4, tx5 = st.columns(5)
-            tx1.metric("Momentum Roll-over", f"{result.get('momentum_rollover_score', 0)}/100")
-            tx2.metric("Rejection", f"{result.get('resistance_rejection_score', 0)}/100")
-            tx3.metric("Kurzfrist-Druck", f"{result.get('short_term_pressure_score', 0)}/100")
-            tx4.metric("Stretch-Risiko", f"{result.get('stretch_risk_score', 0)}/100")
-            tx5.metric("Fehlausbruch", f"{result.get('failed_breakout_score', 0)}/100")
+            with tx1:
+                render_tactical_risk_card("Momentum Roll-over", result.get('momentum_rollover_score', 0), "Kritisch, wenn Momentum klar abrollt")
+            with tx2:
+                render_tactical_risk_card("Rejection", result.get('resistance_rejection_score', 0), "Nahe Hoch / Widerstand")
+            with tx3:
+                render_tactical_risk_card("Kurzfrist-Druck", result.get('short_term_pressure_score', 0), "Volumen- und Abgabedruck")
+            with tx4:
+                render_tactical_risk_card("Stretch-Risiko", result.get('stretch_risk_score', 0), "Ruecksetzergefahr nach Dehnung")
+            with tx5:
+                render_tactical_risk_card("Fehlausbruch", result.get('failed_breakout_score', 0), "Breakout ohne Follow-through")
 
             if position_mode:
                 st.markdown("**Positionssicht**")

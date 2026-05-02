@@ -144,7 +144,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v14.0.3"
+APP_VERSION = "v14.0.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -11271,7 +11271,7 @@ if result is not None:
                             <div class="horizon-icon">{ultra_icon}</div>
                         </div>
                         <div class="horizon-value" style="font-size:1.0rem;">{ultra_signal.get('label', '-')}</div>
-                        <div class="horizon-sub">Bias: {ultra_bias_icon} {ultra_bias_label}</div>
+                        <div class="horizon-sub">Bias: {infer_ultra_bias_from_signal(ultra_signal)[1]} {infer_ultra_bias_from_signal(ultra_signal)[0]}</div>
                         <div class="horizon-sub">Staerke: {fmt_num(ultra_signal.get('strength', 0),0)}/100 | Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
                     </div>
                     """,

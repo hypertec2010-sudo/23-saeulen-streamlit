@@ -4058,6 +4058,213 @@ def summarize_chart_structures(df, structures):
     return summaries
 
 
+def compute_ultra_short_term_zone_signal(df, structures):
+    signal = {
+        "label": "Kein Signal",
+        "strength": 0,
+        "confirmation": "fehlt",
+        "reason": "Keine klare Reaktion an einer relevanten Zone.",
+        "bullets": [],
+        "tone": "green",
+    }
+    if df is None or df.empty or not structures or len(df) < 5:
+        return signal
+
+    try:
+        close = pd.to_numeric(df["Close"], errors="coerce")
+        open_ = pd.to_numeric(df["Open"], errors="coerce")
+        high = pd.to_numeric(df["High"], errors="coerce")
+        low = pd.to_numeric(df["Low"], errors="coerce")
+        volume = pd.to_numeric(df.get("Volume"), errors="coerce") if "Volume" in df.columns else pd.Series(index=df.index, dtype=float)
+        current_price = float(close.iloc[-1])
+        prev_close = float(close.iloc[-2])
+        prev_high = float(high.iloc[-2])
+        prev_low = float(low.iloc[-2])
+    except Exception:
+        return signal
+
+    ema10 = close.ewm(span=10, adjust=False).mean()
+    ema20 = close.ewm(span=20, adjust=False).mean()
+    vol20 = volume.rolling(20, min_periods=5).mean() if not volume.empty else pd.Series(index=df.index, dtype=float)
+
+    candle_range = max(0.01, float(high.iloc[-1] - low.iloc[-1]))
+    lower_wick = max(0.0, float(min(open_.iloc[-1], close.iloc[-1]) - low.iloc[-1]))
+    upper_wick = max(0.0, float(high.iloc[-1] - max(open_.iloc[-1], close.iloc[-1])))
+    lower_wick_ratio = lower_wick / candle_range
+    upper_wick_ratio = upper_wick / candle_range
+    close_pos = (float(close.iloc[-1]) - float(low.iloc[-1])) / candle_range
+
+    supports = structures.get("supports", []) or []
+    resistances = structures.get("resistances", []) or []
+    active_zones = structures.get("active_zones", []) or []
+    channel = structures.get("channel")
+
+    bull = 0.0
+    bear = 0.0
+    watch = 0.0
+    confirm = 0.0
+    reasons_bull = []
+    reasons_bear = []
+    reasons_watch = []
+
+    near_support = False
+    near_resistance = False
+
+    if supports:
+        s1 = supports[0]
+        s_mid = float(s1.get("mid", np.nan))
+        if pd.notna(s_mid) and current_price > 0:
+            dist_support = abs((current_price / s_mid) - 1.0) * 100.0
+            if dist_support <= 1.2:
+                bull += 26
+                near_support = True
+                reasons_bull.append("Kurs direkt an Support S1")
+            elif dist_support <= 2.0:
+                bull += 16
+                reasons_bull.append("Kurs nahe Support S1")
+            if current_price < s_mid:
+                bear += 16
+                reasons_bear.append("Kurs unter Support S1")
+
+    if resistances:
+        r1 = resistances[0]
+        r_mid = float(r1.get("mid", np.nan))
+        if pd.notna(r_mid) and current_price > 0:
+            dist_res = abs((r_mid / current_price) - 1.0) * 100.0
+            if dist_res <= 1.2:
+                bear += 26
+                near_resistance = True
+                reasons_bear.append("Kurs direkt an Widerstand R1")
+            elif dist_res <= 2.0:
+                bear += 16
+                reasons_bear.append("Kurs nahe Widerstand R1")
+            if current_price > r_mid:
+                bull += 14
+                reasons_bull.append("Kurs ueber R1")
+
+    if active_zones:
+        z0 = active_zones[0]
+        z_low = float(z0.get("low", np.nan))
+        z_high = float(z0.get("high", np.nan))
+        if pd.notna(z_low) and pd.notna(z_high) and z_low <= current_price <= z_high:
+            watch += 24
+            reasons_watch.append("Kurs in aktiver Entscheidungszone")
+
+    if near_support:
+        if lower_wick_ratio >= 0.35:
+            bull += 12
+            reasons_bull.append("unterer Docht an Support")
+        if close_pos >= 0.62:
+            bull += 8
+            reasons_bull.append("Schlusskurs erholt sich aus der Zone")
+        if float(close.iloc[-1]) > float(close.iloc[-2]):
+            confirm += 10
+
+    if near_resistance:
+        if upper_wick_ratio >= 0.35:
+            bear += 12
+            reasons_bear.append("oberer Docht an Widerstand")
+        if close_pos <= 0.42:
+            bear += 8
+            reasons_bear.append("schwacher Schlusskurs an R1")
+        if float(close.iloc[-1]) < float(close.iloc[-2]):
+            confirm += 10
+
+    if len(df) >= 3:
+        ret2 = ((float(close.iloc[-1]) / float(close.iloc[-3])) - 1.0) * 100.0
+    else:
+        ret2 = np.nan
+    ret3 = ((float(close.iloc[-1]) / float(close.iloc[-4])) - 1.0) * 100.0 if len(df) >= 4 else np.nan
+
+    if pd.notna(ema10.iloc[-1]):
+        if current_price > float(ema10.iloc[-1]) and near_support:
+            bull += 8
+            reasons_bull.append("ueber EMA10")
+        elif current_price < float(ema10.iloc[-1]) and near_resistance:
+            bear += 8
+            reasons_bear.append("unter EMA10")
+
+    if pd.notna(ret2):
+        if ret2 > 1.5 and near_support:
+            bull += 10
+            confirm += 8
+            reasons_bull.append("2T-Momentum zieht an")
+        elif ret2 < -1.5 and near_resistance:
+            bear += 10
+            confirm += 8
+            reasons_bear.append("2T-Momentum kippt ab")
+    if pd.notna(ret3):
+        if ret3 > 2.5 and near_support:
+            bull += 6
+        elif ret3 < -2.5 and near_resistance:
+            bear += 6
+
+    if not vol20.empty and pd.notna(vol20.iloc[-1]) and vol20.iloc[-1] > 0 and not volume.empty and pd.notna(volume.iloc[-1]):
+        vol_ratio = float(volume.iloc[-1] / vol20.iloc[-1])
+        if near_support and float(close.iloc[-1]) > float(open_.iloc[-1]) and vol_ratio >= 1.1:
+            bull += 8
+            reasons_bull.append("Reaktion mit besserem Volumen")
+        elif near_resistance and float(close.iloc[-1]) < float(open_.iloc[-1]) and vol_ratio >= 1.1:
+            bear += 8
+            reasons_bear.append("Ablehnung mit erhoehtem Volumen")
+        elif vol_ratio < 0.85 and (near_support or near_resistance):
+            watch += 4
+
+    if channel:
+        try:
+            idx_last = len(df) - 1
+            slope = float(channel.get("slope", 0.0))
+            lower = slope * idx_last + float(channel.get("lower_intercept", 0.0))
+            upper = slope * idx_last + float(channel.get("upper_intercept", 0.0))
+            if upper > lower:
+                pos = (current_price - lower) / (upper - lower)
+                if pos <= 0.22:
+                    bull += 10
+                    reasons_bull.append("unterer Kanalbereich")
+                elif pos >= 0.78:
+                    bear += 10
+                    reasons_bear.append("oberer Kanalbereich")
+        except Exception:
+            pass
+
+    bull = int(round(clamp(bull, 0, 100)))
+    bear = int(round(clamp(bear, 0, 100)))
+    watch = int(round(clamp(watch, 0, 100)))
+    confirm = int(round(clamp(confirm, 0, 100)))
+
+    if bull >= 55 and bull >= bear + 8:
+        signal.update({
+            "label": "Ultra-Kurzfrist bullish",
+            "strength": bull,
+            "tone": "green",
+            "reason": reasons_bull[0] if reasons_bull else "Support wird kurzfristig verteidigt.",
+            "bullets": list(dict.fromkeys(reasons_bull))[:4],
+        })
+    elif bear >= 55 and bear >= bull + 8:
+        signal.update({
+            "label": "Ultra-Kurzfrist bearish",
+            "strength": bear,
+            "tone": "red",
+            "reason": reasons_bear[0] if reasons_bear else "Widerstand wird kurzfristig bestaetigt.",
+            "bullets": list(dict.fromkeys(reasons_bear))[:4],
+        })
+    elif max(bull, bear, watch) >= 28:
+        signal.update({
+            "label": "Zone unter Beobachtung",
+            "strength": max(bull, bear, watch),
+            "tone": "amber",
+            "reason": (reasons_watch or reasons_bull or reasons_bear or ["Zone wird getestet, Bestaetigung fehlt noch."])[0],
+            "bullets": list(dict.fromkeys((reasons_watch + reasons_bull + reasons_bear)))[:4],
+        })
+
+    if confirm >= 20:
+        signal["confirmation"] = "vorhanden"
+    elif confirm >= 10:
+        signal["confirmation"] = "teilweise"
+    else:
+        signal["confirmation"] = "fehlt"
+
+    return signal
 
 
 def evaluate_chart_structure_bias(df, structures):
@@ -10966,6 +11173,29 @@ if result is not None:
                 if chart_text_items:
                     st.markdown("**Technische Einordnung aus dem Chart**")
                     for _item in chart_text_items[:3]:
+                        st.markdown(f"- {_item}")
+
+                ultra_signal = compute_ultra_short_term_zone_signal(chart_df, chart_structures)
+                ultra_tone = ultra_signal.get("tone", "green")
+                ultra_icon = "🟢" if ultra_tone == "green" else "🟠" if ultra_tone == "amber" else "🔴"
+                st.markdown("**Ultra-Kurzfrist an S/R-Zonen**")
+                st.markdown(
+                    f"""
+                    <div class="horizon-card {ultra_tone}" style="min-height:120px;">
+                        <div class="horizon-top">
+                            <div class="horizon-label">Ultra-Kurzfrist-Signal</div>
+                            <div class="horizon-icon">{ultra_icon}</div>
+                        </div>
+                        <div class="horizon-value" style="font-size:1.0rem;">{ultra_signal.get('label', '-')}</div>
+                        <div class="horizon-sub">Staerke: {fmt_num(ultra_signal.get('strength', 0),0)}/100 | Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f"**Hauptgrund:** {ultra_signal.get('reason', '-')}")
+                ultra_bullets = ultra_signal.get("bullets", []) or []
+                if ultra_bullets:
+                    for _item in ultra_bullets[:4]:
                         st.markdown(f"- {_item}")
 
             perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan

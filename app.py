@@ -80,7 +80,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v14.0.1.1"
+APP_VERSION = "v14.0.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5714,7 +5714,7 @@ def _legacy_analyze_stock(
 
         crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
         timing_trade_score = round(clamp(s4 * 0.45 + s5 * 0.25 + rs_score * 0.20 + s6 * 0.10))
-        stop_score = ideal_range_score(stop_dist, ideal_low=3.0, ideal_high=7.5, hard_low=1.0, hard_high=14.0.1)
+        stop_score = ideal_range_score(stop_dist, ideal_low=3.0, ideal_high=7.5, hard_low=1.0, hard_high=14.0)
         crv_score = linear_score(crv, low=0.9, high=3.0, floor=15, ceiling=95)
         market_trade_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 25)
         entry_score = entry_quality_score(entry_quality, price, entry_low, entry_high)

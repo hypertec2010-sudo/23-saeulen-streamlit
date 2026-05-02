@@ -11374,38 +11374,38 @@ if result is not None:
                 fail_ui = result.get("failed_breakout_score", np.nan)
 
                 # Weiche UI-Fallbacks: nicht nur fehlende Werte, sondern auch unplausible 0-Werte abfedern.
-                if pd.isna(mom_roll_ui) or float(mom_roll_ui) <= 0:
-                    mom_base = 18
+                if pd.isna(mom_roll_ui) or float(mom_roll_ui) < 25:
+                    mom_base = 28
                     if pd.notna(result.get("momentum_collapse_score", np.nan)):
                         mom_base += float(result.get("momentum_collapse_score", 0)) * 0.45
                     if pd.notna(ret1_ui) and ret1_ui < 0:
                         mom_base += min(10, abs(float(ret1_ui)) * 2.5)
                     if pd.notna(ret5_ui) and ret5_ui < 0:
                         mom_base += min(12, abs(float(ret5_ui)) * 1.6)
-                    mom_roll_ui = round(clamp(mom_base, 12, 100))
+                    mom_roll_ui = round(clamp(mom_base, 24, 100))
 
-                if pd.isna(rej_ui) or float(rej_ui) <= 0:
-                    rej_base = 14
+                if pd.isna(rej_ui) or float(rej_ui) < 22:
+                    rej_base = 24
                     if pd.notna(ret1_ui) and ret1_ui < -1.0:
                         rej_base += 8
                     if pd.notna(ret5_ui) and ret5_ui > 8 and pd.notna(ret1_ui) and ret1_ui < 0:
                         rej_base += 10
                     if pd.notna(result.get("event_risk_score", np.nan)) and float(result.get("event_risk_score", 0)) >= 60:
                         rej_base += 6
-                    rej_ui = round(clamp(rej_base, 10, 100))
+                    rej_ui = round(clamp(rej_base, 22, 100))
 
-                if pd.isna(press_ui) or float(press_ui) <= 0:
-                    press_base = 16
+                if pd.isna(press_ui) or float(press_ui) < 24:
+                    press_base = 26
                     if pd.notna(result.get("distribution_score", np.nan)):
                         press_base += float(result.get("distribution_score", 0)) * 0.55
                     if pd.notna(ret1_ui) and ret1_ui < 0:
                         press_base += min(8, abs(float(ret1_ui)) * 2.0)
                     if pd.notna(ret5_ui) and ret5_ui < 0:
                         press_base += min(10, abs(float(ret5_ui)) * 1.2)
-                    press_ui = round(clamp(press_base, 12, 100))
+                    press_ui = round(clamp(press_base, 24, 100))
 
-                if pd.isna(stretch_ui) or float(stretch_ui) <= 0:
-                    stretch_base = 14
+                if pd.isna(stretch_ui) or float(stretch_ui) < 24:
+                    stretch_base = 28
                     if pd.notna(atr_pct_ui):
                         if atr_pct_ui >= 10:
                             stretch_base += 16
@@ -11419,17 +11419,17 @@ if result is not None:
                         stretch_base += 10
                     elif pd.notna(ret5_ui) and ret5_ui >= 4:
                         stretch_base += 6
-                    stretch_ui = round(clamp(stretch_base, 10, 100))
+                    stretch_ui = round(clamp(stretch_base, 24, 100))
 
-                if pd.isna(fail_ui) or float(fail_ui) <= 0:
-                    fail_base = 12
+                if pd.isna(fail_ui) or float(fail_ui) < 20:
+                    fail_base = 22
                     if pd.notna(ret5_ui) and ret5_ui > 10 and pd.notna(ret1_ui) and ret1_ui < -1.5:
                         fail_base += 16
                     elif pd.notna(ret5_ui) and ret5_ui > 6 and pd.notna(ret1_ui) and ret1_ui < 0:
                         fail_base += 8
                     if pd.notna(result.get("exit_trigger_score", np.nan)) and float(result.get("exit_trigger_score", 0)) >= 20:
                         fail_base += 6
-                    fail_ui = round(clamp(fail_base, 8, 100))
+                    fail_ui = round(clamp(fail_base, 20, 100))
                 chart_event_risk_ui = clamp(mom_roll_ui * 0.30 + rej_ui * 0.20 + press_ui * 0.20 + stretch_ui * 0.15 + fail_ui * 0.15)
                 ui_tactical_risk = round(clamp(chart_event_risk_ui * 0.68 + ui_instrument_risk * 0.32))
                 if ui_instrument_risk >= 55:
@@ -11471,7 +11471,7 @@ if result is not None:
                     else:
                         ui_tactical_ok.append("Kein markanter kurzfristiger Volumendruck")
 
-            st.caption(f"Tactical-Block v31h | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
+            st.caption(f"Tactical-Block v31i | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
 
             px1, px2, px3, px4 = st.columns(4)
             with px1:

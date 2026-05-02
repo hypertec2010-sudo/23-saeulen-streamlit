@@ -9,6 +9,35 @@ import warnings
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
 
+def infer_ultra_bias_from_signal(ultra_signal):
+    try:
+        label = str((ultra_signal or {}).get("label", "")).strip().lower()
+        reason = str((ultra_signal or {}).get("reason", "")).strip().lower()
+        bullets = " | ".join([str(x).lower() for x in ((ultra_signal or {}).get("bullets", []) or [])])
+        confirmation = str((ultra_signal or {}).get("confirmation", "")).strip().lower()
+        strength = float((ultra_signal or {}).get("strength", 0) or 0)
+    except Exception:
+        return ("Neutral", "⚪")
+
+    context = " ".join([label, reason, bullets])
+
+    if "bullish" in label:
+        return ("Bestaetigt bullish" if ("vorhand" in confirmation or strength >= 60) else "Leicht bullish", "🟢" if ("vorhand" in confirmation or strength >= 60) else "🟠")
+    if "bearish" in label:
+        return ("Bestaetigt bearish" if ("vorhand" in confirmation or strength >= 60) else "Leicht bearish", "🔴" if ("vorhand" in confirmation or strength >= 60) else "🟠")
+
+    if "zone unter beobachtung" in label:
+        if "support" in context or "unterer docht" in context:
+            return ("Leicht bullish", "🟠")
+        if "widerstand" in context or "oberer docht" in context or "rejection" in context:
+            return ("Leicht bearish", "🟠")
+        return ("Neutral", "⚪")
+
+    if "kein signal" in label:
+        return ("Neutral", "⚪")
+
+    return ("Neutral", "⚪")
+
 def _ultra_bias_from_signal(signal_label, confirmation_text=None, strength_value=None):
     lbl = str(signal_label or "").strip().lower()
     conf = str(confirmation_text or "").strip().lower()
@@ -115,7 +144,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v14.0.2"
+APP_VERSION = "v14.0.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -11242,6 +11271,7 @@ if result is not None:
                             <div class="horizon-icon">{ultra_icon}</div>
                         </div>
                         <div class="horizon-value" style="font-size:1.0rem;">{ultra_signal.get('label', '-')}</div>
+                        <div class="horizon-sub">Bias: {ultra_bias_icon} {ultra_bias_label}</div>
                         <div class="horizon-sub">Staerke: {fmt_num(ultra_signal.get('strength', 0),0)}/100 | Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
                     </div>
                     """,

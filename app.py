@@ -6423,11 +6423,15 @@ def _legacy_analyze_stock(
 
     dist_to_ma20_pct = ((price / ma20) - 1) * 100 if pd.notna(price) and pd.notna(ma20) and ma20 != 0 else np.nan
     upper_bb_stretch = pd.notna(bb_upper) and pd.notna(price) and price >= bb_upper * 0.995
-    stretch_risk_score = 0
-    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 5:
+    stretch_risk_score = 8
+    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 3.5:
         stretch_risk_score += 10
+    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 5:
+        stretch_risk_score += 12
     if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 8:
         stretch_risk_score += 16
+    if pd.notna(rsi) and rsi >= 66:
+        stretch_risk_score += 8
     if pd.notna(rsi) and rsi >= 70:
         stretch_risk_score += 10
     if pd.notna(rsi) and rsi >= 76:
@@ -6438,30 +6442,34 @@ def _legacy_analyze_stock(
         stretch_risk_score += 8
     stretch_risk_score = min(100, stretch_risk_score)
 
-    resistance_rejection_score = 0
     near_high52 = pd.notna(high52) and pd.notna(price) and high52 > 0 and price >= high52 * 0.985
     near_prev20_high = pd.notna(prev20_high) and pd.notna(price) and prev20_high > 0 and price >= prev20_high * 0.985
+    resistance_rejection_score = 8 if (near_high52 or near_prev20_high) else 0
     if down_day and (near_high52 or near_prev20_high):
         resistance_rejection_score += 14
     if down_day and high_volume and (near_high52 or near_prev20_high):
         resistance_rejection_score += 16
     if upper_bb_stretch and pd.notna(ret1) and ret1 < 0:
         resistance_rejection_score += 10
-    if pd.notna(price) and pd.notna(ma20) and pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 6 and pd.notna(ret1) and ret1 < 0:
-        resistance_rejection_score += 10
+    if pd.notna(price) and pd.notna(ma20) and pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 4.5 and pd.notna(ret1) and ret1 < 0:
+        resistance_rejection_score += 8
     resistance_rejection_score = min(100, resistance_rejection_score)
 
-    short_term_pressure_score = 0
+    short_term_pressure_score = 6 if (down_day and pd.notna(ret1) and ret1 < 0) else 0
     if down_day and high_volume:
         short_term_pressure_score += 16
     if dist_day_1:
         short_term_pressure_score += 18
     if dist_day_prev:
         short_term_pressure_score += 10
+    if pd.notna(ret5) and ret5 < -1.5:
+        short_term_pressure_score += 8
     if pd.notna(ret5) and ret5 < -3:
         short_term_pressure_score += 10
-    if pd.notna(vol_ratio) and vol_ratio > 1.25 and pd.notna(ret5) and ret5 < 0:
-        short_term_pressure_score += 10
+    if pd.notna(vol_ratio) and vol_ratio > 1.10 and pd.notna(ret5) and ret5 < 0:
+        short_term_pressure_score += 8
+    if pd.notna(price) and pd.notna(ma20) and price < ma20:
+        short_term_pressure_score += 8
     short_term_pressure_score = min(100, short_term_pressure_score)
 
     failed_breakout_score = 0
@@ -6474,6 +6482,8 @@ def _legacy_analyze_stock(
         failed_breakout_score += 12
     if pd.notna(ret5) and ret5 < 0 and (near_prev20_high or breakout_context):
         failed_breakout_score += 10
+    if breakout_context and pd.notna(ret1) and ret1 < -0.8:
+        failed_breakout_score += 8
     failed_breakout_score = min(100, failed_breakout_score)
 
     tactical_exit_risk = round(clamp(
@@ -6525,6 +6535,38 @@ def _legacy_analyze_stock(
     if pd.notna(rsi) and rsi >= 76 and pd.notna(ret1) and ret1 < 0:
         tactical_exit_reasons.append("ueberdehnte Rally kippt")
     tactical_exit_reason_top = tactical_exit_reasons[0] if tactical_exit_reasons else "kein akuter taktischer Ruecksetzerhinweis"
+
+    tactical_critical_signals = []
+    tactical_watch_signals = []
+    tactical_ok_signals = []
+
+    if failed_breakout or resistance_rejection_score >= 45:
+        tactical_critical_signals.append("Rejection / Fehlausbruch an Widerstand")
+    elif resistance_rejection_score >= 20:
+        tactical_watch_signals.append("Widerstandsnaehe mit erster Rejection")
+    else:
+        tactical_ok_signals.append("Keine klare Rejection an Widerstand")
+
+    if momentum_rollover_score >= 45:
+        tactical_critical_signals.append("Momentum kippt kurzfristig")
+    elif momentum_rollover_score >= 20:
+        tactical_watch_signals.append("Momentum rollt sichtbar ab")
+    else:
+        tactical_ok_signals.append("Momentum bleibt stabil")
+
+    if short_term_pressure_score >= 40:
+        tactical_critical_signals.append("Kurzfristiger Abgabedruck / Distribution")
+    elif short_term_pressure_score >= 18:
+        tactical_watch_signals.append("Erste Drucksignale im kurzfristigen Fenster")
+    else:
+        tactical_ok_signals.append("Kein markanter kurzfristiger Volumendruck")
+
+    if stretch_risk_score >= 42:
+        tactical_watch_signals.append("Rally ueberdehnt, Ruecksetzer anfaellig")
+    else:
+        tactical_ok_signals.append("Keine starke Ueberdehnung")
+
+    tactical_signal_summary = tactical_critical_signals[:2] + tactical_watch_signals[:2]
 
     exit_score = round(clamp(
         trend_break_score * 0.31
@@ -6750,6 +6792,10 @@ def _legacy_analyze_stock(
         "tactical_exit_text": tactical_exit_text,
         "tactical_exit_action": tactical_exit_action,
         "tactical_exit_reason_top": tactical_exit_reason_top,
+        "tactical_critical_signals": tactical_critical_signals,
+        "tactical_watch_signals": tactical_watch_signals,
+        "tactical_ok_signals": tactical_ok_signals,
+        "tactical_signal_summary": tactical_signal_summary,
         "momentum_rollover_score": momentum_rollover_score,
         "resistance_rejection_score": resistance_rejection_score,
         "short_term_pressure_score": short_term_pressure_score,
@@ -11166,14 +11212,41 @@ if result is not None:
                 td2.metric("Sekundärziel aus Setup", ui_target_text(technical_target_2, ccy, "kein zweites Setup-Ziel"))
 
         with t7:
-            st.subheader("Position")
-            st.markdown('<div class="panel-caption">Positionssicht mit Exit-Score, Exit-Aktion, Kontext und den wichtigsten Verkaufsgründen.</div>', unsafe_allow_html=True)
+            st.subheader("Position & taktische Warnsignale")
+            st.markdown('<div class="panel-caption">Struktureller Exit fuer Positionen plus schneller Tactical-Exit-Layer fuer drohende Ruecksetzer. Die taktischen Signale werden auch ohne eingetragene Position angezeigt.</div>', unsafe_allow_html=True)
 
             px1, px2, px3, px4 = st.columns(4)
             px1.metric("Exit-Score", f"{exit_score_display}/100")
             px2.metric("Exit-Aktion", exit_action_display)
-            px3.metric("Taktischer Exit", f"{result.get('tactical_exit_risk', 0)}/100", result.get("tactical_exit_text", "-"))
-            px4.metric("P&L-Kontext", result.get("pnl_bucket", "-"))
+            px3.metric("Tactical Exit Risk", f"{result.get('tactical_exit_risk', 0)}/100", result.get("tactical_exit_text", "-"))
+            px4.metric("Tactical Aktion", result.get("tactical_exit_action", "-"))
+
+            st.markdown(f"**Taktischer Hauptgrund:** {result.get('tactical_exit_reason_top', '-')}")
+            crit_col, watch_col, ok_col = st.columns(3)
+            with crit_col:
+                crit = result.get("tactical_critical_signals", [])
+                st.markdown("**🔴 Kritisch**")
+                if crit:
+                    for item in crit:
+                        st.write(f"• {item}")
+                else:
+                    st.caption("Keine akuten taktischen Exit-Signale")
+            with watch_col:
+                watch = result.get("tactical_watch_signals", [])
+                st.markdown("**🟠 Beobachten**")
+                if watch:
+                    for item in watch:
+                        st.write(f"• {item}")
+                else:
+                    st.caption("Keine fruehen Warnhinweise")
+            with ok_col:
+                ok_items = result.get("tactical_ok_signals", [])
+                st.markdown("**🟢 Unkritisch**")
+                if ok_items:
+                    for item in ok_items[:3]:
+                        st.write(f"• {item}")
+                else:
+                    st.caption("Kein stabiler Gegenpol erkannt")
 
             exs1, exs2, exs3, exs4, exs5 = st.columns(5)
             exs1.metric("Trendbruch", f"{result.get('trend_break_score', 0)}/100")
@@ -11189,12 +11262,8 @@ if result is not None:
             tx4.metric("Stretch-Risiko", f"{result.get('stretch_risk_score', 0)}/100")
             tx5.metric("Fehlausbruch", f"{result.get('failed_breakout_score', 0)}/100")
 
-            st.caption(f"Taktischer Hauptgrund: {result.get('tactical_exit_reason_top', '-')}")
-
-            st.subheader("Position")
-            if not position_mode:
-                st.info("Dieser Bereich ist nur relevant, wenn ein Buy-in gesetzt ist und damit der Positionsmodus aktiv ist.")
-            else:
+            if position_mode:
+                st.markdown("**Positionssicht**")
                 p1, p2, p3 = st.columns(3)
                 p1.metric("Positions-Aktion", position_action)
                 p2.metric("Nachkauf sinnvoll?", add_on_action)
@@ -11212,6 +11281,8 @@ if result is not None:
                     f"Marktumfeld ({market_regime_label(market_info['regime'])}), die bisherige Performance seit Einstieg "
                     f"und jetzt zusaetzlich einen kurzfristigen Tactical-Exit-Layer ({result.get('tactical_exit_risk', 0)}/100)."
                 )
+            else:
+                st.info("Ohne Buy-in ist dies eine taktische Warnsicht fuer den aktuellen Wert: fruehe Ruecksetzergefahr, Rejection, Fehlausbruch oder Dehnung werden trotzdem angezeigt.")
 
 
         with t8:

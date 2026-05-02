@@ -6339,19 +6339,39 @@ def _legacy_analyze_stock(
         momentum_collapse_score = max(0, momentum_collapse_score - 5)
     momentum_collapse_score = min(100, momentum_collapse_score)
 
+    risky_title_context = (
+        (pd.notna(market_cap) and market_cap < 1_000_000_000)
+        or (pd.notna(atr_pct) and atr_pct >= 6)
+        or (pd.notna(event_risk_score) and event_risk_score >= 60)
+    )
+
     relative_weakness_score = 0
+    if risky_title_context:
+        relative_weakness_score = 12
+    if pd.notna(rs_score) and rs_score < 55:
+        relative_weakness_score += 5
     if pd.notna(rs_score) and rs_score < 50:
         relative_weakness_score += 7
     if pd.notna(rs_score) and rs_score < 40:
         relative_weakness_score += 11
     if pd.notna(rs_vs_benchmark_21) and rs_vs_benchmark_21 < 0:
         relative_weakness_score += 6
+    if pd.notna(rs_vs_benchmark_21) and rs_vs_benchmark_21 < -4:
+        relative_weakness_score += 5
     if pd.notna(rs_vs_benchmark_63) and rs_vs_benchmark_63 < 0:
         relative_weakness_score += 10
+    if pd.notna(rs_vs_benchmark_63) and rs_vs_benchmark_63 < -6:
+        relative_weakness_score += 6
     if pd.notna(rs_vs_benchmark_126) and rs_vs_benchmark_126 < 0:
         relative_weakness_score += 7
+    if pd.notna(rs_composite) and rs_composite < 50:
+        relative_weakness_score += 6
     if pd.notna(rs_composite) and rs_composite < 45:
         relative_weakness_score += 10
+    if pd.notna(ret5) and ret5 < 0:
+        relative_weakness_score += 4 if risky_title_context else 2
+    if pd.notna(ret21) and ret21 < 0:
+        relative_weakness_score += 5 if risky_title_context else 3
     if healthy_trend_context and pd.notna(rs_vs_benchmark_63) and rs_vs_benchmark_63 > 3:
         relative_weakness_score = max(0, relative_weakness_score - 6)
     relative_weakness_score = min(100, relative_weakness_score)
@@ -6366,6 +6386,8 @@ def _legacy_analyze_stock(
     high_volume = pd.notna(vol_now) and pd.notna(vol_ma20) and vol_now > 1.3 * vol_ma20
 
     distribution_score = 0
+    if risky_title_context:
+        distribution_score = 10
     if down_day and high_volume:
         distribution_score += 10
     dist_day_1 = (
@@ -6382,6 +6404,14 @@ def _legacy_analyze_stock(
         distribution_score += 12
     if pd.notna(ret21) and ret21 < 0 and down_day and high_volume:
         distribution_score += 8
+    if risky_title_context and pd.notna(ret1) and ret1 < 0:
+        distribution_score += 4
+    if risky_title_context and pd.notna(ret5) and ret5 < 0:
+        distribution_score += 5
+    if risky_title_context and pd.notna(vol_ratio) and vol_ratio > 1.05 and pd.notna(ret5) and ret5 < 0:
+        distribution_score += 6
+    if risky_title_context and pd.notna(price) and pd.notna(ma20) and price < ma20:
+        distribution_score += 5
     if healthy_trend_context and not dist_day_1:
         distribution_score = max(0, distribution_score - 4)
     distribution_score = min(100, distribution_score)
@@ -11471,7 +11501,7 @@ if result is not None:
                     else:
                         ui_tactical_ok.append("Kein markanter kurzfristiger Volumendruck")
 
-            st.caption(f"Tactical-Block v31i | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
+            st.caption(f"Tactical-Block v31j | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
 
             px1, px2, px3, px4 = st.columns(4)
             with px1:

@@ -6483,12 +6483,12 @@ def _legacy_analyze_stock(
         short_term_pressure_score = max(12, short_term_pressure_score - 8)
     short_term_pressure_score = min(100, short_term_pressure_score)
 
-    failed_breakout_score = 16
+    failed_breakout_score = 18
     failed_breakout = False
     if pd.notna(prev20_high) and pd.notna(prev_close) and pd.notna(price):
         failed_breakout = prev_close > prev20_high * 1.002 and price < prev20_high * 0.998
     if failed_breakout:
-        failed_breakout_score += 22
+        failed_breakout_score += 24
     if failed_breakout and high_volume:
         failed_breakout_score += 12
     if pd.notna(ret5) and ret5 < 0 and (near_prev20_high or breakout_context):
@@ -6496,21 +6496,64 @@ def _legacy_analyze_stock(
     if breakout_context and pd.notna(ret1) and ret1 < -0.8:
         failed_breakout_score += 8
     if not breakout_context and not near_prev20_high:
-        failed_breakout_score = max(8, failed_breakout_score - 8)
+        failed_breakout_score = max(16, failed_breakout_score - 4)
     failed_breakout_score = min(100, failed_breakout_score)
 
-    tactical_exit_risk = round(clamp(
+    instrument_volatility_risk_score = 24
+    if pd.notna(atr_pct):
+        if atr_pct >= 10:
+            instrument_volatility_risk_score += 26
+        elif atr_pct >= 7:
+            instrument_volatility_risk_score += 18
+        elif atr_pct >= 5:
+            instrument_volatility_risk_score += 10
+        elif atr_pct >= 3.5:
+            instrument_volatility_risk_score += 4
+    if pd.notna(event_risk_score):
+        if event_risk_score >= 75:
+            instrument_volatility_risk_score += 18
+        elif event_risk_score >= 60:
+            instrument_volatility_risk_score += 12
+        elif event_risk_score >= 45:
+            instrument_volatility_risk_score += 6
+    if pd.notna(market_cap):
+        if market_cap < 300_000_000:
+            instrument_volatility_risk_score += 18
+        elif market_cap < 1_000_000_000:
+            instrument_volatility_risk_score += 10
+        elif market_cap < 3_000_000_000:
+            instrument_volatility_risk_score += 4
+    if pd.notna(ret1) and abs(ret1) >= 8:
+        instrument_volatility_risk_score += 12
+    elif pd.notna(ret1) and abs(ret1) >= 5:
+        instrument_volatility_risk_score += 7
+    if pd.notna(ret5) and abs(ret5) >= 18:
+        instrument_volatility_risk_score += 10
+    elif pd.notna(ret5) and abs(ret5) >= 12:
+        instrument_volatility_risk_score += 6
+    instrument_volatility_risk_score = min(100, instrument_volatility_risk_score)
+
+    chart_event_risk = clamp(
         momentum_rollover_score * 0.30
         + resistance_rejection_score * 0.20
         + short_term_pressure_score * 0.20
         + stretch_risk_score * 0.15
         + failed_breakout_score * 0.15
+    )
+
+    tactical_exit_risk = round(clamp(
+        chart_event_risk * 0.68
+        + instrument_volatility_risk_score * 0.32
     ))
 
     if healthy_trend_context and not down_day and not dist_day_1 and pd.notna(rsi) and rsi >= 58:
-        tactical_exit_risk = max(0, tactical_exit_risk - 8)
+        tactical_exit_risk = max(12, tactical_exit_risk - 6)
     if strong_winner_context and tactical_exit_risk >= 35:
         tactical_exit_risk = min(100, tactical_exit_risk + 6)
+    if instrument_volatility_risk_score >= 55:
+        tactical_exit_risk = max(tactical_exit_risk, 28)
+    elif instrument_volatility_risk_score >= 42:
+        tactical_exit_risk = max(tactical_exit_risk, 22)
 
     if tactical_exit_risk >= 78:
         tactical_exit_text = "akute Ruecksetzergefahr"
@@ -6521,7 +6564,7 @@ def _legacy_analyze_stock(
     elif tactical_exit_risk >= 25:
         tactical_exit_text = "fruehe Warnung"
     else:
-        tactical_exit_text = "unkritisch"
+        tactical_exit_text = "ruhig, aber beobachten"
 
     if tactical_exit_risk >= 78:
         tactical_exit_action = "De-Risking / Teilverkauf"
@@ -6532,12 +6575,16 @@ def _legacy_analyze_stock(
     elif tactical_exit_risk >= 25:
         tactical_exit_action = "Kurzfristig vorsichtiger"
     else:
-        tactical_exit_action = "Kein taktischer Exit"
+        tactical_exit_action = "Weiter halten / beobachten"
 
     tactical_exit_reasons = []
+    if instrument_volatility_risk_score >= 60:
+        tactical_exit_reasons.append("Titel mit hoher Kurzfrist- und Gap-Gefahr")
+    elif instrument_volatility_risk_score >= 45:
+        tactical_exit_reasons.append("Titel bleibt kurzfristig ruecksetzeranfaellig")
     if failed_breakout:
         tactical_exit_reasons.append("Fehlausbruch am 20T-Hoch")
-    if resistance_rejection_score >= 18:
+    if resistance_rejection_score >= 24:
         tactical_exit_reasons.append("Rejection nahe Widerstand / Hoch")
     if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 8:
         tactical_exit_reasons.append("Stark ueber MA20 gedehnt")
@@ -6547,37 +6594,46 @@ def _legacy_analyze_stock(
         tactical_exit_reasons.append("Kurs unter MA20")
     if pd.notna(rsi) and rsi >= 76 and pd.notna(ret1) and ret1 < 0:
         tactical_exit_reasons.append("ueberdehnte Rally kippt")
-    tactical_exit_reason_top = tactical_exit_reasons[0] if tactical_exit_reasons else "kein akuter taktischer Ruecksetzerhinweis"
+    if instrument_volatility_risk_score >= 55 and pd.notna(atr_pct):
+        tactical_exit_reasons.append(f"ATR {atr_pct:.1f}% zeigt erhoehte Kurzfrist-Volatilitaet")
+    tactical_exit_reason_top = tactical_exit_reasons[0] if tactical_exit_reasons else "leichte taktische Beobachtung ohne akuten Ruecksetzerhinweis"
 
     tactical_critical_signals = []
     tactical_watch_signals = []
     tactical_ok_signals = []
 
-    if failed_breakout or resistance_rejection_score >= 45:
+    if failed_breakout or resistance_rejection_score >= 48:
         tactical_critical_signals.append("Rejection / Fehlausbruch an Widerstand")
-    elif resistance_rejection_score >= 20:
+    elif resistance_rejection_score >= 24:
         tactical_watch_signals.append("Widerstandsnaehe mit erster Rejection")
     else:
         tactical_ok_signals.append("Keine klare Rejection an Widerstand")
 
-    if momentum_rollover_score >= 45:
+    if momentum_rollover_score >= 50:
         tactical_critical_signals.append("Momentum kippt kurzfristig")
-    elif momentum_rollover_score >= 20:
+    elif momentum_rollover_score >= 28:
         tactical_watch_signals.append("Momentum rollt sichtbar ab")
     else:
         tactical_ok_signals.append("Momentum bleibt stabil")
 
-    if short_term_pressure_score >= 40:
+    if short_term_pressure_score >= 44:
         tactical_critical_signals.append("Kurzfristiger Abgabedruck / Distribution")
-    elif short_term_pressure_score >= 18:
+    elif short_term_pressure_score >= 24:
         tactical_watch_signals.append("Erste Drucksignale im kurzfristigen Fenster")
     else:
         tactical_ok_signals.append("Kein markanter kurzfristiger Volumendruck")
 
-    if stretch_risk_score >= 42:
+    if stretch_risk_score >= 48:
         tactical_watch_signals.append("Rally ueberdehnt, Ruecksetzer anfaellig")
-    else:
+    elif stretch_risk_score <= 28:
         tactical_ok_signals.append("Keine starke Ueberdehnung")
+
+    if instrument_volatility_risk_score >= 60:
+        tactical_critical_signals.append("Titel selbst bleibt sehr ruecksetzeranfaellig")
+    elif instrument_volatility_risk_score >= 42:
+        tactical_watch_signals.append("Erhoehte Titel-Volatilitaet / Gap-Risiko")
+    else:
+        tactical_ok_signals.append("Titel-Risiko kurzfristig beherrschbar")
 
     tactical_signal_summary = tactical_critical_signals[:2] + tactical_watch_signals[:2]
 
@@ -6805,6 +6861,7 @@ def _legacy_analyze_stock(
         "tactical_exit_text": tactical_exit_text,
         "tactical_exit_action": tactical_exit_action,
         "tactical_exit_reason_top": tactical_exit_reason_top,
+        "instrument_volatility_risk_score": instrument_volatility_risk_score,
         "tactical_critical_signals": tactical_critical_signals,
         "tactical_watch_signals": tactical_watch_signals,
         "tactical_ok_signals": tactical_ok_signals,

@@ -11466,7 +11466,7 @@ if result is not None:
                     else:
                         ui_tactical_ok.append("Kein markanter kurzfristiger Volumendruck")
 
-            st.caption(f"Tactical-Block v31f | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
+            st.caption(f"Tactical-Block v31g | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
 
             px1, px2, px3, px4 = st.columns(4)
             with px1:
@@ -11529,27 +11529,33 @@ if result is not None:
                 else:
                     st.caption("Kein stabiler Gegenpol erkannt")
 
-            exs1, exs2, exs3, exs4, exs5 = st.columns(5)
-            exs1.metric("Trendbruch", f"{result.get('trend_break_score', 0)}/100")
-            exs2.metric("Momentum", f"{result.get('momentum_collapse_score', 0)}/100")
-            exs3.metric("Rel. Schwäche", f"{result.get('relative_weakness_score', 0)}/100")
-            exs4.metric("Distribution", f"{result.get('distribution_score', 0)}/100")
-            exs5.metric("Trigger", f"{result.get('exit_trigger_score', 0)}/100")
+            st.markdown("**Strukturelle Exit-Komponenten**")
+            sx1, sx2, sx3, sx4, sx5 = st.columns(5)
+            with sx1:
+                render_tactical_risk_card("Trendbruch", result.get('trend_break_score', 0), "Bruch wichtiger Trendstruktur; hoch = negativ")
+            with sx2:
+                render_tactical_risk_card("Momentum", result.get('momentum_collapse_score', 0), "Nachlassende Bewegungsstaerke; hoch = negativ")
+            with sx3:
+                render_tactical_risk_card("Rel. Schwaeche", result.get('relative_weakness_score', 0), "Underperformance vs. Markt/Sektor; hoch = negativ")
+            with sx4:
+                render_tactical_risk_card("Distribution", result.get('distribution_score', 0), "Abgabedruck auf Volumen; hoch = negativ")
+            with sx5:
+                render_tactical_risk_card("Trigger", result.get('exit_trigger_score', 0), "Naehe zu einem operativen Exit-Signal; hoch = negativer")
 
             st.markdown("**Tactical Teilkomponenten**")
             tx1, tx2, tx3, tx4, tx5, tx6 = st.columns(6)
             with tx1:
-                render_tactical_risk_card("Momentum Roll-over", mom_roll_ui if 'mom_roll_ui' in locals() and pd.notna(mom_roll_ui) else result.get('momentum_rollover_score', 0), "Kritisch, wenn Momentum klar abrollt")
+                render_tactical_risk_card("Momentum Roll-over", mom_roll_ui if 'mom_roll_ui' in locals() and pd.notna(mom_roll_ui) else result.get('momentum_rollover_score', 0), "Momentum kippt / rollt ab; hoch = kritisch")
             with tx2:
-                render_tactical_risk_card("Rejection", rej_ui if 'rej_ui' in locals() and pd.notna(rej_ui) else result.get('resistance_rejection_score', 0), "Nahe Hoch / Widerstand")
+                render_tactical_risk_card("Rejection", rej_ui if 'rej_ui' in locals() and pd.notna(rej_ui) else result.get('resistance_rejection_score', 0), "Ablehnung an Hoch / Widerstand; hoch = kritisch")
             with tx3:
-                render_tactical_risk_card("Kurzfrist-Druck", press_ui if 'press_ui' in locals() and pd.notna(press_ui) else result.get('short_term_pressure_score', 0), "Volumen- und Abgabedruck")
+                render_tactical_risk_card("Kurzfrist-Druck", press_ui if 'press_ui' in locals() and pd.notna(press_ui) else result.get('short_term_pressure_score', 0), "Kurzfristiger Volumen- und Abgabedruck; hoch = kritisch")
             with tx4:
-                render_tactical_risk_card("Stretch-Risiko", stretch_ui if 'stretch_ui' in locals() and pd.notna(stretch_ui) else result.get('stretch_risk_score', 0), "Ruecksetzergefahr nach Dehnung")
+                render_tactical_risk_card("Stretch-Risiko", stretch_ui if 'stretch_ui' in locals() and pd.notna(stretch_ui) else result.get('stretch_risk_score', 0), "Ruecksetzergefahr nach Dehnung; hoch = kritisch")
             with tx5:
-                render_tactical_risk_card("Fehlausbruch", fail_ui if 'fail_ui' in locals() and pd.notna(fail_ui) else result.get('failed_breakout_score', 0), "Breakout ohne Follow-through")
+                render_tactical_risk_card("Fehlausbruch", fail_ui if 'fail_ui' in locals() and pd.notna(fail_ui) else result.get('failed_breakout_score', 0), "Breakout ohne Follow-through; hoch = kritisch")
             with tx6:
-                render_tactical_risk_card("Titel-/Volatilitaets-Risiko", ui_instrument_risk if pd.notna(ui_instrument_risk) else 0, "Kurzfrist-/Gap-Risiko des Titels")
+                render_tactical_risk_card("Titel-/Volatilitaets-Risiko", ui_instrument_risk if pd.notna(ui_instrument_risk) else 0, "Kurzfrist-/Gap-Risiko des Titels; hoch = kritisch")
 
             if position_mode:
                 st.markdown("**Positionssicht**")

@@ -11564,26 +11564,33 @@ if result is not None:
                 else:
                     st.caption("Kein stabiler Gegenpol erkannt")
 
+            def _ui_parse_num(v):
+                try:
+                    s = str(v).strip().replace('%', '').replace(',', '.')
+                    return float(s)
+                except Exception:
+                    return None
+
             structural_override_active = False
-            struct_trend_ui = int(parse_num(result.get('trend_break_score', 0)) or 0)
-            struct_mom_ui = int(parse_num(result.get('momentum_collapse_score', 0)) or 0)
-            struct_relweak_ui = int(parse_num(result.get('relative_weakness_score', 0)) or 0)
-            struct_dist_ui = int(parse_num(result.get('distribution_score', 0)) or 0)
-            struct_trigger_ui = int(parse_num(result.get('exit_trigger_score', 0)) or 0)
+            struct_trend_ui = int(_ui_parse_num(result.get('trend_break_score', 0)) or 0)
+            struct_mom_ui = int(_ui_parse_num(result.get('momentum_collapse_score', 0)) or 0)
+            struct_relweak_ui = int(_ui_parse_num(result.get('relative_weakness_score', 0)) or 0)
+            struct_dist_ui = int(_ui_parse_num(result.get('distribution_score', 0)) or 0)
+            struct_trigger_ui = int(_ui_parse_num(result.get('exit_trigger_score', 0)) or 0)
 
             try:
-                market_cap_ui = float(parse_num(result.get('market_cap_b', result.get('market_cap', 0))) or 0)
+                market_cap_ui = float(_ui_parse_num(result.get('market_cap_b', result.get('market_cap', 0))) or 0)
             except Exception:
                 market_cap_ui = 0.0
-            atr_pct_ui = float(parse_num(result.get('atr_pct', 0)) or 0)
-            ret5_ui = float(parse_num(result.get('ret_5d_pct', result.get('ret5', 0))) or 0)
-            ret21_ui = float(parse_num(result.get('ret_21d_pct', result.get('ret21', 0))) or 0)
-            event_risk_ui = int(parse_num(result.get('event_risk_score', 0)) or 0)
-            close_px_ui = float(parse_num(result.get('price', result.get('close', 0))) or 0)
-            ma20_ui = float(parse_num(result.get('ma20', result.get('sma20', 0))) or 0)
-            volume_ratio_ui = float(parse_num(result.get('volume_ratio', result.get('vol_ratio', 0))) or 0)
-            rs_bench_ui = float(parse_num(result.get('rs_benchmark_score', 0)) or 0)
-            rs_accel_ui = float(parse_num(result.get('rs_acceleration_score', 0)) or 0)
+            atr_pct_ui = float(_ui_parse_num(result.get('atr_pct', 0)) or 0)
+            ret5_ui = float(_ui_parse_num(result.get('ret_5d_pct', result.get('ret5', 0))) or 0)
+            ret21_ui = float(_ui_parse_num(result.get('ret_21d_pct', result.get('ret21', 0))) or 0)
+            event_risk_ui = int(_ui_parse_num(result.get('event_risk_score', 0)) or 0)
+            close_px_ui = float(_ui_parse_num(result.get('price', result.get('close', 0))) or 0)
+            ma20_ui = float(_ui_parse_num(result.get('ma20', result.get('sma20', 0))) or 0)
+            volume_ratio_ui = float(_ui_parse_num(result.get('volume_ratio', result.get('vol_ratio', 0))) or 0)
+            rs_bench_ui = float(_ui_parse_num(result.get('rs_benchmark_score', 0)) or 0)
+            rs_accel_ui = float(_ui_parse_num(result.get('rs_acceleration_score', 0)) or 0)
             inst_risk_for_struct = int(ui_instrument_risk if 'ui_instrument_risk' in locals() and pd.notna(ui_instrument_risk) else 0)
             risky_title_ui = (inst_risk_for_struct >= 55) or (market_cap_ui > 0 and market_cap_ui < 2.0) or (atr_pct_ui >= 7.0) or (event_risk_ui >= 55)
 

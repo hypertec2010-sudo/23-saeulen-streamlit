@@ -11312,6 +11312,114 @@ if result is not None:
             st.subheader("Position & taktische Warnsignale")
             st.markdown('<div class="panel-caption">Struktureller Exit fuer Positionen plus schneller Tactical-Exit-Layer fuer drohende Ruecksetzer. Die taktischen Signale werden auch ohne eingetragene Position angezeigt.</div>', unsafe_allow_html=True)
 
+            ui_tactical_risk = result.get("tactical_exit_risk", 0)
+            ui_tactical_text = result.get("tactical_exit_text", "-")
+            ui_tactical_action = result.get("tactical_exit_action", "-")
+            ui_tactical_reason = result.get("tactical_exit_reason_top", "-")
+            ui_instrument_risk = result.get("instrument_volatility_risk_score", np.nan)
+            ui_tactical_critical = list(result.get("tactical_critical_signals", []) or [])
+            ui_tactical_watch = list(result.get("tactical_watch_signals", []) or [])
+            ui_tactical_ok = list(result.get("tactical_ok_signals", []) or [])
+
+            fallback_needed = (((pd.isna(ui_tactical_risk) or float(ui_tactical_risk) <= 0) and str(ui_tactical_text).strip() in {"", "-"}) or pd.isna(ui_instrument_risk))
+            if fallback_needed:
+                atr_pct_ui = result.get("atr_pct", np.nan)
+                event_risk_ui = result.get("event_risk_score", np.nan)
+                market_cap_ui = result.get("market_cap", np.nan)
+                ret1_ui = result.get("ret1", np.nan)
+                ret5_ui = result.get("ret5", np.nan)
+                ui_instrument_risk = 24
+                if pd.notna(atr_pct_ui):
+                    if atr_pct_ui >= 10:
+                        ui_instrument_risk += 26
+                    elif atr_pct_ui >= 7:
+                        ui_instrument_risk += 18
+                    elif atr_pct_ui >= 5:
+                        ui_instrument_risk += 10
+                    elif atr_pct_ui >= 3.5:
+                        ui_instrument_risk += 4
+                if pd.notna(event_risk_ui):
+                    if event_risk_ui >= 75:
+                        ui_instrument_risk += 18
+                    elif event_risk_ui >= 60:
+                        ui_instrument_risk += 12
+                    elif event_risk_ui >= 45:
+                        ui_instrument_risk += 6
+                if pd.notna(market_cap_ui):
+                    if market_cap_ui < 300_000_000:
+                        ui_instrument_risk += 18
+                    elif market_cap_ui < 1_000_000_000:
+                        ui_instrument_risk += 10
+                    elif market_cap_ui < 3_000_000_000:
+                        ui_instrument_risk += 4
+                if pd.notna(ret1_ui) and abs(ret1_ui) >= 8:
+                    ui_instrument_risk += 12
+                elif pd.notna(ret1_ui) and abs(ret1_ui) >= 5:
+                    ui_instrument_risk += 7
+                if pd.notna(ret5_ui) and abs(ret5_ui) >= 18:
+                    ui_instrument_risk += 10
+                elif pd.notna(ret5_ui) and abs(ret5_ui) >= 12:
+                    ui_instrument_risk += 6
+                ui_instrument_risk = min(100, ui_instrument_risk)
+
+                mom_roll_ui = result.get("momentum_rollover_score", np.nan)
+                rej_ui = result.get("resistance_rejection_score", np.nan)
+                press_ui = result.get("short_term_pressure_score", np.nan)
+                stretch_ui = result.get("stretch_risk_score", np.nan)
+                fail_ui = result.get("failed_breakout_score", np.nan)
+                if pd.isna(mom_roll_ui):
+                    mom_roll_ui = max(18, round(result.get("momentum_collapse_score", 0) * 0.9 + result.get("exit_trigger_score", 0) * 0.25))
+                if pd.isna(rej_ui):
+                    rej_ui = 18
+                if pd.isna(press_ui):
+                    press_ui = max(16, round(result.get("distribution_score", 0) * 0.8 + result.get("exit_trigger_score", 0) * 0.2))
+                if pd.isna(stretch_ui):
+                    stretch_ui = 22 if pd.notna(atr_pct_ui) and atr_pct_ui >= 5 else 16
+                if pd.isna(fail_ui):
+                    fail_ui = 18
+                chart_event_risk_ui = clamp(mom_roll_ui * 0.30 + rej_ui * 0.20 + press_ui * 0.20 + stretch_ui * 0.15 + fail_ui * 0.15)
+                ui_tactical_risk = round(clamp(chart_event_risk_ui * 0.68 + ui_instrument_risk * 0.32))
+                if ui_instrument_risk >= 55:
+                    ui_tactical_risk = max(ui_tactical_risk, 28)
+                elif ui_instrument_risk >= 42:
+                    ui_tactical_risk = max(ui_tactical_risk, 22)
+                if ui_tactical_risk >= 78:
+                    ui_tactical_text = "akute Ruecksetzergefahr"
+                    ui_tactical_action = "De-Risking / Teilverkauf"
+                elif ui_tactical_risk >= 60:
+                    ui_tactical_text = "de-risking sinnvoll"
+                    ui_tactical_action = "Stop enger ziehen"
+                elif ui_tactical_risk >= 42:
+                    ui_tactical_text = "Stop enger / Teilgewinn"
+                    ui_tactical_action = "Teilgewinn pruefen"
+                elif ui_tactical_risk >= 25:
+                    ui_tactical_text = "fruehe Warnung"
+                    ui_tactical_action = "Kurzfristig vorsichtiger"
+                else:
+                    ui_tactical_text = "ruhig, aber beobachten"
+                    ui_tactical_action = "Weiter halten / beobachten"
+                if ui_instrument_risk >= 60:
+                    ui_tactical_reason = "Titel mit hoher Kurzfrist- und Gap-Gefahr"
+                elif ui_instrument_risk >= 45:
+                    ui_tactical_reason = "Titel bleibt kurzfristig ruecksetzeranfaellig"
+                else:
+                    ui_tactical_reason = "leichte taktische Beobachtung ohne akuten Ruecksetzerhinweis"
+                if not ui_tactical_critical and not ui_tactical_watch and not ui_tactical_ok:
+                    if ui_instrument_risk >= 60:
+                        ui_tactical_critical.append("Titel selbst bleibt sehr ruecksetzeranfaellig")
+                    elif ui_instrument_risk >= 42:
+                        ui_tactical_watch.append("Erhoehte Titel-Volatilitaet / Gap-Risiko")
+                    if mom_roll_ui >= 38:
+                        ui_tactical_watch.append("Momentum rollt sichtbar ab")
+                    else:
+                        ui_tactical_ok.append("Momentum ohne akuten Kipp-Punkt")
+                    if press_ui >= 30:
+                        ui_tactical_watch.append("Erste Drucksignale im kurzfristigen Fenster")
+                    else:
+                        ui_tactical_ok.append("Kein markanter kurzfristiger Volumendruck")
+
+            st.caption(f"Tactical-Block v31e | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
+
             px1, px2, px3, px4 = st.columns(4)
             with px1:
                 render_tactical_risk_card("Exit-Score", exit_score_display, exit_score_text_display)
@@ -11330,26 +11438,26 @@ if result is not None:
                     unsafe_allow_html=True,
                 )
             with px3:
-                render_tactical_risk_card("Tactical Exit Risk", result.get('tactical_exit_risk', 0), result.get("tactical_exit_text", "-"))
+                render_tactical_risk_card("Tactical Exit Risk", ui_tactical_risk, ui_tactical_text)
             with px4:
                 st.markdown(
                     f"""
-                    <div class="horizon-card {ui_action_chip_class(result.get('tactical_exit_action', '-'))}" style="min-height:118px;">
+                    <div class="horizon-card {ui_action_chip_class(ui_tactical_action)}" style="min-height:118px;">
                         <div class="horizon-top">
                             <div class="horizon-label">Tactical Aktion</div>
                             <div class="horizon-icon">⚡</div>
                         </div>
-                        <div class="horizon-value" style="font-size:1.05rem;">{result.get('tactical_exit_action', '-')}</div>
-                        <div class="horizon-sub">{result.get('tactical_exit_text', '-')}</div>
+                        <div class="horizon-value" style="font-size:1.05rem;">{ui_tactical_action}</div>
+                        <div class="horizon-sub">{ui_tactical_text}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
-            st.markdown(f"**Taktischer Hauptgrund:** {result.get('tactical_exit_reason_top', '-')}")
+            st.markdown(f"**Taktischer Hauptgrund:** {ui_tactical_reason}")
             crit_col, watch_col, ok_col = st.columns(3)
             with crit_col:
-                crit = result.get("tactical_critical_signals", [])
+                crit = ui_tactical_critical
                 st.markdown("**🔴 Kritisch**")
                 if crit:
                     for item in crit:
@@ -11357,7 +11465,7 @@ if result is not None:
                 else:
                     st.caption("Keine akuten taktischen Exit-Signale")
             with watch_col:
-                watch = result.get("tactical_watch_signals", [])
+                watch = ui_tactical_watch
                 st.markdown("**🟠 Beobachten**")
                 if watch:
                     for item in watch:
@@ -11365,7 +11473,7 @@ if result is not None:
                 else:
                     st.caption("Keine fruehen Warnhinweise")
             with ok_col:
-                ok_items = result.get("tactical_ok_signals", [])
+                ok_items = ui_tactical_ok
                 st.markdown("**🟢 Unkritisch**")
                 if ok_items:
                     for item in ok_items[:3]:
@@ -11381,7 +11489,7 @@ if result is not None:
             exs5.metric("Trigger", f"{result.get('exit_trigger_score', 0)}/100")
 
             st.markdown("**Tactical Teilkomponenten**")
-            tx1, tx2, tx3, tx4, tx5 = st.columns(5)
+            tx1, tx2, tx3, tx4, tx5, tx6 = st.columns(6)
             with tx1:
                 render_tactical_risk_card("Momentum Roll-over", result.get('momentum_rollover_score', 0), "Kritisch, wenn Momentum klar abrollt")
             with tx2:
@@ -11392,6 +11500,8 @@ if result is not None:
                 render_tactical_risk_card("Stretch-Risiko", result.get('stretch_risk_score', 0), "Ruecksetzergefahr nach Dehnung")
             with tx5:
                 render_tactical_risk_card("Fehlausbruch", result.get('failed_breakout_score', 0), "Breakout ohne Follow-through")
+            with tx6:
+                render_tactical_risk_card("Titel-/Volatilitaets-Risiko", ui_instrument_risk if pd.notna(ui_instrument_risk) else 0, "Kurzfrist-/Gap-Risiko des Titels")
 
             if position_mode:
                 st.markdown("**Positionssicht**")

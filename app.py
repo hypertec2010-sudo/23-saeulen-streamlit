@@ -11286,9 +11286,14 @@ if result is not None:
                 s = float(score)
             except Exception:
                 return "blue"
-            if s >= 70:
+            # Strengere Warnlogik, damit die Exit-/Tactical-Sicht besser zur
+            # insgesamt eher kritischen Logik der App passt.
+            # 0-29  = gruen  (wirklich ruhig)
+            # 30-54 = amber  (beobachten / fruehe Warnung)
+            # 55+   = rot    (klar kritisch)
+            if s >= 55:
                 return "red"
-            if s >= 45:
+            if s >= 30:
                 return "amber"
             return "green"
 
@@ -11466,7 +11471,7 @@ if result is not None:
                     else:
                         ui_tactical_ok.append("Kein markanter kurzfristiger Volumendruck")
 
-            st.caption(f"Tactical-Block v31g | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
+            st.caption(f"Tactical-Block v31h | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
 
             px1, px2, px3, px4 = st.columns(4)
             with px1:

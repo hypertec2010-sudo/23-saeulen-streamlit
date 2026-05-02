@@ -11501,7 +11501,7 @@ if result is not None:
                     else:
                         ui_tactical_ok.append("Kein markanter kurzfristiger Volumendruck")
 
-            st.caption(f"Tactical-Block v31j | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
+            st.caption(f"Tactical-Block v31k | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
 
             px1, px2, px3, px4 = st.columns(4)
             with px1:
@@ -11564,18 +11564,89 @@ if result is not None:
                 else:
                     st.caption("Kein stabiler Gegenpol erkannt")
 
+            structural_override_active = False
+            struct_trend_ui = int(parse_num(result.get('trend_break_score', 0)) or 0)
+            struct_mom_ui = int(parse_num(result.get('momentum_collapse_score', 0)) or 0)
+            struct_relweak_ui = int(parse_num(result.get('relative_weakness_score', 0)) or 0)
+            struct_dist_ui = int(parse_num(result.get('distribution_score', 0)) or 0)
+            struct_trigger_ui = int(parse_num(result.get('exit_trigger_score', 0)) or 0)
+
+            try:
+                market_cap_ui = float(parse_num(result.get('market_cap_b', result.get('market_cap', 0))) or 0)
+            except Exception:
+                market_cap_ui = 0.0
+            atr_pct_ui = float(parse_num(result.get('atr_pct', 0)) or 0)
+            ret5_ui = float(parse_num(result.get('ret_5d_pct', result.get('ret5', 0))) or 0)
+            ret21_ui = float(parse_num(result.get('ret_21d_pct', result.get('ret21', 0))) or 0)
+            event_risk_ui = int(parse_num(result.get('event_risk_score', 0)) or 0)
+            close_px_ui = float(parse_num(result.get('price', result.get('close', 0))) or 0)
+            ma20_ui = float(parse_num(result.get('ma20', result.get('sma20', 0))) or 0)
+            volume_ratio_ui = float(parse_num(result.get('volume_ratio', result.get('vol_ratio', 0))) or 0)
+            rs_bench_ui = float(parse_num(result.get('rs_benchmark_score', 0)) or 0)
+            rs_accel_ui = float(parse_num(result.get('rs_acceleration_score', 0)) or 0)
+            inst_risk_for_struct = int(ui_instrument_risk if 'ui_instrument_risk' in locals() and pd.notna(ui_instrument_risk) else 0)
+            risky_title_ui = (inst_risk_for_struct >= 55) or (market_cap_ui > 0 and market_cap_ui < 2.0) or (atr_pct_ui >= 7.0) or (event_risk_ui >= 55)
+
+            if risky_title_ui:
+                structural_override_active = True
+                if struct_relweak_ui <= 5:
+                    rel_floor = 18
+                    if ret5_ui <= -5:
+                        rel_floor += 8
+                    elif ret5_ui <= -2:
+                        rel_floor += 4
+                    if ret21_ui <= -12:
+                        rel_floor += 10
+                    elif ret21_ui <= -6:
+                        rel_floor += 5
+                    if rs_bench_ui and rs_bench_ui < 45:
+                        rel_floor += 6
+                    if rs_accel_ui and rs_accel_ui < 45:
+                        rel_floor += 5
+                    if inst_risk_for_struct >= 65:
+                        rel_floor += 4
+                    struct_relweak_ui = max(struct_relweak_ui, min(58, rel_floor))
+
+                if struct_dist_ui <= 5:
+                    dist_floor = 16
+                    if ret5_ui <= -4:
+                        dist_floor += 6
+                    if volume_ratio_ui >= 1.25 and ret5_ui < 0:
+                        dist_floor += 6
+                    if close_px_ui > 0 and ma20_ui > 0 and close_px_ui < ma20_ui:
+                        dist_floor += 5
+                    if event_risk_ui >= 55:
+                        dist_floor += 4
+                    if inst_risk_for_struct >= 65:
+                        dist_floor += 5
+                    struct_dist_ui = max(struct_dist_ui, min(55, dist_floor))
+
+                if struct_trigger_ui <= 18:
+                    trig_floor = 18
+                    if close_px_ui > 0 and ma20_ui > 0 and close_px_ui < ma20_ui:
+                        trig_floor += 4
+                    if ret5_ui <= -4:
+                        trig_floor += 4
+                    if inst_risk_for_struct >= 65:
+                        trig_floor += 3
+                    struct_trigger_ui = max(struct_trigger_ui, min(40, trig_floor))
+
+                if struct_trend_ui <= 2 and close_px_ui > 0 and ma20_ui > 0 and close_px_ui < ma20_ui and ret21_ui <= -8:
+                    struct_trend_ui = 18
+
             st.markdown("**Strukturelle Exit-Komponenten**")
+            st.caption(f"Structural Override aktiv: {'ja' if structural_override_active else 'nein'}")
             sx1, sx2, sx3, sx4, sx5 = st.columns(5)
             with sx1:
-                render_tactical_risk_card("Trendbruch", result.get('trend_break_score', 0), "Bruch wichtiger Trendstruktur; hoch = negativ")
+                render_tactical_risk_card("Trendbruch", struct_trend_ui, "Bruch wichtiger Trendstruktur; hoch = negativ")
             with sx2:
-                render_tactical_risk_card("Momentum", result.get('momentum_collapse_score', 0), "Nachlassende Bewegungsstaerke; hoch = negativ")
+                render_tactical_risk_card("Momentum", struct_mom_ui, "Nachlassende Bewegungsstaerke; hoch = negativ")
             with sx3:
-                render_tactical_risk_card("Rel. Schwaeche", result.get('relative_weakness_score', 0), "Underperformance vs. Markt/Sektor; hoch = negativ")
+                render_tactical_risk_card("Rel. Schwaeche", struct_relweak_ui, "Underperformance vs. Markt/Sektor; hoch = negativ")
             with sx4:
-                render_tactical_risk_card("Distribution", result.get('distribution_score', 0), "Abgabedruck auf Volumen; hoch = negativ")
+                render_tactical_risk_card("Distribution", struct_dist_ui, "Abgabedruck auf Volumen; hoch = negativ")
             with sx5:
-                render_tactical_risk_card("Trigger", result.get('exit_trigger_score', 0), "Naehe zu einem operativen Exit-Signal; hoch = negativer")
+                render_tactical_risk_card("Trigger", struct_trigger_ui, "Naehe zu einem operativen Exit-Signal; hoch = negativer")
 
             st.markdown("**Tactical Teilkomponenten**")
             tx1, tx2, tx3, tx4, tx5, tx6 = st.columns(6)

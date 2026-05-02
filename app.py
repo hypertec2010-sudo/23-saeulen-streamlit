@@ -11348,11 +11348,12 @@ if result is not None:
                 s = float(score)
             except Exception:
                 s = 0.0
-            # Strenger als Tactical: bei strukturellen Exit-Signalen soll
-            # frueher orange erscheinen, damit fragile Titel nicht zu harmlos wirken.
-            if s >= 40:
+            # Etwas entspannter als v31l: strukturelle Exit-Signale sollen
+            # weiterhin frueh orange werden, aber rot erst bei klar kritischen
+            # strukturellen Warnlagen.
+            if s >= 50:
                 return "red"
-            if s >= 20:
+            if s >= 25:
                 return "amber"
             return "green"
 

@@ -6403,6 +6403,129 @@ def _legacy_analyze_stock(
         exit_trigger_score += 8
     exit_trigger_score = min(100, exit_trigger_score)
 
+    # ---------- Kurzfristiger Exit- / De-Risking-Layer ----------
+    momentum_rollover_score = 0
+    if pd.notna(rsi) and rsi < 60:
+        momentum_rollover_score += 6
+    if pd.notna(rsi) and rsi < 55:
+        momentum_rollover_score += 10
+    if pd.notna(macd_hist_current) and pd.notna(macd_hist_prev) and macd_hist_current < macd_hist_prev:
+        momentum_rollover_score += 10
+    if pd.notna(macd_v) and pd.notna(signal_v) and macd_v < signal_v:
+        momentum_rollover_score += 8
+    if pd.notna(price) and pd.notna(ma20) and price < ma20:
+        momentum_rollover_score += 16
+    if pd.notna(ret5) and ret5 < 0:
+        momentum_rollover_score += 10
+    if pd.notna(ret1) and pd.notna(ret2) and ret1 < 0 and ret2 < 0:
+        momentum_rollover_score += 8
+    momentum_rollover_score = min(100, momentum_rollover_score)
+
+    dist_to_ma20_pct = ((price / ma20) - 1) * 100 if pd.notna(price) and pd.notna(ma20) and ma20 != 0 else np.nan
+    upper_bb_stretch = pd.notna(bb_upper) and pd.notna(price) and price >= bb_upper * 0.995
+    stretch_risk_score = 0
+    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 5:
+        stretch_risk_score += 10
+    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 8:
+        stretch_risk_score += 16
+    if pd.notna(rsi) and rsi >= 70:
+        stretch_risk_score += 10
+    if pd.notna(rsi) and rsi >= 76:
+        stretch_risk_score += 14
+    if upper_bb_stretch:
+        stretch_risk_score += 10
+    if strong_winner_context:
+        stretch_risk_score += 8
+    stretch_risk_score = min(100, stretch_risk_score)
+
+    resistance_rejection_score = 0
+    near_high52 = pd.notna(high52) and pd.notna(price) and high52 > 0 and price >= high52 * 0.985
+    near_prev20_high = pd.notna(prev20_high) and pd.notna(price) and prev20_high > 0 and price >= prev20_high * 0.985
+    if down_day and (near_high52 or near_prev20_high):
+        resistance_rejection_score += 14
+    if down_day and high_volume and (near_high52 or near_prev20_high):
+        resistance_rejection_score += 16
+    if upper_bb_stretch and pd.notna(ret1) and ret1 < 0:
+        resistance_rejection_score += 10
+    if pd.notna(price) and pd.notna(ma20) and pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 6 and pd.notna(ret1) and ret1 < 0:
+        resistance_rejection_score += 10
+    resistance_rejection_score = min(100, resistance_rejection_score)
+
+    short_term_pressure_score = 0
+    if down_day and high_volume:
+        short_term_pressure_score += 16
+    if dist_day_1:
+        short_term_pressure_score += 18
+    if dist_day_prev:
+        short_term_pressure_score += 10
+    if pd.notna(ret5) and ret5 < -3:
+        short_term_pressure_score += 10
+    if pd.notna(vol_ratio) and vol_ratio > 1.25 and pd.notna(ret5) and ret5 < 0:
+        short_term_pressure_score += 10
+    short_term_pressure_score = min(100, short_term_pressure_score)
+
+    failed_breakout_score = 0
+    failed_breakout = False
+    if pd.notna(prev20_high) and pd.notna(prev_close) and pd.notna(price):
+        failed_breakout = prev_close > prev20_high * 1.002 and price < prev20_high * 0.998
+    if failed_breakout:
+        failed_breakout_score += 24
+    if failed_breakout and high_volume:
+        failed_breakout_score += 12
+    if pd.notna(ret5) and ret5 < 0 and (near_prev20_high or breakout_context):
+        failed_breakout_score += 10
+    failed_breakout_score = min(100, failed_breakout_score)
+
+    tactical_exit_risk = round(clamp(
+        momentum_rollover_score * 0.30
+        + resistance_rejection_score * 0.20
+        + short_term_pressure_score * 0.20
+        + stretch_risk_score * 0.15
+        + failed_breakout_score * 0.15
+    ))
+
+    if healthy_trend_context and not down_day and not dist_day_1 and pd.notna(rsi) and rsi >= 58:
+        tactical_exit_risk = max(0, tactical_exit_risk - 8)
+    if strong_winner_context and tactical_exit_risk >= 35:
+        tactical_exit_risk = min(100, tactical_exit_risk + 6)
+
+    if tactical_exit_risk >= 78:
+        tactical_exit_text = "akute Ruecksetzergefahr"
+    elif tactical_exit_risk >= 60:
+        tactical_exit_text = "de-risking sinnvoll"
+    elif tactical_exit_risk >= 42:
+        tactical_exit_text = "Stop enger / Teilgewinn"
+    elif tactical_exit_risk >= 25:
+        tactical_exit_text = "fruehe Warnung"
+    else:
+        tactical_exit_text = "unkritisch"
+
+    if tactical_exit_risk >= 78:
+        tactical_exit_action = "De-Risking / Teilverkauf"
+    elif tactical_exit_risk >= 60:
+        tactical_exit_action = "Stop enger ziehen"
+    elif tactical_exit_risk >= 42:
+        tactical_exit_action = "Teilgewinn pruefen" if winner_context else "Stop enger ziehen"
+    elif tactical_exit_risk >= 25:
+        tactical_exit_action = "Kurzfristig vorsichtiger"
+    else:
+        tactical_exit_action = "Kein taktischer Exit"
+
+    tactical_exit_reasons = []
+    if failed_breakout:
+        tactical_exit_reasons.append("Fehlausbruch am 20T-Hoch")
+    if resistance_rejection_score >= 18:
+        tactical_exit_reasons.append("Rejection nahe Widerstand / Hoch")
+    if pd.notna(dist_to_ma20_pct) and dist_to_ma20_pct >= 8:
+        tactical_exit_reasons.append("Stark ueber MA20 gedehnt")
+    if dist_day_1:
+        tactical_exit_reasons.append("Distributionstag im kurzfristigen Fenster")
+    if pd.notna(price) and pd.notna(ma20) and price < ma20:
+        tactical_exit_reasons.append("Kurs unter MA20")
+    if pd.notna(rsi) and rsi >= 76 and pd.notna(ret1) and ret1 < 0:
+        tactical_exit_reasons.append("ueberdehnte Rally kippt")
+    tactical_exit_reason_top = tactical_exit_reasons[0] if tactical_exit_reasons else "kein akuter taktischer Ruecksetzerhinweis"
+
     exit_score = round(clamp(
         trend_break_score * 0.31
         + momentum_collapse_score * 0.20
@@ -6480,11 +6603,15 @@ def _legacy_analyze_stock(
         legacy_action_for_merge = legacy_position_action if "legacy_position_action" in locals() else position_action
         if exit_action in {"Verkaufen", "Risiko reduzieren"}:
             position_action = exit_action
-        elif exit_action == "Teilgewinn prüfen":
+        elif tactical_exit_risk >= 78:
+            position_action = "De-Risking / Teilverkauf"
+        elif exit_action == "Teilgewinn prüfen" or tactical_exit_action == "Teilgewinn pruefen":
             position_action = "Teilgewinn prüfen"
-        elif exit_action == "Beobachten":
+        elif tactical_exit_action == "Stop enger ziehen":
+            position_action = "Halten / Stop enger"
+        elif exit_action == "Beobachten" or tactical_exit_action == "Kurzfristig vorsichtiger":
             position_action = "Halten / eng beobachten"
-        elif str(add_on_action).lower().startswith("ja") and exit_score < 25:
+        elif str(add_on_action).lower().startswith("ja") and exit_score < 25 and tactical_exit_risk < 25:
             position_action = "Halten / ggf. ausbauen"
         elif str(partial_profit_action).lower().startswith("ja") and winner_context:
             position_action = "Teilgewinn prüfen"
@@ -6493,6 +6620,10 @@ def _legacy_analyze_stock(
 
         if de_risk_gain_zone and exit_action in {"Teilgewinn prüfen", "Beobachten"}:
             partial_profit_action = "Ja, Teilgewinn prüfen"
+        elif tactical_exit_risk >= 78:
+            partial_profit_action = "Ja, Teilgewinn prüfen"
+            add_on_action = "Nein"
+            risk_note = f"Taktischer Exit: akute Ruecksetzergefahr | {tactical_exit_reason_top} | {pnl_bucket}"
         elif exit_action == "Verkaufen":
             partial_profit_action = "Nein"
             add_on_action = "Nein"
@@ -6500,16 +6631,19 @@ def _legacy_analyze_stock(
         elif exit_action == "Risiko reduzieren":
             add_on_action = "Nein"
             risk_note = f"Exit-Modell: Risikoabbau sinnvoll | {pnl_bucket}"
-        elif exit_action == "Teilgewinn prüfen":
+        elif exit_action == "Teilgewinn prüfen" or tactical_exit_action == "Teilgewinn pruefen":
             partial_profit_action = "Ja, Teilgewinn prüfen"
-            risk_note = f"Gewinnsicherung sinnvoll | {pnl_bucket}"
-        elif exit_action == "Beobachten":
-            risk_note = f"Erste Exit-Schwäche | {pnl_bucket}"
+            risk_note = f"Gewinnsicherung sinnvoll | {tactical_exit_reason_top if tactical_exit_risk >= 42 else pnl_bucket}"
+        elif tactical_exit_action == "Stop enger ziehen":
+            stop_action = f"Stop enger ziehen | {stop_action}" if str(stop_action).strip() not in {"", "-", "Nicht anwendbar"} else "Stop enger ziehen"
+            risk_note = f"Kurzfristige Ruecksetzergefahr | {tactical_exit_reason_top}"
+        elif exit_action == "Beobachten" or tactical_exit_action == "Kurzfristig vorsichtiger":
+            risk_note = f"Fruehe Exit-Schwäche | {tactical_exit_reason_top if tactical_exit_risk >= 25 else pnl_bucket}"
         elif str(add_on_action).lower().startswith("ja"):
             risk_note = f"Konstruktive Lage trotz Positionsmodus | {pnl_bucket}"
 
-        if pd.notna(days_earn) and days_earn <= 7 and exit_score >= 45:
-            risk_note = f"Earnings-Risiko bei erhöhter Exit-Schwäche | {pnl_bucket}"
+        if pd.notna(days_earn) and days_earn <= 7 and max(exit_score, tactical_exit_risk) >= 45:
+            risk_note = f"Earnings-Risiko bei erhoehter Exit-Schwäche | {pnl_bucket}"
 
     exit_reason_list = []
     if pd.notna(price) and pd.notna(ma50) and price < ma50:
@@ -6534,6 +6668,8 @@ def _legacy_analyze_stock(
         exit_reason_list.append("Distributionstag")
     if de_risk_gain_zone and not exit_reason_list:
         exit_reason_list.append("Gewinnzone erreicht, Teilgewinn sinnvoll")
+    if tactical_exit_risk >= 42:
+        exit_reason_list.insert(0, tactical_exit_reason_top)
 
     # Doppelte Exit-Gründe entfernen, Reihenfolge aber beibehalten
     deduped_exit_reason_list = []
@@ -6610,6 +6746,15 @@ def _legacy_analyze_stock(
         "position_action": position_action,
         "exit_score": exit_score,
         "exit_score_text": exit_score_text,
+        "tactical_exit_risk": tactical_exit_risk,
+        "tactical_exit_text": tactical_exit_text,
+        "tactical_exit_action": tactical_exit_action,
+        "tactical_exit_reason_top": tactical_exit_reason_top,
+        "momentum_rollover_score": momentum_rollover_score,
+        "resistance_rejection_score": resistance_rejection_score,
+        "short_term_pressure_score": short_term_pressure_score,
+        "stretch_risk_score": stretch_risk_score,
+        "failed_breakout_score": failed_breakout_score,
         "trend_break_score": trend_break_score,
         "momentum_collapse_score": momentum_collapse_score,
         "relative_weakness_score": relative_weakness_score,
@@ -11027,7 +11172,7 @@ if result is not None:
             px1, px2, px3, px4 = st.columns(4)
             px1.metric("Exit-Score", f"{exit_score_display}/100")
             px2.metric("Exit-Aktion", exit_action_display)
-            px3.metric("Hauptgrund", exit_reason_top_display)
+            px3.metric("Taktischer Exit", f"{result.get('tactical_exit_risk', 0)}/100", result.get("tactical_exit_text", "-"))
             px4.metric("P&L-Kontext", result.get("pnl_bucket", "-"))
 
             exs1, exs2, exs3, exs4, exs5 = st.columns(5)
@@ -11036,6 +11181,15 @@ if result is not None:
             exs3.metric("Rel. Schwäche", f"{result.get('relative_weakness_score', 0)}/100")
             exs4.metric("Distribution", f"{result.get('distribution_score', 0)}/100")
             exs5.metric("Trigger", f"{result.get('exit_trigger_score', 0)}/100")
+
+            tx1, tx2, tx3, tx4, tx5 = st.columns(5)
+            tx1.metric("Momentum Roll-over", f"{result.get('momentum_rollover_score', 0)}/100")
+            tx2.metric("Rejection", f"{result.get('resistance_rejection_score', 0)}/100")
+            tx3.metric("Kurzfrist-Druck", f"{result.get('short_term_pressure_score', 0)}/100")
+            tx4.metric("Stretch-Risiko", f"{result.get('stretch_risk_score', 0)}/100")
+            tx5.metric("Fehlausbruch", f"{result.get('failed_breakout_score', 0)}/100")
+
+            st.caption(f"Taktischer Hauptgrund: {result.get('tactical_exit_reason_top', '-')}")
 
             st.subheader("Position")
             if not position_mode:
@@ -11055,7 +11209,8 @@ if result is not None:
                 st.write(
                     f"Die Positionsentscheidung kombiniert Investment-Case ({investment_case_score}/100), "
                     f"Einstiegs-Case ({trading_case_score}/100), Setup-Confidence ({fmt_num(setup_confidence,0)}/100), "
-                    f"Marktumfeld ({market_regime_label(market_info['regime'])}) und die bisherige Performance seit Einstieg."
+                    f"Marktumfeld ({market_regime_label(market_info['regime'])}), die bisherige Performance seit Einstieg "
+                    f"und jetzt zusaetzlich einen kurzfristigen Tactical-Exit-Layer ({result.get('tactical_exit_risk', 0)}/100)."
                 )
 
 

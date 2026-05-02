@@ -9,6 +9,41 @@ import warnings
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
 
+def _ultra_bias_from_signal(signal_label, confirmation_text=None, strength_value=None):
+    lbl = str(signal_label or "").strip().lower()
+    conf = str(confirmation_text or "").strip().lower()
+    try:
+        strength = float(strength_value) if strength_value is not None else None
+    except Exception:
+        strength = None
+
+    if "bull" in lbl:
+        return "Bestaetigt bullish" if ("vorhand" in conf or (strength is not None and strength >= 60)) else "Leicht bullish"
+    if "bear" in lbl:
+        return "Bestaetigt bearish" if ("vorhand" in conf or (strength is not None and strength >= 60)) else "Leicht bearish"
+    if "beob" in lbl:
+        # infer tilt from zone wording if possible
+        if "support" in lbl:
+            return "Leicht bullish"
+        if "widerstand" in lbl:
+            return "Leicht bearish"
+        return "Neutral"
+    return "Neutral"
+
+def _ultra_bias_badge(bias_label):
+    b = str(bias_label or "").strip().lower()
+    if "bestaetigt bullish" in b:
+        return "🟢"
+    if "leicht bullish" in b:
+        return "🟠"
+    if "neutral" in b:
+        return "⚪"
+    if "leicht bearish" in b:
+        return "🟠"
+    if "bestaetigt bearish" in b:
+        return "🔴"
+    return "⚪"
+
 def _ultra_short_term_signal_badge(signal_label):
     label = str(signal_label or "").strip().lower()
     if "bull" in label:
@@ -80,7 +115,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v14.0.1"
+APP_VERSION = "v14.0.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",

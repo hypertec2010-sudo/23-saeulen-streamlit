@@ -11343,6 +11343,35 @@ if result is not None:
                 unsafe_allow_html=True,
             )
 
+        def structural_risk_class(score):
+            try:
+                s = float(score)
+            except Exception:
+                s = 0.0
+            # Strenger als Tactical: bei strukturellen Exit-Signalen soll
+            # frueher orange erscheinen, damit fragile Titel nicht zu harmlos wirken.
+            if s >= 40:
+                return "red"
+            if s >= 20:
+                return "amber"
+            return "green"
+
+        def render_structural_risk_card(label, score, sub=""):
+            tone = structural_risk_class(score)
+            st.markdown(
+                f"""
+                <div class="horizon-card {tone}" style="min-height:118px;">
+                    <div class="horizon-top">
+                        <div class="horizon-label">{label}</div>
+                        <div class="horizon-icon">{'🔴' if tone == 'red' else '🟠' if tone == 'amber' else '🟢'}</div>
+                    </div>
+                    <div class="horizon-value">{fmt_num(score,0)}/100</div>
+                    <div class="horizon-sub">{sub}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
         with t7:
             st.subheader("Position & taktische Warnsignale")
             st.markdown('<div class="panel-caption">Struktureller Exit fuer Positionen plus schneller Tactical-Exit-Layer fuer drohende Ruecksetzer. Die taktischen Signale werden auch ohne eingetragene Position angezeigt.</div>', unsafe_allow_html=True)
@@ -11504,7 +11533,8 @@ if result is not None:
             st.caption(f"Tactical-Block v31k | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
 
             px1, px2, px3, px4 = st.columns(4)
-            with px1:
+            exit_score_slot = px1.empty()
+            with exit_score_slot.container():
                 render_tactical_risk_card("Exit-Score", exit_score_display, exit_score_text_display)
             with px2:
                 st.markdown(
@@ -11641,19 +11671,35 @@ if result is not None:
                 if struct_trend_ui <= 2 and close_px_ui > 0 and ma20_ui > 0 and close_px_ui < ma20_ui and ret21_ui <= -8:
                     struct_trend_ui = 18
 
+            structural_pressure_ui = int(round(
+                0.12 * struct_trend_ui +
+                0.34 * struct_mom_ui +
+                0.18 * struct_relweak_ui +
+                0.18 * struct_dist_ui +
+                0.18 * struct_trigger_ui
+            ))
+            exit_score_display_ui = int(exit_score_display)
+            exit_score_text_ui = str(exit_score_text_display)
+            if structural_override_active:
+                exit_score_display_ui = max(exit_score_display_ui, min(44, int(round(0.60 * exit_score_display_ui + 0.40 * structural_pressure_ui))))
+                if exit_score_display_ui >= 30 and str(exit_score_text_ui).strip().lower() == 'stabil':
+                    exit_score_text_ui = 'beobachten'
+            with exit_score_slot.container():
+                render_tactical_risk_card("Exit-Score", exit_score_display_ui, exit_score_text_ui)
+
             st.markdown("**Strukturelle Exit-Komponenten**")
-            st.caption(f"Structural Override aktiv: {'ja' if structural_override_active else 'nein'}")
+            st.caption(f"Structural Override aktiv: {'ja' if structural_override_active else 'nein'} | Structural Pressure: {structural_pressure_ui}/100")
             sx1, sx2, sx3, sx4, sx5 = st.columns(5)
             with sx1:
-                render_tactical_risk_card("Trendbruch", struct_trend_ui, "Bruch wichtiger Trendstruktur; hoch = negativ")
+                render_structural_risk_card("Trendbruch", struct_trend_ui, "Bruch wichtiger Trendstruktur; hoch = negativ")
             with sx2:
-                render_tactical_risk_card("Momentum", struct_mom_ui, "Nachlassende Bewegungsstaerke; hoch = negativ")
+                render_structural_risk_card("Momentum", struct_mom_ui, "Nachlassende Bewegungsstaerke; hoch = negativ")
             with sx3:
-                render_tactical_risk_card("Rel. Schwaeche", struct_relweak_ui, "Underperformance vs. Markt/Sektor; hoch = negativ")
+                render_structural_risk_card("Rel. Schwaeche", struct_relweak_ui, "Underperformance vs. Markt/Sektor; hoch = negativ")
             with sx4:
-                render_tactical_risk_card("Distribution", struct_dist_ui, "Abgabedruck auf Volumen; hoch = negativ")
+                render_structural_risk_card("Distribution", struct_dist_ui, "Abgabedruck auf Volumen; hoch = negativ")
             with sx5:
-                render_tactical_risk_card("Trigger", struct_trigger_ui, "Naehe zu einem operativen Exit-Signal; hoch = negativer")
+                render_structural_risk_card("Trigger", struct_trigger_ui, "Naehe zu einem operativen Exit-Signal; hoch = negativer")
 
             st.markdown("**Tactical Teilkomponenten**")
             tx1, tx2, tx3, tx4, tx5, tx6 = st.columns(6)

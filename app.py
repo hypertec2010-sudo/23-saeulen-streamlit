@@ -144,7 +144,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v14.0.4"
+APP_VERSION = "v14.0.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -12041,7 +12041,15 @@ if result is not None:
 
                 p4, p5, p6 = st.columns(3)
                 p4.metric("Stop-Anpassung", stop_action)
-                p5.metric("Performance seit Einstieg", fmt_num(tb_perf, 1, "%"))
+                tb_perf = locals().get("tb_perf", None)
+                    if tb_perf is None:
+                        try:
+                            _buy_in_safe = float((result or {}).get("buy_in", 0) or 0)
+                            _price_safe = float((result or {}).get("price", 0) or 0)
+                            tb_perf = ((_price_safe / _buy_in_safe) - 1.0) * 100.0 if _buy_in_safe > 0 and _price_safe > 0 else None
+                        except Exception:
+                            tb_perf = None
+                    p5.metric("Performance seit Einstieg", fmt_num(tb_perf, 1, "%"))
                 p6.metric("Risiko-Hinweis", risk_note)
 
                 st.markdown("**Einordnung**")

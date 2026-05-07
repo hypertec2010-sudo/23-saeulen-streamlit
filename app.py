@@ -1098,6 +1098,72 @@ div[data-testid="stExpander"] summary{
 .bullet-card h4{margin:0 0 10px 0;color:#f8fafc;font-size:0.98rem;}
 .bullet-card ul{margin:0;padding-left:18px;}
 .bullet-card li{color:#d1d5db;line-height:1.5;margin-bottom:4px;}
+
+.mobile-ranking-card{
+    background:linear-gradient(180deg,#111827 0%, #0b1220 100%);
+    border:1px solid #243042;
+    border-radius:18px;
+    padding:14px 14px 12px 14px;
+    margin:0 0 12px 0;
+    box-shadow:0 12px 26px rgba(0,0,0,0.16);
+}
+.mobile-ranking-head{margin-bottom:10px;}
+.mobile-ranking-ticker{
+    color:#f8fafc;
+    font-size:1.02rem;
+    font-weight:900;
+    letter-spacing:0.02em;
+}
+.mobile-ranking-name{
+    color:#cbd5e1;
+    font-size:0.90rem;
+    margin-top:2px;
+}
+.mobile-ranking-sub{
+    color:#94a3b8;
+    font-size:0.80rem;
+    margin-top:4px;
+    line-height:1.35;
+}
+.mobile-ranking-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:8px;
+}
+.mobile-rank-chip{
+    background:rgba(255,255,255,0.03);
+    border:1px solid #243042;
+    border-radius:14px;
+    padding:8px 10px;
+}
+.mobile-rank-chip-label{
+    color:#94a3b8;
+    font-size:0.73rem;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    margin-bottom:3px;
+}
+.mobile-rank-chip-value{
+    color:#f8fafc;
+    font-size:0.92rem;
+    font-weight:800;
+    line-height:1.25;
+}
+@media (max-width: 768px){
+    .mobile-ranking-grid{
+        grid-template-columns:1fr 1fr;
+        gap:7px;
+    }
+    .mobile-ranking-card{
+        padding:13px 12px 11px 12px;
+        border-radius:16px;
+    }
+    .mobile-rank-chip-value{
+        font-size:0.88rem;
+    }
+}
+
 .mobile-form-card{
     background:linear-gradient(180deg,#111827 0%, #0b1220 100%);
     border:1px solid #243042;
@@ -9463,6 +9529,64 @@ if st.session_state.get("auto_run_requested", False):
 
 
 
+
+def render_mobile_ranking_cards(df):
+    if df is None or df.empty:
+        return
+
+    def _safe(v):
+        if v is None:
+            return "-"
+        s = str(v).strip()
+        return html.escape(s) if s else "-"
+
+    key_columns = [
+        ("Investment-Attraktivität", "Investment"),
+        ("Einstieg jetzt attraktiv?", "Einstieg"),
+        ("Setup-Confidence", "Setup"),
+        ("Trade-Struktur", "Trade"),
+        ("Kurzfrist-Timing", "Timing"),
+        ("Trigger-Status", "Trigger"),
+        ("Handlung", "Aktion"),
+        ("Exit-Score", "Exit"),
+        ("Exit-Aktion", "Exit-Aktion"),
+    ]
+
+    for _, row in df.iterrows():
+        ticker = _safe(row.get("Ticker", "-"))
+        name = _safe(row.get("Unternehmen", row.get("Name", "-")))
+        subtitle_bits = []
+        if "Sektor-Stärke" in df.columns:
+            subtitle_bits.append(f"Sektor: {_safe(row.get('Sektor-Stärke', '-'))}")
+        if "Leadership-Status" in df.columns:
+            subtitle_bits.append(f"Leadership: {_safe(row.get('Leadership-Status', '-'))}")
+        subtitle = " | ".join([b for b in subtitle_bits if b])
+
+        chips = []
+        for col, label in key_columns:
+            if col in df.columns:
+                chips.append(
+                    f"<div class='mobile-rank-chip'><div class='mobile-rank-chip-label'>{label}</div>"
+                    f"<div class='mobile-rank-chip-value'>{_safe(row.get(col, '-'))}</div></div>"
+                )
+
+        st.markdown(
+            f"""
+            <div class="mobile-ranking-card">
+                <div class="mobile-ranking-head">
+                    <div class="mobile-ranking-ticker">{ticker}</div>
+                    <div class="mobile-ranking-name">{name}</div>
+                    {"<div class='mobile-ranking-sub'>" + subtitle + "</div>" if subtitle else ""}
+                </div>
+                <div class="mobile-ranking-grid">
+                    {''.join(chips)}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 def style_ranking_table(df):
     if df is None or df.empty:
         return df
@@ -9900,12 +10024,25 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
         ] if c in ranking_df.columns
     ]
     ranking_display_df = ranking_df[ranking_cols].copy()
-    st.dataframe(
-        style_ranking_table(ranking_display_df),
-        hide_index=True,
-        use_container_width=True,
-        height=min(420, 45 * len(ranking_display_df) + 40)
+
+    ranking_view = st.radio(
+        "Ergebnisansicht",
+        options=["Kompakte Kartenansicht", "Tabelle"],
+        index=0,
+        horizontal=True,
+        key="ranking_result_view_mode"
     )
+
+    if ranking_view == "Kompakte Kartenansicht":
+        st.caption("Für Mobilgeräte optimierte Kartenansicht der Screener-Ergebnisse.")
+        render_mobile_ranking_cards(ranking_display_df)
+    else:
+        st.dataframe(
+            style_ranking_table(ranking_display_df),
+            hide_index=True,
+            use_container_width=True,
+            height=min(420, 45 * len(ranking_display_df) + 40)
+        )
 
     try:
         resolved_df = pd.DataFrame(resolved_input_rows)

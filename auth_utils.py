@@ -1,12 +1,29 @@
 import hmac
+import os
 import streamlit as st
 
 
-def check_password(app_password: str) -> bool:
+def _resolve_password(app_password=None):
+    if app_password is not None:
+        return str(app_password)
+    # kompatibel mit bestehenden Aufrufen ohne Argument
+    return str(
+        os.getenv("APP_PASSWORD")
+        or os.getenv("STREAMLIT_APP_PASSWORD")
+        or st.secrets.get("APP_PASSWORD", "")
+        or st.secrets.get("app_password", "")
+    )
+
+
+def check_password(app_password=None) -> bool:
     """
-    Simple password gate for Streamlit that is robust against missing
-    session_state keys after reloads / idle timeouts.
+    Robuster Passwortschutz für Streamlit.
+
+    - funktioniert mit check_password()
+    - funktioniert auch mit check_password(app_password)
+    - schützt gegen fehlende session_state-Keys nach Reload / Timeout
     """
+    resolved_password = _resolve_password(app_password)
 
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
@@ -15,9 +32,8 @@ def check_password(app_password: str) -> bool:
 
     def password_entered():
         entered = st.session_state.get("password", "")
-        if hmac.compare_digest(str(entered), str(app_password)):
+        if resolved_password and hmac.compare_digest(str(entered), str(resolved_password)):
             st.session_state["password_correct"] = True
-            # Passwort aus dem State entfernen, damit es nicht unnötig erhalten bleibt
             st.session_state.pop("password", None)
         else:
             st.session_state["password_correct"] = False

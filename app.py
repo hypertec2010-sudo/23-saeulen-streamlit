@@ -9962,7 +9962,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
         summary = _summary(daily_sig, hourly_sig)
 
         st.markdown("### Candlestick Kauf-/Verkaufsanalyse")
-        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand. Der Stundenchart nutzt jetzt einen eigenen 60m-Datenloader.")
+        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand. Die Candle-Lesart fliesst leicht in Ultra-Kurzfrist und taktische Einordnung ein.")
         debug_info = get_intraday_hourly_debug_info(
             result=result if "result" in locals() else None,
             ticker=(result.get("ticker") if "result" in locals() and isinstance(result, dict) else None),
@@ -10012,6 +10012,70 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
         )
     except Exception as _candle_err:
         st.info("Candlestick-Analyse aktuell nicht verfuegbar.")
+
+
+
+def build_candlestick_bias_package(daily_df, hourly_df=None, context_hint=""):
+    try:
+        daily_sig = detect_candlestick_signal(daily_df, context_hint=context_hint)
+        hourly_sig = detect_candlestick_signal(hourly_df, context_hint=context_hint) if hourly_df is not None and hasattr(hourly_df, "empty") and not hourly_df.empty else {
+            "pattern": "-",
+            "bias": "Neutral",
+            "tone": "neutral",
+            "strength": 0,
+            "confirmation": "fehlt",
+            "reading": "Kein Stundenchart-Signal verfuegbar.",
+        }
+
+        score = 0
+        reasons = []
+
+        # Tageschart bekommt etwas mehr Gewicht als Stundenchart
+        if daily_sig["tone"] == "bullish":
+            score += 10 if "bestaetigt" in str(daily_sig["bias"]).lower() else 6
+            reasons.append("Tageschart-Candle bullisch")
+        elif daily_sig["tone"] == "bearish":
+            score -= 10 if "bestaetigt" in str(daily_sig["bias"]).lower() else 6
+            reasons.append("Tageschart-Candle baerisch")
+
+        if hourly_sig["tone"] == "bullish":
+            score += 6 if "bestaetigt" in str(hourly_sig["bias"]).lower() else 3
+            reasons.append("Stundenchart-Candle bullisch")
+        elif hourly_sig["tone"] == "bearish":
+            score -= 6 if "bestaetigt" in str(hourly_sig["bias"]).lower() else 3
+            reasons.append("Stundenchart-Candle baerisch")
+
+        if "support" in str(context_hint).lower() and daily_sig["tone"] == "bullish":
+            score += 2
+        if ("widerstand" in str(context_hint).lower() or "r1" in str(context_hint).lower()) and daily_sig["tone"] == "bearish":
+            score -= 2
+
+        score = max(-18, min(18, int(round(score))))
+        label = "neutral"
+        if score >= 8:
+            label = "bullish"
+        elif score <= -8:
+            label = "bearish"
+        elif score > 0:
+            label = "leicht bullish"
+        elif score < 0:
+            label = "leicht bearish"
+
+        return {
+            "daily": daily_sig,
+            "hourly": hourly_sig,
+            "score": score,
+            "label": label,
+            "reasons": reasons[:3],
+        }
+    except Exception:
+        return {
+            "daily": {"tone": "neutral", "bias": "Neutral"},
+            "hourly": {"tone": "neutral", "bias": "Neutral"},
+            "score": 0,
+            "label": "neutral",
+            "reasons": [],
+        }
 
 
 def render_mobile_ranking_cards(df):
@@ -11873,7 +11937,13 @@ if result is not None:
             fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
             st.plotly_chart(fig, use_container_width=True)
             result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
-            render_candlestick_dual_timeframe_block(chart_df, get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df), context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []), result=result if "result" in locals() else None)
+            hourly_candle_df = get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df)
+            candle_bias_pkg = build_candlestick_bias_package(chart_df, hourly_candle_df, context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []))
+            if isinstance(result, dict):
+                result["candlestick_bias_pkg"] = candle_bias_pkg
+                result["candlestick_bias_label"] = candle_bias_pkg.get("label", "neutral")
+                result["candlestick_bias_score"] = candle_bias_pkg.get("score", 0)
+            render_candlestick_dual_timeframe_block(chart_df, hourly_candle_df, context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []), result=result if "result" in locals() else None)
 
 
             if chart_structures and show_sr_zones:

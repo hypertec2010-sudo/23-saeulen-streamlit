@@ -9532,6 +9532,82 @@ if st.session_state.get("auto_run_requested", False):
 
 
 
+
+def get_intraday_hourly_df_for_candles(result=None, chart_df=None):
+    """
+    Versucht einen Stundenchart-Datenpfad fuer den Candlestick-Block zu finden.
+    Reihenfolge:
+    1. result["intraday_hourly_df"]
+    2. result["hourly_df"]
+    3. result["intraday_df"] -> auf 1H resamplen
+    4. chart_df mit DatetimeIndex und intraday Frequenz -> auf 1H resamplen
+    """
+    try:
+        candidates = []
+        if isinstance(result, dict):
+            candidates.extend([
+                result.get("intraday_hourly_df"),
+                result.get("hourly_df"),
+            ])
+
+        intraday_df = None
+        if isinstance(result, dict):
+            intraday_df = result.get("intraday_df")
+
+        for cand in candidates:
+            if cand is not None and hasattr(cand, "empty") and not cand.empty:
+                return cand.copy()
+
+        def _to_hourly(df):
+            if df is None or not hasattr(df, "empty") or df.empty:
+                return None
+            _df = df.copy()
+            if not hasattr(_df.index, "inferred_type") or "datetime" not in str(_df.index.inferred_type):
+                if "Datetime" in _df.columns:
+                    _df["Datetime"] = pd.to_datetime(_df["Datetime"], errors="coerce")
+                    _df = _df.set_index("Datetime")
+                elif "Date" in _df.columns:
+                    _df["Date"] = pd.to_datetime(_df["Date"], errors="coerce")
+                    _df = _df.set_index("Date")
+                else:
+                    return None
+
+            if len(_df) < 6:
+                return None
+
+            agg = {}
+            if "Open" in _df.columns: agg["Open"] = "first"
+            if "High" in _df.columns: agg["High"] = "max"
+            if "Low" in _df.columns: agg["Low"] = "min"
+            if "Close" in _df.columns: agg["Close"] = "last"
+            if "Volume" in _df.columns: agg["Volume"] = "sum"
+            if not {"Open","High","Low","Close"}.issubset(set(_df.columns)):
+                return None
+
+            out = _df.resample("1H").agg(agg).dropna(subset=["Open","High","Low","Close"], how="any")
+            return out.tail(120) if out is not None and not out.empty else None
+
+        hourly = _to_hourly(intraday_df)
+        if hourly is not None and not hourly.empty:
+            return hourly
+
+        if chart_df is not None and hasattr(chart_df, "index"):
+            try:
+                inferred = str(chart_df.index.inferred_type)
+                if "datetime" in inferred and len(chart_df) >= 12:
+                    diffs = pd.Series(chart_df.index).diff().dropna()
+                    if not diffs.empty and diffs.median() <= pd.Timedelta("2H"):
+                        hourly = _to_hourly(chart_df)
+                        if hourly is not None and not hourly.empty:
+                            return hourly
+            except Exception:
+                pass
+    except Exception:
+        return None
+
+    return None
+
+
 def _candle_body_metrics(df):
     try:
         if df is None or len(df) < 3:
@@ -9665,7 +9741,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
             "tone": "neutral",
             "strength": 0,
             "confirmation": "fehlt",
-            "reading": "Kein Stundenchart verfuegbar.",
+            "reading": "Aktuell keine echten Stundenchart-Daten verfuegbar.",
         }
 
         def _tone_icon(t):
@@ -9687,7 +9763,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
         summary = _summary(daily_sig, hourly_sig)
 
         st.markdown("### Candlestick Kauf-/Verkaufsanalyse")
-        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und Stundenchart mit Kontext an Support/Widerstand.")
+        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand.")
 
         c1, c2, c3 = st.columns([1,1,1.2])
         with c1:
@@ -11590,7 +11666,7 @@ if result is not None:
                     chart_structures = None
             fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
             st.plotly_chart(fig, use_container_width=True)
-            render_candlestick_dual_timeframe_block(chart_df, None, context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []))
+            render_candlestick_dual_timeframe_block(chart_df, get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df), context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []))
 
 
             if chart_structures and show_sr_zones:

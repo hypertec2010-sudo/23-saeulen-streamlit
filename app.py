@@ -9694,42 +9694,6 @@ def attach_intraday_hourly_to_result(result, ticker=None):
 
 
 
-def get_intraday_hourly_debug_info(result=None, ticker=None):
-    info = {
-        "ticker": ticker or (result.get("ticker") if isinstance(result, dict) else None),
-        "has_intraday_df": False,
-        "has_hourly_df": False,
-        "has_intraday_hourly_df": False,
-        "intraday_rows": 0,
-        "hourly_rows": 0,
-        "intraday_hourly_rows": 0,
-        "loader_status": "unbekannt",
-        "loader_rows": 0,
-    }
-    try:
-        if isinstance(result, dict):
-            for key in ["intraday_df", "hourly_df", "intraday_hourly_df"]:
-                df = result.get(key)
-                if df is not None and hasattr(df, "empty") and not df.empty:
-                    info[f"has_{key}"] = True
-                    info[f"{key.replace('_df','')}_rows"] = int(len(df))
-            tkr = ticker or result.get("ticker") or result.get("Ticker")
-        else:
-            tkr = ticker
-
-        if tkr and "load_intraday_hourly_data" in globals():
-            try:
-                _df = load_intraday_hourly_data(tkr)
-                if _df is not None and hasattr(_df, "empty") and not _df.empty:
-                    info["loader_status"] = "60m-Loader liefert Daten"
-                    info["loader_rows"] = int(len(_df))
-                else:
-                    info["loader_status"] = "60m-Loader liefert leer"
-            except Exception as e:
-                info["loader_status"] = f"60m-Loader Fehler: {type(e).__name__}"
-    except Exception as e:
-        info["loader_status"] = f"Debug-Fehler: {type(e).__name__}"
-    return info
 
 
 def get_intraday_hourly_df_for_candles(result=None, chart_df=None):
@@ -9961,8 +9925,24 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
 
         summary = _summary(daily_sig, hourly_sig)
 
+        interpretation = "Kurzfristige Candle-Lesart noch neutral."
+        if daily_sig["tone"] == "neutral" and hourly_sig["tone"] == "bullish":
+            interpretation = "Kurzfristig erste bullische Reaktion, aber Tageschart noch ohne bestaetigten Ausbruch."
+        elif daily_sig["tone"] == "neutral" and hourly_sig["tone"] == "bearish":
+            interpretation = "Kurzfristig erste baerische Warnung, aber Tageschart noch ohne bestaetigte Schwaeche."
+        elif daily_sig["tone"] == "bullish" and hourly_sig["tone"] == "bullish":
+            interpretation = "Tages- und Stundenchart ziehen in dieselbe bullische Richtung."
+        elif daily_sig["tone"] == "bearish" and hourly_sig["tone"] == "bearish":
+            interpretation = "Tages- und Stundenchart ziehen in dieselbe baerische Richtung."
+        elif daily_sig["tone"] == "bullish" and hourly_sig["tone"] == "neutral":
+            interpretation = "Tageschart bleibt konstruktiv, Stundenchart bestaetigt aber noch nicht klar."
+        elif daily_sig["tone"] == "bearish" and hourly_sig["tone"] == "neutral":
+            interpretation = "Tageschart bleibt vorsichtig, Stundenchart liefert noch keine klare Gegenreaktion."
+        elif daily_sig["tone"] != hourly_sig["tone"] and hourly_sig["tone"] != "neutral":
+            interpretation = "Kurzfristiges Gegensignal im Stundenchart, aber Tageschart gibt weiter die Richtung vor."
+
         st.markdown("### Candlestick Kauf-/Verkaufsanalyse")
-        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand. Die Candle-Lesart fliesst leicht in Ultra-Kurzfrist und taktische Einordnung ein.")
+        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand. Die Candle-Lesart fliesst leicht in Ultra-Kurzfrist, Einstiegs- und taktische Einordnung ein.")
         debug_info = get_intraday_hourly_debug_info(
             result=result if "result" in locals() else None,
             ticker=(result.get("ticker") if "result" in locals() and isinstance(result, dict) else None),
@@ -9998,6 +9978,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 <div class="mobile-form-title">Zusammenfassung</div>
                 <div class="mobile-form-value">{summary}</div>
                 <div class="mobile-form-sub">Tageschart gibt eher die Richtung, Stundenchart eher das Timing.</div>
+                <div class="mobile-form-sub" style="margin-top:6px;"><b>Interpretation:</b> {interpretation}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )

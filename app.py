@@ -9533,6 +9533,102 @@ if st.session_state.get("auto_run_requested", False):
 
 
 
+
+def attach_intraday_hourly_to_result(result, ticker=None):
+    """
+    Versucht echte Intraday-/Stundenchart-Daten in den Result-Pfad einzuhängen.
+    Robust gegen unterschiedliche Datenloader im bestehenden Projekt.
+    """
+    try:
+        if not isinstance(result, dict):
+            return result
+
+        if result.get("hourly_df") is not None or result.get("intraday_hourly_df") is not None:
+            return result
+
+        _ticker = ticker or result.get("ticker") or result.get("Ticker")
+        if not _ticker:
+            return result
+
+        intraday_df = None
+
+        for fn_name in [
+            "fetch_intraday_data",
+            "load_intraday_data",
+            "get_intraday_data",
+            "download_intraday_data",
+            "fetch_price_data_intraday",
+            "get_price_data_intraday",
+            "fetch_ohlcv_intraday",
+        ]:
+            _fn = globals().get(fn_name)
+            if callable(_fn):
+                try:
+                    intraday_df = _fn(_ticker)
+                    if intraday_df is not None and hasattr(intraday_df, "empty") and not intraday_df.empty:
+                        break
+                except Exception:
+                    pass
+
+        if intraday_df is None or (hasattr(intraday_df, "empty") and intraday_df.empty):
+            try:
+                yf = globals().get("yf")
+                if yf is None:
+                    import yfinance as yf
+                intraday_df = yf.download(
+                    _ticker,
+                    period="10d",
+                    interval="60m",
+                    auto_adjust=False,
+                    progress=False,
+                    prepost=False,
+                )
+                if intraday_df is not None and hasattr(intraday_df, "empty") and not intraday_df.empty:
+                    intraday_df = intraday_df.copy()
+            except Exception:
+                intraday_df = None
+
+        if intraday_df is None or not hasattr(intraday_df, "empty") or intraday_df.empty:
+            return result
+
+        _df = intraday_df.copy()
+
+        if not hasattr(_df.index, "inferred_type") or "datetime" not in str(_df.index.inferred_type):
+            if "Datetime" in _df.columns:
+                _df["Datetime"] = pd.to_datetime(_df["Datetime"], errors="coerce")
+                _df = _df.set_index("Datetime")
+            elif "Date" in _df.columns:
+                _df["Date"] = pd.to_datetime(_df["Date"], errors="coerce")
+                _df = _df.set_index("Date")
+
+        try:
+            if hasattr(_df.columns, "nlevels") and _df.columns.nlevels > 1:
+                _df.columns = [c[0] if isinstance(c, tuple) else c for c in _df.columns]
+        except Exception:
+            pass
+
+        keep_cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in _df.columns]
+        if {"Open", "High", "Low", "Close"}.issubset(set(keep_cols)):
+            _df = _df[keep_cols].dropna(subset=["Open", "High", "Low", "Close"], how="any")
+            result["intraday_df"] = _df.copy()
+
+            agg = {}
+            if "Open" in _df.columns: agg["Open"] = "first"
+            if "High" in _df.columns: agg["High"] = "max"
+            if "Low" in _df.columns: agg["Low"] = "min"
+            if "Close" in _df.columns: agg["Close"] = "last"
+            if "Volume" in _df.columns: agg["Volume"] = "sum"
+
+            hourly = _df.resample("1H").agg(agg).dropna(subset=["Open", "High", "Low", "Close"], how="any")
+            if hourly is not None and not hourly.empty:
+                result["hourly_df"] = hourly.tail(120).copy()
+                result["intraday_hourly_df"] = hourly.tail(120).copy()
+
+        return result
+    except Exception:
+        return result
+
+
 def get_intraday_hourly_df_for_candles(result=None, chart_df=None):
     """
     Versucht einen Stundenchart-Datenpfad fuer den Candlestick-Block zu finden.
@@ -11666,6 +11762,7 @@ if result is not None:
                     chart_structures = None
             fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
             st.plotly_chart(fig, use_container_width=True)
+            result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
             render_candlestick_dual_timeframe_block(chart_df, get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df), context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []))
 
 

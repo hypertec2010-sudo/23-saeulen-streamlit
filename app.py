@@ -9678,6 +9678,45 @@ def attach_intraday_hourly_to_result(result, ticker=None):
         return result
 
 
+
+def get_intraday_hourly_debug_info(result=None, ticker=None):
+    info = {
+        "ticker": ticker or (result.get("ticker") if isinstance(result, dict) else None),
+        "has_intraday_df": False,
+        "has_hourly_df": False,
+        "has_intraday_hourly_df": False,
+        "intraday_rows": 0,
+        "hourly_rows": 0,
+        "intraday_hourly_rows": 0,
+        "loader_status": "unbekannt",
+        "loader_rows": 0,
+    }
+    try:
+        if isinstance(result, dict):
+            for key in ["intraday_df", "hourly_df", "intraday_hourly_df"]:
+                df = result.get(key)
+                if df is not None and hasattr(df, "empty") and not df.empty:
+                    info[f"has_{key}"] = True
+                    info[f"{key.replace('_df','')}_rows"] = int(len(df))
+            tkr = ticker or result.get("ticker") or result.get("Ticker")
+        else:
+            tkr = ticker
+
+        if tkr and "load_intraday_hourly_data" in globals():
+            try:
+                _df = load_intraday_hourly_data(tkr)
+                if _df is not None and hasattr(_df, "empty") and not _df.empty:
+                    info["loader_status"] = "60m-Loader liefert Daten"
+                    info["loader_rows"] = int(len(_df))
+                else:
+                    info["loader_status"] = "60m-Loader liefert leer"
+            except Exception as e:
+                info["loader_status"] = f"60m-Loader Fehler: {type(e).__name__}"
+    except Exception as e:
+        info["loader_status"] = f"Debug-Fehler: {type(e).__name__}"
+    return info
+
+
 def get_intraday_hourly_df_for_candles(result=None, chart_df=None):
     """
     Versucht einen Stundenchart-Datenpfad fuer den Candlestick-Block zu finden.
@@ -9877,7 +9916,7 @@ def detect_candlestick_signal(df, context_hint=""):
     }
 
 
-def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_hint=""):
+def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_hint="", result=None):
     try:
         daily_sig = detect_candlestick_signal(daily_df, context_hint=context_hint)
         hourly_sig = detect_candlestick_signal(intraday_df, context_hint=context_hint) if intraday_df is not None and len(intraday_df) >= 3 else {
@@ -9909,6 +9948,13 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
 
         st.markdown("### Candlestick Kauf-/Verkaufsanalyse")
         st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand. Der Stundenchart nutzt jetzt einen eigenen 60m-Datenloader.")
+        debug_info = get_intraday_hourly_debug_info(
+            result=result if "result" in locals() else None,
+            ticker=(result.get("ticker") if "result" in locals() and isinstance(result, dict) else None),
+        )
+        with st.expander("Intraday-/Stundenchart-Debug", expanded=False):
+            st.write(debug_info)
+
 
         c1, c2, c3 = st.columns([1,1,1.2])
         with c1:
@@ -11812,7 +11858,7 @@ if result is not None:
             fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
             st.plotly_chart(fig, use_container_width=True)
             result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
-            render_candlestick_dual_timeframe_block(chart_df, get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df), context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []))
+            render_candlestick_dual_timeframe_block(chart_df, get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df), context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []), result=result if "result" in locals() else None)
 
 
             if chart_structures and show_sr_zones:

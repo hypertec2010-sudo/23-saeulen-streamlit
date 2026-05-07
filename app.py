@@ -4868,6 +4868,45 @@ def build_company_summary(info, ticker):
 
 
 # ---------- IO ----------
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_intraday_hourly_data(ticker):
+    """
+    Echter 60m-Datenloader fuer den Candlestick-Stundenchart.
+    Nutzt denselben yfinance-Ticker-Ansatz wie der bestehende Daily-Loader.
+    """
+    try:
+        if not ticker:
+            return pd.DataFrame()
+
+        t = yf.Ticker(str(ticker).strip())
+        df = t.history(period="10d", interval="60m", auto_adjust=False, prepost=False)
+
+        if df is None or df.empty:
+            # zweiter Versuch mit kuerzerem Fenster
+            df = t.history(period="5d", interval="60m", auto_adjust=False, prepost=False)
+
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        _df = df.copy()
+
+        try:
+            if hasattr(_df.columns, "nlevels") and _df.columns.nlevels > 1:
+                _df.columns = [c[0] if isinstance(c, tuple) else c for c in _df.columns]
+        except Exception:
+            pass
+
+        keep_cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in _df.columns]
+        if not {"Open", "High", "Low", "Close"}.issubset(set(keep_cols)):
+            return pd.DataFrame()
+
+        _df = _df[keep_cols].dropna(subset=["Open", "High", "Low", "Close"], how="any")
+        return _df.tail(120)
+    except Exception:
+        return pd.DataFrame()
+
+
 @st.cache_data(ttl=120, show_spinner=False)
 def load_data(ticker):
     t = yf.Ticker(ticker)
@@ -9552,24 +9591,34 @@ def attach_intraday_hourly_to_result(result, ticker=None):
 
         intraday_df = None
 
-        for fn_name in [
-            "fetch_intraday_data",
-            "load_intraday_data",
-            "get_intraday_data",
-            "download_intraday_data",
-            "fetch_price_data_intraday",
-            "get_price_data_intraday",
-            "fetch_ohlcv_intraday",
-        ]:
-            _fn = globals().get(fn_name)
-            if callable(_fn):
-                try:
-                    intraday_df = _fn(_ticker)
-                    if intraday_df is not None and hasattr(intraday_df, "empty") and not intraday_df.empty:
-                        break
-                except Exception:
-                    pass
+        # 1) Bevorzugt den neuen stabilen 60m-Loader
+        try:
+            if "load_intraday_hourly_data" in globals():
+                intraday_df = load_intraday_hourly_data(_ticker)
+        except Exception:
+            intraday_df = None
 
+        # 2) Sonstige projektspezifische Loader als Rueckfall
+        if intraday_df is None or (hasattr(intraday_df, "empty") and intraday_df.empty):
+            for fn_name in [
+                "fetch_intraday_data",
+                "load_intraday_data",
+                "get_intraday_data",
+                "download_intraday_data",
+                "fetch_price_data_intraday",
+                "get_price_data_intraday",
+                "fetch_ohlcv_intraday",
+            ]:
+                _fn = globals().get(fn_name)
+                if callable(_fn):
+                    try:
+                        intraday_df = _fn(_ticker)
+                        if intraday_df is not None and hasattr(intraday_df, "empty") and not intraday_df.empty:
+                            break
+                    except Exception:
+                        pass
+
+        # 3) Letzter yfinance-Download-Fallback
         if intraday_df is None or (hasattr(intraday_df, "empty") and intraday_df.empty):
             try:
                 yf = globals().get("yf")
@@ -9859,7 +9908,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
         summary = _summary(daily_sig, hourly_sig)
 
         st.markdown("### Candlestick Kauf-/Verkaufsanalyse")
-        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand.")
+        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand. Der Stundenchart nutzt jetzt einen eigenen 60m-Datenloader.")
 
         c1, c2, c3 = st.columns([1,1,1.2])
         with c1:

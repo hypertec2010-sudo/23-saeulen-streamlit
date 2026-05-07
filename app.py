@@ -145,7 +145,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v14.0.5"
+APP_VERSION = "v14.1.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5845,7 +5845,7 @@ def _legacy_analyze_stock(
 
         crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
         timing_trade_score = round(clamp(s4 * 0.45 + s5 * 0.25 + rs_score * 0.20 + s6 * 0.10))
-        stop_score = ideal_range_score(stop_dist, ideal_low=3.0, ideal_high=7.5, hard_low=1.0, hard_high=14.0)
+        stop_score = ideal_range_score(stop_dist, ideal_low=3.0, ideal_high=7.5, hard_low=1.0, hard_high=14.1)
         crv_score = linear_score(crv, low=0.9, high=3.0, floor=15, ceiling=95)
         market_trade_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 25)
         entry_score = entry_quality_score(entry_quality, price, entry_low, entry_high)
@@ -9531,6 +9531,207 @@ if st.session_state.get("auto_run_requested", False):
 
 
 
+
+def _candle_body_metrics(df):
+    try:
+        if df is None or len(df) < 3:
+            return None
+        o = float(df["Open"].iloc[-1]); h = float(df["High"].iloc[-1]); l = float(df["Low"].iloc[-1]); c = float(df["Close"].iloc[-1])
+        po = float(df["Open"].iloc[-2]); pc = float(df["Close"].iloc[-2])
+        rng = max(h - l, 1e-9)
+        body = abs(c - o)
+        upper = h - max(o, c)
+        lower = min(o, c) - l
+        return {
+            "o": o, "h": h, "l": l, "c": c, "po": po, "pc": pc,
+            "range": rng, "body": body, "upper": upper, "lower": lower,
+            "bull": c > o, "bear": c < o,
+        }
+    except Exception:
+        return None
+
+
+def detect_candlestick_signal(df, context_hint=""):
+    """
+    Liefert kompakten Candlestick-Bias fuer Kauf/Verkauf.
+    """
+    m = _candle_body_metrics(df)
+    if not m:
+        return {
+            "pattern": "-",
+            "bias": "Neutral",
+            "tone": "neutral",
+            "strength": 0,
+            "confirmation": "fehlt",
+            "reading": "Zu wenig Daten fuer Candle-Analyse.",
+        }
+
+    pattern = "Kein klares Muster"
+    bias = "Neutral"
+    tone = "neutral"
+    strength = 18
+    confirmation = "fehlt"
+    reading = "Keine starke Candlestick-Reaktion."
+
+    body_pct = m["body"] / m["range"]
+    upper_pct = m["upper"] / m["range"]
+    lower_pct = m["lower"] / m["range"]
+
+    # Base patterns
+    if lower_pct >= 0.45 and body_pct <= 0.35 and m["c"] >= m["o"]:
+        pattern = "Hammer"
+        bias = "Leicht bullisch"
+        tone = "bullish"
+        strength = 48
+        reading = "Bullische Reaktionskerze mit unterem Docht."
+    elif upper_pct >= 0.45 and body_pct <= 0.35 and m["c"] <= m["o"]:
+        pattern = "Shooting Star"
+        bias = "Leicht bearish"
+        tone = "bearish"
+        strength = 50
+        reading = "Baerische Rejection-Kerze mit oberem Docht."
+    elif m["c"] > m["o"] and m["pc"] < m["po"] and m["c"] >= m["po"] and m["o"] <= m["pc"]:
+        pattern = "Bullish Engulfing"
+        bias = "Bestaetigt bullish"
+        tone = "bullish"
+        strength = 64
+        confirmation = "vorhanden"
+        reading = "Bullische Umkehrkerze umschliesst die Vorkerze."
+    elif m["c"] < m["o"] and m["pc"] > m["po"] and m["c"] <= m["po"] and m["o"] >= m["pc"]:
+        pattern = "Bearish Engulfing"
+        bias = "Bestaetigt bearish"
+        tone = "bearish"
+        strength = 66
+        confirmation = "vorhanden"
+        reading = "Baerische Umkehrkerze umschliesst die Vorkerze."
+    elif body_pct <= 0.12:
+        pattern = "Doji / Unentschlossenheit"
+        bias = "Neutral"
+        tone = "neutral"
+        strength = 26
+        reading = "Kaum Kerzenkoerper, Markt wirkt unentschlossen."
+    elif len(df) >= 2:
+        prev_h = float(df["High"].iloc[-2]); prev_l = float(df["Low"].iloc[-2])
+        if m["h"] <= prev_h and m["l"] >= prev_l:
+            pattern = "Inside Bar"
+            bias = "Neutral"
+            tone = "neutral"
+            strength = 24
+            reading = "Konsolidierung / Spannungsaufbau innerhalb der Vorkerze."
+
+    # Context adjustment
+    ctx = str(context_hint or "").lower()
+    if "support" in ctx or "s1" in ctx or "unterer kanalbereich" in ctx:
+        if tone == "bullish":
+            strength += 8
+            confirmation = "teilweise" if confirmation == "fehlt" else confirmation
+            reading += " Kontext an Support verbessert die Kauflesart."
+        elif tone == "neutral" and ("unterer docht" in reading.lower() or "reaktion" in reading.lower()):
+            bias = "Leicht bullisch"
+            tone = "bullish"
+            strength = max(strength, 38)
+            confirmation = "teilweise"
+            reading += " Support-Kontext spricht fuer moegliche Drehung."
+    if "widerstand" in ctx or "r1" in ctx or "oberer kanalbereich" in ctx:
+        if tone == "bearish":
+            strength += 8
+            confirmation = "teilweise" if confirmation == "fehlt" else confirmation
+            reading += " Kontext an Widerstand verschaerft die Verkaufswarnung."
+        elif tone == "neutral" and ("ober" in reading.lower() or "unentschlossen" in reading.lower()):
+            bias = "Leicht bearish"
+            tone = "bearish"
+            strength = max(strength, 38)
+            confirmation = "teilweise"
+            reading += " Widerstands-Kontext spricht fuer moegliche Ablehnung."
+
+    strength = max(0, min(100, int(round(strength))))
+
+    return {
+        "pattern": pattern,
+        "bias": bias,
+        "tone": tone,
+        "strength": strength,
+        "confirmation": confirmation,
+        "reading": reading,
+    }
+
+
+def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_hint=""):
+    try:
+        daily_sig = detect_candlestick_signal(daily_df, context_hint=context_hint)
+        hourly_sig = detect_candlestick_signal(intraday_df, context_hint=context_hint) if intraday_df is not None and len(intraday_df) >= 3 else {
+            "pattern": "-",
+            "bias": "Neutral",
+            "tone": "neutral",
+            "strength": 0,
+            "confirmation": "fehlt",
+            "reading": "Kein Stundenchart verfuegbar.",
+        }
+
+        def _tone_icon(t):
+            return "🟢" if t == "bullish" else "🔴" if t == "bearish" else "⚪"
+
+        def _summary(dsig, hsig):
+            if dsig["tone"] == "bullish" and hsig["tone"] == "bullish":
+                return "Konvergent bullish"
+            if dsig["tone"] == "bearish" and hsig["tone"] == "bearish":
+                return "Konvergent bearish"
+            if dsig["tone"] == "neutral" and hsig["tone"] != "neutral":
+                return f"Stundenchart fuehrt ({hsig['bias']})"
+            if dsig["tone"] != "neutral" and hsig["tone"] == "neutral":
+                return f"Tageschart fuehrt ({dsig['bias']})"
+            if dsig["tone"] != hsig["tone"]:
+                return "Gemischt / gegensaetzlich"
+            return "Neutral / unklar"
+
+        summary = _summary(daily_sig, hourly_sig)
+
+        st.markdown("### Candlestick Kauf-/Verkaufsanalyse")
+        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und Stundenchart mit Kontext an Support/Widerstand.")
+
+        c1, c2, c3 = st.columns([1,1,1.2])
+        with c1:
+            st.markdown(
+                f"""<div class="mobile-form-card">
+                <div class="mobile-form-title">Tageschart</div>
+                <div class="mobile-form-value">{_tone_icon(daily_sig['tone'])} {daily_sig['bias']}</div>
+                <div class="mobile-form-sub">{daily_sig['pattern']}</div>
+                <div class="mobile-form-sub">Staerke: {daily_sig['strength']}/100 | Bestaetigung: {daily_sig['confirmation']}</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+        with c2:
+            st.markdown(
+                f"""<div class="mobile-form-card">
+                <div class="mobile-form-title">Stundenchart</div>
+                <div class="mobile-form-value">{_tone_icon(hourly_sig['tone'])} {hourly_sig['bias']}</div>
+                <div class="mobile-form-sub">{hourly_sig['pattern']}</div>
+                <div class="mobile-form-sub">Staerke: {hourly_sig['strength']}/100 | Bestaetigung: {hourly_sig['confirmation']}</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+        with c3:
+            st.markdown(
+                f"""<div class="mobile-form-card">
+                <div class="mobile-form-title">Zusammenfassung</div>
+                <div class="mobile-form-value">{summary}</div>
+                <div class="mobile-form-sub">Tageschart gibt eher die Richtung, Stundenchart eher das Timing.</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown(
+            f"""<div class="mobile-form-card">
+            <div class="mobile-form-title">Handelslesart</div>
+            <div class="mobile-form-sub"><b>Tageschart:</b> {daily_sig['reading']}</div>
+            <div class="mobile-form-sub" style="margin-top:6px;"><b>Stundenchart:</b> {hourly_sig['reading']}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+    except Exception as _candle_err:
+        st.info("Candlestick-Analyse aktuell nicht verfuegbar.")
+
+
 def render_mobile_ranking_cards(df):
     if df is None or df.empty:
         return
@@ -11389,6 +11590,8 @@ if result is not None:
                     chart_structures = None
             fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
             st.plotly_chart(fig, use_container_width=True)
+            render_candlestick_dual_timeframe_block(chart_df, None, context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []))
+
 
             if chart_structures and show_sr_zones:
                 st.caption(f"S/R-Zonen werden aus dem Basisfenster {chart_structures.get('sr_basis_label', '1 Jahr')} berechnet; der gewählte Zeitraum steuert nur die Anzeige.")

@@ -9661,6 +9661,21 @@ def attach_intraday_hourly_to_result(result, ticker=None):
             _df = _df[keep_cols].dropna(subset=["Open", "High", "Low", "Close"], how="any")
             result["intraday_df"] = _df.copy()
 
+            # Wenn die Daten bereits stündlich sind, direkt übernehmen
+            try:
+                _direct_hourly = False
+                diffs = pd.Series(_df.index).diff().dropna()
+                if not diffs.empty:
+                    median_diff = diffs.median()
+                    if pd.Timedelta("45min") <= median_diff <= pd.Timedelta("75min"):
+                        _direct_hourly = True
+                if _direct_hourly:
+                    result["hourly_df"] = _df.tail(120).copy()
+                    result["intraday_hourly_df"] = _df.tail(120).copy()
+                    return result
+            except Exception:
+                pass
+
             agg = {}
             if "Open" in _df.columns: agg["Open"] = "first"
             if "High" in _df.columns: agg["High"] = "max"

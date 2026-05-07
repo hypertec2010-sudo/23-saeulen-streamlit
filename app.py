@@ -8,6 +8,7 @@ import hashlib
 import warnings
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
+import html
 
 def infer_ultra_bias_from_signal(ultra_signal):
     try:
@@ -9538,7 +9539,10 @@ def render_mobile_ranking_cards(df):
         if v is None:
             return "-"
         s = str(v).strip()
-        return html.escape(s) if s else "-"
+        try:
+            return html.escape(s) if s else "-"
+        except Exception:
+            return s if s else "-"
 
     key_columns = [
         ("Investment-Attraktivität", "Investment"),

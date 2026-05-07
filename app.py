@@ -9943,12 +9943,6 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
 
         st.markdown("### Candlestick Kauf-/Verkaufsanalyse")
         st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand. Die Candle-Lesart fliesst leicht in Ultra-Kurzfrist, Einstiegs- und taktische Einordnung ein.")
-        debug_info = get_intraday_hourly_debug_info(
-            result=result if "result" in locals() else None,
-            ticker=(result.get("ticker") if "result" in locals() and isinstance(result, dict) else None),
-        )
-        with st.expander("Intraday-/Stundenchart-Debug", expanded=False):
-            st.write(debug_info)
 
 
         c1, c2, c3 = st.columns([1,1,1.2])

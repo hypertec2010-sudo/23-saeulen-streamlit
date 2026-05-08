@@ -10224,10 +10224,12 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
         st.markdown("**Einordnung nach Zeitebene**")
         z1, z2 = st.columns(2)
         with z1:
-            st.markdown(f"**Tageschart**  \\n{_candle_badge_html(daily_sig.get('bias','Neutral'), _candle_kind_from_tone(daily_sig.get('tone','neutral')))}", unsafe_allow_html=True)
+            st.markdown("**Tageschart**")
+            st.markdown(_candle_badge_html(daily_sig.get("bias","Neutral"), _candle_kind_from_tone(daily_sig.get("tone","neutral"))), unsafe_allow_html=True)
             st.write(daily_sig['reading'])
         with z2:
-            st.markdown(f"**Stundenchart**  \\n{_candle_badge_html(hourly_sig.get('bias','Neutral'), _candle_kind_from_tone(hourly_sig.get('tone','neutral')))}", unsafe_allow_html=True)
+            st.markdown("**Stundenchart**")
+            st.markdown(_candle_badge_html(hourly_sig.get("bias","Neutral"), _candle_kind_from_tone(hourly_sig.get("tone","neutral"))), unsafe_allow_html=True)
             st.write(hourly_sig['reading'])
 
         st.markdown("**Bestaetigung**")
@@ -10251,11 +10253,13 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
         st.markdown("**Kauf und Exit**")
         k1, k2 = st.columns(2)
         with k1:
-            st.markdown(f"**Kauf**  \\n{_candle_badge_html('Kauf', 'bull')}", unsafe_allow_html=True)
+            st.markdown("**Kauf**")
+            st.markdown(_candle_badge_html("Kauf", "bull"), unsafe_allow_html=True)
             st.write(daily_sig.get('entry_hint','-'))
         with k2:
             _exit_kind = "bear" if "warnung" in str(daily_sig.get("exit_hint","")).lower() else "warn"
-            st.markdown(f"**Exit**  \\n{_candle_badge_html('Exit', _exit_kind)}", unsafe_allow_html=True)
+            st.markdown("**Exit**")
+            st.markdown(_candle_badge_html("Exit", _exit_kind), unsafe_allow_html=True)
             st.write(daily_sig.get('exit_hint','-'))
 
         st.markdown("**Was das Signal kippt**")

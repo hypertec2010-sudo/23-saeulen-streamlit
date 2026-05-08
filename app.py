@@ -10219,104 +10219,66 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 unsafe_allow_html=True,
             )
 
-        st.markdown(
-            f"""<div class="mobile-form-card">
-            <div class="mobile-form-title">Was das jetzt bedeutet</div>
+        st.markdown("### Was das jetzt bedeutet")
 
-            <div class="candle-section-stack">
+        st.markdown("**Einordnung nach Zeitebene**")
+        z1, z2 = st.columns(2)
+        with z1:
+            st.markdown(f"**Tageschart**  
+{_candle_badge_html(daily_sig.get('bias','Neutral'), _candle_kind_from_tone(daily_sig.get('tone','neutral')))}", unsafe_allow_html=True)
+            st.write(daily_sig['reading'])
+        with z2:
+            st.markdown(f"**Stundenchart**  
+{_candle_badge_html(hourly_sig.get('bias','Neutral'), _candle_kind_from_tone(hourly_sig.get('tone','neutral')))}", unsafe_allow_html=True)
+            st.write(hourly_sig['reading'])
 
-                <div class="candle-section">
-                    <div class="candle-section-title">Einordnung nach Zeitebene</div>
-                    <div class="candle-section-grid">
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Tageschart</div>
-                            <div>{_candle_badge_html(daily_sig.get("bias","Neutral"), _candle_kind_from_tone(daily_sig.get("tone","neutral")))}</div>
-                            <div class="candle-mini-body">{daily_sig['reading']}</div>
-                        </div>
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Stundenchart</div>
-                            <div>{_candle_badge_html(hourly_sig.get("bias","Neutral"), _candle_kind_from_tone(hourly_sig.get("tone","neutral")))}</div>
-                            <div class="candle-mini-body">{hourly_sig['reading']}</div>
-                        </div>
-                    </div>
-                </div>
+        st.markdown("**Bestaetigung**")
+        b1, b2 = st.columns(2)
+        with b1:
+            st.markdown("**Tageschart**")
+            st.write(daily_sig.get('confirmation_detail','-'))
+        with b2:
+            st.markdown("**Stundenchart**")
+            st.write(hourly_sig.get('confirmation_detail','-'))
 
-                <div class="candle-section">
-                    <div class="candle-section-title">Bestaetigung</div>
-                    <div class="candle-section-grid">
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Tageschart</div>
-                            <div class="candle-mini-body">{daily_sig.get('confirmation_detail','-')}</div>
-                        </div>
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Stundenchart</div>
-                            <div class="candle-mini-body">{hourly_sig.get('confirmation_detail','-')}</div>
-                        </div>
-                    </div>
-                </div>
+        st.markdown("**Naechster Trigger**")
+        t1, t2 = st.columns(2)
+        with t1:
+            st.markdown("**Tageschart**")
+            st.write(daily_sig.get('next_trigger','-'))
+        with t2:
+            st.markdown("**Stundenchart**")
+            st.write(hourly_sig.get('next_trigger','-'))
 
-                <div class="candle-section">
-                    <div class="candle-section-title">Naechster Trigger</div>
-                    <div class="candle-section-grid">
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Tageschart</div>
-                            <div class="candle-mini-body">{daily_sig.get('next_trigger','-')}</div>
-                        </div>
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Stundenchart</div>
-                            <div class="candle-mini-body">{hourly_sig.get('next_trigger','-')}</div>
-                        </div>
-                    </div>
-                </div>
+        st.markdown("**Kauf und Exit**")
+        k1, k2 = st.columns(2)
+        with k1:
+            st.markdown(f"**Kauf**  
+{_candle_badge_html('Kauf', 'bull')}", unsafe_allow_html=True)
+            st.write(daily_sig.get('entry_hint','-'))
+        with k2:
+            _exit_kind = "bear" if "warnung" in str(daily_sig.get("exit_hint","")).lower() else "warn"
+            st.markdown(f"**Exit**  
+{_candle_badge_html('Exit', _exit_kind)}", unsafe_allow_html=True)
+            st.write(daily_sig.get('exit_hint','-'))
 
-                <div class="candle-section">
-                    <div class="candle-section-title">Kauf und Exit</div>
-                    <div class="candle-section-grid">
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Kauf</div>
-                            <div>{_candle_badge_html("Kauf", "bull")}</div>
-                            <div class="candle-mini-body">{daily_sig.get('entry_hint','-')}</div>
-                        </div>
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Exit</div>
-                            <div>{_candle_badge_html("Exit", "bear" if "warnung" in str(daily_sig.get("exit_hint","")).lower() else "warn")}</div>
-                            <div class="candle-mini-body">{daily_sig.get('exit_hint','-')}</div>
-                        </div>
-                    </div>
-                </div>
+        st.markdown("**Was das Signal kippt**")
+        s1, s2 = st.columns(2)
+        with s1:
+            st.markdown("**Tageschart**")
+            st.write(daily_sig.get('invalid_if','-'))
+        with s2:
+            st.markdown("**Stundenchart**")
+            st.write(hourly_sig.get('invalid_if','-'))
 
-                <div class="candle-section">
-                    <div class="candle-section-title">Was das Signal kippt</div>
-                    <div class="candle-section-grid">
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Tageschart</div>
-                            <div class="candle-mini-body">{daily_sig.get('invalid_if','-')}</div>
-                        </div>
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Stundenchart</div>
-                            <div class="candle-mini-body">{hourly_sig.get('invalid_if','-')}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="candle-section">
-                    <div class="candle-section-title">Volumen</div>
-                    <div class="candle-section-grid">
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Tageschart</div>
-                            <div class="candle-mini-body">{daily_sig.get('volume_note','-')}</div>
-                        </div>
-                        <div class="candle-mini">
-                            <div class="candle-mini-title">Stundenchart</div>
-                            <div class="candle-mini-body">{hourly_sig.get('volume_note','-')}</div>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+        st.markdown("**Volumen**")
+        v1, v2 = st.columns(2)
+        with v1:
+            st.markdown("**Tageschart**")
+            st.write(daily_sig.get('volume_note','-'))
+        with v2:
+            st.markdown("**Stundenchart**")
+            st.write(hourly_sig.get('volume_note','-'))
     except Exception as _candle_err:
         st.info("Candlestick-Analyse aktuell nicht verfuegbar.")
 

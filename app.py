@@ -10254,12 +10254,12 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
         k1, k2 = st.columns(2)
         with k1:
             st.markdown("**Kauf**")
-            st.markdown(_candle_badge_html("Kauf", "bull"), unsafe_allow_html=True)
+            st.markdown(_candle_entry_badge(daily_sig.get("entry_hint","-")), unsafe_allow_html=True)
             st.write(daily_sig.get('entry_hint','-'))
         with k2:
             _exit_kind = "bear" if "warnung" in str(daily_sig.get("exit_hint","")).lower() else "warn"
             st.markdown("**Exit**")
-            st.markdown(_candle_badge_html("Exit", _exit_kind), unsafe_allow_html=True)
+            st.markdown(_candle_exit_badge(daily_sig.get("exit_hint","-")), unsafe_allow_html=True)
             st.write(daily_sig.get('exit_hint','-'))
 
         st.markdown("**Was das Signal kippt**")
@@ -10460,6 +10460,35 @@ def _summary_badge(summary_text):
     if "gemischt" in s:
         return _candle_badge_html("Gemischt", "warn")
     return _candle_badge_html("Neutral", "neutral")
+
+
+
+def _candle_entry_badge(entry_hint):
+    s = str(entry_hint or "").lower()
+    if "bestaetigt" in s and ("kauf" in s or "unterstuetzt" in s):
+        return _candle_badge_html("Kaufsignal bestaetigt", "bull")
+    if "moegliche" in s or "fruehe" in s:
+        return _candle_badge_html("Fruehe Kaufchance", "warn")
+    if "bestaetigung fehlt" in s or "abwarten" in s or "noch kein" in s:
+        return _candle_badge_html("Kauf nur mit Bestaetigung", "warn")
+    if "meiden" in s or "vorsichtiger" in s:
+        return _candle_badge_html("Kein Kaufsignal", "neutral")
+    return _candle_badge_html("Kein Kaufsignal", "neutral")
+
+
+def _candle_exit_badge(exit_hint):
+    s = str(exit_hint or "").lower()
+    if "klare exit" in s or "de-risking" in s or "bestaetigender folgekerze" in s:
+        return _candle_badge_html("Exit-Warnung bestaetigt", "bear")
+    if "teilgewinn" in s:
+        return _candle_badge_html("Teilgewinn sinnvoll", "bear")
+    if "stop enger" in s:
+        return _candle_badge_html("Stop enger sinnvoll", "warn")
+    if "fruehe exit-warnung" in s or "moegliche fruehe exit-warnung" in s:
+        return _candle_badge_html("Erste Exit-Warnung", "warn")
+    if "keine direkte exit-warnung" in s or "noch keine" in s:
+        return _candle_badge_html("Keine Exit-Warnung", "neutral")
+    return _candle_badge_html("Keine Exit-Warnung", "neutral")
 
 
 def render_mobile_ranking_cards(df):

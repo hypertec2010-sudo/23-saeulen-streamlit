@@ -10412,7 +10412,8 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 st.markdown("**Was das Signal kippt – Stundenchart**")
                 st.write(hourly_sig.get('invalid_if','-'))
                 st.markdown("**Volumen – Stundenchart**")
-                st.write(hourly_sig.get('volume_note','-'))    except Exception as _candle_err:
+                st.write(hourly_sig.get('volume_note','-'))
+    except Exception as _candle_err:
         st.info("Candlestick-Analyse aktuell nicht verfuegbar.")
 
 

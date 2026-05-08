@@ -10221,19 +10221,99 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
 
         st.markdown(
             f"""<div class="mobile-form-card">
-            <div class="mobile-form-title">Handelslesart</div>
-            <div class="mobile-form-sub"><b>Tageschart:</b> {daily_sig['reading']}</div>
-            <div class="mobile-form-sub" style="margin-top:6px;"><b>Stundenchart:</b> {hourly_sig['reading']}</div>
-            <div class="mobile-form-sub" style="margin-top:10px;"><b>Bestaetigung:</b> Tageschart: {daily_sig.get('confirmation_detail','-')}</div>
-            <div class="mobile-form-sub" style="margin-top:4px;"><b>Bestaetigung:</b> Stundenchart: {hourly_sig.get('confirmation_detail','-')}</div>
-            <div class="mobile-form-sub" style="margin-top:10px;"><b>Naechster Trigger:</b> Tageschart: {daily_sig.get('next_trigger','-')}</div>
-            <div class="mobile-form-sub" style="margin-top:4px;"><b>Naechster Trigger:</b> Stundenchart: {hourly_sig.get('next_trigger','-')}</div>
-            <div class="mobile-form-sub" style="margin-top:10px;"><b>Kauflesart:</b> {daily_sig.get('entry_hint','-')}</div>
-            <div class="mobile-form-sub" style="margin-top:4px;"><b>Exit-Lesart:</b> {daily_sig.get('exit_hint','-')}</div>
-            <div class="mobile-form-sub" style="margin-top:10px;"><b>Was als Naechstes passieren muss:</b> Tageschart: {daily_sig.get('next_trigger','-')}</div>
-            <div class="mobile-form-sub" style="margin-top:4px;"><b>Was das Signal kippt:</b> {daily_sig.get('invalid_if','-')}</div>
-            <div class="mobile-form-sub" style="margin-top:10px;"><b>Volumen:</b> Tageschart: {daily_sig.get('volume_note','-')}</div>
-            <div class="mobile-form-sub" style="margin-top:4px;"><b>Volumen:</b> Stundenchart: {hourly_sig.get('volume_note','-')}</div>
+            <div class="mobile-form-title">Was das jetzt bedeutet</div>
+
+            <div class="candle-section-stack">
+
+                <div class="candle-section">
+                    <div class="candle-section-title">Einordnung nach Zeitebene</div>
+                    <div class="candle-section-grid">
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Tageschart</div>
+                            <div>{_candle_badge_html(daily_sig.get("bias","Neutral"), _candle_kind_from_tone(daily_sig.get("tone","neutral")))}</div>
+                            <div class="candle-mini-body">{daily_sig['reading']}</div>
+                        </div>
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Stundenchart</div>
+                            <div>{_candle_badge_html(hourly_sig.get("bias","Neutral"), _candle_kind_from_tone(hourly_sig.get("tone","neutral")))}</div>
+                            <div class="candle-mini-body">{hourly_sig['reading']}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="candle-section">
+                    <div class="candle-section-title">Bestaetigung</div>
+                    <div class="candle-section-grid">
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Tageschart</div>
+                            <div class="candle-mini-body">{daily_sig.get('confirmation_detail','-')}</div>
+                        </div>
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Stundenchart</div>
+                            <div class="candle-mini-body">{hourly_sig.get('confirmation_detail','-')}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="candle-section">
+                    <div class="candle-section-title">Naechster Trigger</div>
+                    <div class="candle-section-grid">
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Tageschart</div>
+                            <div class="candle-mini-body">{daily_sig.get('next_trigger','-')}</div>
+                        </div>
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Stundenchart</div>
+                            <div class="candle-mini-body">{hourly_sig.get('next_trigger','-')}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="candle-section">
+                    <div class="candle-section-title">Kauf und Exit</div>
+                    <div class="candle-section-grid">
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Kauf</div>
+                            <div>{_candle_badge_html("Kauf", "bull")}</div>
+                            <div class="candle-mini-body">{daily_sig.get('entry_hint','-')}</div>
+                        </div>
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Exit</div>
+                            <div>{_candle_badge_html("Exit", "bear" if "warnung" in str(daily_sig.get("exit_hint","")).lower() else "warn")}</div>
+                            <div class="candle-mini-body">{daily_sig.get('exit_hint','-')}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="candle-section">
+                    <div class="candle-section-title">Was das Signal kippt</div>
+                    <div class="candle-section-grid">
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Tageschart</div>
+                            <div class="candle-mini-body">{daily_sig.get('invalid_if','-')}</div>
+                        </div>
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Stundenchart</div>
+                            <div class="candle-mini-body">{hourly_sig.get('invalid_if','-')}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="candle-section">
+                    <div class="candle-section-title">Volumen</div>
+                    <div class="candle-section-grid">
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Tageschart</div>
+                            <div class="candle-mini-body">{daily_sig.get('volume_note','-')}</div>
+                        </div>
+                        <div class="candle-mini">
+                            <div class="candle-mini-title">Stundenchart</div>
+                            <div class="candle-mini-body">{hourly_sig.get('volume_note','-')}</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
             </div>""",
             unsafe_allow_html=True,
         )

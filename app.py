@@ -1184,6 +1184,38 @@ div[data-testid="stExpander"] summary{
     border-color:rgba(245,158,11,0.30);
     color:#fef3c7;
 }
+
+.candle-section-stack{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+    margin-top:8px;
+}
+.candle-section{
+    border:1px solid #243042;
+    border-radius:16px;
+    padding:12px 14px;
+    background:rgba(255,255,255,0.03);
+}
+.candle-section-title{
+    font-size:0.78rem;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    color:#cbd5e1;
+    margin-bottom:8px;
+}
+.candle-section-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+}
+@media (max-width: 768px){
+    .candle-section-grid{
+        grid-template-columns:1fr;
+    }
+}
+
 .candle-mini-grid{
     display:grid;
     grid-template-columns:1fr 1fr;

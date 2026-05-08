@@ -1,11 +1,3 @@
-streamlit
-yfinance
-pandas
-numpy
-requests
-plotly
-gspread
-st-cookies-manager
 streamlit[auth]
 httpx
 Authlib>=1.3.2

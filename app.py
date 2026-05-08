@@ -10017,9 +10017,9 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
 
         interpretation = "Kurzfristige Candle-Lesart noch neutral."
         if daily_sig["tone"] == "neutral" and hourly_sig["tone"] == "bullish":
-            interpretation = "Kurzfristig erste bullische Reaktion, aber Tageschart noch ohne bestaetigten Ausbruch."
+            interpretation = "Kurzfristig erste bullische Reaktion sichtbar, aber der Tageschart hat den Ausbruch noch nicht bestaetigt."
         elif daily_sig["tone"] == "neutral" and hourly_sig["tone"] == "bearish":
-            interpretation = "Kurzfristig erste baerische Warnung, aber Tageschart noch ohne bestaetigte Schwaeche."
+            interpretation = "Kurzfristig erste baerische Warnung sichtbar, aber der Tageschart hat die Schwaeche noch nicht voll bestaetigt."
         elif daily_sig["tone"] == "bullish" and hourly_sig["tone"] == "bullish":
             interpretation = "Tages- und Stundenchart ziehen in dieselbe bullische Richtung."
         elif daily_sig["tone"] == "bearish" and hourly_sig["tone"] == "bearish":
@@ -10078,6 +10078,8 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
             <div class="mobile-form-sub" style="margin-top:4px;"><b>Naechster Trigger:</b> Stundenchart: {hourly_sig.get('next_trigger','-')}</div>
             <div class="mobile-form-sub" style="margin-top:10px;"><b>Kauflesart:</b> {daily_sig.get('entry_hint','-')}</div>
             <div class="mobile-form-sub" style="margin-top:4px;"><b>Exit-Lesart:</b> {daily_sig.get('exit_hint','-')}</div>
+            <div class="mobile-form-sub" style="margin-top:10px;"><b>Was als Naechstes passieren muss:</b> Tageschart: {daily_sig.get('next_trigger','-')}</div>
+            <div class="mobile-form-sub" style="margin-top:4px;"><b>Was das Signal kippt:</b> {daily_sig.get('invalid_if','-')}</div>
             <div class="mobile-form-sub" style="margin-top:10px;"><b>Volumen:</b> Tageschart: {daily_sig.get('volume_note','-')}</div>
             <div class="mobile-form-sub" style="margin-top:4px;"><b>Volumen:</b> Stundenchart: {hourly_sig.get('volume_note','-')}</div>
             </div>""",
@@ -10148,6 +10150,67 @@ def build_candlestick_bias_package(daily_df, hourly_df=None, context_hint=""):
             "score": 0,
             "label": "neutral",
             "reasons": [],
+        }
+
+
+
+def interpret_ultra_short_term_signal(ultra_signal):
+    try:
+        sig = ultra_signal or {}
+        label = str(sig.get("label", "Kein Signal"))
+        reason = str(sig.get("reason", "-"))
+        strength = int(sig.get("strength", 0) or 0)
+        confirmation = str(sig.get("confirmation", "fehlt"))
+
+        meaning = "Noch kein verwertbares Ultra-Kurzfrist-Signal."
+        bullish_trigger = "Bullisher bei Rueckkehr ueber das kurzfristige Reaktionshoch."
+        bearish_trigger = "Bearisher bei Bruch der naechsten relevanten Support-Zone."
+        invalid_if = "Signal bleibt neutral, solange keine klare Folgebewegung kommt."
+
+        ll = label.lower()
+        rr = reason.lower()
+
+        if "bullish" in ll:
+            meaning = "Kurzfristiges bullisches Signal an einer wichtigen Zone."
+            bullish_trigger = "Bestaetigt bullisher bei starkem Follow-through nach oben."
+            bearish_trigger = "Signal kippt bei Rueckfall unter die Reaktionszone."
+            invalid_if = "Ungueltig bei schwacher Folgekerze und Rueckfall unter das Reaktionstief."
+        elif "bearish" in ll:
+            meaning = "Kurzfristige baerische Warnung an einer wichtigen Zone."
+            bullish_trigger = "Neutralisiert sich bei Rueckeroberung des Reaktionshochs."
+            bearish_trigger = "Bestaetigt bearisher bei schwachem Follow-through nach unten."
+            invalid_if = "Ungueltig bei schneller Rueckeroberung der Widerstandszone."
+        elif "beobachtung" in ll:
+            if "support" in rr or "unterer docht" in rr:
+                meaning = "Moegliche Drehung am Support beginnt, aber die Bestaetigung fehlt noch."
+                bullish_trigger = "Bullisher bei Halten von S1 und staerkerem Folgetag."
+                bearish_trigger = "Bearisher bei Bruch von S1 oder schwacher Folgekerze."
+                invalid_if = "Verliert an Aussagekraft, wenn der Support direkt wieder aufgegeben wird."
+            elif "widerstand" in rr or "rejection" in rr or "oberer docht" in rr:
+                meaning = "Moegliche Ablehnung am Widerstand beginnt, aber die Bestaetigung fehlt noch."
+                bullish_trigger = "Neutraler bis bullisher bei Rueckeroberung des Widerstands."
+                bearish_trigger = "Bearisher bei schwachem Folgetag unter dem Reaktionstief."
+                invalid_if = "Verliert an Aussagekraft, wenn der Widerstand klar zurueckerobert wird."
+
+        if strength >= 65 and "beobachtung" not in ll:
+            meaning += " Die Signalstaerke ist bereits relativ hoch."
+        elif strength <= 20:
+            meaning = "Aktuell noch kein belastbares Ultra-Kurzfrist-Setup."
+
+        return {
+            "meaning": meaning,
+            "bullish_trigger": bullish_trigger,
+            "bearish_trigger": bearish_trigger,
+            "invalid_if": invalid_if,
+            "confirmation_text": f"Aktueller Status: {confirmation}.",
+        }
+    except Exception:
+        return {
+            "meaning": "Ultra-Kurzfrist-Signal aktuell nicht eindeutig lesbar.",
+            "bullish_trigger": "-",
+            "bearish_trigger": "-",
+            "invalid_if": "-",
+            "confirmation_text": "-",
         }
 
 

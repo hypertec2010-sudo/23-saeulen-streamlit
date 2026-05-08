@@ -51,3 +51,5 @@ websockets==16.0
 gspread
 
 plotly
+
+yfinance

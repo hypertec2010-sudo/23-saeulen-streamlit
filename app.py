@@ -5,6 +5,10 @@
 # client_id = "DEINE_GOOGLE_CLIENT_ID"
 # client_secret = "DEIN_GOOGLE_CLIENT_SECRET"
 # server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
+#
+# Optional access restriction:
+# [access]
+# allowed_emails = ["user1@example.com", "user2@example.com"]
 
 
 # -*- coding: utf-8 -*-
@@ -27,6 +31,36 @@ def require_google_login():
         st.title("23 Saeulen Analyse")
         st.info("Bitte mit Google anmelden, um die App zu nutzen.")
         st.button("Mit Google anmelden", on_click=st.login, type="primary", key="google_login_main")
+        st.stop()
+
+
+def require_allowed_email():
+    """
+    Restrict app access to configured email addresses in Streamlit secrets.
+
+    Expected secrets format:
+    [access]
+    allowed_emails = ["user@example.com", "other@example.com"]
+    """
+    try:
+        allowed_emails = {
+            str(mail).strip().lower()
+            for mail in st.secrets.get("access", {}).get("allowed_emails", [])
+            if str(mail).strip()
+        }
+    except Exception:
+        allowed_emails = set()
+
+    # If no whitelist is configured, allow all authenticated users.
+    if not allowed_emails:
+        return
+
+    user_email = str(st.user.get("email", "")).strip().lower()
+
+    if user_email not in allowed_emails:
+        st.error(f"Dieses Konto ist nicht freigeschaltet: {user_email or 'unbekannt'}")
+        st.write("Bitte mit einem freigegebenen Google-Konto anmelden.")
+        st.button("Abmelden", on_click=st.logout, key="google_logout_denied")
         st.stop()
 
 

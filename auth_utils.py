@@ -3,15 +3,24 @@ import streamlit as st
 
 def check_password(app_password=None):
     """
-    OIDC-kompatibler Kompatibilitaets-Stub.
+    OIDC-kompatibler Auth-Wrapper fuer alte check_password()-Aufrufe.
 
-    Alte Aufrufe wie:
-        if not check_password(): st.stop()
+    Verhalten:
+    - Wenn bereits per Streamlit OIDC eingeloggt: True
+    - Wenn nicht eingeloggt: zeigt Google-Login-Button und liefert False
 
-    bleiben damit funktionsfaehig, ohne eine alte Passwortmaske zu rendern.
-    Die eigentliche Anmeldung erfolgt ueber Streamlit OIDC in app.py via st.login().
+    Damit funktionieren alte Stellen wie:
+        if not check_password():
+            st.stop()
+    weiter, ohne eine alte Passwortmaske zu rendern und ohne schwarzen Bildschirm.
     """
     try:
-        return bool(st.user.is_logged_in)
+        if bool(st.user.is_logged_in):
+            return True
     except Exception:
-        return False
+        pass
+
+    st.markdown("## Anmeldung erforderlich")
+    st.write("Bitte melde dich mit Google an, um die App zu nutzen.")
+    st.button("Mit Google anmelden", on_click=st.login, type="primary", key="oidc_login_from_compat")
+    return False

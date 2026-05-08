@@ -1100,6 +1100,121 @@ div[data-testid="stExpander"] summary{
 .bullet-card ul{margin:0;padding-left:18px;}
 .bullet-card li{color:#d1d5db;line-height:1.5;margin-bottom:4px;}
 
+
+
+.candle-badge{
+    display:inline-block;
+    border-radius:999px;
+    padding:4px 10px;
+    font-size:0.74rem;
+    font-weight:800;
+    letter-spacing:0.02em;
+    margin-top:6px;
+}
+.candle-badge-bull{
+    background:rgba(34,197,94,0.18);
+    color:#dcfce7;
+    border:1px solid rgba(34,197,94,0.35);
+}
+.candle-badge-bear{
+    background:rgba(239,68,68,0.18);
+    color:#fee2e2;
+    border:1px solid rgba(239,68,68,0.35);
+}
+.candle-badge-neutral{
+    background:rgba(148,163,184,0.16);
+    color:#e2e8f0;
+    border:1px solid rgba(148,163,184,0.30);
+}
+.candle-badge-warn{
+    background:rgba(245,158,11,0.16);
+    color:#fef3c7;
+    border:1px solid rgba(245,158,11,0.30);
+}
+
+.candle-summary-wrap{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+    margin-top:8px;
+}
+.candle-band{
+    border-radius:16px;
+    padding:12px 14px;
+    border:1px solid #243042;
+}
+.candle-band-title{
+    font-size:0.78rem;
+    font-weight:800;
+    letter-spacing:0.03em;
+    text-transform:uppercase;
+    margin-bottom:6px;
+}
+.candle-band-main{
+    font-size:0.97rem;
+    font-weight:800;
+    line-height:1.35;
+}
+.candle-band-sub{
+    margin-top:6px;
+    font-size:0.84rem;
+    line-height:1.45;
+}
+.candle-band-neutral{
+    background:linear-gradient(180deg,#111827 0%, #0b1220 100%);
+    color:#e5e7eb;
+}
+.candle-band-info{
+    background:rgba(59,130,246,0.12);
+    border-color:rgba(59,130,246,0.30);
+    color:#dbeafe;
+}
+.candle-band-bull{
+    background:rgba(34,197,94,0.12);
+    border-color:rgba(34,197,94,0.30);
+    color:#dcfce7;
+}
+.candle-band-bear{
+    background:rgba(239,68,68,0.12);
+    border-color:rgba(239,68,68,0.30);
+    color:#fee2e2;
+}
+.candle-band-warn{
+    background:rgba(245,158,11,0.12);
+    border-color:rgba(245,158,11,0.30);
+    color:#fef3c7;
+}
+.candle-mini-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-top:8px;
+}
+.candle-mini{
+    border-radius:14px;
+    padding:10px 12px;
+    border:1px solid #243042;
+    background:rgba(255,255,255,0.03);
+}
+.candle-mini-title{
+    font-size:0.73rem;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    color:#94a3b8;
+    margin-bottom:4px;
+}
+.candle-mini-body{
+    font-size:0.86rem;
+    line-height:1.4;
+    color:#f8fafc;
+}
+@media (max-width: 768px){
+    .candle-mini-grid{
+        grid-template-columns:1fr;
+    }
+}
+
 .mobile-ranking-card{
     background:linear-gradient(180deg,#111827 0%, #0b1220 100%);
     border:1px solid #243042;
@@ -10058,11 +10173,16 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
             )
         with c3:
             st.markdown(
-                f"""<div class="mobile-form-card">
-                <div class="mobile-form-title">Zusammenfassung</div>
-                <div class="mobile-form-value">{summary}</div>
-                <div class="mobile-form-sub">Tageschart gibt eher die Richtung, Stundenchart eher das Timing.</div>
-                <div class="mobile-form-sub" style="margin-top:6px;"><b>Interpretation:</b> {interpretation}</div>
+                f"""<div class="candle-summary-wrap">
+                <div class="candle-band {_candle_summary_class(summary)}">
+                    <div class="candle-band-title">Zusammenfassung</div>
+                    <div class="candle-band-main">{summary}</div><div>{_summary_badge(summary)}</div>
+                    <div class="candle-band-sub">Tageschart gibt eher die Richtung, Stundenchart eher das Timing.</div>
+                </div>
+                <div class="candle-band candle-band-info">
+                    <div class="candle-band-title">Interpretation</div>
+                    <div class="candle-band-main">{interpretation}</div>
+                </div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -10212,6 +10332,60 @@ def interpret_ultra_short_term_signal(ultra_signal):
             "invalid_if": "-",
             "confirmation_text": "-",
         }
+
+
+
+def _candle_tone_class(sig):
+    tone = str((sig or {}).get("tone", "neutral")).lower()
+    if tone == "bullish":
+        return "candle-band-bull"
+    if tone == "bearish":
+        return "candle-band-bear"
+    return "candle-band-neutral"
+
+
+def _candle_summary_class(summary_text):
+    s = str(summary_text or "").lower()
+    if "bullish" in s:
+        return "candle-band-bull"
+    if "bearish" in s:
+        return "candle-band-bear"
+    if "gemischt" in s or "neutral" in s or "unklar" in s:
+        return "candle-band-neutral"
+    return "candle-band-info"
+
+
+
+def _candle_badge_html(label, kind="neutral"):
+    kind = str(kind or "neutral").lower()
+    css = "candle-badge-neutral"
+    if kind == "bull":
+        css = "candle-badge-bull"
+    elif kind == "bear":
+        css = "candle-badge-bear"
+    elif kind == "warn":
+        css = "candle-badge-warn"
+    return f'<span class="candle-badge {css}">{label}</span>'
+
+
+def _candle_kind_from_tone(tone):
+    t = str(tone or "neutral").lower()
+    if t == "bullish":
+        return "bull"
+    if t == "bearish":
+        return "bear"
+    return "neutral"
+
+
+def _summary_badge(summary_text):
+    s = str(summary_text or "").lower()
+    if "bullish" in s:
+        return _candle_badge_html("Bullisch", "bull")
+    if "bearish" in s:
+        return _candle_badge_html("Baerisch", "bear")
+    if "gemischt" in s:
+        return _candle_badge_html("Gemischt", "warn")
+    return _candle_badge_html("Neutral", "neutral")
 
 
 def render_mobile_ranking_cards(df):

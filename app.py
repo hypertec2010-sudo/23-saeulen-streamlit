@@ -1,14 +1,8 @@
 import streamlit as st
 
-st.set_page_config(page_title="OIDC Test")
-
 if not st.user.is_logged_in:
-    st.write("Nicht eingeloggt")
-    if st.button("Mit Google anmelden"):
-        st.login()
+    st.button("Mit Google anmelden", on_click=st.login, args=["google"])
     st.stop()
 
-st.success("Login erfolgreich")
-st.write(st.user)
-if st.button("Abmelden"):
-    st.logout()
+st.write(f"Willkommen, {st.user.name}")
+st.button("Abmelden", on_click=st.logout)

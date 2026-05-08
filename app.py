@@ -179,13 +179,15 @@ APP_VERSION = "v14.1.5"
 
 st.set_page_config(
 
-require_google_login()
-render_user_bar()
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
     page_icon="📊",
     layout="wide"
 )
 
+
+
+require_google_login()
+render_user_bar()
 
 # ---------- Session State / App Defaults ----------
 if "selected_ticker" not in st.session_state:

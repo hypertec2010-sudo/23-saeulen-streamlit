@@ -6,3 +6,4 @@ requests
 plotly
 gspread
 st-cookies-manager
+streamlit[auth]

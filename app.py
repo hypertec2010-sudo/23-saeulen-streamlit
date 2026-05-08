@@ -1,11 +1,12 @@
-import streamlit as st
+# Google OIDC setup required in .streamlit/secrets.toml:
+# [auth]
+# redirect_uri = "https://DEINE-APP.streamlit.app/oauth2callback"
+# cookie_secret = "EIN-LANGER-ZUFAELLIGER_WERT"
+# client_id = "GOOGLE_CLIENT_ID"
+# client_secret = "GOOGLE_CLIENT_SECRET"
+# server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
 
-if not st.user.is_logged_in:
-    st.button("Mit Google anmelden", on_click=st.login)
-    st.stop()
 
-st.button("Abmelden", on_click=st.logout)
-st.write(f"Willkommen, {st.user.name}")
 # -*- coding: utf-8 -*-
 import os
 import re
@@ -16,6 +17,30 @@ import warnings
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
 import html
+
+def require_google_login():
+    """
+    Streamlit OIDC login gate.
+    Requires [auth] configuration in .streamlit/secrets.toml.
+    """
+    if not st.user.is_logged_in:
+        st.markdown("## Anmeldung erforderlich")
+        st.write("Bitte melde dich mit Google an, um die App zu nutzen.")
+        st.button("Mit Google anmelden", on_click=st.login, type="primary")
+        st.stop()
+
+
+def render_user_bar():
+    try:
+        c1, c2 = st.columns([6, 1])
+        with c1:
+            user_name = getattr(st.user, "name", None) or getattr(st.user, "email", None) or "angemeldet"
+            st.caption(f"Angemeldet als: {user_name}")
+        with c2:
+            st.button("Abmelden", on_click=st.logout, key="google_logout_top")
+    except Exception:
+        pass
+
 
 def infer_ultra_bias_from_signal(ultra_signal):
     try:
@@ -110,8 +135,6 @@ import streamlit as st
 from analysis_core import analyze_stock
 import yfinance as yf
 from plotly.subplots import make_subplots
-
-from auth_utils import check_password
 from logging_utils import (
     append_auto_run_log,
     append_df_to_gsheet,
@@ -155,14 +178,14 @@ warnings.filterwarnings("ignore")
 APP_VERSION = "v14.1.5"
 
 st.set_page_config(
+
+require_google_login()
+render_user_bar()
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
     page_icon="📊",
     layout="wide"
 )
 
-
-if not check_password():
-    st.stop()
 
 # ---------- Session State / App Defaults ----------
 if "selected_ticker" not in st.session_state:
@@ -1108,104 +1131,6 @@ div[data-testid="stExpander"] summary{
 .bullet-card li{color:#d1d5db;line-height:1.5;margin-bottom:4px;}
 
 
-
-
-.candle-dash-grid{
-    display:grid;
-    grid-template-columns:repeat(3, minmax(0,1fr));
-    gap:12px;
-    margin:10px 0 14px 0;
-}
-.candle-dash-card{
-    border:1px solid #243042;
-    border-radius:18px;
-    padding:14px 16px;
-    background:linear-gradient(180deg,#0f172a 0%, #0b1220 100%);
-    box-shadow:0 10px 24px rgba(0,0,0,0.18);
-}
-.candle-dash-card h4{
-    margin:0 0 8px 0;
-    font-size:0.78rem;
-    text-transform:uppercase;
-    letter-spacing:0.04em;
-    color:#94a3b8;
-}
-.candle-dash-main{
-    font-size:1.02rem;
-    font-weight:800;
-    line-height:1.3;
-    color:#f8fafc;
-}
-.candle-dash-sub{
-    margin-top:6px;
-    font-size:0.84rem;
-    color:#cbd5e1;
-    line-height:1.45;
-}
-.candle-compare-grid{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:12px;
-    margin:12px 0;
-}
-.candle-compare-card{
-    border:1px solid #243042;
-    border-radius:18px;
-    padding:14px 16px;
-    background:rgba(255,255,255,0.03);
-}
-.candle-compare-title{
-    font-size:0.78rem;
-    text-transform:uppercase;
-    letter-spacing:0.04em;
-    color:#94a3b8;
-    font-weight:800;
-    margin-bottom:8px;
-}
-.candle-compare-row{
-    margin-top:10px;
-}
-.candle-compare-label{
-    font-size:0.75rem;
-    text-transform:uppercase;
-    letter-spacing:0.03em;
-    color:#94a3b8;
-    font-weight:800;
-    margin-bottom:4px;
-}
-.candle-compare-text{
-    font-size:0.9rem;
-    color:#f8fafc;
-    line-height:1.45;
-}
-.candle-action-grid{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:12px;
-    margin:12px 0;
-}
-.candle-action-card{
-    border:1px solid #243042;
-    border-radius:18px;
-    padding:14px 16px;
-}
-.candle-action-buy{
-    background:rgba(34,197,94,0.10);
-    border-color:rgba(34,197,94,0.26);
-}
-.candle-action-exit{
-    background:rgba(245,158,11,0.10);
-    border-color:rgba(245,158,11,0.26);
-}
-.candle-detail-expander-label{
-    font-size:0.84rem;
-    color:#cbd5e1;
-}
-@media (max-width: 900px){
-    .candle-dash-grid{grid-template-columns:1fr;}
-    .candle-compare-grid{grid-template-columns:1fr;}
-    .candle-action-grid{grid-template-columns:1fr;}
-}
 
 .candle-badge{
     display:inline-block;
@@ -10326,100 +10251,64 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
 
         st.markdown("### Was das jetzt bedeutet")
 
-        st.markdown(
-            f"""<div class="candle-dash-grid">
-                <div class="candle-dash-card">
-                    <h4>Bias</h4>
-                    <div class="candle-dash-main">{summary}</div>
-                    <div style="margin-top:6px;">{_summary_badge(summary)}</div>
-                    <div class="candle-dash-sub">{interpretation}</div>
-                </div>
-                <div class="candle-dash-card">
-                    <h4>Bestaetigung</h4>
-                    <div class="candle-dash-main">{_candle_confirmation_summary(daily_sig, hourly_sig)}</div>
-                    <div class="candle-dash-sub">Tageschart und Stundenchart zeigen hier, wie weit das Muster bereits bestaetigt ist.</div>
-                </div>
-                <div class="candle-dash-card">
-                    <h4>Naechster Trigger</h4>
-                    <div class="candle-dash-main">{_candle_trigger_summary(daily_sig, hourly_sig)}</div>
-                    <div class="candle-dash-sub">Das ist der naechste Punkt, an dem das Candle-Signal klarer bullisch oder bearisch wird.</div>
-                </div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+        st.markdown("**Einordnung nach Zeitebene**")
+        z1, z2 = st.columns(2)
+        with z1:
+            st.markdown("**Tageschart**")
+            st.markdown(_candle_badge_html(daily_sig.get("bias","Neutral"), _candle_kind_from_tone(daily_sig.get("tone","neutral"))), unsafe_allow_html=True)
+            st.write(daily_sig['reading'])
+        with z2:
+            st.markdown("**Stundenchart**")
+            st.markdown(_candle_badge_html(hourly_sig.get("bias","Neutral"), _candle_kind_from_tone(hourly_sig.get("tone","neutral"))), unsafe_allow_html=True)
+            st.write(hourly_sig['reading'])
 
-        st.markdown(
-            f"""<div class="candle-compare-grid">
-                <div class="candle-compare-card">
-                    <div class="candle-compare-title">Tageschart</div>
-                    <div>{_candle_badge_html(daily_sig.get("bias","Neutral"), _candle_kind_from_tone(daily_sig.get("tone","neutral")))}</div>
-                    <div class="candle-compare-row">
-                        <div class="candle-compare-label">Einordnung</div>
-                        <div class="candle-compare-text">{_candle_compact_summary(daily_sig)}</div>
-                    </div>
-                    <div class="candle-compare-row">
-                        <div class="candle-compare-label">Bestaetigung</div>
-                        <div class="candle-compare-text">{daily_sig.get('confirmation_detail','-')}</div>
-                    </div>
-                    <div class="candle-compare-row">
-                        <div class="candle-compare-label">Naechster Trigger</div>
-                        <div class="candle-compare-text">{daily_sig.get('next_trigger','-')}</div>
-                    </div>
-                </div>
-                <div class="candle-compare-card">
-                    <div class="candle-compare-title">Stundenchart</div>
-                    <div>{_candle_badge_html(hourly_sig.get("bias","Neutral"), _candle_kind_from_tone(hourly_sig.get("tone","neutral")))}</div>
-                    <div class="candle-compare-row">
-                        <div class="candle-compare-label">Einordnung</div>
-                        <div class="candle-compare-text">{_candle_compact_summary(hourly_sig)}</div>
-                    </div>
-                    <div class="candle-compare-row">
-                        <div class="candle-compare-label">Bestaetigung</div>
-                        <div class="candle-compare-text">{hourly_sig.get('confirmation_detail','-')}</div>
-                    </div>
-                    <div class="candle-compare-row">
-                        <div class="candle-compare-label">Naechster Trigger</div>
-                        <div class="candle-compare-text">{hourly_sig.get('next_trigger','-')}</div>
-                    </div>
-                </div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+        st.markdown("**Bestaetigung**")
+        b1, b2 = st.columns(2)
+        with b1:
+            st.markdown("**Tageschart**")
+            st.write(daily_sig.get('confirmation_detail','-'))
+        with b2:
+            st.markdown("**Stundenchart**")
+            st.write(hourly_sig.get('confirmation_detail','-'))
 
-        st.markdown(
-            f"""<div class="candle-action-grid">
-                <div class="candle-action-card candle-action-buy">
-                    <div class="candle-compare-title">Kauf</div>
-                    <div>{_candle_entry_badge(daily_sig.get("entry_hint","-"))}</div>
-                    <div class="candle-compare-row">
-                        <div class="candle-compare-label">Was daraus folgt</div>
-                        <div class="candle-compare-text">{daily_sig.get('entry_hint','-')}</div>
-                    </div>
-                </div>
-                <div class="candle-action-card candle-action-exit">
-                    <div class="candle-compare-title">Exit</div>
-                    <div>{_candle_exit_badge(daily_sig.get("exit_hint","-"))}</div>
-                    <div class="candle-compare-row">
-                        <div class="candle-compare-label">Was daraus folgt</div>
-                        <div class="candle-compare-text">{daily_sig.get('exit_hint','-')}</div>
-                    </div>
-                </div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+        st.markdown("**Naechster Trigger**")
+        t1, t2 = st.columns(2)
+        with t1:
+            st.markdown("**Tageschart**")
+            st.write(daily_sig.get('next_trigger','-'))
+        with t2:
+            st.markdown("**Stundenchart**")
+            st.write(hourly_sig.get('next_trigger','-'))
 
-        with st.expander("Mehr Details", expanded=False):
-            d1, d2 = st.columns(2)
-            with d1:
-                st.markdown("**Was das Signal kippt – Tageschart**")
-                st.write(daily_sig.get('invalid_if','-'))
-                st.markdown("**Volumen – Tageschart**")
-                st.write(daily_sig.get('volume_note','-'))
-            with d2:
-                st.markdown("**Was das Signal kippt – Stundenchart**")
-                st.write(hourly_sig.get('invalid_if','-'))
-                st.markdown("**Volumen – Stundenchart**")
-                st.write(hourly_sig.get('volume_note','-'))
+        st.markdown("**Kauf und Exit**")
+        k1, k2 = st.columns(2)
+        with k1:
+            st.markdown("**Kauf**")
+            st.markdown(_candle_entry_badge(daily_sig.get("entry_hint","-")), unsafe_allow_html=True)
+            st.write(daily_sig.get('entry_hint','-'))
+        with k2:
+            _exit_kind = "bear" if "warnung" in str(daily_sig.get("exit_hint","")).lower() else "warn"
+            st.markdown("**Exit**")
+            st.markdown(_candle_exit_badge(daily_sig.get("exit_hint","-")), unsafe_allow_html=True)
+            st.write(daily_sig.get('exit_hint','-'))
+
+        st.markdown("**Was das Signal kippt**")
+        s1, s2 = st.columns(2)
+        with s1:
+            st.markdown("**Tageschart**")
+            st.write(daily_sig.get('invalid_if','-'))
+        with s2:
+            st.markdown("**Stundenchart**")
+            st.write(hourly_sig.get('invalid_if','-'))
+
+        st.markdown("**Volumen**")
+        v1, v2 = st.columns(2)
+        with v1:
+            st.markdown("**Tageschart**")
+            st.write(daily_sig.get('volume_note','-'))
+        with v2:
+            st.markdown("**Stundenchart**")
+            st.write(hourly_sig.get('volume_note','-'))
     except Exception as _candle_err:
         st.info("Candlestick-Analyse aktuell nicht verfuegbar.")
 
@@ -10630,29 +10519,6 @@ def _candle_exit_badge(exit_hint):
     if "keine direkte exit-warnung" in s or "noch keine" in s:
         return _candle_badge_html("Keine Exit-Warnung", "neutral")
     return _candle_badge_html("Keine Exit-Warnung", "neutral")
-
-
-
-def _candle_compact_summary(sig):
-    sig = sig or {}
-    bias = str(sig.get("bias", "Neutral"))
-    pattern = str(sig.get("pattern", "-"))
-    quality = str(sig.get("quality", "-"))
-    return f"{bias} | {pattern} | Qualitaet: {quality}"
-
-def _candle_trigger_summary(daily_sig, hourly_sig):
-    d = str((daily_sig or {}).get("next_trigger", "-"))
-    h = str((hourly_sig or {}).get("next_trigger", "-"))
-    if d == h:
-        return d
-    return f"Tageschart: {d} | Stundenchart: {h}"
-
-def _candle_confirmation_summary(daily_sig, hourly_sig):
-    d = str((daily_sig or {}).get("confirmation", "fehlt"))
-    h = str((hourly_sig or {}).get("confirmation", "fehlt"))
-    if d == h:
-        return d.capitalize()
-    return f"Tageschart: {d} | Stundenchart: {h}"
 
 
 def render_mobile_ranking_cards(df):

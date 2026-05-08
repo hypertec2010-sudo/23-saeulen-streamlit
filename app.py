@@ -9790,6 +9790,7 @@ def _candle_body_metrics(df):
         return None
 
 
+
 def detect_candlestick_signal(df, context_hint=""):
     """
     Liefert kompakten Candlestick-Bias fuer Kauf/Verkauf.
@@ -9801,99 +9802,188 @@ def detect_candlestick_signal(df, context_hint=""):
             "bias": "Neutral",
             "tone": "neutral",
             "strength": 0,
+            "quality": "schwach",
             "confirmation": "fehlt",
+            "confirmation_detail": "Zu wenig Daten fuer Candle-Bestaetigung.",
+            "next_trigger": "-",
+            "invalid_if": "-",
+            "entry_hint": "Kein verwertbares Candle-Kaufsignal.",
+            "exit_hint": "Kein verwertbares Candle-Exit-Signal.",
             "reading": "Zu wenig Daten fuer Candle-Analyse.",
+            "volume_note": "Keine Volumenlesart verfuegbar.",
         }
 
     pattern = "Kein klares Muster"
     bias = "Neutral"
     tone = "neutral"
     strength = 18
+    quality = "schwach"
     confirmation = "fehlt"
+    confirmation_detail = "Folgekerze bestaetigt das Muster noch nicht."
+    next_trigger = "Rueckkehr ueber/unter kurzfristige Trigger-Niveaus abwarten."
+    invalid_if = "Muster verliert Aussagekraft bei gegenteiliger Anschlusskerze."
+    entry_hint = "Noch kein belastbares Candle-Kaufsignal."
+    exit_hint = "Noch keine klare Candle-Exit-Warnung."
     reading = "Keine starke Candlestick-Reaktion."
+    volume_note = "Volumen bestaetigt das Muster aktuell nicht klar."
 
     body_pct = m["body"] / m["range"]
     upper_pct = m["upper"] / m["range"]
     lower_pct = m["lower"] / m["range"]
 
-    # Base patterns
+    prev_h = prev_l = None
+    try:
+        prev_h = float(df["High"].iloc[-2]); prev_l = float(df["Low"].iloc[-2])
+    except Exception:
+        pass
+
+    try:
+        if "Volume" in df.columns and len(df) >= 5:
+            v_now = float(df["Volume"].iloc[-1] or 0)
+            v_avg = float(df["Volume"].tail(5).mean() or 0)
+            if v_avg > 0:
+                if v_now >= 1.2 * v_avg:
+                    volume_note = "Volumen bestaetigt die Kerze eher."
+                elif v_now <= 0.8 * v_avg:
+                    volume_note = "Kerze kommt eher auf duennem Volumen."
+                else:
+                    volume_note = "Volumen neutral."
+    except Exception:
+        pass
+
     if lower_pct >= 0.45 and body_pct <= 0.35 and m["c"] >= m["o"]:
         pattern = "Hammer"
         bias = "Leicht bullisch"
         tone = "bullish"
         strength = 48
+        quality = "mittel" if lower_pct < 0.6 else "stark"
         reading = "Bullische Reaktionskerze mit unterem Docht."
+        next_trigger = "Bullisher bei Rueckkehr ueber das Kerzenhoch."
+        invalid_if = "Unattraktiver bei Bruch des Kerzentiefs."
+        entry_hint = "Fruehe Kaufreaktion moeglich, aber Folgekerze sollte bestaetigen."
+        exit_hint = "Keine direkte Exit-Warnung, solange das Tief haelt."
     elif upper_pct >= 0.45 and body_pct <= 0.35 and m["c"] <= m["o"]:
         pattern = "Shooting Star"
         bias = "Leicht bearish"
         tone = "bearish"
         strength = 50
+        quality = "mittel" if upper_pct < 0.6 else "stark"
         reading = "Baerische Rejection-Kerze mit oberem Docht."
+        next_trigger = "Bearisher bei Unterschreiten des Kerzentiefs."
+        invalid_if = "Warnung verliert Gewicht bei Rueckkehr ueber das Kerzenhoch."
+        entry_hint = "Fuer neue Kaeufe zunaechst vorsichtiger."
+        exit_hint = "Fruehe Exit-Warnung, Stop enger / Teilgewinn sinnvoll bei bestaetigender Folgekerze."
     elif m["c"] > m["o"] and m["pc"] < m["po"] and m["c"] >= m["po"] and m["o"] <= m["pc"]:
         pattern = "Bullish Engulfing"
         bias = "Bestaetigt bullish"
         tone = "bullish"
         strength = 64
+        quality = "stark"
         confirmation = "vorhanden"
+        confirmation_detail = "Die aktuelle Kerze umschliesst die Vorkerze bullisch."
         reading = "Bullische Umkehrkerze umschliesst die Vorkerze."
+        next_trigger = "Bullisher bei Anschluss ueber das aktuelle Hoch."
+        invalid_if = "Signal schwaecher bei Rueckfall unter das Kerzentief."
+        entry_hint = "Bullische Candle-Lesart unterstuetzt Kauf-/Rebound-Idee."
+        exit_hint = "Keine direkte Exit-Warnung, solange Anschluss nach oben kommt."
     elif m["c"] < m["o"] and m["pc"] > m["po"] and m["c"] <= m["po"] and m["o"] >= m["pc"]:
         pattern = "Bearish Engulfing"
         bias = "Bestaetigt bearish"
         tone = "bearish"
         strength = 66
+        quality = "stark"
         confirmation = "vorhanden"
+        confirmation_detail = "Die aktuelle Kerze umschliesst die Vorkerze baerisch."
         reading = "Baerische Umkehrkerze umschliesst die Vorkerze."
+        next_trigger = "Bearisher bei Anschluss unter das aktuelle Tief."
+        invalid_if = "Warnung schwaecher bei Rueckeroberung des Kerzenhochs."
+        entry_hint = "Neue Kaeufe zunaechst meiden, bis die Warnung neutralisiert wird."
+        exit_hint = "Klare Exit-/De-Risking-Warnung bei bestaetigender Folgekerze."
     elif body_pct <= 0.12:
         pattern = "Doji / Unentschlossenheit"
         bias = "Neutral"
         tone = "neutral"
         strength = 26
+        quality = "schwach"
         reading = "Kaum Kerzenkoerper, Markt wirkt unentschlossen."
-    elif len(df) >= 2:
-        prev_h = float(df["High"].iloc[-2]); prev_l = float(df["Low"].iloc[-2])
-        if m["h"] <= prev_h and m["l"] >= prev_l:
-            pattern = "Inside Bar"
-            bias = "Neutral"
-            tone = "neutral"
-            strength = 24
-            reading = "Konsolidierung / Spannungsaufbau innerhalb der Vorkerze."
+        next_trigger = "Richtungsentscheidung ueber Hoch/Tief der Doji-Kerze abwarten."
+        invalid_if = "Nicht anwendbar."
+        entry_hint = "Kein Candle-Kaufsignal, erst Ausbruch der Spanne abwarten."
+        exit_hint = "Noch keine klare Exit-Warnung, aber Erschoepfung moeglich."
+    elif prev_h is not None and prev_l is not None and m["h"] <= prev_h and m["l"] >= prev_l:
+        pattern = "Inside Bar"
+        bias = "Neutral"
+        tone = "neutral"
+        strength = 24
+        quality = "mittel"
+        reading = "Konsolidierung / Spannungsaufbau innerhalb der Vorkerze."
+        next_trigger = "Bullisher ueber Vortageshoch, bearisher unter Vortagestief."
+        invalid_if = "Nicht anwendbar."
+        entry_hint = "Noch kein Kaufsignal, aber Setup fuer Folgeausbruch entsteht."
+        exit_hint = "Noch keine Exit-Warnung, aber Richtungsentscheidung steht an."
 
-    # Context adjustment
     ctx = str(context_hint or "").lower()
     if "support" in ctx or "s1" in ctx or "unterer kanalbereich" in ctx:
         if tone == "bullish":
             strength += 8
             confirmation = "teilweise" if confirmation == "fehlt" else confirmation
+            if confirmation != "vorhanden":
+                confirmation_detail = "Support-Kontext stuetzt die bullische Kerzenlesart, Folgekerze fehlt noch."
             reading += " Kontext an Support verbessert die Kauflesart."
-        elif tone == "neutral" and ("unterer docht" in reading.lower() or "reaktion" in reading.lower()):
+            entry_hint = "Bullische Candle-Reaktion direkt an Support; naechster Impuls nach oben waere ein gutes Timing-Signal."
+        elif tone == "neutral":
             bias = "Leicht bullisch"
             tone = "bullish"
             strength = max(strength, 38)
+            quality = "mittel"
             confirmation = "teilweise"
+            confirmation_detail = "Support wird reagiert, aber ohne voll bestaetigte Folgebewegung."
             reading += " Support-Kontext spricht fuer moegliche Drehung."
+            next_trigger = "Bullisher bei Halten von S1 und Rueckkehr ueber das Kurzfristhoch."
+            entry_hint = "Moegliche fruehe Kaufreaktion am Support, Bestaetigung fehlt noch."
+            exit_hint = "Keine direkte Exit-Warnung, solange Support haelt."
+
     if "widerstand" in ctx or "r1" in ctx or "oberer kanalbereich" in ctx:
         if tone == "bearish":
             strength += 8
             confirmation = "teilweise" if confirmation == "fehlt" else confirmation
+            if confirmation != "vorhanden":
+                confirmation_detail = "Widerstands-Kontext verschaerft die baerische Kerzenlesart, Folgekerze fehlt noch."
             reading += " Kontext an Widerstand verschaerft die Verkaufswarnung."
-        elif tone == "neutral" and ("ober" in reading.lower() or "unentschlossen" in reading.lower()):
+            exit_hint = "Candle-Warnung an Widerstand: Stop enger / Teilgewinn bei weiterem schwachen Follow-through."
+        elif tone == "neutral":
             bias = "Leicht bearish"
             tone = "bearish"
             strength = max(strength, 38)
+            quality = "mittel"
             confirmation = "teilweise"
+            confirmation_detail = "Widerstand wird respektiert, aber der Bruch nach unten ist noch nicht bestaetigt."
             reading += " Widerstands-Kontext spricht fuer moegliche Ablehnung."
+            next_trigger = "Bearisher bei Rueckfall unter das kurzfristige Reaktionstief."
+            entry_hint = "Neue Kaeufe lieber erst nach Rueckeroberung des Widerstands."
+            exit_hint = "Moegliche fruehe Exit-Warnung an Widerstand, Bestaetigung fehlt noch."
 
     strength = max(0, min(100, int(round(strength))))
+    if strength >= 62:
+        quality = "stark"
+    elif strength >= 38 and quality == "schwach":
+        quality = "mittel"
 
     return {
         "pattern": pattern,
         "bias": bias,
         "tone": tone,
         "strength": strength,
+        "quality": quality,
         "confirmation": confirmation,
+        "confirmation_detail": confirmation_detail,
+        "next_trigger": next_trigger,
+        "invalid_if": invalid_if,
+        "entry_hint": entry_hint,
+        "exit_hint": exit_hint,
         "reading": reading,
+        "volume_note": volume_note,
     }
-
 
 def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_hint="", result=None):
     try:
@@ -9952,7 +10042,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 <div class="mobile-form-title">Tageschart</div>
                 <div class="mobile-form-value">{_tone_icon(daily_sig['tone'])} {daily_sig['bias']}</div>
                 <div class="mobile-form-sub">{daily_sig['pattern']}</div>
-                <div class="mobile-form-sub">Staerke: {daily_sig['strength']}/100 | Bestaetigung: {daily_sig['confirmation']}</div>
+                <div class="mobile-form-sub">Staerke: {daily_sig['strength']}/100 | Qualitaet: {daily_sig.get("quality","-")} | Bestaetigung: {daily_sig['confirmation']}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -9962,7 +10052,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 <div class="mobile-form-title">Stundenchart</div>
                 <div class="mobile-form-value">{_tone_icon(hourly_sig['tone'])} {hourly_sig['bias']}</div>
                 <div class="mobile-form-sub">{hourly_sig['pattern']}</div>
-                <div class="mobile-form-sub">Staerke: {hourly_sig['strength']}/100 | Bestaetigung: {hourly_sig['confirmation']}</div>
+                <div class="mobile-form-sub">Staerke: {hourly_sig['strength']}/100 | Qualitaet: {hourly_sig.get("quality","-")} | Bestaetigung: {hourly_sig['confirmation']}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -9982,6 +10072,14 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
             <div class="mobile-form-title">Handelslesart</div>
             <div class="mobile-form-sub"><b>Tageschart:</b> {daily_sig['reading']}</div>
             <div class="mobile-form-sub" style="margin-top:6px;"><b>Stundenchart:</b> {hourly_sig['reading']}</div>
+            <div class="mobile-form-sub" style="margin-top:10px;"><b>Bestaetigung:</b> Tageschart: {daily_sig.get('confirmation_detail','-')}</div>
+            <div class="mobile-form-sub" style="margin-top:4px;"><b>Bestaetigung:</b> Stundenchart: {hourly_sig.get('confirmation_detail','-')}</div>
+            <div class="mobile-form-sub" style="margin-top:10px;"><b>Naechster Trigger:</b> Tageschart: {daily_sig.get('next_trigger','-')}</div>
+            <div class="mobile-form-sub" style="margin-top:4px;"><b>Naechster Trigger:</b> Stundenchart: {hourly_sig.get('next_trigger','-')}</div>
+            <div class="mobile-form-sub" style="margin-top:10px;"><b>Kauflesart:</b> {daily_sig.get('entry_hint','-')}</div>
+            <div class="mobile-form-sub" style="margin-top:4px;"><b>Exit-Lesart:</b> {daily_sig.get('exit_hint','-')}</div>
+            <div class="mobile-form-sub" style="margin-top:10px;"><b>Volumen:</b> Tageschart: {daily_sig.get('volume_note','-')}</div>
+            <div class="mobile-form-sub" style="margin-top:4px;"><b>Volumen:</b> Stundenchart: {hourly_sig.get('volume_note','-')}</div>
             </div>""",
             unsafe_allow_html=True,
         )

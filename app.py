@@ -24,11 +24,6 @@ def require_google_login():
     Uses single-provider [auth] setup from .streamlit/secrets.toml.
     """
     if not st.user.is_logged_in:
-        st.set_page_config(page_title="23 Saeulen Analyse", page_icon="📈", layout="wide")
-
-require_google_login()
-render_user_bar()
-
         st.title("23 Saeulen Analyse")
         st.info("Bitte mit Google anmelden, um die App zu nutzen.")
         st.button("Mit Google anmelden", on_click=st.login, type="primary", key="google_login_main")

@@ -13076,6 +13076,9 @@ if result is not None:
             p2.metric("Sektor", sector if sector else "-")
             p3.metric("Industrie", industry if industry else "-")
 
+            render_signal_conflict_block(conflict_pkg)
+
+
             st.markdown(
                 """
                 <div class="section-head">

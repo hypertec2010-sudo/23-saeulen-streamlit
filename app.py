@@ -2620,6 +2620,45 @@ def compute_signal_conflict_phase_ui(
     }
 
 
+
+
+def render_chart_period_performance_block(chart_period_label, perf_pct, perf_abs=None):
+    try:
+        perf_num = float(perf_pct) if perf_pct is not None and str(perf_pct) not in {"", "-", "None"} else None
+    except Exception:
+        perf_num = None
+
+    if perf_num is None:
+        perf_text = "-"
+        perf_label = "Keine Performance verfügbar"
+    else:
+        perf_text = f"{perf_num:.1f}%"
+        if perf_num > 0:
+            perf_label = "Positiv im gewählten Zeitraum"
+        elif perf_num < 0:
+            perf_label = "Negativ im gewählten Zeitraum"
+        else:
+            perf_label = "Unverändert im gewählten Zeitraum"
+
+    abs_line = ""
+    if perf_abs is not None and str(perf_abs) not in {"", "-", "None"}:
+        try:
+            abs_line = f" · Absolut: {float(perf_abs):.2f}"
+        except Exception:
+            abs_line = f" · Absolut: {perf_abs}"
+
+    st.markdown(
+        f"""
+        <div class="section-card">
+            <div class="premium-title">Zeitraum-Performance</div>
+            <div class="premium-value">Start bis aktuell: {perf_text}</div>
+            <div class="premium-sub">Bezieht sich auf den aktuell ausgewählten Chart-Zeitraum ({chart_period_label}).{abs_line}</div>
+            <div class="premium-sub" style="margin-top:6px;">{perf_label}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def render_signal_conflict_block(conflict_pkg):
     if not isinstance(conflict_pkg, dict):
         return
@@ -13265,6 +13304,7 @@ if result is not None:
                     chart_structures = None
             fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
             st.plotly_chart(fig, use_container_width=True)
+            render_chart_period_performance_block(chart_period_label if "chart_period_label" in locals() else (chart_period if "chart_period" in locals() else "Zeitraum"), tb_perf if "tb_perf" in locals() else (chart_perf_pct if "chart_perf_pct" in locals() else None), perf_abs=tb_perf_abs if "tb_perf_abs" in locals() else None)
             result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
             hourly_candle_df = get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df)
             candle_bias_pkg = build_candlestick_bias_package(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []))
@@ -14075,7 +14115,7 @@ if result is not None:
                         tb_perf = ((_price_safe / _buy_in_safe) - 1.0) * 100.0 if _buy_in_safe > 0 and _price_safe > 0 else None
                     except Exception:
                         tb_perf = None
-                p5.metric("Performance seit Einstieg", fmt_num(tb_perf, 1, "%"))
+                # moved below chart: Performance seit Einstieg
                 p6.metric("Risiko-Hinweis", risk_note)
 
                 st.markdown("**Einordnung**")

@@ -2099,6 +2099,287 @@ def display_trigger_status_label(status):
     return mapping.get(str(status or ""), str(status or "-"))
 
 
+
+def scores_visible():
+    try:
+        return bool(st.session_state.get("show_scores_details", False))
+    except Exception:
+        return False
+
+
+def regime_public_label(regime):
+    mapping = {
+        "POSITIV": "Positiv",
+        "NEUTRAL": "Neutral",
+        "NEGATIV": "Risk-off",
+        "UNBEKANNT": "Unklar",
+    }
+    return mapping.get(str(regime or "").strip().upper(), "Unklar")
+
+
+def get_market_regime_context(market_info):
+    regime_raw = str((market_info or {}).get("regime", "UNBEKANNT")).strip().upper()
+    label = regime_public_label(regime_raw)
+    if regime_raw == "POSITIV":
+        return {
+            "label": label,
+            "tone": "bullish",
+            "bias_factor": 1,
+            "leadership": "Technologie führt" if "QQQ" in str((market_info or {}).get("benchmark_label", "")) else "Breite führt",
+            "summary": "Long-Setups sind aktuell eher verlässlich.",
+        }
+    if regime_raw == "NEGATIV":
+        return {
+            "label": label,
+            "tone": "bearish",
+            "bias_factor": -1,
+            "leadership": "Keine klare Führung",
+            "summary": "Timing-Signale sind aktuell anfälliger, Rücksetzer gefährlicher.",
+        }
+    return {
+        "label": label if label != "Unklar" else "Neutral",
+        "tone": "neutral",
+        "bias_factor": 0,
+        "leadership": "Keine klare Führung",
+        "summary": "Gute Setups funktionieren, aber Selektivität ist wichtiger.",
+    }
+
+
+def investment_case_label_phase1(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "-"
+    if s >= 75:
+        return "attraktiv"
+    if s >= 60:
+        return "solide"
+    if s >= 45:
+        return "gemischt"
+    return "schwach"
+
+
+def timing_label_phase1(trading_score, entry_quality="-", trigger_status="-"):
+    try:
+        s = float(trading_score)
+    except Exception:
+        s = 0
+    ts = str(trigger_status or "").strip()
+    eq = str(entry_quality or "").strip().lower()
+    if (ts == "Aktiv" and eq == "gut" and s >= 68) or s >= 78:
+        return "reif"
+    if ts in {"Aktiv", "Nahe dran"} or s >= 60:
+        return "fast reif"
+    if ts in {"Frühe Beobachtung", "Beobachten"} or s >= 42:
+        return "noch nicht reif"
+    return "unattraktiv"
+
+
+def risk_label_phase1(exit_score, tactical_exit_risk=0, exit_text="-"):
+    try:
+        es = float(exit_score)
+    except Exception:
+        es = 0
+    try:
+        tr = float(tactical_exit_risk)
+    except Exception:
+        tr = 0
+    et = str(exit_text or "").lower()
+    if es >= 65 or tr >= 60 or "klarer" in et or "verkaufsdruck" in et:
+        return "kritisch"
+    if es >= 25 or tr >= 42 or "schwäche" in et or "absichern" in et:
+        return "erhöht"
+    return "stabil"
+
+
+def priority_label_phase1(priority_text):
+    s = str(priority_text or "").strip().lower()
+    if s in {"hoch", "mittel", "niedrig"}:
+        return s
+    return "mittel"
+
+
+def action_label_phase1(main_action_label, position_mode=False):
+    s = str(main_action_label or "").strip().lower()
+    if "teilgewinn" in s:
+        return "teilgewinn prüfen"
+    if "stop" in s or "risiko" in s:
+        return "stop enger"
+    if "verkauf" in s or "exit" in s:
+        return "exit prüfen"
+    if "halten" in s:
+        return "halten"
+    if "kauf" in s and ("timing prüfen" in s or "kandidat" in s):
+        return "vorbereiten"
+    if "beobachten" in s or "wait" in s or "kein einstieg" in s:
+        return "abwarten"
+    if "kauf" in s or "aufbau" in s:
+        return "kaufen"
+    return "abwarten" if not position_mode else "halten"
+
+
+def _shift_step(label, labels, direction):
+    if label not in labels:
+        return label
+    idx = labels.index(label)
+    idx = max(0, min(len(labels)-1, idx + direction))
+    return labels[idx]
+
+
+def apply_regime_to_timing(base_timing, regime_ctx, risk_label="stabil", trigger_status="-", setup_priority="mittel"):
+    result = str(base_timing or "noch nicht reif")
+    reason = "Das Umfeld ist gemischt, Bestätigung bleibt wichtig."
+    bias = int((regime_ctx or {}).get("bias_factor", 0))
+    if bias > 0:
+        if result == "fast reif" and risk_label != "kritisch":
+            result = "reif"
+            reason = "Das Marktumfeld unterstützt das Timing aktuell eher."
+        elif result == "noch nicht reif" and setup_priority == "hoch" and str(trigger_status) in {"Nahe dran", "Aktiv"}:
+            result = "fast reif"
+            reason = "Das positive Umfeld macht den letzten Timing-Schritt leichter erreichbar."
+        else:
+            reason = "Das Marktumfeld unterstützt das Timing aktuell eher."
+    elif bias < 0:
+        if result == "reif":
+            result = "fast reif"
+            reason = "Das Marktumfeld verlangt aktuell mehr Bestätigung."
+        elif result == "fast reif":
+            result = "noch nicht reif"
+            reason = "Frühe Einstiegssignale sind im aktuellen Umfeld anfälliger."
+        elif result == "noch nicht reif" and risk_label != "stabil":
+            result = "unattraktiv"
+            reason = "Im aktuellen Umfeld ist das Timing für frühe Long-Signale zu anfällig."
+        else:
+            reason = "Das Marktumfeld macht frühe Einstiegssignale aktuell anfälliger."
+    return result, reason
+
+
+def apply_regime_to_risk(base_risk, regime_ctx, tactical_exit_risk=0):
+    result = str(base_risk or "stabil")
+    reason = "Das Risiko wird primär vom Einzelsignal bestimmt."
+    bias = int((regime_ctx or {}).get("bias_factor", 0))
+    try:
+        tr = float(tactical_exit_risk)
+    except Exception:
+        tr = 0
+    if bias > 0:
+        if result == "erhöht" and tr < 60:
+            result = "stabil"
+            reason = "Das Marktumfeld entschärft das Risiko aktuell leicht."
+        else:
+            reason = "Das Marktumfeld entschärft das Risiko aktuell leicht."
+    elif bias < 0:
+        if result == "stabil" and tr >= 25:
+            result = "erhöht"
+            reason = "Das Marktumfeld verschärft kurzfristige Warnsignale zusätzlich."
+        elif result == "erhöht":
+            result = "kritisch"
+            reason = "Im risk-off Umfeld wiegen taktische Warnsignale schwerer."
+        else:
+            reason = "Das Marktumfeld verschärft kurzfristige Warnsignale zusätzlich."
+    return result, reason
+
+
+def apply_regime_to_priority(base_priority, regime_ctx, investment_case="solide", timing_label="noch nicht reif", risk_label="stabil"):
+    result = str(base_priority or "mittel")
+    reason = "Die Priorisierung folgt Setup-Qualität, Timing und Risiko."
+    bias = int((regime_ctx or {}).get("bias_factor", 0))
+    if bias > 0:
+        if result == "mittel" and investment_case in {"attraktiv", "solide"} and timing_label in {"fast reif", "reif"} and risk_label != "kritisch":
+            result = "hoch"
+            reason = "Gute Setups bleiben im positiven Umfeld weiter oben."
+        elif result == "niedrig" and investment_case in {"attraktiv", "solide"}:
+            result = "mittel"
+            reason = "Das Umfeld erlaubt, interessante Werte früher höher zu priorisieren."
+        else:
+            reason = "Das Umfeld unterstützt gute Setups aktuell eher."
+    elif bias < 0:
+        if result == "hoch" and not (investment_case == "attraktiv" and timing_label == "reif" and risk_label == "stabil"):
+            result = "mittel"
+            reason = "Im risk-off Umfeld bleiben nur die stärksten Setups ganz oben."
+        elif result == "mittel":
+            result = "niedrig"
+            reason = "Mittelmäßige Setups rutschen im aktuellen Umfeld nach hinten."
+        else:
+            reason = "Im risk-off Umfeld werden nur die stärksten Setups hoch priorisiert."
+    return result, reason
+
+
+def apply_regime_to_action(base_action, regime_ctx, timing_label="noch nicht reif", risk_label="stabil", setup_priority="mittel", position_mode=False):
+    result = str(base_action or ("halten" if position_mode else "abwarten"))
+    reason = "Die Aktion folgt Timing, Risiko und Triggerstatus."
+    bias = int((regime_ctx or {}).get("bias_factor", 0))
+    if not position_mode:
+        if bias > 0:
+            if result == "vorbereiten" and timing_label in {"fast reif", "reif"} and risk_label == "stabil":
+                result = "kaufen"
+                reason = "Das positive Umfeld erlaubt eher prozyklische Long-Setups."
+            elif result == "abwarten" and setup_priority == "hoch" and timing_label == "fast reif":
+                result = "vorbereiten"
+                reason = "Das Umfeld erlaubt, gute Kandidaten aktiver vorzubereiten."
+            else:
+                reason = "Das positive Umfeld erlaubt eher prozyklische Long-Setups."
+        elif bias < 0:
+            if result == "kaufen" and timing_label != "reif":
+                result = "vorbereiten"
+                reason = "Im aktuellen Umfeld ist defensiveres Vorgehen sinnvoller als frühes Antizipieren."
+            elif result == "vorbereiten" and timing_label != "reif":
+                result = "abwarten"
+                reason = "Im aktuellen Umfeld ist defensiveres Vorgehen sinnvoller als frühes Antizipieren."
+            else:
+                reason = "Im aktuellen Umfeld ist defensiveres Vorgehen sinnvoller als frühes Antizipieren."
+    else:
+        if bias < 0:
+            if result == "halten" and risk_label == "erhöht":
+                result = "stop enger"
+                reason = "Im aktuellen Umfeld sollte bestehendes Risiko enger kontrolliert werden."
+            elif result == "stop enger" and risk_label == "kritisch":
+                result = "teilgewinn prüfen"
+                reason = "Risk-off verstärkt den Bedarf an defensivem Positionsmanagement."
+            else:
+                reason = "Risk-off verstärkt den Bedarf an defensivem Positionsmanagement."
+        else:
+            reason = "Das Positionsmanagement wird primär vom Einzelsignal bestimmt."
+    return result, reason
+
+
+def build_exec_summary_phase1(final_timing, final_risk, final_action, regime_ctx, next_trigger="-", negative_trigger="-"):
+    ft = str(final_timing or "noch nicht reif")
+    fr = str(final_risk or "stabil")
+    fa = str(final_action or "abwarten")
+    bias = int((regime_ctx or {}).get("bias_factor", 0))
+
+    if fa == "kaufen" and ft == "reif" and fr == "stabil":
+        verdict = "Ja"
+    elif fa in {"kaufen", "vorbereiten"} and ft in {"fast reif", "reif"} and fr != "kritisch":
+        verdict = "Fast"
+    elif ft == "unattraktiv" or fr == "kritisch" or fa in {"exit prüfen"}:
+        verdict = "Nein"
+    else:
+        verdict = "Noch nicht"
+
+    if bias < 0 and verdict == "Ja":
+        verdict = "Fast"
+    if bias < 0 and verdict == "Fast" and ft != "reif":
+        verdict = "Noch nicht"
+
+    if verdict == "Ja":
+        why = "Setup, Timing und Umfeld passen aktuell zusammen."
+    elif verdict == "Fast":
+        why = "Das Setup ist brauchbar, der letzte Bestätigungsschritt fehlt noch."
+    elif verdict == "Nein":
+        why = "Risiko, Timing oder Umfeld sprechen aktuell gegen einen Einstieg."
+    else:
+        why = "Der Wert ist interessant, aber das Timing ist noch nicht frei."
+
+    if bias > 0:
+        why = why.replace("Umfeld", "Marktumfeld")
+    elif bias < 0:
+        why = why + " Das Marktumfeld macht frühe Long-Signale aktuell anfälliger."
+
+    improve = next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"
+    worsen = negative_trigger if str(negative_trigger).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"
+    return verdict, why, improve, worsen
 def display_stb_label(signal):
     mapping = {
         "LONG": "Bullisch",
@@ -10352,7 +10633,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 <div class="mobile-form-title">Tageschart</div>
                 <div class="mobile-form-value">{_tone_icon(daily_sig['tone'])} {daily_sig['bias']}</div>
                 <div class="mobile-form-sub">{daily_sig['pattern']}</div>
-                <div class="mobile-form-sub">{("Staerke: " + str(daily_sig['strength']) + "/100 | ") if scores_visible() else ""}Qualitaet: {daily_sig.get("quality","-")} | Bestaetigung: {daily_sig['confirmation']}</div>
+                <div class="mobile-form-sub">Staerke: {daily_sig['strength']}/100 | Qualitaet: {daily_sig.get("quality","-")} | Bestaetigung: {daily_sig['confirmation']}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -10362,7 +10643,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 <div class="mobile-form-title">Stundenchart</div>
                 <div class="mobile-form-value">{_tone_icon(hourly_sig['tone'])} {hourly_sig['bias']}</div>
                 <div class="mobile-form-sub">{hourly_sig['pattern']}</div>
-                <div class="mobile-form-sub">{("Staerke: " + str(hourly_sig['strength']) + "/100 | ") if scores_visible() else ""}Qualitaet: {hourly_sig.get("quality","-")} | Bestaetigung: {hourly_sig['confirmation']}</div>
+                <div class="mobile-form-sub">Staerke: {hourly_sig['strength']}/100 | Qualitaet: {hourly_sig.get("quality","-")} | Bestaetigung: {hourly_sig['confirmation']}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -10466,18 +10747,6 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
             unsafe_allow_html=True,
         )
 
-        if scores_visible():
-            with st.expander("Technische Details", expanded=False):
-                try:
-                    _candle_scores = {
-                        "Tageschart Staerke": daily_sig.get("strength", "-"),
-                        "Stundenchart Staerke": hourly_sig.get("strength", "-"),
-                    }
-                    if "candle_bias_pkg" in locals():
-                        _candle_scores["Candle Bias Gesamt"] = candle_bias_pkg.get("score", "-")
-                    st.write(_candle_scores)
-                except Exception:
-                    pass
         with st.expander("Mehr Details", expanded=False):
             d1, d2 = st.columns(2)
             with d1:
@@ -10723,121 +10992,6 @@ def _candle_confirmation_summary(daily_sig, hourly_sig):
     if d == h:
         return d.capitalize()
     return f"Tageschart: {d} | Stundenchart: {h}"
-
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def load_market_regime_data():
-    try:
-        data = {}
-        for symbol in ["SPY", "QQQ", "^VIX"]:
-            df = yf.Ticker(symbol).history(period="1y", auto_adjust=False)
-            if df is not None and not df.empty:
-                data[symbol] = df.copy()
-        return data
-    except Exception:
-        return {}
-
-
-def compute_market_regime():
-    data = load_market_regime_data()
-    spy = data.get("SPY")
-    qqq = data.get("QQQ")
-    vix = data.get("^VIX")
-
-    if spy is None or qqq is None or spy.empty or qqq.empty:
-        return {
-            "label": "Unklar",
-            "tone": "neutral",
-            "summary": "Marktregime aktuell nicht sauber bestimmbar.",
-            "detail": "Zu wenig Indexdaten fuer eine belastbare Markteinordnung.",
-            "leadership": "Keine klare Fuehrung",
-        }
-
-    def _signal(df):
-        c = float(df["Close"].iloc[-1])
-        ma50 = float(df["Close"].rolling(50).mean().iloc[-1])
-        ma200 = float(df["Close"].rolling(200).mean().iloc[-1])
-        ret20 = ((c / float(df["Close"].iloc[-21])) - 1.0) * 100.0 if len(df) > 21 else 0.0
-        score = 0
-        if c > ma50: score += 1
-        if c > ma200: score += 1
-        if ma50 > ma200: score += 1
-        if ret20 > 0: score += 1
-        return score, ret20
-
-    spy_score, spy_ret20 = _signal(spy)
-    qqq_score, qqq_ret20 = _signal(qqq)
-    vix_last = float(vix["Close"].iloc[-1]) if vix is not None and not vix.empty else None
-
-    total = spy_score + qqq_score
-    if vix_last is not None:
-        if vix_last >= 25:
-            total -= 2
-        elif vix_last <= 18:
-            total += 1
-
-    if total >= 7:
-        label = "Risk-on"
-        tone = "bullish"
-        summary = "Marktumfeld aktuell konstruktiv. Long-Setups sind eher verlaesslich."
-    elif total <= 3:
-        label = "Risk-off"
-        tone = "bearish"
-        summary = "Marktumfeld aktuell schwierig. Timing-Signale sind anfaelliger und Ruecksetzer gefaehrlicher."
-    else:
-        label = "Neutral"
-        tone = "neutral"
-        summary = "Gemischtes Marktumfeld. Gute Setups funktionieren, aber Selektivitaet ist wichtiger."
-
-    leadership = "Technologie fuehrt" if qqq_ret20 > spy_ret20 + 1.5 else "Breite fuehrt" if spy_ret20 > qqq_ret20 + 1.5 else "Keine klare Fuehrung"
-    detail = f"SPY 20T: {spy_ret20:.1f}% | QQQ 20T: {qqq_ret20:.1f}% | VIX: {vix_last:.1f}" if vix_last is not None else f"SPY 20T: {spy_ret20:.1f}% | QQQ 20T: {qqq_ret20:.1f}"
-
-    return {
-        "label": label,
-        "tone": tone,
-        "summary": summary,
-        "detail": detail,
-        "leadership": leadership,
-    }
-
-
-def render_market_regime_block():
-    regime = compute_market_regime()
-
-    def _tone_badge(tone, label):
-        if tone == "bullish":
-            return _candle_badge_html(label, "bull")
-        if tone == "bearish":
-            return _candle_badge_html(label, "bear")
-        return _candle_badge_html(label, "neutral")
-
-    st.markdown("### Marktumfeld")
-    st.markdown(
-        f"""<div class="candle-dash-grid">
-            <div class="candle-dash-card">
-                <h4>Marktregime</h4>
-                <div class="candle-dash-main">{regime.get('label','Unklar')}</div>
-                <div style="margin-top:6px;">{_tone_badge(regime.get('tone','neutral'), regime.get('label','Unklar'))}</div>
-                <div class="candle-dash-sub">{regime.get('summary','-')}</div>
-            </div>
-            <div class="candle-dash-card">
-                <h4>Fuehrung</h4>
-                <div class="candle-dash-main">{regime.get('leadership','-')}</div>
-                <div class="candle-dash-sub">Zeigt, ob eher Breite oder Technologie den Markt zieht.</div>
-            </div>
-            <div class="candle-dash-card">
-                <h4>Kontext</h4>
-                <div class="candle-dash-main">Timing einordnen</div>
-                <div class="candle-dash-sub">{regime.get('detail','-')}</div>
-            </div>
-        </div>""",
-        unsafe_allow_html=True,
-    )
-
-
-def scores_visible():
-    return bool(st.session_state.get("show_scores_details", False))
 
 
 def render_mobile_ranking_cards(df):
@@ -11950,14 +12104,64 @@ if result is not None:
             unsafe_allow_html=True,
         )
 
+
+    # ---------- Phase 1: Regime-sensitive Entscheidungslabels ----------
+    regime_ctx = get_market_regime_context(market_info if "market_info" in locals() else {})
+    final_investment_case = investment_case_label_phase1(investment_case_score)
+    base_timing_label = timing_label_phase1(trading_case_score, entry_quality if "entry_quality" in locals() else "-", trigger_status if "trigger_status" in locals() else "-")
+    base_risk_label = risk_label_phase1(exit_score_display if "exit_score_display" in locals() else result.get("exit_score", 0),
+                                        tactical_exit_risk if "tactical_exit_risk" in locals() else 0,
+                                        exit_score_text_display if "exit_score_text_display" in locals() else result.get("exit_score_text", "-"))
+    base_priority_label = priority_label_phase1(watchlist_priority if "watchlist_priority" in locals() else "mittel")
+    base_action_phase1 = action_label_phase1(main_action_label if "main_action_label" in locals() else "-", position_mode=position_mode if "position_mode" in locals() else False)
+
+    final_timing_label, final_timing_reason = apply_regime_to_timing(
+        base_timing_label,
+        regime_ctx,
+        risk_label=base_risk_label,
+        trigger_status=trigger_status if "trigger_status" in locals() else "-",
+        setup_priority=base_priority_label,
+    )
+    final_risk_label, final_risk_reason = apply_regime_to_risk(
+        base_risk_label,
+        regime_ctx,
+        tactical_exit_risk=tactical_exit_risk if "tactical_exit_risk" in locals() else 0,
+    )
+    final_priority_label, final_priority_reason = apply_regime_to_priority(
+        base_priority_label,
+        regime_ctx,
+        investment_case=final_investment_case,
+        timing_label=final_timing_label,
+        risk_label=final_risk_label,
+    )
+    final_action_label, final_action_reason = apply_regime_to_action(
+        base_action_phase1,
+        regime_ctx,
+        timing_label=final_timing_label,
+        risk_label=final_risk_label,
+        setup_priority=final_priority_label,
+        position_mode=position_mode if "position_mode" in locals() else False,
+    )
+    exec_verdict, exec_why, exec_improve, exec_worsen = build_exec_summary_phase1(
+        final_timing_label,
+        final_risk_label,
+        final_action_label,
+        regime_ctx,
+        next_trigger=next_trigger if "next_trigger" in locals() else "-",
+        negative_trigger=top_red_flag if "top_red_flag" in locals() else "-",
+    )
+
+    st.markdown("### Marktumfeld")
+    st.markdown(f"<div class=\"compact-scoreline\">{regime_ctx.get('label','Neutral')} · {regime_ctx.get('leadership','Keine klare Führung')} · {regime_ctx.get('summary','-')}</div>", unsafe_allow_html=True)
+
     compact_cols = st.columns(6)
     compact_data = [
-        ("Hauptsignal", main_action_label, display_mode_label(mode_label)),
-        ("Investment-Case", f"{investment_case_score}/100", investment_case_text),
-        ("Trading-Case", f"{trading_case_score}/100", trading_case_text),
-        ("Exit", exit_action_display, exit_score_text_display),
-        ("Setup-Priorität", f"{fmt_num(result.get('setup_priority_score', np.nan),0)}/100", watchlist_priority),
-        ("Regime-Fit", f"{fmt_num(result.get('regime_fit_score', np.nan),0)}/100", market_regime_label(market_info["regime"])),
+        ("Marktumfeld", regime_ctx.get("label", "Neutral"), regime_ctx.get("summary", "-")),
+        ("Investment-Case", final_investment_case, (f"{investment_case_score}/100" if scores_visible() else "Grundsätzlich interessanter Wert" if final_investment_case == "attraktiv" else "In Teilen interessant" if final_investment_case == "solide" else "Kein klares Gesamtbild" if final_investment_case == "gemischt" else "Aktuell kein überzeugender Grundcase")),
+        ("Timing", final_timing_label, (f"{trading_case_score}/100 | {final_timing_reason}" if scores_visible() else final_timing_reason)),
+        ("Risiko", final_risk_label, (f"Exit {result.get('exit_score', 0)}/100" if scores_visible() else final_risk_reason)),
+        ("Setup-Priorität", final_priority_label, (f"{fmt_num(result.get('setup_priority_score', np.nan),0)}/100" if scores_visible() else final_priority_reason)),
+        ("Aktion", final_action_label, (display_mode_label(mode_label) if scores_visible() else final_action_reason)),
     ]
     for _col, (_title, _value, _sub) in zip(compact_cols, compact_data):
         with _col:
@@ -12051,10 +12255,10 @@ if result is not None:
                 st.markdown(
                     f"""
                     <div class="decision-card invest" title="Grundsätzliche Attraktivität des Werts als Investment, unabhängig vom exakten Einstiegstiming.">
-                        <div class="dc-label">Investment-Urteil</div>
-                        <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{investment_case_text}</div>
-                        <div class="dc-sub">{investment_case_score}/100</div>
-                        <div class="dc-note">Antwort auf die Frage: Ist der Wert grundsätzlich attraktiv?</div>
+                        <div class="dc-label">Investment-Case</div>
+                        <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_investment_case}</div>
+                        <div class="dc-sub">{(str(investment_case_score) + "/100") if scores_visible() else "Grundsätzlich interessanter Wert mit tragfähigem Profil." if final_investment_case=="attraktiv" else "In Teilen interessant, aber nicht durchgehend stark." if final_investment_case=="solide" else "Einige gute Elemente, aber kein klares Gesamtbild." if final_investment_case=="gemischt" else "Der Grundcase überzeugt aktuell nicht ausreichend."}</div>
+                        <div class="dc-note">Antwort auf die Frage: Ist der Wert grundsätzlich interessant?</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -12063,10 +12267,10 @@ if result is not None:
                 st.markdown(
                     f"""
                     <div class="decision-card entry" title="Qualität des aktuellen Einstiegsfensters und des Setups, unabhängig von der grundsätzlichen Investmentqualität.">
-                        <div class="dc-label">Einstiegs-Urteil</div>
-                        <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{trading_case_text}</div>
-                        <div class="dc-sub">{trading_case_score}/100 | Entry-Lage: {entry_quality}</div>
-                        <div class="dc-note">Antwort auf die Frage: Ist das Timing für einen Einstieg aktuell gut?</div>
+                        <div class="dc-label">Timing</div>
+                        <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_timing_label}</div>
+                        <div class="dc-sub">{(str(trading_case_score) + "/100 | Entry-Lage: " + str(entry_quality)) if scores_visible() else final_timing_reason}</div>
+                        <div class="dc-note">Antwort auf die Frage: Ist das Timing für einen Einstieg schon gut genug?</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -12075,10 +12279,10 @@ if result is not None:
                 st.markdown(
                     f"""
                     <div class="decision-card action" title="Konkrete Handlungsableitung aus Investmentqualität, Einstiegstiming und Triggerstatus.">
-                        <div class="dc-label">Konkrete Aktion</div>
-                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{main_action_label}</div>
-                        <div class="dc-sub">{trigger_status} | {next_trigger}</div>
-                        <div class="dc-note">Antwort auf die Frage: Kaufen, vorbereiten oder weiter warten?</div>
+                        <div class="dc-label">Aktion</div>
+                        <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
+                        <div class="dc-sub">{("Trigger: " + str(next_trigger)) if not scores_visible() else str(trigger_status) + " | " + str(next_trigger)}</div>
+                        <div class="dc-note">Antwort auf die Frage: Was sollte ich jetzt konkret tun?</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -12089,8 +12293,8 @@ if result is not None:
         st.markdown(
             f"""
             <div class="section-head">
-                <div class="section-title">Exit-Sicht für Positionen</div>
-                <div class="section-meta-line">Frühe Verkaufssignale aus Trendbruch, Momentum, relativer Schwäche, Distributionsdruck und harten Exit-Triggern.</div>
+                <div class="section-title">Risiko & Exit</div>
+                <div class="section-meta-line">Frühe Warnhinweise aus Trendbruch, Momentum, relativer Schwäche, Distributionsdruck und harten Exit-Triggern.</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -12467,23 +12671,12 @@ if result is not None:
         position_action if 'position_action' in locals() else
         "-"
     )
-    exec_focus_value = (
-        top_red_flag if str(top_red_flag).strip() not in {"", "-", "None"} else
-        risk_note if str(risk_note).strip() not in {"", "-", "None", "Watchlist-Modus"} else
-        ("Ja" if str(trigger_status).strip() == "Aktiv" else "Noch nicht") if str(top_red_flag).strip() in {"", "-", "None"} and str(risk_note).strip() in {"", "-", "None", "Watchlist-Modus"} else
-        main_action_label if str(main_action_label).strip() not in {"", "-", "None", "Nicht anwendbar"} else
-        "Lage weiter beobachten"
-    )
-    exec_focus_label = "Kritischer Kipppunkt" if str(top_red_flag).strip() not in {"", "-", "None"} else "Jetzt ein guter Einstieg?"
-    exec_summary_text = company_summary if company_summary not in [None, "", "-"] else "Die Aktie ist oben bereits verdichtet. Hier bleibt nur die zusätzliche Einordnung, was das aktuelle Urteil kippen oder bestätigen würde."
-    exec_redflag = top_red_flag if 'top_red_flag' in locals() else red_flag if 'red_flag' in locals() else "-"
-    exec_risk_context = risk_note if str(risk_note).strip() not in {"", "-", "None", "Keine Auffälligkeit", "Watchlist-Modus"} else exit_reason_top_display
-    exec_confirmation = (
-        leadership_status_display if str(leadership_status_display).strip() not in {"", "-", "None"} else
-        sector_trend_text_display if str(sector_trend_text_display).strip() not in {"", "-", "None", "nicht belastbar"} else
-        display_trigger_status_label(trigger_status) if str(trigger_status).strip() not in {"", "-", "None"} else
-        "noch kein zusätzlicher Bestätigungsfaktor"
-    )
+    exec_focus_label = "Ist jetzt ein guter Einstieg?"
+    exec_focus_value = exec_verdict
+    exec_summary_text = exec_why
+    exec_redflag = exec_worsen
+    exec_risk_context = final_risk_reason
+    exec_confirmation = exec_improve
 
     st.markdown(
         f"""
@@ -12493,40 +12686,33 @@ if result is not None:
                     <div class="exec-v2-eyebrow">Executive Summary</div>
                     <div class="exec-v2-title">{name} <span style="color:#93c5fd;">| {ticker}</span></div>
                     <div class="exec-v2-sub">
-                        Nur die zusätzliche Einordnung, die oberhalb noch nicht als Score oder Kachel gezeigt wird.
+                        Diese Box fuehrt das Gesamturteil aus Marktumfeld, Timing, Risiko und Aktion zusammen.
                     </div>
                 </div>
                 <div class="exec-v2-signal">
                     <div class="exec-v2-signal-label">{exec_focus_label}</div>
                     <div class="exec-v2-signal-value" style="font-size:clamp(1.15rem, 1.75vw, 1.55rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exec_focus_value}</div>
                     <div class="exec-v2-signal-meta">
-                        Dieser Block wiederholt bewusst keine Hauptscores mehr, sondern ordnet nur noch den wichtigsten Kipppunkt oder die Einstiegsreife ein.
+                        {exec_summary_text}
                     </div>
                 </div>
             </div>
-            <div class="exec-v2-grid" style="grid-template-columns:1.1fr 0.9fr;">
+            <div class="exec-v2-grid" style="grid-template-columns:1fr 1fr;">
                 <div class="exec-v2-panel">
-                    <div class="exec-v2-panel-title">Zusätzliche Einordnung</div>
+                    <div class="exec-v2-panel-title">Verbessert sich bei</div>
                     <div class="exec-v2-list">
                         <div class="exec-v2-list-item">
-                            <div class="exec-v2-list-label">Was das Urteil kippen würde</div>
-                            <div class="exec-v2-list-value">{exec_redflag if str(exec_redflag).strip() not in {"", "-", "None"} else "derzeit keine dominierende Red Flag"}</div>
+                            <div class="exec-v2-list-value">{exec_confirmation if str(exec_confirmation).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"}</div>
                         </div>
                     </div>
                 </div>
                 <div class="exec-v2-panel">
-                    <div class="exec-v2-panel-title">Zusätzlicher Kontext</div>
+                    <div class="exec-v2-panel-title">Kippt bei</div>
                     <div class="exec-v2-list">
                         <div class="exec-v2-list-item">
-                            <div class="exec-v2-list-label">Wichtig zu beachten</div>
-                            <div class="exec-v2-list-value">{exec_risk_context if str(exec_risk_context).strip() not in {"", "-", "None"} else "kein zusätzlicher Risikohinweis"}</div>
-                        </div>
-                        <div class="exec-v2-list-item">
-                            <div class="exec-v2-list-label">Was das Urteil bestätigt</div>
-                            <div class="exec-v2-list-value">{exec_confirmation}</div>
+                            <div class="exec-v2-list-value">{exec_redflag if str(exec_redflag).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"}</div>
                         </div>
                     </div>
-                    <div class="exec-v2-divider"></div>
                 </div>
             </div>
         </div>
@@ -12731,7 +12917,7 @@ if result is not None:
                         </div>
                         <div class="horizon-value" style="font-size:1.0rem;">{ultra_signal.get('label', '-')}</div>
                         <div class="horizon-sub">Bias: {infer_ultra_bias_from_signal(ultra_signal)[1]} {infer_ultra_bias_from_signal(ultra_signal)[0]}</div>
-                        <div class="horizon-sub">{("Staerke: " + str(fmt_num(ultra_signal.get('strength', 0),0)) + "/100 | ") if scores_visible() else ""}Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
+                        <div class="horizon-sub">Staerke: {fmt_num(ultra_signal.get('strength', 0),0)}/100 | Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,

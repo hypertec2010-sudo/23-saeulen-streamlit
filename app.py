@@ -12487,11 +12487,11 @@ if result is not None:
     compact_cols = st.columns(6)
     compact_data = [
         ("Marktumfeld", regime_ctx.get("label", "Neutral"), regime_ctx.get("summary", "-")),
-        ("Investment-Case", final_investment_case, ((f"Score: {investment_case_score}/100 - " if scores_visible() else "") + ("Grundsätzlich interessanter Wert" if final_investment_case == "attraktiv" else "In Teilen interessant" if final_investment_case == "solide" else "Kein klares Gesamtbild" if final_investment_case == "gemischt" else "Aktuell kein überzeugender Grundcase"))),
-        ("Timing", final_timing_label, ((f"Score: {trading_case_score}/100 - " if scores_visible() else "") + final_timing_reason)),
-        ("Risiko", final_risk_label, ((f"Score: Exit {result.get('exit_score', 0)}/100 - " if scores_visible() else "") + final_risk_reason)),
-        ("Setup-Priorität", final_priority_label, ((f"Score: {fmt_num(result.get('setup_priority_score', np.nan),0)}/100 - " if scores_visible() else "") + final_priority_reason)),
-        ("Aktion", final_action_label, ((display_mode_label(mode_label) + " - " + compact_action_text_phase_ui(final_action_label)) if scores_visible() else compact_action_text_phase_ui(final_action_label))),
+        ("Investment-Case", final_investment_case, ((f"Score: {investment_case_score}/100 · " if scores_visible() else "") + ("Grundsätzlich interessanter Wert" if final_investment_case == "attraktiv" else "In Teilen interessant" if final_investment_case == "solide" else "Kein klares Gesamtbild" if final_investment_case == "gemischt" else "Aktuell kein überzeugender Grundcase"))),
+        ("Timing", final_timing_label, ((f"Score: {trading_case_score}/100 · " if scores_visible() else "") + final_timing_reason)),
+        ("Risiko", final_risk_label, ((f"Score: Exit {result.get('exit_score', 0)}/100 · " if scores_visible() else "") + final_risk_reason)),
+        ("Setup-Priorität", final_priority_label, ((f"Score: {fmt_num(result.get('setup_priority_score', np.nan),0)}/100 · " if scores_visible() else "") + final_priority_reason)),
+        ("Aktion", final_action_label, ((display_mode_label(mode_label) + " · " + compact_action_text_phase_ui(final_action_label)) if scores_visible() else compact_action_text_phase_ui(final_action_label))),
     ]
     for _col, (_title, _value, _sub) in zip(compact_cols, compact_data):
         with _col:

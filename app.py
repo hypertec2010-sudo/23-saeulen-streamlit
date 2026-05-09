@@ -10352,7 +10352,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 <div class="mobile-form-title">Tageschart</div>
                 <div class="mobile-form-value">{_tone_icon(daily_sig['tone'])} {daily_sig['bias']}</div>
                 <div class="mobile-form-sub">{daily_sig['pattern']}</div>
-                <div class="mobile-form-sub">Staerke: {daily_sig['strength']}/100 | Qualitaet: {daily_sig.get("quality","-")} | Bestaetigung: {daily_sig['confirmation']}</div>
+                <div class="mobile-form-sub">{("Staerke: " + str(daily_sig['strength']) + "/100 | ") if scores_visible() else ""}Qualitaet: {daily_sig.get("quality","-")} | Bestaetigung: {daily_sig['confirmation']}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -10362,7 +10362,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 <div class="mobile-form-title">Stundenchart</div>
                 <div class="mobile-form-value">{_tone_icon(hourly_sig['tone'])} {hourly_sig['bias']}</div>
                 <div class="mobile-form-sub">{hourly_sig['pattern']}</div>
-                <div class="mobile-form-sub">Staerke: {hourly_sig['strength']}/100 | Qualitaet: {hourly_sig.get("quality","-")} | Bestaetigung: {hourly_sig['confirmation']}</div>
+                <div class="mobile-form-sub">{("Staerke: " + str(hourly_sig['strength']) + "/100 | ") if scores_visible() else ""}Qualitaet: {hourly_sig.get("quality","-")} | Bestaetigung: {hourly_sig['confirmation']}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -10466,6 +10466,18 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
             unsafe_allow_html=True,
         )
 
+        if scores_visible():
+            with st.expander("Technische Details", expanded=False):
+                try:
+                    _candle_scores = {
+                        "Tageschart Staerke": daily_sig.get("strength", "-"),
+                        "Stundenchart Staerke": hourly_sig.get("strength", "-"),
+                    }
+                    if "candle_bias_pkg" in locals():
+                        _candle_scores["Candle Bias Gesamt"] = candle_bias_pkg.get("score", "-")
+                    st.write(_candle_scores)
+                except Exception:
+                    pass
         with st.expander("Mehr Details", expanded=False):
             d1, d2 = st.columns(2)
             with d1:
@@ -10711,6 +10723,121 @@ def _candle_confirmation_summary(daily_sig, hourly_sig):
     if d == h:
         return d.capitalize()
     return f"Tageschart: {d} | Stundenchart: {h}"
+
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def load_market_regime_data():
+    try:
+        data = {}
+        for symbol in ["SPY", "QQQ", "^VIX"]:
+            df = yf.Ticker(symbol).history(period="1y", auto_adjust=False)
+            if df is not None and not df.empty:
+                data[symbol] = df.copy()
+        return data
+    except Exception:
+        return {}
+
+
+def compute_market_regime():
+    data = load_market_regime_data()
+    spy = data.get("SPY")
+    qqq = data.get("QQQ")
+    vix = data.get("^VIX")
+
+    if spy is None or qqq is None or spy.empty or qqq.empty:
+        return {
+            "label": "Unklar",
+            "tone": "neutral",
+            "summary": "Marktregime aktuell nicht sauber bestimmbar.",
+            "detail": "Zu wenig Indexdaten fuer eine belastbare Markteinordnung.",
+            "leadership": "Keine klare Fuehrung",
+        }
+
+    def _signal(df):
+        c = float(df["Close"].iloc[-1])
+        ma50 = float(df["Close"].rolling(50).mean().iloc[-1])
+        ma200 = float(df["Close"].rolling(200).mean().iloc[-1])
+        ret20 = ((c / float(df["Close"].iloc[-21])) - 1.0) * 100.0 if len(df) > 21 else 0.0
+        score = 0
+        if c > ma50: score += 1
+        if c > ma200: score += 1
+        if ma50 > ma200: score += 1
+        if ret20 > 0: score += 1
+        return score, ret20
+
+    spy_score, spy_ret20 = _signal(spy)
+    qqq_score, qqq_ret20 = _signal(qqq)
+    vix_last = float(vix["Close"].iloc[-1]) if vix is not None and not vix.empty else None
+
+    total = spy_score + qqq_score
+    if vix_last is not None:
+        if vix_last >= 25:
+            total -= 2
+        elif vix_last <= 18:
+            total += 1
+
+    if total >= 7:
+        label = "Risk-on"
+        tone = "bullish"
+        summary = "Marktumfeld aktuell konstruktiv. Long-Setups sind eher verlaesslich."
+    elif total <= 3:
+        label = "Risk-off"
+        tone = "bearish"
+        summary = "Marktumfeld aktuell schwierig. Timing-Signale sind anfaelliger und Ruecksetzer gefaehrlicher."
+    else:
+        label = "Neutral"
+        tone = "neutral"
+        summary = "Gemischtes Marktumfeld. Gute Setups funktionieren, aber Selektivitaet ist wichtiger."
+
+    leadership = "Technologie fuehrt" if qqq_ret20 > spy_ret20 + 1.5 else "Breite fuehrt" if spy_ret20 > qqq_ret20 + 1.5 else "Keine klare Fuehrung"
+    detail = f"SPY 20T: {spy_ret20:.1f}% | QQQ 20T: {qqq_ret20:.1f}% | VIX: {vix_last:.1f}" if vix_last is not None else f"SPY 20T: {spy_ret20:.1f}% | QQQ 20T: {qqq_ret20:.1f}"
+
+    return {
+        "label": label,
+        "tone": tone,
+        "summary": summary,
+        "detail": detail,
+        "leadership": leadership,
+    }
+
+
+def render_market_regime_block():
+    regime = compute_market_regime()
+
+    def _tone_badge(tone, label):
+        if tone == "bullish":
+            return _candle_badge_html(label, "bull")
+        if tone == "bearish":
+            return _candle_badge_html(label, "bear")
+        return _candle_badge_html(label, "neutral")
+
+    st.markdown("### Marktumfeld")
+    st.markdown(
+        f"""<div class="candle-dash-grid">
+            <div class="candle-dash-card">
+                <h4>Marktregime</h4>
+                <div class="candle-dash-main">{regime.get('label','Unklar')}</div>
+                <div style="margin-top:6px;">{_tone_badge(regime.get('tone','neutral'), regime.get('label','Unklar'))}</div>
+                <div class="candle-dash-sub">{regime.get('summary','-')}</div>
+            </div>
+            <div class="candle-dash-card">
+                <h4>Fuehrung</h4>
+                <div class="candle-dash-main">{regime.get('leadership','-')}</div>
+                <div class="candle-dash-sub">Zeigt, ob eher Breite oder Technologie den Markt zieht.</div>
+            </div>
+            <div class="candle-dash-card">
+                <h4>Kontext</h4>
+                <div class="candle-dash-main">Timing einordnen</div>
+                <div class="candle-dash-sub">{regime.get('detail','-')}</div>
+            </div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def scores_visible():
+    return bool(st.session_state.get("show_scores_details", False))
 
 
 def render_mobile_ranking_cards(df):
@@ -12604,7 +12731,7 @@ if result is not None:
                         </div>
                         <div class="horizon-value" style="font-size:1.0rem;">{ultra_signal.get('label', '-')}</div>
                         <div class="horizon-sub">Bias: {infer_ultra_bias_from_signal(ultra_signal)[1]} {infer_ultra_bias_from_signal(ultra_signal)[0]}</div>
-                        <div class="horizon-sub">Staerke: {fmt_num(ultra_signal.get('strength', 0),0)}/100 | Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
+                        <div class="horizon-sub">{("Staerke: " + str(fmt_num(ultra_signal.get('strength', 0),0)) + "/100 | ") if scores_visible() else ""}Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,

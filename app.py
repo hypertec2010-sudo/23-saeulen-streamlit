@@ -12460,7 +12460,7 @@ if result is not None:
                     <div class="decision-card invest" title="Grundsätzliche Attraktivität des Werts als Investment, unabhängig vom exakten Einstiegstiming.">
                         <div class="dc-label">Investment-Case</div>
                         <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_investment_case}</div>
-                        <div class="dc-sub">{"Score: " + str(investment_case_score) + "/100 - " if scores_visible() else ""}{"Grundsätzlich interessanter Wert mit tragfähigem Profil." if final_investment_case=="attraktiv" else "In Teilen interessant, aber nicht durchgehend stark." if final_investment_case=="solide" else "Einige gute Elemente, aber kein klares Gesamtbild." if final_investment_case=="gemischt" else "Der Grundcase überzeugt aktuell nicht ausreichend."}</div>
+                        <div class="dc-sub">{"Diagnose: " + str(investment_case_score) + "/100 · " if scores_visible() else ""}{"Grundsätzlich interessanter Wert mit tragfähigem Profil." if final_investment_case=="attraktiv" else "In Teilen interessant, aber nicht durchgehend stark." if final_investment_case=="solide" else "Einige gute Elemente, aber kein klares Gesamtbild." if final_investment_case=="gemischt" else "Der Grundcase überzeugt aktuell nicht ausreichend."}</div>
                         <div class="dc-note">Antwort auf die Frage: Ist der Wert grundsätzlich interessant?</div>
                     </div>
                     """,
@@ -12472,7 +12472,7 @@ if result is not None:
                     <div class="decision-card entry" title="Qualität des aktuellen Einstiegsfensters und des Setups, unabhängig von der grundsätzlichen Investmentqualität.">
                         <div class="dc-label">Timing</div>
                         <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_timing_label}</div>
-                        <div class="dc-sub">{"Score: " + str(trading_case_score) + "/100 - Entry-Lage: " + str(entry_quality) + " - " if scores_visible() else ""}{final_timing_reason}</div>
+                        <div class="dc-sub">{"Diagnose: " + str(trading_case_score) + "/100 · Entry-Lage: " + str(entry_quality) + " · " if scores_visible() else ""}{final_timing_reason}</div>
                         <div class="dc-note">Antwort auf die Frage: Ist das Timing für einen Einstieg schon gut genug?</div>
                     </div>
                     """,
@@ -12484,8 +12484,8 @@ if result is not None:
                     <div class="decision-card action" title="Konkrete Handlungsableitung aus Investmentqualität, Einstiegstiming und Triggerstatus.">
                         <div class="dc-label">Aktion</div>
                         <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
-                        <div class="dc-sub">{("Trigger: " + str(next_trigger)) if not scores_visible() else str(trigger_status) + " - " + str(next_trigger)}</div>
-                        <div class="dc-note">Antwort auf die Frage: Was sollte ich jetzt konkret tun?</div><div class="dc-note" style="margin-top:6px;">{("Taktisch: " + final_tactical_label + " - " + final_tactical_reason) if "final_tactical_label" in locals() else ""}</div>
+                        <div class="dc-sub">{compact_action_text_phase_ui(final_action_label)}</div>
+                        <div class="dc-note">Nächster Trigger: {next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "sauberer nächster Bestätigungsschritt"}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -12941,43 +12941,67 @@ if result is not None:
 
         with t0:
             st.subheader("Überblick")
-            st.markdown('<div class="panel-caption">Kurzfazit, Kerndaten und Chartverlauf des aktuell ausgewählten Werts.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-caption">Der Überblick priorisiert Marktumfeld, Urteil, Timing, Risiko und Aktion. Diagnosewerte erscheinen nur bei Bedarf.</div>', unsafe_allow_html=True)
 
             p1, p2, p3 = st.columns(3)
             p1.metric("Unternehmen", name)
             p2.metric("Sektor", sector if sector else "-")
             p3.metric("Industrie", industry if industry else "-")
 
-            if is_expert_mode:
-                st.markdown(
-                    """
-                    <div class="section-head">
-                        <div class="section-title">Leadership & Marktbreite</div>
-                        <div class="section-meta-line">Bewertet, ob die Aktie in einem starken Umfeld selbst als Leader auftritt oder eher nur mitläuft.</div>
+            st.markdown(
+                """
+                <div class="section-head">
+                    <div class="section-title">Leadership & Marktbreite</div>
+                    <div class="section-meta-line">Zeigt, ob die Aktie führt, nur mitläuft oder im aktuellen Umfeld eher schwächer wirkt.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            l1, l2, l3 = st.columns(3)
+            with l1:
+                st.metric(
+                    "Leadership",
+                    leadership_label_phase_ui(leadership_score_display),
+                    (f"Diagnose: {fmt_num(leadership_score_display,0)}/100" if scores_visible() else leadership_status_display),
+                )
+            with l2:
+                st.metric(
+                    "Industrie",
+                    industry_strength_label_phase_ui(industry_strength_display),
+                    (f"Diagnose: {fmt_num(industry_strength_display,0)}/100" if scores_visible() else industry_label_display),
+                )
+            with l3:
+                st.metric(
+                    "Relative Stärke",
+                    rs_accel_label_phase_ui(rs_acceleration_display),
+                    (f"Diagnose: {fmt_num(rs_acceleration_display,0)}/100" if scores_visible() else "gegenüber Benchmark"),
+                )
+
+            st.markdown(
+                f"""
+                    <div class="section-card">
+                        <div class="premium-title">Einordnung</div>
+                        <div class="premium-value">Leadership: {leadership_label_phase_ui(leadership_score_display)}</div>
+                        <div class="premium-sub">
+                            Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark bleibt ein wichtiger Treiber, soll in der Standardansicht aber sprachlich statt numerisch gelesen werden.
+                        </div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
-                l1, l2, l3, l4 = st.columns(4)
-                l1.metric("Leadership", f"{fmt_num(leadership_score_display,0)}/100", leadership_status_display)
-                l2.metric("Sektor-Stärke", sector_strength_text_display, sector_delta_display)
-                l3.metric("Industrie-Stärke", f"{fmt_num(industry_strength_display,0)}/100", industry_label_display)
-                l4.metric("RS-Beschleunigung", f"{fmt_num(rs_acceleration_display,0)}/100")
 
             st.markdown(
-                    f"""
-                        <div class="section-card">
-                            <div class="premium-title">Einordnung</div>
-                            <div class="premium-value">Leadership-Status: {leadership_status_display}</div>
-                            <div class="premium-sub">
-                                Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark ist ein zentraler Treiber des Long-Urteils.
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                f"""
+                    <div class="section-card">
+                        <div class="premium-title">Nächster Trigger</div>
+                        <div class="premium-value">Bullisher bei: {next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"}</div>
+                        <div class="premium-sub">Bearisher bei: {top_red_flag if str(top_red_flag).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-            with st.expander("Details zwischen Einordnung und Kurzfazit anzeigen", expanded=False):
+            with st.expander("Diagnose-Details zwischen Einordnung und Kurzfazit anzeigen", expanded=False):
                     st.markdown(
                         """
                         <div class="section-head">
@@ -12988,10 +13012,10 @@ if result is not None:
                         unsafe_allow_html=True,
                     )
                     q1, q2, q3, q4 = st.columns(4)
-                    q1.metric("Trendqualität", f"{fmt_num(trend_quality_display,0)}/100")
-                    q2.metric("Base-Qualität", f"{fmt_num(base_quality_display,0)}/100")
-                    q3.metric("Setup-Typ-Qualität", f"{fmt_num(setup_type_quality_display,0)}/100", setup_type)
-                    q4.metric("Setup-Priorität", f"{fmt_num(setup_priority_display,0)}/100")
+                    q1.metric("Trendqualität", "stark" if pd.notna(trend_quality_display) and trend_quality_display >= 70 else "solide" if pd.notna(trend_quality_display) and trend_quality_display >= 50 else "gemischt" if pd.notna(trend_quality_display) and trend_quality_display >= 30 else "schwach", f"Diagnose: {fmt_num(trend_quality_display,0)}/100" if scores_visible() else "")
+                    q2.metric("Base-Qualität", "stark" if pd.notna(base_quality_display) and base_quality_display >= 70 else "solide" if pd.notna(base_quality_display) and base_quality_display >= 50 else "gemischt" if pd.notna(base_quality_display) and base_quality_display >= 30 else "schwach", f"Diagnose: {fmt_num(base_quality_display,0)}/100" if scores_visible() else "")
+                    q3.metric("Setup-Typ", setup_type if str(setup_type).strip() else "-", f"Diagnose: {fmt_num(setup_type_quality_display,0)}/100" if scores_visible() else "Qualität im Detailmodus")
+                    q4.metric("Setup-Priorität", final_priority_label if "final_priority_label" in locals() else ("hoch" if pd.notna(setup_priority_display) and setup_priority_display >= 67 else "mittel" if pd.notna(setup_priority_display) and setup_priority_display >= 34 else "niedrig"), f"Diagnose: {fmt_num(setup_priority_display,0)}/100" if scores_visible() else "")
 
                     d1, d2, d3, d4, d5 = st.columns(5)
                     d1.metric("Base-Länge", fmt_num(base_length_display, 0))

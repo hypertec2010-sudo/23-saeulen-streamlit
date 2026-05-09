@@ -2506,6 +2506,28 @@ def rs_accel_label_phase_ui(score):
     return "schwächer"
 
 
+
+
+def quality_label_phase_ui(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "gemischt"
+    if s >= 75:
+        return "stark"
+    if s >= 60:
+        return "solide"
+    if s >= 45:
+        return "gemischt"
+    return "schwach"
+
+
+def impact_label_phase_ui(impact):
+    s = str(impact or "").strip().lower()
+    if s in {"hoch", "mittel", "niedrig"}:
+        return s
+    return "mittel"
+
 def soft_score_text(score, label_text):
     try:
         s = float(score)
@@ -3792,16 +3814,17 @@ def render_reason_box(title, items, empty_text="Keine klaren Treiber erkannt."):
     for item in items:
         label = item.get("label", "-")
         value = item.get("value", np.nan)
-        impact = item.get("impact", "-")
+        impact = impact_label_phase_ui(item.get("impact", "-"))
         affects = affects_text(item.get("affects", []))
+        score_part = f"Diagnose: {fmt_num(value,0)}/100" if scores_visible() and not pd.isna(value) else f"Einfluss: {impact}"
         st.markdown(
             f"""
             <div class="reason-item">
                 <div class="reason-top">
                     <div class="reason-label">{label}</div>
-                    <div class="reason-value">{fmt_num(value,0)}/100</div>
+                    <div class="reason-value">{impact.capitalize()}</div>
                 </div>
-                <div class="reason-meta">Einfluss: {impact}</div>
+                <div class="reason-meta">{score_part}</div>
                 <div class="affects-line">Beeinflusst: {affects}</div>
             </div>
             """,
@@ -12720,8 +12743,8 @@ if result is not None:
         st.markdown(
             """
             <div class="section-head">
-                <div class="section-title">Kernbausteine</div>
-                <div class="section-meta-line">Operative Subscores für Struktur, Confidence und Qualitätsbild.</div>
+                <div class="section-title">Kernbereiche</div>
+                <div class="section-meta-line">Die wichtigsten Bausteine des Gesamturteils, standardmäßig sprachlich statt numerisch gelesen.</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -12733,8 +12756,8 @@ if result is not None:
                 f"""
                 <div class="compact-panel" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
                     <div class="cp-label">Trade-Struktur</div>
-                    <div class="cp-value">{fmt_num(tradeability_score,0)}/100</div>
-                    <div class="cp-sub">{tradeability_text}</div>
+                    <div class="cp-value">{quality_label_phase_ui(tradeability_score)}</div>
+                    <div class="cp-sub">{("Diagnose: " + str(fmt_num(tradeability_score,0)) + "/100 · ") if scores_visible() else ""}{tradeability_text}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -12744,8 +12767,8 @@ if result is not None:
                 f"""
                 <div class="compact-panel" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
                     <div class="cp-label">Setup-Confidence</div>
-                    <div class="cp-value">{fmt_num(setup_confidence,0)}/100</div>
-                    <div class="cp-sub">{setup_confidence_text}</div>
+                    <div class="cp-value">{quality_label_phase_ui(setup_confidence)}</div>
+                    <div class="cp-sub">{("Diagnose: " + str(fmt_num(setup_confidence,0)) + "/100 · ") if scores_visible() else ""}{setup_confidence_text}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -12755,8 +12778,8 @@ if result is not None:
                 f"""
                 <div class="compact-panel" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
                     <div class="cp-label">Company Quality</div>
-                    <div class="cp-value">{company}/100</div>
-                    <div class="cp-sub">{ampel(company)}</div>
+                    <div class="cp-value">{quality_label_phase_ui(company)}</div>
+                    <div class="cp-sub">{("Diagnose: " + str(company) + "/100 · ") if scores_visible() else ""}{ampel(company)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -12766,8 +12789,8 @@ if result is not None:
                 f"""
                 <div class="compact-panel" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
                     <div class="cp-label">Investment Score</div>
-                    <div class="cp-value">{investment}/100</div>
-                    <div class="cp-sub">{ampel(investment)}</div>
+                    <div class="cp-value">{quality_label_phase_ui(investment)}</div>
+                    <div class="cp-sub">{("Diagnose: " + str(investment) + "/100 · ") if scores_visible() else ""}{ampel(investment)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,

@@ -2380,6 +2380,100 @@ def build_exec_summary_phase1(final_timing, final_risk, final_action, regime_ctx
     improve = next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"
     worsen = negative_trigger if str(negative_trigger).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"
     return verdict, why, improve, worsen
+
+
+def apply_regime_to_tactical_label(base_label, regime_ctx, tactical_exit_risk=0, title_risk_score=0):
+    result = str(base_label or "stabil")
+    reason = "Das taktische Bild wird primär vom Einzelsignal bestimmt."
+    bias = int((regime_ctx or {}).get("bias_factor", 0))
+    try:
+        tr = float(tactical_exit_risk)
+    except Exception:
+        tr = 0
+    try:
+        ts = float(title_risk_score)
+    except Exception:
+        ts = 0
+
+    if bias > 0:
+        if result == "erhöht" and tr < 55 and ts < 75:
+            result = "erste Warnung"
+            reason = "Das positive Umfeld entschärft taktische Warnungen leicht."
+        else:
+            reason = "Das positive Umfeld entschärft taktische Warnungen leicht."
+    elif bias < 0:
+        if result == "stabil" and (tr >= 25 or ts >= 55):
+            result = "erste Warnung"
+            reason = "Das Marktumfeld macht kurzfristige Warnsignale anfälliger."
+        elif result == "erste Warnung" and (tr >= 40 or ts >= 60):
+            result = "erhöht"
+            reason = "Im risk-off Umfeld wiegen taktische Warnsignale schwerer."
+        elif result == "erhöht" and (tr >= 55 or ts >= 70):
+            result = "kritisch"
+            reason = "Risk-off verstärkt taktische Warnlagen deutlich."
+        else:
+            reason = "Das Marktumfeld macht kurzfristige Warnsignale anfälliger."
+    return result, reason
+
+
+def apply_regime_to_ultra_short_term_label(base_label, regime_ctx, confirmation="-", bias_label="neutral"):
+    result = str(base_label or "Kein Signal")
+    reason = "Die Kurzfristsicht wird primär von der direkten Zonenreaktion bestimmt."
+    bias = int((regime_ctx or {}).get("bias_factor", 0))
+    conf = str(confirmation or "").lower()
+    bias_text = str(bias_label or "").lower()
+
+    if bias > 0:
+        if result == "Zone unter Beobachtung" and ("support" in bias_text or "bull" in bias_text or conf == "teilweise"):
+            result = "Frühe Reaktion"
+            reason = "Das positive Umfeld macht bullische Reaktionen an Support etwas glaubwürdiger."
+        else:
+            reason = "Das positive Umfeld macht bullische Reaktionen etwas glaubwürdiger."
+    elif bias < 0:
+        if result == "Aktives Signal" and ("fehlt" in conf or "teilweise" in conf):
+            result = "Frühe Reaktion"
+            reason = "Im risk-off Umfeld brauchen frühe Long-Signale mehr Bestätigung."
+        elif result == "Frühe Reaktion":
+            result = "Zone unter Beobachtung"
+            reason = "Im risk-off Umfeld bleiben frühe Reaktionen ohne Bestätigung fragiler."
+        else:
+            reason = "Im risk-off Umfeld brauchen frühe Long-Signale mehr Bestätigung."
+    return result, reason
+
+
+def apply_regime_to_candle_reading(sig, regime_ctx):
+    sig = dict(sig or {})
+    tone = str(sig.get("tone", "neutral")).lower()
+    bias = int((regime_ctx or {}).get("bias_factor", 0))
+    entry_hint = str(sig.get("entry_hint", "-"))
+    exit_hint = str(sig.get("exit_hint", "-"))
+    reading = str(sig.get("reading", "-"))
+
+    if bias > 0 and tone == "bullish":
+        sig["entry_hint"] = "Bullische Candle-Reaktion im positiven Umfeld; Bestätigung bleibt wichtig, ist aber eher erreichbar."
+        sig["reading"] = reading + " Das positive Umfeld erhöht die Belastbarkeit bullischer Candle-Signale."
+    elif bias < 0:
+        if tone == "bullish":
+            sig["entry_hint"] = "Bullische Candle-Reaktion vorhanden, aber im risk-off Umfeld nur mit stärkerer Bestätigung nutzbar."
+            sig["reading"] = reading + " Das Marktumfeld macht frühe bullische Kerzen anfälliger."
+        elif tone == "bearish":
+            sig["exit_hint"] = "Bearische Candle-Warnung im risk-off Umfeld ernster nehmen; defensives Handeln gewinnt an Gewicht."
+            sig["reading"] = reading + " Das Marktumfeld verschärft bearische Rejection-Signale."
+    return sig
+
+
+def tactical_label_phase2(tactical_exit_risk):
+    try:
+        s = float(tactical_exit_risk)
+    except Exception:
+        s = 0
+    if s >= 60:
+        return "kritisch"
+    if s >= 42:
+        return "erhöht"
+    if s >= 25:
+        return "erste Warnung"
+    return "stabil"
 def display_stb_label(signal):
     mapping = {
         "LONG": "Bullisch",
@@ -10623,7 +10717,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
             interpretation = "Kurzfristiges Gegensignal im Stundenchart, aber Tageschart gibt weiter die Richtung vor."
 
         st.markdown("### Candlestick Kauf-/Verkaufsanalyse")
-        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand. Die Candle-Lesart fliesst leicht in Ultra-Kurzfrist, Einstiegs- und taktische Einordnung ein.")
+        st.caption("Kurzfristige Candlestick-Lesart im Tageschart und – wenn verfuegbar – im echten Stundenchart, jeweils mit Kontext an Support/Widerstand. Die Candle-Lesart fliesst leicht in Ultra-Kurzfrist, Einstiegs- und taktische Einordnung ein. Das Marktumfeld beeinflusst dabei die Belastbarkeit früher Reaktionssignale.")
 
 
         c1, c2, c3 = st.columns([1,1,1.2])
@@ -12154,6 +12248,31 @@ if result is not None:
     st.markdown("### Marktumfeld")
     st.markdown(f"<div class=\"compact-scoreline\">{regime_ctx.get('label','Neutral')} · {regime_ctx.get('leadership','Keine klare Führung')} · {regime_ctx.get('summary','-')}</div>", unsafe_allow_html=True)
 
+
+    # ---------- Phase 2: regime-sensitive tactical/candle layers ----------
+    base_tactical_label = tactical_label_phase2(tactical_exit_risk if "tactical_exit_risk" in locals() else 0)
+    final_tactical_label, final_tactical_reason = apply_regime_to_tactical_label(
+        base_tactical_label,
+        regime_ctx,
+        tactical_exit_risk=tactical_exit_risk if "tactical_exit_risk" in locals() else 0,
+        title_risk_score=result.get("short_term_gap_risk_score", result.get("title_risk_score", 0)) if "result" in locals() and isinstance(result, dict) else 0,
+    )
+
+    final_ultra_label = None
+    final_ultra_reason = None
+    if "ultra_signal" in locals() and isinstance(ultra_signal, dict):
+        final_ultra_label, final_ultra_reason = apply_regime_to_ultra_short_term_label(
+            ultra_signal.get("label", "Kein Signal"),
+            regime_ctx,
+            confirmation=ultra_signal.get("confirmation", "-"),
+            bias_label=ultra_signal.get("reason", "-"),
+        )
+
+    if "daily_sig" in locals() and isinstance(daily_sig, dict):
+        daily_sig = apply_regime_to_candle_reading(daily_sig, regime_ctx)
+    if "hourly_sig" in locals() and isinstance(hourly_sig, dict):
+        hourly_sig = apply_regime_to_candle_reading(hourly_sig, regime_ctx)
+
     compact_cols = st.columns(6)
     compact_data = [
         ("Marktumfeld", regime_ctx.get("label", "Neutral"), regime_ctx.get("summary", "-")),
@@ -12282,7 +12401,7 @@ if result is not None:
                         <div class="dc-label">Aktion</div>
                         <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
                         <div class="dc-sub">{("Trigger: " + str(next_trigger)) if not scores_visible() else str(trigger_status) + " | " + str(next_trigger)}</div>
-                        <div class="dc-note">Antwort auf die Frage: Was sollte ich jetzt konkret tun?</div>
+                        <div class="dc-note">Antwort auf die Frage: Was sollte ich jetzt konkret tun?</div><div class="dc-note" style="margin-top:6px;">{("Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if "final_tactical_label" in locals() else ""}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,

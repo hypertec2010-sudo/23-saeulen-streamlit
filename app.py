@@ -84,7 +84,7 @@ def infer_ultra_bias_from_signal(ultra_signal):
     try:
         label = str((ultra_signal or {}).get("label", "")).strip().lower()
         reason = str((ultra_signal or {}).get("reason", "")).strip().lower()
-        bullets = " | ".join([str(x).lower() for x in ((ultra_signal or {}).get("bullets", []) or [])])
+        bullets = " · ".join([str(x).lower() for x in ((ultra_signal or {}).get("bullets", []) or [])])
         confirmation = str((ultra_signal or {}).get("confirmation", "")).strip().lower()
         strength = float((ultra_signal or {}).get("strength", 0) or 0)
     except Exception:
@@ -433,11 +433,11 @@ def get_radar_universe_map():
 
 def get_radar_snapshot_jobs():
     base_jobs = [
-        {"job_key": "us_tech_leader", "label": "US Tech | Leader | 15", "universe": "US Tech", "style": "Leader", "max_candidates": 15},
-        {"job_key": "semis_leader", "label": "Halbleiter | Leader | 15", "universe": "Halbleiter", "style": "Leader", "max_candidates": 15},
-        {"job_key": "europe_balanced", "label": "Europa Qualität & Leader | Ausgewogen | 15", "universe": "Europa Qualität & Leader", "style": "Ausgewogen", "max_candidates": 15},
-        {"job_key": "us_sm_turnaround", "label": "US Small & Mid Caps | Turnaround | 15", "universe": "US Small & Mid Caps", "style": "Turnaround", "max_candidates": 15},
-        {"job_key": "eu_sm_turnaround", "label": "Europa Small & Mid Caps Qualität | Turnaround | 15", "universe": "Europa Small & Mid Caps Qualität", "style": "Turnaround", "max_candidates": 15},
+        {"job_key": "us_tech_leader", "label": "US Tech · Leader · 15", "universe": "US Tech", "style": "Leader", "max_candidates": 15},
+        {"job_key": "semis_leader", "label": "Halbleiter · Leader · 15", "universe": "Halbleiter", "style": "Leader", "max_candidates": 15},
+        {"job_key": "europe_balanced", "label": "Europa Qualität & Leader · Ausgewogen · 15", "universe": "Europa Qualität & Leader", "style": "Ausgewogen", "max_candidates": 15},
+        {"job_key": "us_sm_turnaround", "label": "US Small & Mid Caps · Turnaround · 15", "universe": "US Small & Mid Caps", "style": "Turnaround", "max_candidates": 15},
+        {"job_key": "eu_sm_turnaround", "label": "Europa Small & Mid Caps Qualität · Turnaround · 15", "universe": "Europa Small & Mid Caps Qualität", "style": "Turnaround", "max_candidates": 15},
     ]
     slot_groups = [
         ("10:30", ["10:30", "10:40", "10:50", "11:00", "11:10"]),
@@ -2461,6 +2461,71 @@ def apply_regime_to_candle_reading(sig, regime_ctx):
             sig["reading"] = reading + " Das Marktumfeld verschärft bearische Rejection-Signale."
     return sig
 
+
+
+
+def leadership_label_phase_ui(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "unauffällig"
+    if s >= 70:
+        return "Leader"
+    if s >= 50:
+        return "tragfähig"
+    if s >= 30:
+        return "Mitläufer"
+    return "schwach"
+
+
+def industry_strength_label_phase_ui(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "gemischt"
+    if s >= 70:
+        return "stark"
+    if s >= 50:
+        return "tragfähig"
+    if s >= 30:
+        return "gemischt"
+    return "schwach"
+
+
+def rs_accel_label_phase_ui(score):
+    try:
+        s = float(score)
+    except Exception:
+        return "neutral"
+    if s >= 70:
+        return "zieht an"
+    if s >= 50:
+        return "leicht positiv"
+    if s >= 30:
+        return "neutral"
+    return "schwächer"
+
+
+def soft_score_text(score, label_text):
+    try:
+        s = float(score)
+        return f"{label_text} · {int(round(s))}/100" if scores_visible() else label_text
+    except Exception:
+        return label_text
+
+
+def compact_action_text_phase_ui(action_label):
+    a = str(action_label or "").strip().lower()
+    mapping = {
+        "kaufen": "Setup und Timing passen aktuell zusammen.",
+        "vorbereiten": "Interessant, aber der nächste Trigger fehlt noch.",
+        "abwarten": "Noch keine saubere Freigabe für einen Einstieg.",
+        "halten": "Aktuell kein dominanter Exit-Grund.",
+        "teilgewinn prüfen": "Kurzfristiges Risiko oder Überdehnung nimmt zu.",
+        "stop enger": "Warnsignale nehmen zu, Risikokontrolle wird wichtiger.",
+        "exit prüfen": "Die Lage kippt, Schutz des Kapitals steht im Vordergrund.",
+    }
+    return mapping.get(a, "Die Aktion folgt Timing, Risiko und Triggerstatus.")
 
 def tactical_label_phase2(tactical_exit_risk):
     try:
@@ -4669,7 +4734,7 @@ def format_chart_zone_label(prefix, idx, zone, ccy=""):
         high = float(zone.get("high", np.nan))
         touches = int(zone.get("touches", 0))
         ccy_suffix = f" {ccy}".strip()
-        return f"{prefix}{idx} ({touches}x) | {low:.2f} bis {high:.2f}{(' ' + ccy) if ccy else ''}"
+        return f"{prefix}{idx} ({touches}x) · {low:.2f} bis {high:.2f}{(' ' + ccy) if ccy else ''}"
     except Exception:
         touches = zone.get("touches", "?")
         return f"{prefix}{idx} ({touches}x)"
@@ -4807,7 +4872,7 @@ def add_trend_channel_to_plotly(fig, df, channel):
 
     label = channel.get("label", "Trendkanal")
     quality = channel.get("quality", "")
-    label_text = f"{label} | Qualitaet: {quality}" if quality else label
+    label_text = f"{label} · Qualitaet: {quality}" if quality else label
 
     fig.add_annotation(
         x=x_dates[-1],
@@ -5547,7 +5612,7 @@ def build_company_summary(info, ticker):
         parts.append(f"Börse: {exchange}")
 
     if parts:
-        return f"{company_name} | " + " | ".join(parts)
+        return f"{company_name} · " + " · ".join(parts)
 
     return "Keine Unternehmensbeschreibung verfügbar."
 
@@ -6123,16 +6188,16 @@ def _legacy_analyze_stock(
     roc_s = 100 if roc20 > 4 else (72 if roc20 > 0 else (45 if roc20 > -4 else 20))
     s4 = round(rsi_s * 0.25 + macd_s * 0.30 + adx_s * 0.20 + roc_s * 0.25)
     s4a = ampel(s4)
-    s4t = f"RSI {rsi:.1f} | MACD {'up' if macd_up else 'dn'} | ADX {adx:.1f} | ROC20 {roc20:.1f}%"
+    s4t = f"RSI {rsi:.1f} · MACD {'up' if macd_up else 'dn'} · ADX {adx:.1f} · ROC20 {roc20:.1f}%"
 
     if ret5 > 0 and vol_ratio > 1.12 and obv_trend == "steigend":
-        s5, s5a, s5t = 100, "🟢", f"Vol {vol_ratio:.2f}x | OBV steigend"
+        s5, s5a, s5t = 100, "🟢", f"Vol {vol_ratio:.2f}x · OBV steigend"
     elif ret20 > 0 and obv_trend == "steigend":
-        s5, s5a, s5t = 68, "🟡", f"Vol {vol_ratio:.2f}x | Nachfrage ok"
+        s5, s5a, s5t = 68, "🟡", f"Vol {vol_ratio:.2f}x · Nachfrage ok"
     elif ret20 > 0:
-        s5, s5a, s5t = 52, "🟡", f"Momentum ok | OBV {obv_trend}"
+        s5, s5a, s5t = 52, "🟡", f"Momentum ok · OBV {obv_trend}"
     else:
-        s5, s5a, s5t = 28, "🔴", f"Momentum/Volumen schwach | OBV {obv_trend}"
+        s5, s5a, s5t = 28, "🔴", f"Momentum/Volumen schwach · OBV {obv_trend}"
 
     if atr_pct < 2.8:
         s6, s6a, s6t = 92, "🟢", f"ATR {atr_pct:.1f}% niedrig"
@@ -7846,27 +7911,27 @@ def _legacy_analyze_stock(
         elif tactical_exit_risk >= 78:
             partial_profit_action = "Ja, Teilgewinn prüfen"
             add_on_action = "Nein"
-            risk_note = f"Taktischer Exit: akute Ruecksetzergefahr | {tactical_exit_reason_top} | {pnl_bucket}"
+            risk_note = f"Taktischer Exit: akute Ruecksetzergefahr · {tactical_exit_reason_top} · {pnl_bucket}"
         elif exit_action == "Verkaufen":
             partial_profit_action = "Nein"
             add_on_action = "Nein"
-            risk_note = f"Exit-Modell: klarer Verkaufsdruck | {pnl_bucket}"
+            risk_note = f"Exit-Modell: klarer Verkaufsdruck · {pnl_bucket}"
         elif exit_action == "Risiko reduzieren":
             add_on_action = "Nein"
-            risk_note = f"Exit-Modell: Risikoabbau sinnvoll | {pnl_bucket}"
+            risk_note = f"Exit-Modell: Risikoabbau sinnvoll · {pnl_bucket}"
         elif exit_action == "Teilgewinn prüfen" or tactical_exit_action == "Teilgewinn pruefen":
             partial_profit_action = "Ja, Teilgewinn prüfen"
-            risk_note = f"Gewinnsicherung sinnvoll | {tactical_exit_reason_top if tactical_exit_risk >= 42 else pnl_bucket}"
+            risk_note = f"Gewinnsicherung sinnvoll · {tactical_exit_reason_top if tactical_exit_risk >= 42 else pnl_bucket}"
         elif tactical_exit_action == "Stop enger ziehen":
-            stop_action = f"Stop enger ziehen | {stop_action}" if str(stop_action).strip() not in {"", "-", "Nicht anwendbar"} else "Stop enger ziehen"
-            risk_note = f"Kurzfristige Ruecksetzergefahr | {tactical_exit_reason_top}"
+            stop_action = f"Stop enger ziehen · {stop_action}" if str(stop_action).strip() not in {"", "-", "Nicht anwendbar"} else "Stop enger ziehen"
+            risk_note = f"Kurzfristige Ruecksetzergefahr · {tactical_exit_reason_top}"
         elif exit_action == "Beobachten" or tactical_exit_action == "Kurzfristig vorsichtiger":
-            risk_note = f"Fruehe Exit-Schwäche | {tactical_exit_reason_top if tactical_exit_risk >= 25 else pnl_bucket}"
+            risk_note = f"Fruehe Exit-Schwäche · {tactical_exit_reason_top if tactical_exit_risk >= 25 else pnl_bucket}"
         elif str(add_on_action).lower().startswith("ja"):
-            risk_note = f"Konstruktive Lage trotz Positionsmodus | {pnl_bucket}"
+            risk_note = f"Konstruktive Lage trotz Positionsmodus · {pnl_bucket}"
 
         if pd.notna(days_earn) and days_earn <= 7 and max(exit_score, tactical_exit_risk) >= 45:
-            risk_note = f"Earnings-Risiko bei erhoehter Exit-Schwäche | {pnl_bucket}"
+            risk_note = f"Earnings-Risiko bei erhoehter Exit-Schwäche · {pnl_bucket}"
 
     exit_reason_list = []
     if pd.notna(price) and pd.notna(ma50) and price < ma50:
@@ -8577,7 +8642,7 @@ with st.expander("Hilfen & Verwaltung", expanded=False):
                     else:
                         st.error(f"{selected_radar_job_label}: {msg}")
                     if isinstance(meta, dict):
-                        st.caption(f"Analysiert: {meta.get('analyzed_count', 0)} | Fehler: {len(meta.get('errors', []) or [])}")
+                        st.caption(f"Analysiert: {meta.get('analyzed_count', 0)} · Fehler: {len(meta.get('errors', []) or [])}")
 
 st.markdown(
     """
@@ -8988,7 +9053,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                             st.session_state.selected_watchlist_type = selected_watchlist_type
                             st.session_state.selected_watchlist_alert_mode = current_alert_mode
                             st.session_state.selected_watchlist_check_frequency = current_check_frequency
-                            st.markdown(f'<div class="compact-help"><strong>Status:</strong> Typ {selected_watchlist_type} | Alert {current_alert_mode} | Frequenz {current_check_frequency}</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="compact-help"><strong>Status:</strong> Typ {selected_watchlist_type} · Alert {current_alert_mode} · Frequenz {current_check_frequency}</div>', unsafe_allow_html=True)
                         else:
                             selected_watchlist_name = ""
                             selected_watchlist_type = default_type
@@ -9013,7 +9078,7 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
             ]
 
             st.markdown(
-                f'<div class="section-chip"><strong>Ausgewählte Liste:</strong> <span>{selected_watchlist_name} | Typ: {selected_watchlist_type} | Alert: {st.session_state.selected_watchlist_alert_mode} | Frequenz: {st.session_state.selected_watchlist_check_frequency} | Werte: {len(current_tickers)}</span></div>',
+                f'<div class="section-chip"><strong>Ausgewählte Liste:</strong> <span>{selected_watchlist_name} · Typ: {selected_watchlist_type} · Alert: {st.session_state.selected_watchlist_alert_mode} · Frequenz: {st.session_state.selected_watchlist_check_frequency} · Werte: {len(current_tickers)}</span></div>',
                 unsafe_allow_html=True
             )
 
@@ -9287,7 +9352,7 @@ if workspace_mode:
             "Turnaround": "Bevorzugt frühe Drehkandidaten, Rebounds und technische Erholungsfenster.",
             "Ausgewogen": "Mittelweg zwischen bestätigter Stärke und früheren Chancen.",
         }
-        st.caption(f"Aktiver Screening-Stil: {st.session_state.radar_screening_style} | {style_note_map.get(st.session_state.radar_screening_style, '')}")
+        st.caption(f"Aktiver Screening-Stil: {st.session_state.radar_screening_style} · {style_note_map.get(st.session_state.radar_screening_style, '')}")
 
 
         def radar_score_badge(value):
@@ -9675,13 +9740,13 @@ if workspace_mode:
 
                 mask_now = (
                     trigger_series.isin(["Aktiv", "Jetzt prüfbar"])
-                    | (entry_series >= 75)
+                    · (entry_series >= 75)
                 )
                 mask_near = (
                     trigger_series.isin(["Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"])
-                    | ((entry_series >= 58) & (invest_series >= 60) & ~mask_now)
+                    · ((entry_series >= 58) & (invest_series >= 60) & ~mask_now)
                 )
-                mask_later = ~(mask_now | mask_near)
+                mask_later = ~(mask_now · mask_near)
 
                 def sort_section_df(df_section):
                     if df_section is None or df_section.empty:
@@ -9864,7 +9929,7 @@ if workspace_mode:
                     _wl_name = str(_row.get("Watchlist_Name", "") or "").strip()
                     _wl_type = str(_row.get("Watchlist_Type", "Watchlist") or "Watchlist").strip() or "Watchlist"
                     if _wl_name:
-                        _label = f"{_wl_name} | {_wl_type}"
+                        _label = f"{_wl_name} · {_wl_type}"
                         radar_watchlist_options.append(_label)
                         radar_watchlist_label_map[_label] = (_wl_name, _wl_type)
 
@@ -9872,7 +9937,7 @@ if workspace_mode:
                 current_selected_watchlist_name = str(st.session_state.get("selected_watchlist_name", "") or "").strip()
                 current_selected_watchlist_type = str(st.session_state.get("selected_watchlist_type", "Watchlist") or "Watchlist").strip() or "Watchlist"
                 if current_selected_watchlist_name:
-                    candidate_label = f"{current_selected_watchlist_name} | {current_selected_watchlist_type}"
+                    candidate_label = f"{current_selected_watchlist_name} · {current_selected_watchlist_type}"
                     if candidate_label in radar_watchlist_options:
                         default_radar_watchlist_label = candidate_label
                 if default_radar_watchlist_label is None and radar_watchlist_options:
@@ -10207,7 +10272,7 @@ if st.session_state.get("auto_run_requested", False):
                 "Analyzed_Count": len(results),
                 "Sent_Count": int(sent_count or 0),
                 "Status": "OK" if ok else "Info",
-                "Message": msg + (f" | Analysefehler: {' ; '.join(analyze_errors[:2])}" if analyze_errors else ""),
+                "Message": msg + (f" · Analysefehler: {' ; '.join(analyze_errors[:2])}" if analyze_errors else ""),
             })
 
     if due_radar_jobs:
@@ -10227,7 +10292,7 @@ if st.session_state.get("auto_run_requested", False):
                 "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
                 "Slot": slot_label,
-                "Watchlist_Name": f"RADAR | {radar_job.get('label', radar_job.get('job_id', 'Job'))}",
+                "Watchlist_Name": f"RADAR · {radar_job.get('label', radar_job.get('job_id', 'Job'))}",
                 "Watchlist_Type": "Radar Snapshot",
                 "Alert_Mode": radar_job.get("style", "-"),
                 "Check_Frequency": radar_job.get("run_at", radar_job.get("slot_group", slot_label)),
@@ -10235,7 +10300,7 @@ if st.session_state.get("auto_run_requested", False):
                 "Analyzed_Count": analyzed_count,
                 "Sent_Count": 0,
                 "Status": "OK" if ok else "Fehler",
-                "Message": msg + (f" | Fehler: {error_count}" if error_count else ""),
+                "Message": msg + (f" · Fehler: {error_count}" if error_count else ""),
             })
 
     log_ok, log_msg = append_auto_run_log(auto_run_rows)
@@ -10727,7 +10792,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 <div class="mobile-form-title">Tageschart</div>
                 <div class="mobile-form-value">{_tone_icon(daily_sig['tone'])} {daily_sig['bias']}</div>
                 <div class="mobile-form-sub">{daily_sig['pattern']}</div>
-                <div class="mobile-form-sub">Staerke: {daily_sig['strength']}/100 | Qualitaet: {daily_sig.get("quality","-")} | Bestaetigung: {daily_sig['confirmation']}</div>
+                <div class="mobile-form-sub">Staerke: {daily_sig['strength']}/100 · Qualitaet: {daily_sig.get("quality","-")} · Bestaetigung: {daily_sig['confirmation']}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -10737,7 +10802,7 @@ def render_candlestick_dual_timeframe_block(daily_df, intraday_df=None, context_
                 <div class="mobile-form-title">Stundenchart</div>
                 <div class="mobile-form-value">{_tone_icon(hourly_sig['tone'])} {hourly_sig['bias']}</div>
                 <div class="mobile-form-sub">{hourly_sig['pattern']}</div>
-                <div class="mobile-form-sub">Staerke: {hourly_sig['strength']}/100 | Qualitaet: {hourly_sig.get("quality","-")} | Bestaetigung: {hourly_sig['confirmation']}</div>
+                <div class="mobile-form-sub">Staerke: {hourly_sig['strength']}/100 · Qualitaet: {hourly_sig.get("quality","-")} · Bestaetigung: {hourly_sig['confirmation']}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -11071,21 +11136,21 @@ def _candle_compact_summary(sig):
     bias = str(sig.get("bias", "Neutral"))
     pattern = str(sig.get("pattern", "-"))
     quality = str(sig.get("quality", "-"))
-    return f"{bias} | {pattern} | Qualitaet: {quality}"
+    return f"{bias} · {pattern} · Qualitaet: {quality}"
 
 def _candle_trigger_summary(daily_sig, hourly_sig):
     d = str((daily_sig or {}).get("next_trigger", "-"))
     h = str((hourly_sig or {}).get("next_trigger", "-"))
     if d == h:
         return d
-    return f"Tageschart: {d} | Stundenchart: {h}"
+    return f"Tageschart: {d} · Stundenchart: {h}"
 
 def _candle_confirmation_summary(daily_sig, hourly_sig):
     d = str((daily_sig or {}).get("confirmation", "fehlt"))
     h = str((hourly_sig or {}).get("confirmation", "fehlt"))
     if d == h:
         return d.capitalize()
-    return f"Tageschart: {d} | Stundenchart: {h}"
+    return f"Tageschart: {d} · Stundenchart: {h}"
 
 
 def render_mobile_ranking_cards(df):
@@ -11121,7 +11186,7 @@ def render_mobile_ranking_cards(df):
             subtitle_bits.append(f"Sektor: {_safe(row.get('Sektor-Stärke', '-'))}")
         if "Leadership-Status" in df.columns:
             subtitle_bits.append(f"Leadership: {_safe(row.get('Leadership-Status', '-'))}")
-        subtitle = " | ".join([b for b in subtitle_bits if b])
+        subtitle = " · ".join([b for b in subtitle_bits if b])
 
         chips = []
         for col, label in key_columns:
@@ -11839,8 +11904,8 @@ if result is not None:
     # ---------- Header ----------
     st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")
     st.markdown(
-        f"<div class='small-note'>Sektor: {sector} | Industrie: {industry} | Stil: {stock_style} | "
-        f"Kontext: {display_mode_label(mode_label)} | Benchmark: {benchmark_label} | Marktumfeld: {market_regime_label(market_info['regime'])} | "
+        f"<div class='small-note'>Sektor: {sector} · Industrie: {industry} · Stil: {stock_style} · "
+        f"Kontext: {display_mode_label(mode_label)} · Benchmark: {benchmark_label} · Marktumfeld: {market_regime_label(market_info['regime'])} · "
         f"Top Red Flag: {top_red_flag}</div>",
         unsafe_allow_html=True
     )
@@ -11921,7 +11986,7 @@ if result is not None:
         )
 
     if red_flag_items:
-        st.warning("Red Flags erkannt: " + " | ".join(red_flag_notes[:4]))
+        st.warning("Red Flags erkannt: " + " · ".join(red_flag_notes[:4]))
 
     # ---------- Scores ----------
     # ---------- v10.0B Overview ----------
@@ -12089,7 +12154,7 @@ if result is not None:
     if str(sector_strength_text_display).strip().lower() == "nicht verfügbar":
         sector_strength_text_display = sector_trend_text_display if str(sector_trend_text_display).strip() not in {"", "-", "nicht belastbar"} else "aktuell keine saubere Sektor-Einordnung möglich"
     sector_etf_display = result.get("sector_etf_symbol", "-")
-    sector_delta_display = f"{sector_label_display} | ETF: {sector_etf_display}" if sector_etf_display not in ["", "-", None] else sector_label_display
+    sector_delta_display = f"{sector_label_display} · ETF: {sector_etf_display}" if sector_etf_display not in ["", "-", None] else sector_label_display
     trend_quality_display = result.get("trend_quality_score", np.nan)
     base_quality_display = result.get("base_quality_score", np.nan)
     setup_type_quality_display = result.get("setup_type_quality_score", np.nan)
@@ -12246,7 +12311,26 @@ if result is not None:
     )
 
     st.markdown("### Marktumfeld")
-    st.markdown(f"<div class=\"compact-scoreline\">{regime_ctx.get('label','Neutral')} · {regime_ctx.get('leadership','Keine klare Führung')} · {regime_ctx.get('summary','-')}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""<div class="candle-dash-grid">
+            <div class="candle-dash-card">
+                <h4>Marktumfeld</h4>
+                <div class="candle-dash-main">{regime_ctx.get('label','Neutral')}</div>
+                <div class="candle-dash-sub">{regime_ctx.get('summary','-')}</div>
+            </div>
+            <div class="candle-dash-card">
+                <h4>Führung</h4>
+                <div class="candle-dash-main">{regime_ctx.get('leadership','Keine klare Führung')}</div>
+                <div class="candle-dash-sub">Zeigt, wer das Umfeld aktuell eher trägt.</div>
+            </div>
+            <div class="candle-dash-card">
+                <h4>Einordnung</h4>
+                <div class="candle-dash-main">Kontext für Signale</div>
+                <div class="candle-dash-sub">{final_timing_reason if 'final_timing_reason' in locals() else regime_ctx.get('summary','-')}</div>
+            </div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 
     # ---------- Phase 2: regime-sensitive tactical/candle layers ----------
@@ -12276,11 +12360,11 @@ if result is not None:
     compact_cols = st.columns(6)
     compact_data = [
         ("Marktumfeld", regime_ctx.get("label", "Neutral"), regime_ctx.get("summary", "-")),
-        ("Investment-Case", final_investment_case, (f"{investment_case_score}/100" if scores_visible() else "Grundsätzlich interessanter Wert" if final_investment_case == "attraktiv" else "In Teilen interessant" if final_investment_case == "solide" else "Kein klares Gesamtbild" if final_investment_case == "gemischt" else "Aktuell kein überzeugender Grundcase")),
-        ("Timing", final_timing_label, (f"{trading_case_score}/100 | {final_timing_reason}" if scores_visible() else final_timing_reason)),
-        ("Risiko", final_risk_label, (f"Exit {result.get('exit_score', 0)}/100" if scores_visible() else final_risk_reason)),
-        ("Setup-Priorität", final_priority_label, (f"{fmt_num(result.get('setup_priority_score', np.nan),0)}/100" if scores_visible() else final_priority_reason)),
-        ("Aktion", final_action_label, (display_mode_label(mode_label) if scores_visible() else final_action_reason)),
+        ("Investment-Case", final_investment_case, ((f"Score: {investment_case_score}/100 · " if scores_visible() else "") + ("Grundsätzlich interessanter Wert" if final_investment_case == "attraktiv" else "In Teilen interessant" if final_investment_case == "solide" else "Kein klares Gesamtbild" if final_investment_case == "gemischt" else "Aktuell kein überzeugender Grundcase"))),
+        ("Timing", final_timing_label, ((f"Score: {trading_case_score}/100 · " if scores_visible() else "") + final_timing_reason)),
+        ("Risiko", final_risk_label, ((f"Score: Exit {result.get('exit_score', 0)}/100 · " if scores_visible() else "") + final_risk_reason)),
+        ("Setup-Priorität", final_priority_label, ((f"Score: {fmt_num(result.get('setup_priority_score', np.nan),0)}/100 · " if scores_visible() else "") + final_priority_reason)),
+        ("Aktion", final_action_label, ((display_mode_label(mode_label) + " · " + compact_action_text_phase_ui(final_action_label)) if scores_visible() else compact_action_text_phase_ui(final_action_label))),
     ]
     for _col, (_title, _value, _sub) in zip(compact_cols, compact_data):
         with _col:
@@ -12317,9 +12401,9 @@ if result is not None:
 
     if is_pro_mode or is_expert_mode:
         decision_meta = (
-            f"Positionsmodus | Risiko: {shorten_text(risk_note, 42)}"
+            f"Positionsmodus · Risiko: {shorten_text(risk_note, 42)}"
             if position_mode
-            else f"Marktumfeld: {market_regime_label(market_info['regime'])} | Trigger-Status: {display_trigger_status_label(trigger_status)} | Priorität: {watchlist_priority}"
+            else f"Marktumfeld: {market_regime_label(market_info['regime'])} · Trigger-Status: {display_trigger_status_label(trigger_status)} · Priorität: {watchlist_priority}"
         )
         st.markdown(
             f"""
@@ -12376,7 +12460,7 @@ if result is not None:
                     <div class="decision-card invest" title="Grundsätzliche Attraktivität des Werts als Investment, unabhängig vom exakten Einstiegstiming.">
                         <div class="dc-label">Investment-Case</div>
                         <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_investment_case}</div>
-                        <div class="dc-sub">{(str(investment_case_score) + "/100") if scores_visible() else "Grundsätzlich interessanter Wert mit tragfähigem Profil." if final_investment_case=="attraktiv" else "In Teilen interessant, aber nicht durchgehend stark." if final_investment_case=="solide" else "Einige gute Elemente, aber kein klares Gesamtbild." if final_investment_case=="gemischt" else "Der Grundcase überzeugt aktuell nicht ausreichend."}</div>
+                        <div class="dc-sub">{"Score: " + str(investment_case_score) + "/100 · " if scores_visible() else ""}{"Grundsätzlich interessanter Wert mit tragfähigem Profil." if final_investment_case=="attraktiv" else "In Teilen interessant, aber nicht durchgehend stark." if final_investment_case=="solide" else "Einige gute Elemente, aber kein klares Gesamtbild." if final_investment_case=="gemischt" else "Der Grundcase überzeugt aktuell nicht ausreichend."}</div>
                         <div class="dc-note">Antwort auf die Frage: Ist der Wert grundsätzlich interessant?</div>
                     </div>
                     """,
@@ -12388,7 +12472,7 @@ if result is not None:
                     <div class="decision-card entry" title="Qualität des aktuellen Einstiegsfensters und des Setups, unabhängig von der grundsätzlichen Investmentqualität.">
                         <div class="dc-label">Timing</div>
                         <div class="dc-value" style="font-size:clamp(0.98rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_timing_label}</div>
-                        <div class="dc-sub">{(str(trading_case_score) + "/100 | Entry-Lage: " + str(entry_quality)) if scores_visible() else final_timing_reason}</div>
+                        <div class="dc-sub">{"Score: " + str(trading_case_score) + "/100 · Entry-Lage: " + str(entry_quality) + " · " if scores_visible() else ""}{final_timing_reason}</div>
                         <div class="dc-note">Antwort auf die Frage: Ist das Timing für einen Einstieg schon gut genug?</div>
                     </div>
                     """,
@@ -12400,7 +12484,7 @@ if result is not None:
                     <div class="decision-card action" title="Konkrete Handlungsableitung aus Investmentqualität, Einstiegstiming und Triggerstatus.">
                         <div class="dc-label">Aktion</div>
                         <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
-                        <div class="dc-sub">{("Trigger: " + str(next_trigger)) if not scores_visible() else str(trigger_status) + " | " + str(next_trigger)}</div>
+                        <div class="dc-sub">{("Trigger: " + str(next_trigger)) if not scores_visible() else str(trigger_status) + " · " + str(next_trigger)}</div>
                         <div class="dc-note">Antwort auf die Frage: Was sollte ich jetzt konkret tun?</div><div class="dc-note" style="margin-top:6px;">{("Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if "final_tactical_label" in locals() else ""}</div>
                     </div>
                     """,
@@ -12450,7 +12534,7 @@ if result is not None:
                 <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
                     <div class="dc-label">Hauptgrund</div>
                     <div class="dc-value" style="font-size:clamp(1.0rem, 1.15vw, 1.18rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exit_reason_top_display}</div>
-                    <div class="dc-sub">{' | '.join(exit_reason_extra_display[:2]) if exit_reason_extra_display else 'keine weiteren Exit-Hinweise'}</div>
+                    <div class="dc-sub">{' · '.join(exit_reason_extra_display[:2]) if exit_reason_extra_display else 'keine weiteren Exit-Hinweise'}</div>
                     <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
                 </div>
                 """,
@@ -12590,7 +12674,7 @@ if result is not None:
             with c4:
                 render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}/100", tradeability_text, "kb", tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.")
             with c5:
-                render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} | Board: {tb_score} Punkte", "board", tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard.")
+                render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} · Board: {tb_score} Punkte", "board", tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard.")
             with c6:
                 render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short", tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke.")
             with c7:
@@ -13005,12 +13089,12 @@ if result is not None:
             st.plotly_chart(fig, use_container_width=True)
             result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
             hourly_candle_df = get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df)
-            candle_bias_pkg = build_candlestick_bias_package(chart_df, hourly_candle_df, context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []))
+            candle_bias_pkg = build_candlestick_bias_package(chart_df, hourly_candle_df, context_hint=" · ".join(chart_context_lines if "chart_context_lines" in locals() else []))
             if isinstance(result, dict):
                 result["candlestick_bias_pkg"] = candle_bias_pkg
                 result["candlestick_bias_label"] = candle_bias_pkg.get("label", "neutral")
                 result["candlestick_bias_score"] = candle_bias_pkg.get("score", 0)
-            render_candlestick_dual_timeframe_block(chart_df, hourly_candle_df, context_hint=" | ".join(chart_context_lines if "chart_context_lines" in locals() else []), result=result if "result" in locals() else None)
+            render_candlestick_dual_timeframe_block(chart_df, hourly_candle_df, context_hint=" · ".join(chart_context_lines if "chart_context_lines" in locals() else []), result=result if "result" in locals() else None)
 
 
             if chart_structures and show_sr_zones:
@@ -13036,7 +13120,7 @@ if result is not None:
                         </div>
                         <div class="horizon-value" style="font-size:1.0rem;">{ultra_signal.get('label', '-')}</div>
                         <div class="horizon-sub">Bias: {infer_ultra_bias_from_signal(ultra_signal)[1]} {infer_ultra_bias_from_signal(ultra_signal)[0]}</div>
-                        <div class="horizon-sub">Staerke: {fmt_num(ultra_signal.get('strength', 0),0)}/100 | Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
+                        <div class="horizon-sub">Staerke: {fmt_num(ultra_signal.get('strength', 0),0)}/100 · Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -13059,7 +13143,7 @@ if result is not None:
         with t1:
             st.subheader("Trading-Case")
             st.markdown('<div class="panel-caption">Technisches Setup, Momentum, Volumen und kurzfristige Struktur.</div>', unsafe_allow_html=True)
-            st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) | **Marktregime:** {market_info['ampel']} {market_regime_label(market_info['regime'])}")
+            st.markdown(f"**Benchmark:** {benchmark_label} (`{benchmark_symbol}`) · **Marktregime:** {market_info['ampel']} {market_regime_label(market_info['regime'])}")
 
             cols = st.columns(2)
             items = [
@@ -13166,7 +13250,7 @@ if result is not None:
             st.subheader("Investment-Case")
             st.markdown('<div class="panel-caption">Fundamentale Qualität, Bewertung und mittelfristige Attraktivität.</div>', unsafe_allow_html=True)
             st.markdown(
-                f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}% | Geladene Felder: {fund_fields_loaded}/21</div>",
+                f"<div class='small-note'>Datenabdeckung Fundamentaldaten: {fund_cov*100:.0f}% · Geladene Felder: {fund_fields_loaded}/21</div>",
                 unsafe_allow_html=True
             )
 
@@ -13186,13 +13270,13 @@ if result is not None:
                     balance_score, sentiment_score, risk_score
                 ],
                 "Kommentar": [
-                    f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} | Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} | ROE {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')}",
-                    f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} | EPS-Wachstum {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')}",
-                    f"Wachstum + Cashflow + Margen | Stil: {stock_style}",
-                    f"KGV {fmt_num(pe,1)} | PEG {fmt_num(peg,2)} | KUV {fmt_num(ps,2)} | KBV {fmt_num(pb,2)}",
-                    f"Current Ratio {fmt_num(current_ratio,2)} | Quick Ratio {fmt_num(quick_ratio,2)} | D/E {fmt_num(debt_to_equity,1)}",
-                    f"Analystenmeinung {rec_label} | Anzahl {fmt_num(analysts,0)} | Mean {fmt_num(rec_mean,2)}",
-                    f"Beta {fmt_num(beta,2)} | Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} | ATR% {fmt_num(atr_pct,1,'%')}",
+                    f"Gewinnmarge {fmt_num(profit_margin*100 if pd.notna(profit_margin) else np.nan,1,'%')} · Operative Marge {fmt_num(oper_margin*100 if pd.notna(oper_margin) else np.nan,1,'%')} · ROE {fmt_num(roe*100 if pd.notna(roe) else np.nan,1,'%')}",
+                    f"Umsatzwachstum {fmt_num(revenue_growth*100 if pd.notna(revenue_growth) else np.nan,1,'%')} · EPS-Wachstum {fmt_num(earnings_growth*100 if pd.notna(earnings_growth) else np.nan,1,'%')}",
+                    f"Wachstum + Cashflow + Margen · Stil: {stock_style}",
+                    f"KGV {fmt_num(pe,1)} · PEG {fmt_num(peg,2)} · KUV {fmt_num(ps,2)} · KBV {fmt_num(pb,2)}",
+                    f"Current Ratio {fmt_num(current_ratio,2)} · Quick Ratio {fmt_num(quick_ratio,2)} · D/E {fmt_num(debt_to_equity,1)}",
+                    f"Analystenmeinung {rec_label} · Anzahl {fmt_num(analysts,0)} · Mean {fmt_num(rec_mean,2)}",
+                    f"Beta {fmt_num(beta,2)} · Short-Quote {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')} · ATR% {fmt_num(atr_pct,1,'%')}",
                 ],
             })
             st.dataframe(fund_df, hide_index=True, use_container_width=True)
@@ -13322,13 +13406,13 @@ if result is not None:
                     confidence_info["confidence_icon"],
                 ],
                 "Kommentar": [
-                    f"{ccy} | {exch}",
+                    f"{ccy} · {exch}",
                     "auto_adjust=True Yahoo Finance",
                     sg_earn_txt,
                     regime,
                     f"{kb}/4 Kernbloecke",
                     f"Fundamental-Coverage {fund_cov*100:.0f}%",
-                    f"{benchmark_label} | {market_regime_label(market_info['regime'])}",
+                    f"{benchmark_label} · {market_regime_label(market_info['regime'])}",
                     mode_label,
                     f"Penalty {red_flag_penalty_total}",
                     confidence_info["confidence"]
@@ -13343,9 +13427,9 @@ if result is not None:
             if not valid_trade_setup:
                 st.error("Kein valides Trade-Setup: Score, Marktumfeld oder Konfluenz reichen aktuell nicht aus.")
                 st.write(
-                    f"Aktuell: Investment Score {investment}/100 | "
-                    f"Setup Quality {setup_adj}/100 | "
-                    f"Konfluenz {kb}/4 | "
+                    f"Aktuell: Investment Score {investment}/100 · "
+                    f"Setup Quality {setup_adj}/100 · "
+                    f"Konfluenz {kb}/4 · "
                     f"Marktregime {market_regime_label(market_info['regime'])}"
                 )
                 if has_upcoming_earnings and pd.notna(days_earn) and days_earn < 7:
@@ -13610,7 +13694,7 @@ if result is not None:
                     else:
                         ui_tactical_ok.append("Kein markanter kurzfristiger Volumendruck")
 
-            st.caption(f"Tactical-Block v31k | Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
+            st.caption(f"Tactical-Block v31k · Fallback aktiv: {'ja' if fallback_needed else 'nein'}")
 
             px1, px2, px3, px4 = st.columns(4)
             exit_score_slot = px1.empty()
@@ -13768,7 +13852,7 @@ if result is not None:
                 render_tactical_risk_card("Exit-Score", exit_score_display_ui, exit_score_text_ui)
 
             st.markdown("**Strukturelle Exit-Komponenten**")
-            st.caption(f"Structural Override aktiv: {'ja' if structural_override_active else 'nein'} | Structural Pressure: {structural_pressure_ui}/100")
+            st.caption(f"Structural Override aktiv: {'ja' if structural_override_active else 'nein'} · Structural Pressure: {structural_pressure_ui}/100")
             sx1, sx2, sx3, sx4, sx5 = st.columns(5)
             with sx1:
                 render_structural_risk_card("Trendbruch", struct_trend_ui, "Bruch wichtiger Trendstruktur; hoch = negativ")
@@ -13950,7 +14034,7 @@ if result is not None:
                             </div>
                             <div class="reco-value">{display_stb_label(stb_signal)}</div>
                         </div>
-                        <div class="reco-delta">Timing: {tb_timing_text} | Score: {stb_score}</div>
+                        <div class="reco-delta">Timing: {tb_timing_text} · Score: {stb_score}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,

@@ -2514,6 +2514,121 @@ def soft_score_text(score, label_text):
         return label_text
 
 
+
+
+def compute_signal_conflict_phase_ui(
+    investment_case="-",
+    timing_label="-",
+    risk_label="-",
+    action_label="-",
+    candle_daily=None,
+    candle_hourly=None,
+    ultra_label="-",
+    tactical_label="-",
+):
+    reasons = []
+    score = 0
+
+    inv = str(investment_case or "").lower()
+    timing = str(timing_label or "").lower()
+    risk = str(risk_label or "").lower()
+    action = str(action_label or "").lower()
+    ultra = str(ultra_label or "").lower()
+    tactical = str(tactical_label or "").lower()
+
+    daily_tone = str((candle_daily or {}).get("tone", "neutral")).lower() if isinstance(candle_daily, dict) else "neutral"
+    hourly_tone = str((candle_hourly or {}).get("tone", "neutral")).lower() if isinstance(candle_hourly, dict) else "neutral"
+
+    # Core tension: strong case, weak timing
+    if inv in {"attraktiv", "solide"} and timing in {"noch nicht reif", "unattraktiv"}:
+        score += 1
+        reasons.append("Grundcase besser als Timing")
+
+    # Strong timing but elevated risk
+    if timing in {"reif", "fast reif"} and risk in {"erhöht", "kritisch"}:
+        score += 2
+        reasons.append("Timing kollidiert mit Risiko")
+
+    # Bullish candles but defensive action
+    if (daily_tone == "bullish" or hourly_tone == "bullish") and action in {"abwarten", "stop enger", "teilgewinn prüfen", "exit prüfen"}:
+        score += 1
+        reasons.append("Bullische Reaktion, aber defensive Aktion")
+
+    # Bearish candles but constructive action
+    if (daily_tone == "bearish" or hourly_tone == "bearish") and action in {"kaufen", "vorbereiten"}:
+        score += 2
+        reasons.append("Bearische Reaktion, aber konstruktive Aktion")
+
+    # Ultra-short-term vs timing mismatch
+    if ultra in {"aktives signal", "frühe reaktion"} and timing in {"noch nicht reif", "unattraktiv"}:
+        score += 1
+        reasons.append("Kurzfristig besser als mittelfristiges Timing")
+
+    # Tactical pressure vs stable risk mismatch
+    if tactical in {"erhöht", "kritisch"} and risk == "stabil":
+        score += 1
+        reasons.append("Taktik warnt stärker als die Haupt-Risikolage")
+
+    # Constructive action but clearly defensive tactical state
+    if action in {"kaufen", "vorbereiten"} and tactical == "kritisch":
+        score += 2
+        reasons.append("Konstruktive Aktion trotz kritischer Taktik")
+
+    if score <= 1:
+        label = "konsistent"
+        tone = "bull" if action in {"kaufen", "vorbereiten", "halten"} and risk != "kritisch" else "neutral"
+        summary = "Die wichtigsten Signale ziehen weitgehend in dieselbe Richtung."
+    elif score <= 3:
+        label = "gemischt"
+        tone = "warn"
+        summary = "Es gibt erkennbare Spannungen zwischen Setup, Timing und Risiko."
+    else:
+        label = "widersprüchlich"
+        tone = "bear"
+        summary = "Mehrere Signalebenen sprechen aktuell nicht sauber dieselbe Sprache."
+
+    top_reason = reasons[0] if reasons else "Keine dominanten Konflikte erkannt."
+    return {
+        "label": label,
+        "tone": tone,
+        "summary": summary,
+        "reason": top_reason,
+        "score": score,
+        "reasons": reasons[:4],
+    }
+
+
+def render_signal_conflict_block(conflict_pkg):
+    if not isinstance(conflict_pkg, dict):
+        return
+    label = str(conflict_pkg.get("label", "konsistent"))
+    summary = str(conflict_pkg.get("summary", "-"))
+    reason = str(conflict_pkg.get("reason", "-"))
+    tone = str(conflict_pkg.get("tone", "neutral"))
+
+    badge = _candle_badge_html(
+        "Konsistent" if label == "konsistent" else "Gemischt" if label == "gemischt" else "Widersprüchlich",
+        "bull" if tone == "bull" else "warn" if tone == "warn" else "bear" if tone == "bear" else "neutral"
+    )
+
+    st.markdown(
+        f"""
+        <div class="section-card">
+            <div class="premium-title">Signal-Konflikt</div>
+            <div class="premium-value">{label.capitalize()}</div>
+            <div style="margin-top:6px;">{badge}</div>
+            <div class="premium-sub" style="margin-top:8px;">{summary}</div>
+            <div class="premium-sub" style="margin-top:8px;"><b>Hauptkonflikt:</b> {reason}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if scores_visible() and conflict_pkg.get("reasons"):
+        with st.expander("Konflikt-Details", expanded=False):
+            for item in conflict_pkg.get("reasons", []):
+                st.write(f"- {item}")
+
 def compact_action_text_phase_ui(action_label):
     a = str(action_label or "").strip().lower()
     mapping = {
@@ -12356,6 +12471,18 @@ if result is not None:
         daily_sig = apply_regime_to_candle_reading(daily_sig, regime_ctx)
     if "hourly_sig" in locals() and isinstance(hourly_sig, dict):
         hourly_sig = apply_regime_to_candle_reading(hourly_sig, regime_ctx)
+
+
+    conflict_pkg = compute_signal_conflict_phase_ui(
+        investment_case=final_investment_case if "final_investment_case" in locals() else "-",
+        timing_label=final_timing_label if "final_timing_label" in locals() else "-",
+        risk_label=final_risk_label if "final_risk_label" in locals() else "-",
+        action_label=final_action_label if "final_action_label" in locals() else "-",
+        candle_daily=daily_sig if "daily_sig" in locals() else None,
+        candle_hourly=hourly_sig if "hourly_sig" in locals() else None,
+        ultra_label=final_ultra_label if "final_ultra_label" in locals() and final_ultra_label else (ultra_signal.get("label", "-") if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else "-"),
+        tactical_label=final_tactical_label if "final_tactical_label" in locals() else "-",
+    )
 
     compact_cols = st.columns(6)
     compact_data = [

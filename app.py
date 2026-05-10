@@ -198,6 +198,120 @@ try:
 except Exception:
     _telegram_utils = None
 
+
+# ---------- v15.16: Export-/Sheets-Schutzschicht fuer neue Analysefelder ----------
+def _export_safe_value(value):
+    """Macht komplexe Werte CSV-/Sheets-tauglich, ohne den eigentlichen Export zu brechen."""
+    try:
+        if isinstance(value, (pd.DataFrame, pd.Series)):
+            return ""
+        if isinstance(value, (dict, list, tuple, set)):
+            import json
+            return json.dumps(value, ensure_ascii=False, default=str)
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    return value
+
+
+def enrich_single_export_df_v1516(export_df, result, context=None):
+    """
+    Erweitert den bestehenden logging_utils.build_export_df um Felder,
+    die in den letzten UI-/Modell-Sprints erst nach analyze_stock berechnet werden.
+    CSV und Sheets verwenden danach denselben erweiterten DataFrame.
+    """
+    context = context or {}
+    base = export_df.copy() if isinstance(export_df, pd.DataFrame) and not export_df.empty else pd.DataFrame([{}])
+    if len(base) == 0:
+        base = pd.DataFrame([{}])
+    if len(base) > 1:
+        base = base.head(1).copy()
+
+    def add_col(name, value):
+        if name not in base.columns:
+            base[name] = [_export_safe_value(value)]
+
+    # Direkte Basisdaten / neue Screener- und Risikofelder aus dem Analyse-Result.
+    result_fields = {
+        "Export_Version": "v15.16",
+        "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Ticker": (result or {}).get("ticker"),
+        "Name": (result or {}).get("name"),
+        "Sektor": (result or {}).get("sector"),
+        "Industrie": (result or {}).get("industry"),
+        "Analyse_Perspektive": context.get("mode_label") or (result or {}).get("mode_label"),
+        "Position_Mode": context.get("position_mode"),
+        "Buy_In_Override": context.get("buy_in_override"),
+        "Kandidatentyp": (result or {}).get("candidate_type") or (result or {}).get("setup_type"),
+        "Radar_Risiko": (result or {}).get("radar_risk") or (result or {}).get("title_risk_score"),
+        "Setup_Typ": (result or {}).get("setup_type"),
+        "Watchlist_Prioritaet": (result or {}).get("watchlist_priority"),
+        "Watchlist_Prioritaet_Score": (result or {}).get("watchlist_priority_score"),
+        "Leadership_Score": (result or {}).get("leadership_score"),
+        "Leadership_Status": (result or {}).get("leadership_status"),
+        "Sektor_Staerke_Score": (result or {}).get("sector_strength_score"),
+        "Sektor_Trend": (result or {}).get("sector_trend_text"),
+        "Industrie_Staerke_Score": (result or {}).get("industry_strength_score"),
+        "Industrie_Trend": (result or {}).get("industry_trend_text"),
+        "RS_Benchmark_Score": (result or {}).get("rs_benchmark_score"),
+        "RS_Beschleunigung_Score": (result or {}).get("rs_acceleration_score"),
+        "Regime_Fit_Score": (result or {}).get("regime_fit_score"),
+        "Regime_Adjustment_Score": (result or {}).get("regime_adjustment_score"),
+        "Titel_Risiko_Score": (result or {}).get("title_risk_score"),
+        "Short_Term_Gap_Risk_Score": (result or {}).get("short_term_gap_risk_score"),
+        "Instrument_Volatility_Risk_Score": (result or {}).get("instrument_volatility_risk_score"),
+        "Tactical_Exit_Risk": (result or {}).get("tactical_exit_risk"),
+        "Tactical_Exit_Text": (result or {}).get("tactical_exit_text"),
+        "Tactical_Exit_Action": (result or {}).get("tactical_exit_action"),
+        "Tactical_Exit_Reason": (result or {}).get("tactical_exit_reason_top"),
+        "Exit_Score": (result or {}).get("exit_score"),
+        "Exit_Text": (result or {}).get("exit_score_text"),
+        "Exit_Aktion": (result or {}).get("exit_action"),
+        "Exit_Grund": (result or {}).get("exit_reason_top"),
+        "Position_Aktion": (result or {}).get("position_action"),
+        "Stop_Aktion": (result or {}).get("stop_action"),
+        "Teilgewinn_Aktion": (result or {}).get("partial_profit_action"),
+        "Ausbau_Aktion": (result or {}).get("add_on_action"),
+    }
+    for k, v in result_fields.items():
+        add_col(k, v)
+
+    # UI-/Synthese-Felder, die erst im Überblick berechnet werden.
+    model_debug = context.get("model_debug_pkg") or {}
+    conflict_pkg = context.get("conflict_pkg") or {}
+    overall_pkg = context.get("overall_setup_pkg") or {}
+    extra_fields = {
+        "Executive_Summary": model_debug.get("exec_verdict") or context.get("exec_verdict"),
+        "Executive_Warum": model_debug.get("exec_why") or context.get("exec_why"),
+        "Aktion_Final": model_debug.get("final_action") or context.get("final_action_label"),
+        "Aktion_Grund_Final": model_debug.get("final_action_reason") or context.get("final_action_reason"),
+        "Timing_Final": model_debug.get("final_timing") or context.get("final_timing_label"),
+        "Timing_Grund_Final": model_debug.get("final_timing_reason") or context.get("final_timing_reason"),
+        "Risiko_Final": model_debug.get("final_risk") or context.get("final_risk_label"),
+        "Setup_Prioritaet_Final": model_debug.get("final_priority") or context.get("final_priority_label"),
+        "Setup_Prioritaet_Grund_Final": model_debug.get("final_priority_reason") or context.get("final_priority_reason"),
+        "Taktik_Final": model_debug.get("final_tactical") or context.get("final_tactical_label"),
+        "Ultra_Final": model_debug.get("final_ultra") or context.get("final_ultra_label"),
+        "Signal_Konflikt": conflict_pkg.get("label") or model_debug.get("conflict_label"),
+        "Signal_Konflikt_Zusammenfassung": conflict_pkg.get("summary"),
+        "Signal_Konflikt_Grund": conflict_pkg.get("reason") or model_debug.get("conflict_reason"),
+        "Signal_Konflikt_Details": conflict_pkg.get("reasons"),
+        "Gesamt_Setup_Qualitaet": overall_pkg.get("label") or model_debug.get("overall_setup_quality"),
+        "Gesamt_Setup_Zusammenfassung": overall_pkg.get("summary"),
+        "Gesamt_Setup_Grund": overall_pkg.get("reason"),
+        "Marktregime_Label": (context.get("regime_ctx") or {}).get("label"),
+        "Marktregime_Summary": (context.get("regime_ctx") or {}).get("summary"),
+        "Candlestick_Daily": (context.get("daily_sig") or {}).get("label") if isinstance(context.get("daily_sig"), dict) else "",
+        "Candlestick_Hourly": (context.get("hourly_sig") or {}).get("label") if isinstance(context.get("hourly_sig"), dict) else "",
+        "Ultra_Signal": (context.get("ultra_signal") or {}).get("label") if isinstance(context.get("ultra_signal"), dict) else "",
+        "Ultra_Bias": (context.get("ultra_signal") or {}).get("bias") if isinstance(context.get("ultra_signal"), dict) else "",
+        "Ultra_Grund": (context.get("ultra_signal") or {}).get("reason") if isinstance(context.get("ultra_signal"), dict) else "",
+    }
+    for k, v in extra_fields.items():
+        add_col(k, v)
+    return base
+
 if _telegram_utils is not None and hasattr(_telegram_utils, "send_telegram_message"):
     send_telegram_message = _telegram_utils.send_telegram_message
 else:
@@ -12388,13 +12502,8 @@ if result is not None:
     csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
     csv_href = f"data:text/csv;base64,{csv_b64}"
 
-    if sheet_log_triggered:
-        ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
-        show_sheet_result(ok, msg)
-        try:
-            st.query_params.clear()
-        except Exception:
-            pass
+    # v15.16: Sheets-Logging wird bewusst erst im Export-Block ausgefuehrt,
+    # nachdem alle finalen UI-/Synthese-Felder in single_export_df ergaenzt wurden.
 
     df = result["df"]
     info = result["info"]
@@ -13608,7 +13717,52 @@ if result is not None:
 
         st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
         st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">Diagnose-Scores und Hilfswerte liegen darunter im aufklappbaren Bereich.</div></div>', unsafe_allow_html=True)
+
+        # ---------- v15.16: finaler CSV-/Sheets-Export nach allen Synthese-Layern ----------
+        try:
+            single_export_df = build_export_df([result]) if result is not None else pd.DataFrame()
+        except Exception:
+            single_export_df = pd.DataFrame()
+        single_export_df = enrich_single_export_df_v1516(
+            single_export_df,
+            result,
+            context={
+                "mode_label": mode_label if "mode_label" in locals() else None,
+                "position_mode": position_mode if "position_mode" in locals() else None,
+                "buy_in_override": buy_in_override if "buy_in_override" in locals() else None,
+                "model_debug_pkg": model_debug_pkg if "model_debug_pkg" in locals() else {},
+                "conflict_pkg": conflict_pkg if "conflict_pkg" in locals() else {},
+                "overall_setup_pkg": overall_setup_pkg if "overall_setup_pkg" in locals() else {},
+                "regime_ctx": regime_ctx if "regime_ctx" in locals() else {},
+                "daily_sig": daily_sig if "daily_sig" in locals() else {},
+                "hourly_sig": hourly_sig if "hourly_sig" in locals() else {},
+                "ultra_signal": ultra_signal if "ultra_signal" in locals() else {},
+                "final_action_label": final_action_label if "final_action_label" in locals() else None,
+                "final_action_reason": final_action_reason if "final_action_reason" in locals() else None,
+                "final_timing_label": final_timing_label if "final_timing_label" in locals() else None,
+                "final_timing_reason": final_timing_reason if "final_timing_reason" in locals() else None,
+                "final_risk_label": final_risk_label if "final_risk_label" in locals() else None,
+                "final_priority_label": final_priority_label if "final_priority_label" in locals() else None,
+                "final_priority_reason": final_priority_reason if "final_priority_reason" in locals() else None,
+                "final_tactical_label": final_tactical_label if "final_tactical_label" in locals() else None,
+                "final_ultra_label": final_ultra_label if "final_ultra_label" in locals() else None,
+                "exec_verdict": exec_verdict if "exec_verdict" in locals() else None,
+                "exec_why": exec_why if "exec_why" in locals() else None,
+            },
+        )
+        csv_payload = single_export_df.to_csv(index=False).encode("utf-8-sig")
+        csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
+        csv_href = f"data:text/csv;base64,{csv_b64}"
+
+        if sheet_log_triggered:
+            ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
+            show_sheet_result(ok, msg)
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+
+        st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
         sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
         with se_outer1:

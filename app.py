@@ -2622,6 +2622,29 @@ def compute_signal_conflict_phase_ui(
 
 
 
+
+def compute_chart_period_performance(chart_df):
+    try:
+        if chart_df is None or len(chart_df) < 2:
+            return None, None
+        close_col = None
+        for candidate in ["Close", "close", "Adj Close", "adj_close"]:
+            if candidate in chart_df.columns:
+                close_col = candidate
+                break
+        if close_col is None:
+            return None, None
+        start_val = float(chart_df[close_col].iloc[0])
+        end_val = float(chart_df[close_col].iloc[-1])
+        if start_val <= 0:
+            return None, None
+        perf_pct = ((end_val / start_val) - 1.0) * 100.0
+        perf_abs = end_val - start_val
+        return perf_pct, perf_abs
+    except Exception:
+        return None, None
+
+
 def render_chart_period_performance_block(chart_period_label, perf_pct, perf_abs=None):
     try:
         perf_num = float(perf_pct) if perf_pct is not None and str(perf_pct) not in {"", "-", "None"} else None
@@ -13304,7 +13327,12 @@ if result is not None:
                     chart_structures = None
             fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
             st.plotly_chart(fig, use_container_width=True)
-            render_chart_period_performance_block(chart_period_label if "chart_period_label" in locals() else (chart_period if "chart_period" in locals() else "Zeitraum"), tb_perf if "tb_perf" in locals() else (chart_perf_pct if "chart_perf_pct" in locals() else None), perf_abs=tb_perf_abs if "tb_perf_abs" in locals() else None)
+            _chart_perf_pct, _chart_perf_abs = compute_chart_period_performance(chart_df)
+            render_chart_period_performance_block(
+                chart_period_label if "chart_period_label" in locals() else (chart_period if "chart_period" in locals() else "Zeitraum"),
+                _chart_perf_pct,
+                perf_abs=_chart_perf_abs,
+            )
             result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
             hourly_candle_df = get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df)
             candle_bias_pkg = build_candlestick_bias_package(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []))

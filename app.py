@@ -462,6 +462,142 @@ def get_due_radar_jobs_for_slot(slot_label):
     return jobs
 
 
+
+def _radar_safe_num(value, default=0.0):
+    try:
+        num = pd.to_numeric(value, errors="coerce")
+        return default if pd.isna(num) else float(num)
+    except Exception:
+        return default
+
+
+def radar_candidate_type(result):
+    """Professionelle Radar-Typisierung: trennt Leader, Mitläufer, Hype/Bounce und Base-Setups."""
+    setup_type = str(result.get("setup_type", "") or "")
+    leadership = str(result.get("leadership_status", "") or "")
+    lead_score = _radar_safe_num(result.get("leadership_score"), 50)
+    invest = _radar_safe_num(result.get("investment_case_score"), 50)
+    trade = _radar_safe_num(result.get("trading_case_score"), 50)
+    trend = _radar_safe_num(result.get("trend_quality_score"), 50)
+    base = _radar_safe_num(result.get("base_quality_score"), 50)
+    volatility_risk = _radar_safe_num(result.get("instrument_volatility_risk_score"), 0)
+    tactical_risk = _radar_safe_num(result.get("tactical_exit_risk"), 0)
+    catalyst = _radar_safe_num(result.get("catalyst_score"), 50)
+    short_term = _radar_safe_num(result.get("short_term_score"), 50)
+
+    if leadership == "Leader" or (lead_score >= 72 and trend >= 65):
+        return "Leader"
+    if setup_type in {"Rebound", "Breakout-Retest"} or (short_term >= 68 and invest < 62):
+        return "Bounce"
+    if setup_type in {"Base-Building", "Range", "Range-Breakout"} or (base >= 68 and trade < 70):
+        return "Base-Setup"
+    if catalyst >= 72 and volatility_risk >= 58 and invest < 65:
+        return "Hype / Event"
+    if lead_score < 58 and trend >= 55 and invest >= 58:
+        return "Mitläufer"
+    if tactical_risk >= 70 or volatility_risk >= 72:
+        return "Riskant"
+    return "Ausgewogen"
+
+
+def radar_risk_bucket(result):
+    volatility_risk = _radar_safe_num(result.get("instrument_volatility_risk_score"), 0)
+    tactical_risk = _radar_safe_num(result.get("tactical_exit_risk"), 0)
+    exit_score = _radar_safe_num(result.get("exit_score"), 50)
+    distribution = _radar_safe_num(result.get("distribution_pressure_score"), 0)
+    combined = max(volatility_risk, tactical_risk, distribution * 0.9, 100 - exit_score if exit_score < 45 else 0)
+    if combined >= 72:
+        return "hoch"
+    if combined >= 52:
+        return "erhöht"
+    if combined >= 32:
+        return "normal"
+    return "ruhig"
+
+
+def radar_regime_adjustment(result):
+    regime = str((result.get("market_info", {}) or {}).get("regime", "") or "").upper()
+    candidate_type = radar_candidate_type(result)
+    risk_bucket = radar_risk_bucket(result)
+    adj = 0.0
+    if regime == "POSITIV":
+        if candidate_type == "Leader":
+            adj += 8
+        elif candidate_type == "Base-Setup":
+            adj += 4
+        elif candidate_type in {"Hype / Event", "Riskant"}:
+            adj -= 5
+    elif regime == "NEUTRAL":
+        if candidate_type == "Leader":
+            adj += 4
+        if candidate_type in {"Hype / Event", "Riskant"}:
+            adj -= 8
+    elif regime == "NEGATIV":
+        if candidate_type == "Leader":
+            adj += 2
+        if candidate_type in {"Bounce", "Hype / Event", "Riskant"}:
+            adj -= 14
+        if risk_bucket in {"hoch", "erhöht"}:
+            adj -= 10
+    if risk_bucket == "hoch":
+        adj -= 9
+    elif risk_bucket == "erhöht":
+        adj -= 4
+    return adj
+
+
+def radar_professional_sort_score(row, result_map, style_name):
+    """Regime-sensitive, typkalibrierte Radar-Priorisierung statt reinem Score-Ranking."""
+    tkr = str(row.get("Ticker", "") or "")
+    r = result_map.get(tkr, {}) or {}
+    trigger_rank_map = {"Aktiv": 6, "Jetzt prüfbar": 6, "Nahe dran": 5, "Fast prüfbar": 5, "Frühe Beobachtung": 4, "Früh interessant": 4, "Beobachten": 3, "Weiter beobachten": 3, "Passiv": 2, "Aktuell kein Fokus": 2, "Warten": 1, "Noch warten": 1}
+    trigger_score = float(row.get("__trigger_sort", trigger_rank_map.get(str(row.get("Trigger-Status", "") or ""), 0)) or 0)
+    entry = _radar_safe_num(row.get("Einstieg jetzt attraktiv?"), 0)
+    invest = _radar_safe_num(row.get("Investment-Attraktivität"), 0)
+    priority = _radar_safe_num(row.get("Setup-Priorität"), 0)
+    leadership = _radar_safe_num(r.get("leadership_score"), 50)
+    catalyst = _radar_safe_num(r.get("catalyst_score"), 50)
+    short_term = _radar_safe_num(r.get("short_term_score"), 50)
+    tb = _radar_safe_num(r.get("tb_score_100"), _radar_safe_num(r.get("tb_score"), 50))
+    setup_conf = _radar_safe_num(r.get("setup_confidence"), 50)
+    candidate_type = radar_candidate_type(r)
+    risk_bucket = radar_risk_bucket(r)
+    style_name = str(style_name or "Leader")
+
+    if style_name == "Leader":
+        score = trigger_score * 15 + entry * 0.28 + priority * 0.22 + leadership * 0.24 + invest * 0.12 + setup_conf * 0.08
+        if candidate_type == "Leader":
+            score += 14
+        if candidate_type in {"Hype / Event", "Bounce", "Riskant"}:
+            score -= 14
+    elif style_name == "Turnaround":
+        score = trigger_score * 10 + entry * 0.17 + invest * 0.10 + catalyst * 0.18 + short_term * 0.20 + tb * 0.12 + setup_conf * 0.06
+        if candidate_type == "Bounce":
+            score += 10
+        if candidate_type == "Leader":
+            score += 2
+        if risk_bucket == "hoch":
+            score -= 12
+    else:
+        score = trigger_score * 13 + entry * 0.24 + invest * 0.17 + priority * 0.17 + leadership * 0.12 + catalyst * 0.06 + setup_conf * 0.08
+        if candidate_type == "Leader":
+            score += 8
+        if candidate_type == "Base-Setup":
+            score += 4
+        if candidate_type in {"Hype / Event", "Riskant"}:
+            score -= 10
+    score += radar_regime_adjustment(r)
+    return round(float(score), 2)
+
+
+def radar_reason_professional(result, style_name_local):
+    base = build_radar_reason_shared(result, style_name_local)
+    typ = radar_candidate_type(result)
+    risk = radar_risk_bucket(result)
+    regime = market_regime_label((result.get("market_info", {}) or {}).get("regime", "UNBEKANNT"))
+    suffix = f"Typ: {typ}; Risiko: {risk}; Regime: {regime}."
+    return f"{base} — {suffix}"
+
 def build_radar_reason_shared(result, style_name_local):
     trigger = str(result.get("trigger_status", "") or "")
     setup_type_local = str(result.get("setup_type", "") or "")
@@ -519,27 +655,7 @@ def build_radar_reason_shared(result, style_name_local):
 
 
 def compute_radar_style_sort_shared(row, result_map, style_name):
-    tkr = str(row.get("Ticker", "") or "")
-    r = result_map.get(tkr, {}) or {}
-    trigger_rank_map = {"Aktiv": 6, "Jetzt prüfbar": 6, "Nahe dran": 5, "Fast prüfbar": 5, "Frühe Beobachtung": 4, "Früh interessant": 4, "Beobachten": 3, "Weiter beobachten": 3, "Passiv": 2, "Aktuell kein Fokus": 2, "Warten": 1, "Noch warten": 1}
-    trigger_score = float(trigger_rank_map.get(str(row.get("Trigger-Status", "") or ""), 0))
-    entry_score_local = pd.to_numeric(row.get("Einstieg jetzt attraktiv?", np.nan), errors="coerce")
-    invest_score_local = pd.to_numeric(row.get("Investment-Attraktivität", np.nan), errors="coerce")
-    setup_priority_local = pd.to_numeric(row.get("Setup-Priorität", np.nan), errors="coerce")
-    leadership_local = pd.to_numeric(r.get("leadership_score", np.nan), errors="coerce")
-    catalyst_local = pd.to_numeric(r.get("catalyst_score", np.nan), errors="coerce")
-    short_term_local = pd.to_numeric(r.get("short_term_score", np.nan), errors="coerce")
-    tb_local = pd.to_numeric(r.get("tb_score_100", np.nan), errors="coerce")
-    exit_local = pd.to_numeric(r.get("exit_score", np.nan), errors="coerce")
-    setup_conf_local = pd.to_numeric(r.get("setup_confidence", np.nan), errors="coerce")
-    rebound_bonus = 8.0 if str(r.get("setup_type", "") or "") in {"Rebound", "Breakout-Retest", "Pullback an MA20", "Pullback an MA50"} else 0.0
-    leader_bonus = 8.0 if str(r.get("leadership_status", "") or "") == "Leader" else 0.0
-    safe = lambda v, default=0.0: default if pd.isna(v) else float(v)
-    if style_name == "Leader":
-        return trigger_score * 18 + safe(entry_score_local) * 0.32 + safe(setup_priority_local) * 0.24 + safe(leadership_local) * 0.18 + safe(invest_score_local) * 0.08 + safe(setup_conf_local) * 0.08 + leader_bonus
-    if style_name == "Turnaround":
-        return trigger_score * 10 + safe(entry_score_local) * 0.18 + safe(invest_score_local) * 0.12 + safe(catalyst_local) * 0.20 + safe(short_term_local) * 0.18 + safe(tb_local) * 0.12 + (100 - safe(exit_local, 100)) * 0.08 + rebound_bonus
-    return trigger_score * 14 + safe(entry_score_local) * 0.26 + safe(invest_score_local) * 0.18 + safe(setup_priority_local) * 0.18 + safe(leadership_local) * 0.10 + safe(catalyst_local) * 0.08 + safe(setup_conf_local) * 0.06 + rebound_bonus * 0.5 + leader_bonus * 0.5
+    return radar_professional_sort_score(row, result_map, style_name)
 
 
 def run_radar_snapshot_job(job):
@@ -576,7 +692,7 @@ def run_radar_snapshot_job(job):
             return False, "Keine auswertbaren Ergebnisse", {"analyzed_count": 0, "resolution_rows": resolution_rows, "errors": errors}
         radar_df = build_ranking_table(results)
         result_map = {str(r.get("ticker", "")): r for r in results}
-        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): build_radar_reason_shared(r, style_name) for r in results})
+        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_reason_professional(r, style_name) for r in results})
         radar_df["__style_sort"] = radar_df.apply(lambda row: compute_radar_style_sort_shared(row, result_map, style_name), axis=1)
         signature = _radar_snapshot_signature(universe, style_name, max_candidates, custom_text)
         payload = {
@@ -6437,6 +6553,8 @@ def build_ranking_table(results):
             "Ticker": r.get("ticker", "-"),
             "Name": shorten_text(r.get("name", r.get("ticker", "-")), 28),
             "Setup-Typ": r.get("setup_type", "-"),
+            "Kandidatentyp": radar_candidate_type(r),
+            "Radar-Risiko": radar_risk_bucket(r),
             "Benchmark": r.get("benchmark_label", "-"),
             "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
             "Company Quality": r.get("company", np.nan),
@@ -10188,65 +10306,15 @@ if workspace_mode:
                     radar_result_map = {str(r.get("ticker", "")): r for r in radar_results} if radar_results else {}
                 else:
                     radar_df = build_ranking_table(radar_results)
-                    radar_reason_map = {str(r.get("ticker", "")): build_radar_reason(r) for r in radar_results}
+                    radar_reason_map = {str(r.get("ticker", "")): radar_reason_professional(r, str(st.session_state.get("radar_screening_style", "Leader") or "Leader")) for r in radar_results}
                     radar_result_map = {str(r.get("ticker", "")): r for r in radar_results}
                     radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map(radar_reason_map)
                     radar_df["__trigger_sort"] = radar_df.get("Trigger-Status", pd.Series(dtype=str)).map(trigger_rank_map).fillna(0)
 
                 def compute_radar_style_sort(row):
-                    tkr = str(row.get("Ticker", "") or "")
-                    r = radar_result_map.get(tkr, {}) or {}
-                    trigger_score = float(row.get("__trigger_sort", 0) or 0)
-                    entry_score_local = pd.to_numeric(row.get("Einstieg jetzt attraktiv?", np.nan), errors="coerce")
-                    invest_score_local = pd.to_numeric(row.get("Investment-Attraktivität", np.nan), errors="coerce")
-                    setup_priority_local = pd.to_numeric(row.get("Setup-Priorität", np.nan), errors="coerce")
-                    leadership_local = pd.to_numeric(r.get("leadership_score", np.nan), errors="coerce")
-                    catalyst_local = pd.to_numeric(r.get("catalyst_score", np.nan), errors="coerce")
-                    short_term_local = pd.to_numeric(r.get("short_term_score", np.nan), errors="coerce")
-                    tb_local = pd.to_numeric(r.get("tb_score_100", np.nan), errors="coerce")
-                    exit_local = pd.to_numeric(r.get("exit_score", np.nan), errors="coerce")
-                    setup_conf_local = pd.to_numeric(r.get("setup_confidence", np.nan), errors="coerce")
-                    rebound_bonus = 0.0
-                    setup_type_local = str(r.get("setup_type", "") or "")
-                    if setup_type_local in {"Rebound", "Breakout-Retest", "Pullback an MA20", "Pullback an MA50"}:
-                        rebound_bonus = 8.0
-                    leader_bonus = 0.0
-                    if str(r.get("leadership_status", "") or "") == "Leader":
-                        leader_bonus = 8.0
-                    safe = lambda v, default=0.0: default if pd.isna(v) else float(v)
                     style_name = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
-                    if style_name == "Leader":
-                        return (
-                            trigger_score * 18
-                            + safe(entry_score_local) * 0.32
-                            + safe(setup_priority_local) * 0.24
-                            + safe(leadership_local) * 0.18
-                            + safe(invest_score_local) * 0.08
-                            + safe(setup_conf_local) * 0.08
-                            + leader_bonus
-                        )
-                    if style_name == "Turnaround":
-                        return (
-                            trigger_score * 10
-                            + safe(entry_score_local) * 0.18
-                            + safe(invest_score_local) * 0.12
-                            + safe(catalyst_local) * 0.20
-                            + safe(short_term_local) * 0.18
-                            + safe(tb_local) * 0.12
-                            + (100 - safe(exit_local, 100)) * 0.08
-                            + rebound_bonus
-                        )
-                    return (
-                        trigger_score * 14
-                        + safe(entry_score_local) * 0.26
-                        + safe(invest_score_local) * 0.18
-                        + safe(setup_priority_local) * 0.18
-                        + safe(leadership_local) * 0.10
-                        + safe(catalyst_local) * 0.08
-                        + safe(setup_conf_local) * 0.06
-                        + rebound_bonus * 0.5
-                        + leader_bonus * 0.5
-                    )
+                    return radar_professional_sort_score(row, radar_result_map, style_name)
+
 
                 if "__style_sort" not in radar_df.columns or radar_df["__style_sort"].isna().all():
                     radar_df["__style_sort"] = radar_df.apply(compute_radar_style_sort, axis=1)
@@ -10424,8 +10492,8 @@ if workspace_mode:
                             unsafe_allow_html=True,
                         )
                     else:
-                        header_cols = st.columns([0.8, 1.0, 2.0, 1.7, 1.9, 1.6, 1.6, 1.8, 2.6])
-                        headers = ["Auswahl", "Ticker", "Name", "Setup-Typ", "Investment", "Einstieg", "Setup-Priorität", "Trigger", "Warum heute auffällig"]
+                        header_cols = st.columns([0.7, 0.9, 1.8, 1.4, 1.3, 1.6, 1.4, 1.4, 1.6, 2.8])
+                        headers = ["Auswahl", "Ticker", "Name", "Typ", "Risiko", "Investment", "Einstieg", "Priorität", "Trigger", "Warum heute auffällig"]
                         for _col, _hdr in zip(header_cols, headers):
                             _col.markdown(f"**{_hdr}**")
 
@@ -10437,7 +10505,7 @@ if workspace_mode:
                             if checkbox_key not in st.session_state:
                                 st.session_state[checkbox_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
 
-                            row_cols = st.columns([0.8, 1.0, 2.0, 1.7, 1.9, 1.6, 1.6, 1.8, 2.6])
+                            row_cols = st.columns([0.7, 0.9, 1.8, 1.4, 1.3, 1.6, 1.4, 1.4, 1.6, 2.8])
                             is_selected = row_cols[0].checkbox(
                                 "",
                                 value=bool(st.session_state.get(checkbox_key, False)),
@@ -10449,12 +10517,13 @@ if workspace_mode:
 
                             row_cols[1].write(_ticker)
                             row_cols[2].write(str(_row.get("Name", "-")))
-                            row_cols[3].write(str(_row.get("Setup-Typ", "-")))
-                            row_cols[4].write(radar_score_badge(_row.get("Investment-Attraktivität", "-")))
-                            row_cols[5].write(radar_score_badge(_row.get("Einstieg jetzt attraktiv?", "-")))
-                            row_cols[6].write(radar_score_badge(_row.get("Setup-Priorität", "-")))
-                            row_cols[7].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
-                            row_cols[8].write(str(_row.get("Warum heute auffällig", _row.get("Kurzfazit", "-"))))
+                            row_cols[3].write(str(_row.get("Kandidatentyp", _row.get("Setup-Typ", "-"))))
+                            row_cols[4].write(str(_row.get("Radar-Risiko", "-")))
+                            row_cols[5].write(radar_score_badge(_row.get("Investment-Attraktivität", "-")))
+                            row_cols[6].write(radar_score_badge(_row.get("Einstieg jetzt attraktiv?", "-")))
+                            row_cols[7].write(radar_score_badge(_row.get("Setup-Priorität", "-")))
+                            row_cols[8].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
+                            row_cols[9].write(str(_row.get("Warum heute auffällig", _row.get("Kurzfazit", "-"))))
 
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -12206,7 +12275,7 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
 
     ranking_cols = [
         c for c in [
-            "Ticker", "Name", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
+            "Ticker", "Name", "Kandidatentyp", "Radar-Risiko", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
             "Leadership", "Leadership-Status", "Sektor-Stärke",
             "Trendqualität", "Base-Qualität", "Setup-Priorität",
             "Volumenqualität",

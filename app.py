@@ -302,11 +302,25 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Gesamt_Setup_Grund": overall_pkg.get("reason"),
         "Marktregime_Label": (context.get("regime_ctx") or {}).get("label"),
         "Marktregime_Summary": (context.get("regime_ctx") or {}).get("summary"),
-        "Candlestick_Daily": (context.get("daily_sig") or {}).get("label") if isinstance(context.get("daily_sig"), dict) else "",
-        "Candlestick_Hourly": (context.get("hourly_sig") or {}).get("label") if isinstance(context.get("hourly_sig"), dict) else "",
+        "Candlestick_Daily": (context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}).get("bias") if isinstance((context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}), dict) else "",
+        "Candlestick_Daily_Pattern": (context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}).get("pattern") if isinstance((context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}), dict) else "",
+        "Candlestick_Daily_Tone": (context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}).get("tone") if isinstance((context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}), dict) else "",
+        "Candlestick_Daily_Strength": (context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}).get("strength") if isinstance((context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}), dict) else "",
+        "Candlestick_Daily_Confirmation": (context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}).get("confirmation") if isinstance((context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}), dict) else "",
+        "Candlestick_Hourly": (context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}).get("bias") if isinstance((context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}), dict) else "",
+        "Candlestick_Hourly_Pattern": (context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}).get("pattern") if isinstance((context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}), dict) else "",
+        "Candlestick_Hourly_Tone": (context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}).get("tone") if isinstance((context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}), dict) else "",
+        "Candlestick_Hourly_Strength": (context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}).get("strength") if isinstance((context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}), dict) else "",
+        "Candlestick_Hourly_Confirmation": (context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}).get("confirmation") if isinstance((context.get("hourly_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("hourly") or {}), dict) else "",
+        "Candlestick_Bias_Label": ((result or {}).get("candlestick_bias_pkg") or {}).get("label") or (result or {}).get("candlestick_bias_label"),
+        "Candlestick_Bias_Score": ((result or {}).get("candlestick_bias_pkg") or {}).get("score") or (result or {}).get("candlestick_bias_score"),
+        "Candlestick_Bias_Reasons": ((result or {}).get("candlestick_bias_pkg") or {}).get("reasons"),
         "Ultra_Signal": (context.get("ultra_signal") or {}).get("label") if isinstance(context.get("ultra_signal"), dict) else "",
         "Ultra_Bias": (context.get("ultra_signal") or {}).get("bias") if isinstance(context.get("ultra_signal"), dict) else "",
+        "Ultra_Strength": (context.get("ultra_signal") or {}).get("strength") if isinstance(context.get("ultra_signal"), dict) else "",
+        "Ultra_Confirmation": (context.get("ultra_signal") or {}).get("confirmation") if isinstance(context.get("ultra_signal"), dict) else "",
         "Ultra_Grund": (context.get("ultra_signal") or {}).get("reason") if isinstance(context.get("ultra_signal"), dict) else "",
+        "Ultra_Bullets": (context.get("ultra_signal") or {}).get("bullets") if isinstance(context.get("ultra_signal"), dict) else "",
     }
     for k, v in extra_fields.items():
         add_col(k, v)
@@ -13723,6 +13737,35 @@ if result is not None:
             single_export_df = build_export_df([result]) if result is not None else pd.DataFrame()
         except Exception:
             single_export_df = pd.DataFrame()
+
+        # v15.17: Export-Werte fuer Candlestick und Ultra vor dem Export aktiv berechnen.
+        # Vorher wurden die Spalten zwar angelegt, aber die eigentlichen UI-Variablen
+        # entstanden erst spaeter im Chart-/Candlestick-Block. Ergebnis: leere Exportfelder.
+        export_daily_sig = daily_sig if "daily_sig" in locals() and isinstance(daily_sig, dict) else {}
+        export_hourly_sig = hourly_sig if "hourly_sig" in locals() and isinstance(hourly_sig, dict) else {}
+        export_ultra_signal = ultra_signal if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else {}
+        try:
+            _export_chart_range = st.session_state.get(f"chart_range_{ticker}", "1 Jahr") if "ticker" in locals() else "1 Jahr"
+            _export_chart_df = compute_chart_df(df, _export_chart_range)
+            _export_sr_basis_df = compute_chart_df(df, "1 Jahr")
+            _export_structures = build_chart_structures(_export_chart_df, sr_basis_df=_export_sr_basis_df)
+            export_ultra_signal = compute_ultra_short_term_zone_signal(_export_chart_df, _export_structures)
+        except Exception:
+            pass
+        try:
+            _export_intraday_result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
+            _export_hourly_df = get_intraday_hourly_df_for_candles(result=_export_intraday_result, chart_df=_export_chart_df if "_export_chart_df" in locals() else df)
+            _export_candle_pkg = build_candlestick_bias_package(_export_chart_df if "_export_chart_df" in locals() else df, _export_hourly_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []))
+            if isinstance(_export_candle_pkg, dict):
+                export_daily_sig = _export_candle_pkg.get("daily", {}) or {}
+                export_hourly_sig = _export_candle_pkg.get("hourly", {}) or {}
+                if isinstance(result, dict):
+                    result["candlestick_bias_pkg"] = _export_candle_pkg
+                    result["candlestick_bias_label"] = _export_candle_pkg.get("label", "neutral")
+                    result["candlestick_bias_score"] = _export_candle_pkg.get("score", 0)
+        except Exception:
+            pass
+
         single_export_df = enrich_single_export_df_v1516(
             single_export_df,
             result,
@@ -13734,9 +13777,9 @@ if result is not None:
                 "conflict_pkg": conflict_pkg if "conflict_pkg" in locals() else {},
                 "overall_setup_pkg": overall_setup_pkg if "overall_setup_pkg" in locals() else {},
                 "regime_ctx": regime_ctx if "regime_ctx" in locals() else {},
-                "daily_sig": daily_sig if "daily_sig" in locals() else {},
-                "hourly_sig": hourly_sig if "hourly_sig" in locals() else {},
-                "ultra_signal": ultra_signal if "ultra_signal" in locals() else {},
+                "daily_sig": export_daily_sig if "export_daily_sig" in locals() else (daily_sig if "daily_sig" in locals() else {}),
+                "hourly_sig": export_hourly_sig if "export_hourly_sig" in locals() else (hourly_sig if "hourly_sig" in locals() else {}),
+                "ultra_signal": export_ultra_signal if "export_ultra_signal" in locals() else (ultra_signal if "ultra_signal" in locals() else {}),
                 "final_action_label": final_action_label if "final_action_label" in locals() else None,
                 "final_action_reason": final_action_reason if "final_action_reason" in locals() else None,
                 "final_timing_label": final_timing_label if "final_timing_label" in locals() else None,

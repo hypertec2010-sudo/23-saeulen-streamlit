@@ -10710,8 +10710,27 @@ if workspace_mode:
             smart_money_default = st.checkbox("TradingBoard: Smart Money = True", value=True, key="smart_money_widget_main")
         with adv2:
             risk_pct = st.slider("Risiko pro Trade (%)", min_value=0.5, max_value=5.0, value=1.0, step=0.5, key="risk_pct_widget_main")
-            buy_in_override_default = 0.0 if workspace_mode != "Positionen" else 100.0
-            buy_in_override = st.number_input("Buy-in für Positionsmodus (0 = Watchlist)", min_value=0.0, value=0.0, step=0.01, format="%.2f", key="buy_in_widget_main")
+
+            # ---------- v15.14: Arbeitsmodus explizit steuerbar ----------
+            position_perspective_default = 1 if workspace_mode == "Positionen" else 0
+            position_perspective = st.radio(
+                "Analyse-Perspektive",
+                ["Pre-Entry / Watchlist", "Post-Entry / Position"],
+                index=position_perspective_default,
+                horizontal=True,
+                key="position_perspective_widget_main",
+                help="Pre-Entry bewertet einen moeglichen Neueinstieg. Post-Entry bewertet eine bereits gehaltene Position."
+            )
+            explicit_position_mode = position_perspective == "Post-Entry / Position"
+            buy_in_override = st.number_input(
+                "Buy-in / Einstandskurs für Post-Entry",
+                min_value=0.0,
+                value=0.0,
+                step=0.01,
+                format="%.2f",
+                key="buy_in_widget_main",
+                help="Nur fuer Post-Entry noetig. Ohne Buy-in bleibt die Positionsbewertung nicht belastbar."
+            )
             strict_mode = st.checkbox("Strenges Mapping", value=True, key="strict_mode_widget_main")
 
         action_col1, action_col2 = st.columns(2)
@@ -10722,9 +10741,12 @@ if workspace_mode:
         with action_col2:
             st.markdown("<div class='mobile-note'>Tippe nur darauf, wenn Daten hängen oder du neue Werte erzwingen willst.</div>", unsafe_allow_html=True)
 
-    position_mode = buy_in_override > 0
-    mode_label = "Position" if position_mode else "Watchlist"
+    explicit_position_mode = st.session_state.get("position_perspective_widget_main", "Pre-Entry / Watchlist") == "Post-Entry / Position"
+    position_mode = explicit_position_mode or buy_in_override > 0
+    mode_label = "Post-Entry / Position" if position_mode else "Pre-Entry / Watchlist"
     st.caption(f"Aktueller Modus: {mode_label}")
+    if explicit_position_mode and buy_in_override <= 0:
+        st.caption("Hinweis: Fuer eine belastbare Post-Entry-Bewertung bitte einen Buy-in / Einstandskurs groesser 0 eintragen.")
     if st.session_state.get("selected_watchlist_name"):
         st.caption(f"Aktive Watchlist-Auswahl: {st.session_state.get('selected_watchlist_name')}")
 
@@ -10808,10 +10830,14 @@ if workspace_mode:
     run_analysis_label = "Analyse starten" if workspace_mode == "Sofortanalyse" else ("Zusatzanalyse starten" if workspace_mode == "Positionen" else "Analyse starten / Watchlist ergänzen")
     run_analysis = st.button(run_analysis_label, use_container_width=True, type="primary", key="run_analysis_main")
     if run_analysis:
-        if analysis_mode == "Einzelanalyse":
-            st.session_state.analysis_ticker = ticker
-        st.session_state.analysis_requested = True
-        st.session_state.analysis_mode_run = analysis_mode
+        explicit_position_mode = st.session_state.get("position_perspective_widget_main", "Pre-Entry / Watchlist") == "Post-Entry / Position"
+        if explicit_position_mode and analysis_mode == "Einzelanalyse" and buy_in_override <= 0:
+            st.warning("Post-Entry ist ausgewählt. Bitte trage zuerst einen Buy-in / Einstandskurs groesser 0 ein, damit Positionsmanagement, Gewinnschutz und Exit-Druck sinnvoll berechnet werden koennen.")
+        else:
+            if analysis_mode == "Einzelanalyse":
+                st.session_state.analysis_ticker = ticker
+            st.session_state.analysis_requested = True
+            st.session_state.analysis_mode_run = analysis_mode
 # ---------- Internal Auto-Run Mode ----------
 if st.session_state.get("auto_run_requested", False):
     slot_label = st.session_state.get("auto_run_slot_label", "")

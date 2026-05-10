@@ -13060,27 +13060,6 @@ if result is not None:
                 unsafe_allow_html=True,
             )
 
-    st.markdown('<div class="secondary-section-caption">Sekundäre Diagnose: Treiber und Bremsfaktoren sind bewusst ruhiger dargestellt als die Entscheidungsblöcke.</div>', unsafe_allow_html=True)
-    why_col, risk_col = st.columns(2)
-    with why_col:
-        render_reason_box("Warum attraktiv", driver_summary.get("positives", []), empty_text="Keine klaren positiven Treiber erkannt.")
-    with risk_col:
-        render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
-
-    if is_pro_mode or is_expert_mode:
-        with st.expander("Setup & Timing", expanded=False):
-            render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
-        with st.expander("Volumen & Akkumulation", expanded=False):
-            render_diagnostic_section("Volumen & Akkumulation", diag_sections_126a.get("Volumen & Akkumulation", []))
-        with st.expander("Event & Katalysator", expanded=False):
-            render_diagnostic_section("Event & Katalysator", diag_sections_126a.get("Event & Katalysator", []))
-        with st.expander("Qualität & Fundamentals", expanded=False):
-            render_diagnostic_section("Qualität & Fundamentals", diag_sections_126a.get("Qualität & Fundamentals", []))
-        with st.expander("Marktregime", expanded=False):
-            render_diagnostic_section("Marktregime", diag_sections_126a.get("Marktregime", []))
-        with st.expander("Exit & Risiko", expanded=False):
-            render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
-
     if is_pro_mode or is_expert_mode:
         decision_meta = (
             f"Positionsmodus - Risiko: {shorten_text(risk_note, 42)}"
@@ -13326,6 +13305,31 @@ if result is not None:
                 """,
                 unsafe_allow_html=True,
             )
+
+        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="secondary-section-caption">Sekundäre Diagnose: Treiber und Bremsfaktoren sind bewusst ruhiger dargestellt als die Entscheidungsblöcke.</div>', unsafe_allow_html=True)
+    why_col, risk_col = st.columns(2)
+    with why_col:
+        render_reason_box("Warum attraktiv", driver_summary.get("positives", []), empty_text="Keine klaren positiven Treiber erkannt.")
+    with risk_col:
+        render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
+
+    if is_pro_mode or is_expert_mode:
+        with st.expander("Setup & Timing", expanded=False):
+            render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
+        with st.expander("Volumen & Akkumulation", expanded=False):
+            render_diagnostic_section("Volumen & Akkumulation", diag_sections_126a.get("Volumen & Akkumulation", []))
+        with st.expander("Event & Katalysator", expanded=False):
+            render_diagnostic_section("Event & Katalysator", diag_sections_126a.get("Event & Katalysator", []))
+        with st.expander("Qualität & Fundamentals", expanded=False):
+            render_diagnostic_section("Qualität & Fundamentals", diag_sections_126a.get("Qualität & Fundamentals", []))
+        with st.expander("Marktregime", expanded=False):
+            render_diagnostic_section("Marktregime", diag_sections_126a.get("Marktregime", []))
+        with st.expander("Exit & Risiko", expanded=False):
+            render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
+
 
         st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
         st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)

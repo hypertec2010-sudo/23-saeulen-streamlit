@@ -2920,7 +2920,7 @@ def compute_overall_setup_quality_phase_ui(
 
 
 def render_model_debug_panel(debug_pkg):
-    if not bool(st.session_state.get("show_model_debug", False)):
+    if not (bool(st.session_state.get("show_model_debug", False)) or bool(st.session_state.get("show_model_debug_local", False))):
         return
     if not isinstance(debug_pkg, dict):
         return
@@ -13540,6 +13540,7 @@ if result is not None:
         with t0:
             st.subheader("Überblick")
             st.markdown('<div class="panel-caption">Der Überblick priorisiert Marktumfeld, Urteil, Timing, Risiko und Aktion. Diagnosewerte erscheinen nur bei Bedarf.</div>', unsafe_allow_html=True)
+            st.toggle("Modell-Debug anzeigen", value=False, key="show_model_debug_local", help="Zeigt Basislabels, Regime-Anpassungen, Konflikt-Anpassungen und finale Modellstufen direkt im Überblick.")
 
             p1, p2, p3 = st.columns(3)
             p1.metric("Unternehmen", name)

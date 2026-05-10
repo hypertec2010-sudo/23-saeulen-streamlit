@@ -12926,6 +12926,25 @@ if result is not None:
     .primary-verdict-card .premium-value{font-size:clamp(1.55rem,2vw,2.05rem)!important;line-height:1.05;font-weight:950!important;color:#f8fafc!important;margin-bottom:4px;}
     .primary-verdict-card .premium-sub{font-size:0.90rem!important;color:#cbd5e1!important;line-height:1.45;}
     .secondary-section-caption{font-size:0.82rem;color:#64748b;margin:2px 0 8px 0;}
+
+    .mode-split-shell{
+        margin:14px 0 18px 0;
+        border:1px solid rgba(96,165,250,0.20);
+        border-radius:22px;
+        padding:14px 16px 16px 16px;
+        background:linear-gradient(180deg, rgba(15,23,42,0.62), rgba(15,23,42,0.38));
+        box-shadow:0 14px 32px rgba(2,6,23,0.16);
+    }
+    .mode-split-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:12px;}
+    .mode-split-kicker{font-size:0.70rem;color:#93c5fd;text-transform:uppercase;letter-spacing:0.065em;font-weight:950;}
+    .mode-split-title{font-size:1.02rem;color:#f8fafc;font-weight:930;line-height:1.18;margin-top:3px;}
+    .mode-split-sub{font-size:0.80rem;color:#94a3b8;line-height:1.35;margin-top:4px;max-width:760px;}
+    .mode-pill{font-size:0.72rem;font-weight:900;text-transform:uppercase;letter-spacing:0.04em;border-radius:999px;padding:6px 10px;border:1px solid rgba(147,197,253,0.24);background:rgba(30,41,59,0.52);color:#bfdbfe;white-space:nowrap;}
+    .mode-task-card{border:1px solid rgba(148,163,184,0.11);border-radius:16px;padding:12px 13px;background:rgba(15,23,42,0.34);min-height:126px;}
+    .mode-task-card.is-main{border-left:5px solid rgba(96,165,250,0.82);background:rgba(30,41,59,0.46);}
+    .mode-task-label{font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;font-weight:850;line-height:1.12;}
+    .mode-task-value{font-size:clamp(0.98rem,1.24vw,1.16rem);line-height:1.16;color:#e2e8f0;font-weight:900;margin-top:7px;word-break:break-word;overflow-wrap:anywhere;}
+    .mode-task-sub{font-size:0.76rem;color:#94a3b8;line-height:1.32;margin-top:7px;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -13178,6 +13197,68 @@ if result is not None:
                 unsafe_allow_html=True,
             )
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------- v15.13: klare Trennung Pre-Entry vs. Post-Entry ----------
+    if position_mode:
+        mode_headline = "Post-Entry / Positionsmanagement"
+        mode_pill = "BESTAND"
+        mode_intro = "Diese Ansicht bewertet eine bestehende Position. Im Fokus stehen Halten, Ausbauen, Teilgewinn, Stop-Fuehrung und Exit-Druck."
+        mode_cards = [
+            ("Fuehrungsaktion", main_action_label, shorten_text(risk_note, 78), True),
+            ("Stop / Absicherung", stop_action, "Stop-Fuehrung und taktische Risikoabsicherung der laufenden Position.", False),
+            ("Exit-Druck", exit_action_display, shorten_text(exit_reason_top_display, 86), False),
+            ("Gewinnschutz / Ausbau", (partial_profit_action if str(partial_profit_action).strip().lower().startswith("ja") else add_on_action), "Teilgewinn und Ausbau werden getrennt von Neu-Einstiegen bewertet.", False),
+        ]
+    else:
+        mode_headline = "Pre-Entry / Watchlist"
+        mode_pill = "NEUE CHANCE"
+        mode_intro = "Diese Ansicht bewertet einen moeglichen Neueinstieg. Im Fokus stehen Trigger, Einstiegslage, Ungueltigkeitsniveau und Positionsrisiko."
+        if pd.notna(stop_used) and float(stop_used) > 0:
+            invalid_if_text = f"Setup verliert Qualitaet unter ca. {float(stop_used):.2f} {ccy}"
+        elif str(top_red_flag).strip() not in {"", "-", "None"}:
+            invalid_if_text = str(top_red_flag)
+        else:
+            invalid_if_text = "Kein harter Invalidation-Trigger ableitbar"
+        if pd.notna(pos_size) and float(pos_size) > 0:
+            sizing_text = f"ca. {float(pos_size):.0f} Stueck / Risiko {fmt_num(risk_eur, 0, ' EUR')}"
+        else:
+            sizing_text = "Positionsgroesse erst nach sauberem Trigger belastbar"
+        mode_cards = [
+            ("Naechster Schritt", final_action_label, compact_action_text_phase_ui(final_action_label), True),
+            ("Trigger", next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "Auf klares Signal warten", trigger_reason, False),
+            ("Ungueltig wenn", invalid_if_text, "Schuetzt davor, ein Watchlist-Setup wie eine bestehende Position zu behandeln.", False),
+            ("Positionsrisiko", sizing_text, f"CRV: {fmt_num(crv_value, 2)} - Entry-Lage: {entry_quality}", False),
+        ]
+
+    st.markdown(
+        f'''
+        <div class="mode-split-shell">
+            <div class="mode-split-head">
+                <div>
+                    <div class="mode-split-kicker">Arbeitsmodus</div>
+                    <div class="mode-split-title">{mode_headline}</div>
+                    <div class="mode-split-sub">{mode_intro}</div>
+                </div>
+                <div class="mode-pill">{mode_pill}</div>
+            </div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
+    _mode_cols = st.columns(4)
+    for _mode_col, (_label, _value, _sub, _main) in zip(_mode_cols, mode_cards):
+        with _mode_col:
+            _main_class = " is-main" if _main else ""
+            st.markdown(
+                f'''
+                <div class="mode-task-card{_main_class}">
+                    <div class="mode-task-label">{_label}</div>
+                    <div class="mode-task-value">{_value}</div>
+                    <div class="mode-task-sub">{_sub}</div>
+                </div>
+                ''',
+                unsafe_allow_html=True,
+            )
 
     if is_pro_mode or is_expert_mode:
         decision_meta = (

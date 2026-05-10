@@ -2682,6 +2682,190 @@ def render_chart_period_performance_block(chart_period_label, perf_pct, perf_abs
         unsafe_allow_html=True,
     )
 
+
+
+def compute_overall_setup_quality_phase_ui(
+    investment_case="-",
+    timing_label="-",
+    risk_label="-",
+    priority_label="-",
+    action_label="-",
+    regime_ctx=None,
+    conflict_pkg=None,
+    tactical_label="-",
+    ultra_label="-",
+    candle_daily=None,
+    candle_hourly=None,
+):
+    inv = str(investment_case or "").lower()
+    timing = str(timing_label or "").lower()
+    risk = str(risk_label or "").lower()
+    priority = str(priority_label or "").lower()
+    action = str(action_label or "").lower()
+    tactical = str(tactical_label or "").lower()
+    ultra = str(ultra_label or "").lower()
+    regime_bias = int((regime_ctx or {}).get("bias_factor", 0))
+    conflict_label = str((conflict_pkg or {}).get("label", "konsistent")).lower()
+
+    daily_tone = str((candle_daily or {}).get("tone", "neutral")).lower() if isinstance(candle_daily, dict) else "neutral"
+    hourly_tone = str((candle_hourly or {}).get("tone", "neutral")).lower() if isinstance(candle_hourly, dict) else "neutral"
+
+    score = 0
+    reasons_up = []
+    reasons_down = []
+
+    # positive contributors
+    if inv == "attraktiv":
+        score += 2
+        reasons_up.append("starker Grundcase")
+    elif inv == "solide":
+        score += 1
+        reasons_up.append("solider Grundcase")
+
+    if timing == "reif":
+        score += 3
+        reasons_up.append("Timing ist reif")
+    elif timing == "fast reif":
+        score += 2
+        reasons_up.append("Timing ist fast reif")
+    elif timing == "noch nicht reif":
+        score -= 1
+        reasons_down.append("Timing ist noch nicht frei")
+    elif timing == "unattraktiv":
+        score -= 3
+        reasons_down.append("Timing ist unattraktiv")
+
+    if risk == "stabil":
+        score += 2
+        reasons_up.append("Risiko ist stabil")
+    elif risk == "erhöht":
+        score -= 1
+        reasons_down.append("Risiko ist erhöht")
+    elif risk == "kritisch":
+        score -= 4
+        reasons_down.append("Risiko ist kritisch")
+
+    if priority == "hoch":
+        score += 2
+        reasons_up.append("hohe Setup-Priorität")
+    elif priority == "mittel":
+        score += 0
+    elif priority == "niedrig":
+        score -= 1
+        reasons_down.append("geringe Setup-Priorität")
+
+    if action in {"kaufen", "vorbereiten"}:
+        score += 1
+    elif action in {"abwarten", "stop enger"}:
+        score -= 1
+    elif action in {"teilgewinn prüfen", "exit prüfen"}:
+        score -= 2
+        reasons_down.append("Aktion ist defensiv")
+
+    if regime_bias > 0:
+        score += 1
+        reasons_up.append("positives Marktumfeld")
+    elif regime_bias < 0:
+        score -= 2
+        reasons_down.append("risk-off Umfeld")
+
+    if conflict_label == "konsistent":
+        score += 1
+        reasons_up.append("Signale sind konsistent")
+    elif conflict_label == "gemischt":
+        score -= 1
+        reasons_down.append("Signalbild ist gemischt")
+    elif conflict_label == "widersprüchlich":
+        score -= 3
+        reasons_down.append("Signalbild ist widersprüchlich")
+
+    if tactical in {"erhöht"}:
+        score -= 1
+        reasons_down.append("taktische Warnung")
+    elif tactical in {"kritisch"}:
+        score -= 2
+        reasons_down.append("kritische Taktik")
+
+    if ultra in {"aktives signal", "frühe reaktion"} and risk != "kritisch":
+        score += 1
+        reasons_up.append("kurzfristig konstruktive Reaktion")
+    elif ultra in {"kein signal"} and timing in {"noch nicht reif", "unattraktiv"}:
+        score -= 1
+
+    if daily_tone == "bullish" or hourly_tone == "bullish":
+        score += 1
+    if daily_tone == "bearish" and hourly_tone == "bearish":
+        score -= 1
+        reasons_down.append("Candle-Lesart bleibt defensiv")
+
+    # hard clamps
+    if risk == "kritisch" or conflict_label == "widersprüchlich":
+        if score > 2:
+            score = 2
+    if timing == "reif" and risk == "stabil" and conflict_label == "konsistent" and regime_bias >= 0 and inv in {"attraktiv", "solide"}:
+        score = max(score, 7)
+
+    if score >= 7:
+        label = "hochwertig"
+        summary = "Gutes Gesamtbild mit tragfähigem Timing und begrenzten Störfaktoren."
+        tone = "bull"
+    elif score >= 3:
+        label = "brauchbar"
+        summary = "Interessant, aber noch nicht durchgehend sauber oder frei genug."
+        tone = "neutral"
+    elif score >= 0:
+        label = "grenzwertig"
+        summary = "Mehrere Spannungen bremsen das Setup derzeit noch sichtbar."
+        tone = "warn"
+    else:
+        label = "schwach"
+        summary = "Aktuell kein überzeugendes Gesamtbild für ein belastbares Setup."
+        tone = "bear"
+
+    top_up = reasons_up[0] if reasons_up else "-"
+    top_down = reasons_down[0] if reasons_down else "-"
+    return {
+        "label": label,
+        "summary": summary,
+        "tone": tone,
+        "score": score,
+        "top_up": top_up,
+        "top_down": top_down,
+        "reasons_up": reasons_up[:4],
+        "reasons_down": reasons_down[:4],
+    }
+
+
+def render_overall_setup_quality_block(pkg):
+    if not isinstance(pkg, dict):
+        return
+    label = str(pkg.get("label", "brauchbar"))
+    summary = str(pkg.get("summary", "-"))
+    tone = str(pkg.get("tone", "neutral"))
+    badge = _candle_badge_html(
+        "Hochwertig" if label == "hochwertig" else "Brauchbar" if label == "brauchbar" else "Grenzwertig" if label == "grenzwertig" else "Schwach",
+        "bull" if tone == "bull" else "warn" if tone == "warn" else "bear" if tone == "bear" else "neutral",
+    )
+    score_txt = f"Diagnose: {pkg.get('score', '-')}" if scores_visible() else ""
+    st.markdown(
+        f"""
+        <div class="section-card">
+            <div class="premium-title">Gesamt-Setup-Qualität</div>
+            <div class="premium-value">{label.capitalize()}</div>
+            <div style="margin-top:6px;">{badge}</div>
+            <div class="premium-sub" style="margin-top:8px;">{summary}</div>
+            <div class="premium-sub" style="margin-top:8px;"><b>Tragender Faktor:</b> {pkg.get('top_up','-')}</div>
+            <div class="premium-sub" style="margin-top:4px;"><b>Hauptbremser:</b> {pkg.get('top_down','-')}</div>
+            <div class="premium-sub" style="margin-top:6px;">{score_txt}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if scores_visible():
+        with st.expander("Qualitäts-Details", expanded=False):
+            st.write({"Stärkend": pkg.get("reasons_up", []), "Bremsend": pkg.get("reasons_down", [])})
+
 def render_signal_conflict_block(conflict_pkg):
     if not isinstance(conflict_pkg, dict):
         return
@@ -12569,7 +12753,21 @@ if result is not None:
         tactical_label=final_tactical_label if "final_tactical_label" in locals() else "-",
     )
 
-    compact_cols = st.columns(7)
+
+    overall_setup_pkg = compute_overall_setup_quality_phase_ui(
+        investment_case=final_investment_case if "final_investment_case" in locals() else "-",
+        timing_label=final_timing_label if "final_timing_label" in locals() else "-",
+        risk_label=final_risk_label if "final_risk_label" in locals() else "-",
+        priority_label=final_priority_label if "final_priority_label" in locals() else "-",
+        action_label=final_action_label if "final_action_label" in locals() else "-",
+        regime_ctx=regime_ctx if "regime_ctx" in locals() else {},
+        conflict_pkg=conflict_pkg if "conflict_pkg" in locals() else {},
+        tactical_label=final_tactical_label if "final_tactical_label" in locals() else "-",
+        ultra_label=final_ultra_label if "final_ultra_label" in locals() and final_ultra_label else (ultra_signal.get("label", "-") if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else "-"),
+        candle_daily=daily_sig if "daily_sig" in locals() and isinstance(daily_sig, dict) else None,
+        candle_hourly=hourly_sig if "hourly_sig" in locals() and isinstance(hourly_sig, dict) else None,
+    )
+    compact_cols = st.columns(8)
     compact_data = [
         ("Marktumfeld", regime_ctx.get("label", "Neutral"), regime_ctx.get("summary", "-")),
         ("Investment-Case", final_investment_case, ((f"Score: {investment_case_score}/100 · " if scores_visible() else "") + ("Grundsätzlich interessanter Wert" if final_investment_case == "attraktiv" else "In Teilen interessant" if final_investment_case == "solide" else "Kein klares Gesamtbild" if final_investment_case == "gemischt" else "Aktuell kein überzeugender Grundcase"))),
@@ -12578,6 +12776,7 @@ if result is not None:
         ("Setup-Priorität", final_priority_label, ((f"Score: {fmt_num(result.get('setup_priority_score', np.nan),0)}/100 · " if scores_visible() else "") + final_priority_reason)),
         ("Aktion", final_action_label, ((display_mode_label(mode_label) + " · " + compact_action_text_phase_ui(final_action_label)) if scores_visible() else compact_action_text_phase_ui(final_action_label))),
         ("Signal-Konflikt", str(conflict_pkg.get("label", "konsistent")).capitalize(), conflict_pkg.get("summary", "-")),
+        ("Setup-Qualität", str(overall_setup_pkg.get("label", "brauchbar")).capitalize(), overall_setup_pkg.get("summary", "-")),
     ]
     for _col, (_title, _value, _sub) in zip(compact_cols, compact_data):
         with _col:
@@ -13162,6 +13361,7 @@ if result is not None:
             p3.metric("Industrie", industry if industry else "-")
 
             render_signal_conflict_block(conflict_pkg)
+            render_overall_setup_quality_block(overall_setup_pkg)
 
 
             st.markdown(

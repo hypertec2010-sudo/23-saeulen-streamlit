@@ -13377,14 +13377,7 @@ if result is not None:
                     for _item in ultra_bullets[:4]:
                         st.markdown(f"- {_item}")
 
-            perf_start = float(chart_df["Close"].iloc[0]) if not chart_df.empty else np.nan
-            perf_end = float(chart_df["Close"].iloc[-1]) if not chart_df.empty else np.nan
-            perf_pct = ((perf_end / perf_start) - 1) * 100 if pd.notna(perf_start) and perf_start != 0 else np.nan
-
-            p4, p5, p6 = st.columns(3)
-            p4.metric("Start", fmt_num(perf_start, 2, f" {ccy}"))
-            p5.metric("Aktuell", fmt_num(perf_end, 2, f" {ccy}"))
-            p6.metric("Performance", fmt_num(perf_pct, 1, "%"))
+            # Zeitraum-Performance wird direkt unter dem Chart gezeigt
 
         with t1:
             st.subheader("Trading-Case")

@@ -14057,19 +14057,11 @@ if result is not None:
                 _chart_perf_pct,
                 perf_abs=_chart_perf_abs,
             )
-            result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
-            hourly_candle_df = get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df)
-            candle_bias_pkg = build_candlestick_bias_package(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []))
-            if isinstance(result, dict):
-                result["candlestick_bias_pkg"] = candle_bias_pkg
-                result["candlestick_bias_label"] = candle_bias_pkg.get("label", "neutral")
-                result["candlestick_bias_score"] = candle_bias_pkg.get("score", 0)
-            render_candlestick_dual_timeframe_block(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []), result=result if "result" in locals() else None)
-
-
             if chart_structures and show_sr_zones:
                 st.caption(f"S/R-Zonen werden aus dem Basisfenster {chart_structures.get('sr_basis_label', '1 Jahr')} berechnet; der gewählte Zeitraum steuert nur die Anzeige.")
 
+            # v15.15: Chartnahe technische Einordnung direkt unter Zeitraum-Performance,
+            # damit S/R-Kontext und Ultra-Signal vor der Candlestick-Detailanalyse erscheinen.
             if chart_structures:
                 chart_text_items = summarize_chart_structures(chart_df, chart_structures)
                 if chart_text_items:
@@ -14100,6 +14092,15 @@ if result is not None:
                 if ultra_bullets:
                     for _item in ultra_bullets[:4]:
                         st.markdown(f"- {_item}")
+
+            result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
+            hourly_candle_df = get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df)
+            candle_bias_pkg = build_candlestick_bias_package(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []))
+            if isinstance(result, dict):
+                result["candlestick_bias_pkg"] = candle_bias_pkg
+                result["candlestick_bias_label"] = candle_bias_pkg.get("label", "neutral")
+                result["candlestick_bias_score"] = candle_bias_pkg.get("score", 0)
+            render_candlestick_dual_timeframe_block(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []), result=result if "result" in locals() else None)
 
             # Zeitraum-Performance wird direkt unter dem Chart gezeigt
 

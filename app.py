@@ -12774,10 +12774,6 @@ if result is not None:
         next_trigger=next_trigger if "next_trigger" in locals() else "-",
         negative_trigger=top_red_flag if "top_red_flag" in locals() else "-",
     )
-    if str(conflict_pkg.get("label", "konsistent")).lower() == "widersprüchlich":
-        exec_why = exec_why + " Das Signalbild bleibt aktuell widersprüchlich."
-    elif str(conflict_pkg.get("label", "konsistent")).lower() == "gemischt":
-        exec_why = exec_why + " Das Signalbild bleibt aktuell gemischt."
 
     st.markdown("### Marktumfeld")
     st.markdown(

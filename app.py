@@ -12822,6 +12822,36 @@ if result is not None:
         overflow-wrap:anywhere;
     }
     .compact-summary-card.is-primary .compact-summary-sub{font-size:0.72rem;color:#cbd5e1;margin-top:8px;line-height:1.28;}
+    .overview-primary-grid{margin:10px 0 14px 0;}
+    .overview-primary-card{
+        border:1px solid rgba(96,165,250,0.30);
+        border-left:6px solid rgba(96,165,250,0.92);
+        border-radius:22px;
+        padding:18px 18px 16px 18px;
+        min-height:164px;
+        background:linear-gradient(180deg, rgba(30,41,59,0.88), rgba(15,23,42,0.66));
+        box-shadow:0 18px 38px rgba(2,6,23,0.24);
+        display:flex;
+        flex-direction:column;
+        justify-content:flex-start;
+    }
+    .overview-primary-title{font-size:0.76rem;color:#bfdbfe;text-transform:uppercase;letter-spacing:0.055em;font-weight:950;line-height:1.1;}
+    .overview-primary-value{font-size:clamp(1.32rem,1.8vw,1.72rem);font-weight:950;color:#f8fafc;line-height:1.08;margin-top:10px;word-break:break-word;overflow-wrap:anywhere;}
+    .overview-primary-sub{font-size:0.86rem;color:#cbd5e1;line-height:1.38;margin-top:10px;}
+    .overview-context-grid{margin:4px 0 16px 0;}
+    .overview-context-card{
+        border:1px solid rgba(148,163,184,0.10);
+        border-radius:15px;
+        padding:11px 12px;
+        min-height:124px;
+        background:rgba(15,23,42,0.30);
+        box-shadow:none;
+    }
+    .overview-context-title{font-size:0.69rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;font-weight:800;line-height:1.1;}
+    .overview-context-value{font-size:0.98rem;font-weight:780;color:#dbeafe;line-height:1.15;margin-top:7px;word-break:break-word;overflow-wrap:anywhere;}
+    .overview-context-sub{font-size:0.72rem;color:#94a3b8;line-height:1.28;margin-top:7px;}
+    .quiet-section-card .premium-value{font-size:0.98rem!important;font-weight:760!important;color:#dbeafe!important;}
+    .quiet-section-card .premium-sub{font-size:0.80rem!important;color:#94a3b8!important;}
     .primary-verdict-card{position:relative;border:1px solid rgba(96,165,250,0.26);border-left:6px solid rgba(96,165,250,0.92);border-radius:24px;padding:18px 20px;background:linear-gradient(180deg, rgba(30,41,59,0.86), rgba(15,23,42,0.66));box-shadow:0 20px 42px rgba(2,6,23,0.24);margin:10px 0 14px 0;}
     .primary-verdict-card .premium-title{font-size:0.78rem!important;color:#bfdbfe!important;text-transform:uppercase;letter-spacing:0.06em;font-weight:950!important;margin-bottom:8px;}
     .primary-verdict-card .premium-value{font-size:clamp(1.55rem,2vw,2.05rem)!important;line-height:1.05;font-weight:950!important;color:#f8fafc!important;margin-bottom:4px;}
@@ -13036,29 +13066,49 @@ if result is not None:
         "exec_verdict": exec_verdict if "exec_verdict" in locals() else "-",
         "exec_why": exec_why if "exec_why" in locals() else "-",
     }
-    compact_cols = st.columns(8)
-    compact_data = [
+    primary_summary_data = [
+        ("Aktion", final_action_label, ((display_mode_label(mode_label) + " · " + compact_action_text_phase_ui(final_action_label)) if scores_visible() else compact_action_text_phase_ui(final_action_label))),
+        ("Setup-Qualität", str(overall_setup_pkg.get("label", "brauchbar")).capitalize(), overall_setup_pkg.get("summary", "-")),
+        ("Signal-Konflikt", str(conflict_pkg.get("label", "konsistent")).capitalize(), conflict_pkg.get("summary", "-")),
+    ]
+    st.markdown('<div class="overview-primary-grid">', unsafe_allow_html=True)
+    primary_cols = st.columns(3)
+    for _col, (_title, _value, _sub) in zip(primary_cols, primary_summary_data):
+        with _col:
+            st.markdown(
+                f"""
+                <div class="overview-primary-card">
+                    <div class="overview-primary-title">{_title}</div>
+                    <div class="overview-primary-value">{_value}</div>
+                    <div class="overview-primary-sub">{_sub}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    context_summary_data = [
         ("Marktumfeld", regime_ctx.get("label", "Neutral"), regime_ctx.get("summary", "-")),
         ("Investment-Case", final_investment_case, ((f"Score: {investment_case_score}/100 · " if scores_visible() else "") + ("Grundsätzlich interessanter Wert" if final_investment_case == "attraktiv" else "In Teilen interessant" if final_investment_case == "solide" else "Kein klares Gesamtbild" if final_investment_case == "gemischt" else "Aktuell kein überzeugender Grundcase"))),
         ("Timing", final_timing_label, ((f"Score: {trading_case_score}/100 · " if scores_visible() else "") + final_timing_reason)),
         ("Risiko", final_risk_label, ((f"Score: Exit {result.get('exit_score', 0)}/100 · " if scores_visible() else "") + final_risk_reason)),
         ("Setup-Priorität", final_priority_label, ((f"Score: {fmt_num(result.get('setup_priority_score', np.nan),0)}/100 · " if scores_visible() else "") + final_priority_reason)),
-        ("Aktion", final_action_label, ((display_mode_label(mode_label) + " · " + compact_action_text_phase_ui(final_action_label)) if scores_visible() else compact_action_text_phase_ui(final_action_label))),
-        ("Signal-Konflikt", str(conflict_pkg.get("label", "konsistent")).capitalize(), conflict_pkg.get("summary", "-")),
-        ("Setup-Qualität", str(overall_setup_pkg.get("label", "brauchbar")).capitalize(), overall_setup_pkg.get("summary", "-")),
     ]
-    for _col, (_title, _value, _sub) in zip(compact_cols, compact_data):
+    st.markdown('<div class="overview-context-grid">', unsafe_allow_html=True)
+    context_cols = st.columns(5)
+    for _col, (_title, _value, _sub) in zip(context_cols, context_summary_data):
         with _col:
             st.markdown(
                 f"""
-                <div class="compact-summary-card {'is-primary' if _title in {'Aktion', 'Signal-Konflikt', 'Setup-Qualität'} else ''}">
-                    <div class="compact-summary-title">{_title}</div>
-                    <div class="compact-summary-value">{_value}</div>
-                    <div class="compact-summary-sub">{_sub}</div>
+                <div class="overview-context-card">
+                    <div class="overview-context-title">{_title}</div>
+                    <div class="overview-context-value">{_value}</div>
+                    <div class="overview-context-sub">{_sub}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+    st.markdown('</div>', unsafe_allow_html=True)
 
     if is_pro_mode or is_expert_mode:
         decision_meta = (
@@ -13315,6 +13365,55 @@ if result is not None:
         render_reason_box("Warum attraktiv", driver_summary.get("positives", []), empty_text="Keine klaren positiven Treiber erkannt.")
     with risk_col:
         render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
+
+
+    st.markdown(
+        """
+        <div class="section-head quiet-section-head">
+            <div class="section-title">Leadership & Marktbreite</div>
+            <div class="section-meta-line">Kontextblock: relative Stärke und Marktbreite werden bewusst unterhalb der Kernbereiche geführt.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    leadership_sub = (f"Diagnose: {fmt_num(leadership_score_display,0)}/100" if scores_visible() else leadership_status_display)
+    industry_sub = (f"Diagnose: {fmt_num(industry_strength_display,0)}/100" if scores_visible() else industry_label_display)
+    rs_sub = (f"Diagnose: {fmt_num(rs_acceleration_display,0)}/100" if scores_visible() else "gegenüber Benchmark")
+    st.markdown(
+        f"""
+        <div class="quiet-fact-grid">
+            <div class="quiet-fact-card">
+                <div class="quiet-fact-label">Leadership</div>
+                <div class="quiet-fact-value">{leadership_label_phase_ui(leadership_score_display)}</div>
+                <div class="quiet-fact-sub">{leadership_sub}</div>
+            </div>
+            <div class="quiet-fact-card">
+                <div class="quiet-fact-label">Industrie</div>
+                <div class="quiet-fact-value">{industry_strength_label_phase_ui(industry_strength_display)}</div>
+                <div class="quiet-fact-sub">{industry_sub}</div>
+            </div>
+            <div class="quiet-fact-card">
+                <div class="quiet-fact-label">Relative Stärke</div>
+                <div class="quiet-fact-value">{rs_accel_label_phase_ui(rs_acceleration_display)}</div>
+                <div class="quiet-fact-sub">{rs_sub}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+            <div class="section-card quiet-section-card">
+                <div class="premium-title">Einordnung</div>
+                <div class="premium-value">Leadership: {leadership_label_phase_ui(leadership_score_display)}</div>
+                <div class="premium-sub">
+                    Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark bleibt ein wichtiger Treiber, ist hier aber bewusst als Kontext statt als Hauptentscheidung dargestellt.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     if is_pro_mode or is_expert_mode:
         with st.expander("Setup & Timing", expanded=False):
@@ -13654,54 +13753,6 @@ if result is not None:
             render_overall_setup_quality_block(overall_setup_pkg)
             render_model_debug_panel(model_debug_pkg)
 
-
-            st.markdown(
-                """
-                <div class="section-head quiet-section-head">
-                    <div class="section-title">Leadership & Marktbreite</div>
-                    <div class="section-meta-line">Zeigt, ob die Aktie führt, nur mitläuft oder im aktuellen Umfeld eher schwächer wirkt.</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            leadership_sub = (f"Diagnose: {fmt_num(leadership_score_display,0)}/100" if scores_visible() else leadership_status_display)
-            industry_sub = (f"Diagnose: {fmt_num(industry_strength_display,0)}/100" if scores_visible() else industry_label_display)
-            rs_sub = (f"Diagnose: {fmt_num(rs_acceleration_display,0)}/100" if scores_visible() else "gegenüber Benchmark")
-            st.markdown(
-                f"""
-                <div class="quiet-fact-grid">
-                    <div class="quiet-fact-card">
-                        <div class="quiet-fact-label">Leadership</div>
-                        <div class="quiet-fact-value">{leadership_label_phase_ui(leadership_score_display)}</div>
-                        <div class="quiet-fact-sub">{leadership_sub}</div>
-                    </div>
-                    <div class="quiet-fact-card">
-                        <div class="quiet-fact-label">Industrie</div>
-                        <div class="quiet-fact-value">{industry_strength_label_phase_ui(industry_strength_display)}</div>
-                        <div class="quiet-fact-sub">{industry_sub}</div>
-                    </div>
-                    <div class="quiet-fact-card">
-                        <div class="quiet-fact-label">Relative Stärke</div>
-                        <div class="quiet-fact-value">{rs_accel_label_phase_ui(rs_acceleration_display)}</div>
-                        <div class="quiet-fact-sub">{rs_sub}</div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.markdown(
-                f"""
-                    <div class="section-card quiet-section-card">
-                        <div class="premium-title">Einordnung</div>
-                        <div class="premium-value">Leadership: {leadership_label_phase_ui(leadership_score_display)}</div>
-                        <div class="premium-sub">
-                            Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark bleibt ein wichtiger Treiber, soll in der Standardansicht aber sprachlich statt numerisch gelesen werden.
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
 
             st.markdown(
                 f"""

@@ -2917,6 +2917,67 @@ def compute_overall_setup_quality_phase_ui(
     }
 
 
+
+
+def render_model_debug_panel(debug_pkg):
+    if not bool(st.session_state.get("show_model_debug", False)):
+        return
+    if not isinstance(debug_pkg, dict):
+        return
+
+    st.markdown("### Modell-Debug")
+    st.caption("Nur für interne Prüfung: zeigt die Modellkette von Basislabeln über Regime/Konflikt bis zum finalen Urteil.")
+
+    left, right = st.columns(2)
+
+    with left:
+        st.markdown("#### Basis")
+        st.write({
+            "Investment-Case Basis": debug_pkg.get("base_investment_case"),
+            "Timing Basis": debug_pkg.get("base_timing"),
+            "Risiko Basis": debug_pkg.get("base_risk"),
+            "Priorität Basis": debug_pkg.get("base_priority"),
+            "Aktion Basis": debug_pkg.get("base_action"),
+            "Taktik Basis": debug_pkg.get("base_tactical"),
+            "Ultra Basis": debug_pkg.get("base_ultra"),
+        })
+
+        st.markdown("#### Nach Regime")
+        st.write({
+            "Regime": debug_pkg.get("regime_label"),
+            "Timing nach Regime": debug_pkg.get("post_regime_timing"),
+            "Timing Grund": debug_pkg.get("post_regime_timing_reason"),
+            "Risiko nach Regime": debug_pkg.get("post_regime_risk"),
+            "Risiko Grund": debug_pkg.get("post_regime_risk_reason"),
+            "Priorität nach Regime": debug_pkg.get("post_regime_priority"),
+            "Priorität Grund": debug_pkg.get("post_regime_priority_reason"),
+            "Aktion nach Regime": debug_pkg.get("post_regime_action"),
+            "Aktion Grund": debug_pkg.get("post_regime_action_reason"),
+        })
+
+    with right:
+        st.markdown("#### Konflikt & Final")
+        st.write({
+            "Signal-Konflikt": debug_pkg.get("conflict_label"),
+            "Konflikt-Grund": debug_pkg.get("conflict_reason"),
+            "Timing final": debug_pkg.get("final_timing"),
+            "Risiko final": debug_pkg.get("final_risk"),
+            "Priorität final": debug_pkg.get("final_priority"),
+            "Aktion final": debug_pkg.get("final_action"),
+            "Taktik final": debug_pkg.get("final_tactical"),
+            "Ultra final": debug_pkg.get("final_ultra"),
+            "Setup-Qualität": debug_pkg.get("overall_setup_quality"),
+            "Executive Summary": debug_pkg.get("exec_verdict"),
+        })
+
+        st.markdown("#### Finale Begründungen")
+        st.write({
+            "Timing Grund final": debug_pkg.get("final_timing_reason"),
+            "Priorität Grund final": debug_pkg.get("final_priority_reason"),
+            "Aktion Grund final": debug_pkg.get("final_action_reason"),
+            "Executive Warum": debug_pkg.get("exec_why"),
+        })
+
 def render_overall_setup_quality_block(pkg):
     if not isinstance(pkg, dict):
         return
@@ -12746,11 +12807,17 @@ if result is not None:
         trigger_status=trigger_status if "trigger_status" in locals() else "-",
         setup_priority=base_priority_label,
     )
+    post_regime_timing_label = final_timing_label
+    post_regime_timing_reason = final_timing_reason
+
     final_risk_label, final_risk_reason = apply_regime_to_risk(
         base_risk_label,
         regime_ctx,
         tactical_exit_risk=tactical_exit_risk if "tactical_exit_risk" in locals() else 0,
     )
+    post_regime_risk_label = final_risk_label
+    post_regime_risk_reason = final_risk_reason
+
     final_priority_label, final_priority_reason = apply_regime_to_priority(
         base_priority_label,
         regime_ctx,
@@ -12758,6 +12825,9 @@ if result is not None:
         timing_label=final_timing_label,
         risk_label=final_risk_label,
     )
+    post_regime_priority_label = final_priority_label
+    post_regime_priority_reason = final_priority_reason
+
     final_action_label, final_action_reason = apply_regime_to_action(
         base_action_phase1,
         regime_ctx,
@@ -12766,6 +12836,8 @@ if result is not None:
         setup_priority=final_priority_label,
         position_mode=position_mode if "position_mode" in locals() else False,
     )
+    post_regime_action_label = final_action_label
+    post_regime_action_reason = final_action_reason
     exec_verdict, exec_why, exec_improve, exec_worsen = build_exec_summary_phase1(
         final_timing_label,
         final_risk_label,
@@ -12848,6 +12920,39 @@ if result is not None:
         candle_daily=daily_sig if "daily_sig" in locals() and isinstance(daily_sig, dict) else None,
         candle_hourly=hourly_sig if "hourly_sig" in locals() and isinstance(hourly_sig, dict) else None,
     )
+
+    model_debug_pkg = {
+        "base_investment_case": final_investment_case if "final_investment_case" in locals() else "-",
+        "base_timing": base_timing_label if "base_timing_label" in locals() else "-",
+        "base_risk": base_risk_label if "base_risk_label" in locals() else "-",
+        "base_priority": base_priority_label if "base_priority_label" in locals() else "-",
+        "base_action": base_action_phase1 if "base_action_phase1" in locals() else "-",
+        "base_tactical": base_tactical_label if "base_tactical_label" in locals() else "-",
+        "base_ultra": ultra_signal.get("label", "-") if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else "-",
+        "regime_label": regime_ctx.get("label", "-") if "regime_ctx" in locals() else "-",
+        "post_regime_timing": post_regime_timing_label if "post_regime_timing_label" in locals() else "-",
+        "post_regime_timing_reason": post_regime_timing_reason if "post_regime_timing_reason" in locals() else "-",
+        "post_regime_risk": post_regime_risk_label if "post_regime_risk_label" in locals() else "-",
+        "post_regime_risk_reason": post_regime_risk_reason if "post_regime_risk_reason" in locals() else "-",
+        "post_regime_priority": post_regime_priority_label if "post_regime_priority_label" in locals() else "-",
+        "post_regime_priority_reason": post_regime_priority_reason if "post_regime_priority_reason" in locals() else "-",
+        "post_regime_action": post_regime_action_label if "post_regime_action_label" in locals() else "-",
+        "post_regime_action_reason": post_regime_action_reason if "post_regime_action_reason" in locals() else "-",
+        "conflict_label": conflict_pkg.get("label", "-") if "conflict_pkg" in locals() else "-",
+        "conflict_reason": conflict_pkg.get("reason", "-") if "conflict_pkg" in locals() else "-",
+        "final_timing": final_timing_label if "final_timing_label" in locals() else "-",
+        "final_timing_reason": final_timing_reason if "final_timing_reason" in locals() else "-",
+        "final_risk": final_risk_label if "final_risk_label" in locals() else "-",
+        "final_priority": final_priority_label if "final_priority_label" in locals() else "-",
+        "final_priority_reason": final_priority_reason if "final_priority_reason" in locals() else "-",
+        "final_action": final_action_label if "final_action_label" in locals() else "-",
+        "final_action_reason": final_action_reason if "final_action_reason" in locals() else "-",
+        "final_tactical": final_tactical_label if "final_tactical_label" in locals() else "-",
+        "final_ultra": final_ultra_label if "final_ultra_label" in locals() and final_ultra_label else (ultra_signal.get("label", "-") if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else "-"),
+        "overall_setup_quality": overall_setup_pkg.get("label", "-") if "overall_setup_pkg" in locals() else "-",
+        "exec_verdict": exec_verdict if "exec_verdict" in locals() else "-",
+        "exec_why": exec_why if "exec_why" in locals() else "-",
+    }
     compact_cols = st.columns(8)
     compact_data = [
         ("Marktumfeld", regime_ctx.get("label", "Neutral"), regime_ctx.get("summary", "-")),
@@ -13443,6 +13548,7 @@ if result is not None:
 
             render_signal_conflict_block(conflict_pkg)
             render_overall_setup_quality_block(overall_setup_pkg)
+            render_model_debug_panel(model_debug_pkg)
 
 
             st.markdown(

@@ -2309,23 +2309,44 @@ def apply_regime_to_action(base_action, regime_ctx, timing_label="noch nicht rei
     result = str(base_action or ("halten" if position_mode else "abwarten"))
     reason = "Die Aktion folgt Timing, Risiko und Triggerstatus."
     bias = int((regime_ctx or {}).get("bias_factor", 0))
+
     if not position_mode:
         if bias > 0:
-            if result == "vorbereiten" and timing_label in {"fast reif", "reif"} and risk_label == "stabil":
-                result = "kaufen"
-                reason = "Das positive Umfeld erlaubt eher prozyklische Long-Setups."
-            elif result == "abwarten" and setup_priority == "hoch" and timing_label == "fast reif":
-                result = "vorbereiten"
-                reason = "Das Umfeld erlaubt, gute Kandidaten aktiver vorzubereiten."
+            # Positives Umfeld hilft, soll aber nicht alleine sofort "kaufen" erzeugen
+            if result == "kaufen":
+                if not (timing_label == "reif" and risk_label == "stabil" and setup_priority == "hoch"):
+                    result = "vorbereiten"
+                    reason = "Das positive Umfeld hilft, aber für Kaufen soll das Bild bereits weitgehend sauber sein."
+                else:
+                    reason = "Das positive Umfeld erlaubt eher prozyklische Long-Setups."
+            elif result == "vorbereiten":
+                if timing_label == "reif" and risk_label == "stabil" and setup_priority == "hoch":
+                    result = "kaufen"
+                    reason = "Timing, Risiko und Priorität passen zusammen; das positive Umfeld stützt die Freigabe."
+                else:
+                    reason = "Das Umfeld erlaubt, gute Kandidaten aktiver vorzubereiten."
+            elif result == "abwarten":
+                if setup_priority == "hoch" and timing_label in {"fast reif", "reif"} and risk_label != "kritisch":
+                    result = "vorbereiten"
+                    reason = "Das positive Umfeld rechtfertigt aktiveres Vorbereiten, aber noch nicht zwingend Kaufen."
+                else:
+                    reason = "Das positive Umfeld hilft, ersetzt aber keine saubere Bestätigung."
             else:
                 reason = "Das positive Umfeld erlaubt eher prozyklische Long-Setups."
         elif bias < 0:
-            if result == "kaufen" and timing_label != "reif":
-                result = "vorbereiten"
-                reason = "Im aktuellen Umfeld ist defensiveres Vorgehen sinnvoller als frühes Antizipieren."
-            elif result == "vorbereiten" and timing_label != "reif":
-                result = "abwarten"
-                reason = "Im aktuellen Umfeld ist defensiveres Vorgehen sinnvoller als frühes Antizipieren."
+            if result == "kaufen":
+                if timing_label == "reif" and risk_label == "stabil" and setup_priority == "hoch":
+                    result = "vorbereiten"
+                    reason = "Im risk-off Umfeld bleibt selbst ein gutes Bild eher ein Vorbereitungs- als ein Kaufsetup."
+                else:
+                    result = "abwarten"
+                    reason = "Im aktuellen Umfeld ist defensiveres Vorgehen sinnvoller als frühes Antizipieren."
+            elif result == "vorbereiten":
+                if timing_label != "reif" or risk_label != "stabil":
+                    result = "abwarten"
+                    reason = "Im aktuellen Umfeld ist defensiveres Vorgehen sinnvoller als frühes Antizipieren."
+                else:
+                    reason = "Auch gute Setups werden im risk-off Umfeld vorsichtiger behandelt."
             else:
                 reason = "Im aktuellen Umfeld ist defensiveres Vorgehen sinnvoller als frühes Antizipieren."
     else:
@@ -2351,7 +2372,9 @@ def build_exec_summary_phase1(final_timing, final_risk, final_action, regime_ctx
 
     if fa == "kaufen" and ft == "reif" and fr == "stabil":
         verdict = "Ja"
-    elif fa in {"kaufen", "vorbereiten"} and ft in {"fast reif", "reif"} and fr != "kritisch":
+    elif fa in {"kaufen", "vorbereiten"} and ft == "reif" and fr != "kritisch":
+        verdict = "Fast"
+    elif fa == "vorbereiten" and ft in {"fast reif", "reif"} and fr != "kritisch":
         verdict = "Fast"
     elif ft == "unattraktiv" or fr == "kritisch" or fa in {"exit prüfen"}:
         verdict = "Nein"
@@ -2721,9 +2744,14 @@ def apply_conflict_to_action_label(base_action, conflict_pkg, timing_label="-", 
                 result = "abwarten"
             reason = "Widersprüchliche Signale erzwingen eine defensivere Aktion."
         elif conflict == "gemischt":
-            if result == "kaufen" and risk_label != "stabil":
+            if result == "kaufen":
                 result = "vorbereiten"
-            reason = "Gemischte Signale sprechen für mehr Geduld."
+                reason = "Gemischte Signale sprechen gegen einen sofortigen Kauf und eher für Vorbereiten."
+            elif result == "vorbereiten" and risk_label == "kritisch":
+                result = "abwarten"
+                reason = "Gemischte Signale plus kritisches Risiko sprechen für mehr Geduld."
+            else:
+                reason = "Gemischte Signale bremsen die Aktion leicht, aber nicht übermäßig."
     else:
         if conflict == "widersprüchlich":
             if result == "halten" and risk_label in {"erhöht", "kritisch"}:
@@ -2926,7 +2954,7 @@ def render_model_debug_panel(debug_pkg):
         return
 
     st.markdown("### Modell-Debug")
-    st.caption("Nur für interne Prüfung: zeigt die Modellkette von Basislabeln über Regime/Konflikt bis zum finalen Urteil.")
+    st.caption("Nur für interne Prüfung: zeigt die Modellkette von Basislabeln über Regime/Konflikt bis zum finalen Urteil. Die Aktionslogik ist moderat konservativer kalibriert.")
 
     left, right = st.columns(2)
 

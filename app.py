@@ -349,6 +349,11 @@ st.set_page_config(
     layout="wide"
 )
 
+# ---------- v15.18: Security gate must run before any app UI/data loading ----------
+require_google_login()
+require_allowed_email()
+render_user_bar()
+
 
 # ---------- Session State / App Defaults ----------
 if "selected_ticker" not in st.session_state:

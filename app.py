@@ -2684,6 +2684,87 @@ def render_chart_period_performance_block(chart_period_label, perf_pct, perf_abs
 
 
 
+
+
+def apply_conflict_to_timing_label(base_timing, conflict_pkg, risk_label="stabil"):
+    result = str(base_timing or "noch nicht reif")
+    conflict = str((conflict_pkg or {}).get("label", "konsistent")).lower()
+    reason = "Kein dominanter Signal-Konflikt wirkt auf das Timing."
+
+    if conflict == "widersprüchlich":
+        if result == "reif":
+            result = "fast reif"
+        elif result == "fast reif":
+            result = "noch nicht reif"
+        elif result == "noch nicht reif" and risk_label != "stabil":
+            result = "unattraktiv"
+        reason = "Widersprüchliche Signale machen das Timing defensiver."
+    elif conflict == "gemischt":
+        if result == "reif" and risk_label != "stabil":
+            result = "fast reif"
+        elif result == "fast reif" and risk_label == "kritisch":
+            result = "noch nicht reif"
+        reason = "Gemischte Signale bremsen das Timing leicht."
+    return result, reason
+
+
+def apply_conflict_to_action_label(base_action, conflict_pkg, timing_label="-", risk_label="stabil", position_mode=False):
+    result = str(base_action or ("halten" if position_mode else "abwarten"))
+    conflict = str((conflict_pkg or {}).get("label", "konsistent")).lower()
+    reason = "Kein dominanter Signal-Konflikt wirkt auf die Aktion."
+
+    if not position_mode:
+        if conflict == "widersprüchlich":
+            if result == "kaufen":
+                result = "vorbereiten"
+            elif result == "vorbereiten":
+                result = "abwarten"
+            reason = "Widersprüchliche Signale erzwingen eine defensivere Aktion."
+        elif conflict == "gemischt":
+            if result == "kaufen" and risk_label != "stabil":
+                result = "vorbereiten"
+            reason = "Gemischte Signale sprechen für mehr Geduld."
+    else:
+        if conflict == "widersprüchlich":
+            if result == "halten" and risk_label in {"erhöht", "kritisch"}:
+                result = "stop enger"
+            elif result == "stop enger" and risk_label == "kritisch":
+                result = "teilgewinn prüfen"
+            reason = "Widersprüchliche Signale verlangen defensiveres Positionsmanagement."
+        elif conflict == "gemischt":
+            if result == "halten" and risk_label == "kritisch":
+                result = "stop enger"
+            reason = "Gemischte Signale sprechen für engere Kontrolle."
+    return result, reason
+
+
+def apply_conflict_to_priority_label(base_priority, conflict_pkg, timing_label="-", risk_label="stabil"):
+    result = str(base_priority or "mittel")
+    conflict = str((conflict_pkg or {}).get("label", "konsistent")).lower()
+    reason = "Kein dominanter Signal-Konflikt wirkt auf die Priorität."
+
+    if conflict == "widersprüchlich":
+        if result == "hoch":
+            result = "mittel"
+        elif result == "mittel":
+            result = "niedrig"
+        reason = "Widersprüchliche Signale drücken die Priorität spürbar."
+    elif conflict == "gemischt":
+        if result == "hoch" and (timing_label != "reif" or risk_label != "stabil"):
+            result = "mittel"
+        reason = "Gemischte Signale machen die Priorisierung selektiver."
+    return result, reason
+
+
+def merge_reasons(primary_reason, conflict_reason):
+    p = str(primary_reason or "").strip()
+    c = str(conflict_reason or "").strip()
+    if not c or "Kein dominanter Signal-Konflikt" in c:
+        return p
+    if not p:
+        return c
+    return p + " " + c
+
 def compute_overall_setup_quality_phase_ui(
     investment_case="-",
     timing_label="-",
@@ -12693,6 +12774,10 @@ if result is not None:
         next_trigger=next_trigger if "next_trigger" in locals() else "-",
         negative_trigger=top_red_flag if "top_red_flag" in locals() else "-",
     )
+    if str(conflict_pkg.get("label", "konsistent")).lower() == "widersprüchlich":
+        exec_why = exec_why + " Das Signalbild bleibt aktuell widersprüchlich."
+    elif str(conflict_pkg.get("label", "konsistent")).lower() == "gemischt":
+        exec_why = exec_why + " Das Signalbild bleibt aktuell gemischt."
 
     st.markdown("### Marktumfeld")
     st.markdown(

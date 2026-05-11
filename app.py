@@ -11939,8 +11939,76 @@ def detect_candlestick_signal(df, context_hint=""):
         entry_hint = "Noch kein Kaufsignal, aber Setup fuer Folgeausbruch entsteht."
         exit_hint = "Noch keine Exit-Warnung, aber Richtungsentscheidung steht an."
 
+    # v15.20.1: Neutral-Falle entschaerfen.
+    # Die alte Candle-Logik erkannte fast nur klassische Muster wie Hammer/Engulfing/Doji.
+    # Viele reale Aktien liefern aber keine Lehrbuchkerze, sondern eher Momentum-, Rejection-
+    # oder Close-in-Range-Hinweise. Diese Regeln bleiben bewusst moderat, machen die
+    # Candle-Lesart aber weniger dauerhaft neutral.
+    if pattern == "Kein klares Muster":
+        close_pos = (m["c"] - m["l"]) / m["range"]
+        recent_closes = []
+        try:
+            recent_closes = [float(x) for x in df["Close"].tail(4).tolist()]
+        except Exception:
+            recent_closes = []
+        three_bar_up = len(recent_closes) >= 4 and recent_closes[-1] > recent_closes[-2] > recent_closes[-3]
+        three_bar_down = len(recent_closes) >= 4 and recent_closes[-1] < recent_closes[-2] < recent_closes[-3]
+
+        if m["bull"] and body_pct >= 0.45 and close_pos >= 0.70:
+            pattern = "Bullische Momentumkerze"
+            bias = "Leicht bullisch"
+            tone = "bullish"
+            strength = 42 if not three_bar_up else 48
+            quality = "mittel"
+            confirmation = "teilweise" if three_bar_up else "fehlt"
+            confirmation_detail = "Schlusskurs nahe Tageshoch; Folgebewegung muss das Momentum noch bestaetigen."
+            reading = "Konstruktive Momentumkerze mit Schluss im oberen Bereich."
+            next_trigger = "Bullisher bei Anschluss ueber das Kerzenhoch."
+            invalid_if = "Signal schwaecher bei Rueckfall unter die Kerzenmitte."
+            entry_hint = "Fruehes positives Timing, aber kein voll bestaetigtes Kaufsignal."
+            exit_hint = "Keine direkte Exit-Warnung."
+        elif m["bear"] and body_pct >= 0.45 and close_pos <= 0.30:
+            pattern = "Baerische Momentumkerze"
+            bias = "Leicht bearish"
+            tone = "bearish"
+            strength = 44 if not three_bar_down else 50
+            quality = "mittel"
+            confirmation = "teilweise" if three_bar_down else "fehlt"
+            confirmation_detail = "Schlusskurs nahe Tagestief; Folgebewegung muss die Warnung noch bestaetigen."
+            reading = "Schwache Momentumkerze mit Schluss im unteren Bereich."
+            next_trigger = "Bearisher bei Anschluss unter das Kerzentief."
+            invalid_if = "Warnung schwaecher bei Rueckeroberung der Kerzenmitte."
+            entry_hint = "Neue Kaeufe vorsichtiger behandeln."
+            exit_hint = "Fruehe De-Risking-Warnung, wenn Anschluss nach unten folgt."
+        elif lower_pct >= 0.35 and close_pos >= 0.55:
+            pattern = "Unterer Docht / Kaufreaktion"
+            bias = "Leicht bullisch"
+            tone = "bullish"
+            strength = 36
+            quality = "mittel"
+            confirmation = "fehlt"
+            confirmation_detail = "Intraday-Kaufreaktion sichtbar, aber noch ohne bestaetigte Folgekerze."
+            reading = "Der Markt hat tiefere Kurse intraday gekauft."
+            next_trigger = "Bullisher bei Anschluss ueber das Kerzenhoch."
+            invalid_if = "Warnung bei Bruch des Kerzentiefs."
+            entry_hint = "Moegliche fruehe Stabilisierung; Bestaetigung abwarten."
+            exit_hint = "Keine klare Exit-Warnung, solange das Tief haelt."
+        elif upper_pct >= 0.35 and close_pos <= 0.45:
+            pattern = "Oberer Docht / Verkaufsdruck"
+            bias = "Leicht bearish"
+            tone = "bearish"
+            strength = 38
+            quality = "mittel"
+            confirmation = "fehlt"
+            confirmation_detail = "Intraday-Verkaufsdruck sichtbar, aber noch ohne bestaetigte Folgekerze."
+            reading = "Der Markt hat hoehere Kurse intraday verkauft."
+            next_trigger = "Bearisher bei Anschluss unter das Kerzentief."
+            invalid_if = "Warnung verliert Gewicht bei Rueckkehr ueber das Kerzenhoch."
+            entry_hint = "Neue Kaeufe zunaechst vorsichtiger behandeln."
+            exit_hint = "Fruehe Warnung, wenn weiterer Verkaufsdruck folgt."
+
     ctx = str(context_hint or "").lower()
-    if "support" in ctx or "s1" in ctx or "unterer kanalbereich" in ctx:
+    if "support" in ctx or "s1" in ctx or "unterer kanalbereich" in ctx or "supportnah" in ctx or "unterstuetzung" in ctx:
         if tone == "bullish":
             strength += 8
             confirmation = "teilweise" if confirmation == "fehlt" else confirmation
@@ -11960,7 +12028,7 @@ def detect_candlestick_signal(df, context_hint=""):
             entry_hint = "Moegliche fruehe Kaufreaktion am Support, Bestaetigung fehlt noch."
             exit_hint = "Keine direkte Exit-Warnung, solange Support haelt."
 
-    if "widerstand" in ctx or "r1" in ctx or "oberer kanalbereich" in ctx:
+    if "widerstand" in ctx or "widerstandsnah" in ctx or "r1" in ctx or "oberer kanalbereich" in ctx or "oberer bereich" in ctx:
         if tone == "bearish":
             strength += 8
             confirmation = "teilweise" if confirmation == "fehlt" else confirmation

@@ -374,6 +374,60 @@ except Exception:
     pass
 
 
+# ---------- v15.19.6: Einzelanalyse-Sheets exakt mit Export-DataFrame synchronisieren ----------
+def _v15196_col_letter(n):
+    n = int(n or 1)
+    out = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        out = chr(65 + r) + out
+    return out or "A"
+
+
+def append_single_analysis_df_to_gsheet_complete(df, worksheet_name="Analysis_Log"):
+    """Schreibt denselben finalen DataFrame wie CSV ins Analysis_Log.
+
+    Wichtig: Die bestehende Multi-Sheet-Architektur aus logging_utils bleibt erhalten.
+    Diese Funktion haertet nur den Einzelanalyse-Export: Header werden bei Bedarf
+    auf die aktuellen CSV-Spalten erweitert/aktualisiert, damit neue Felder nicht
+    unsichtbar hinter alten Sheet-Headern landen.
+    """
+    if df is None or df.empty:
+        return False, "Keine Daten zum Schreiben vorhanden."
+
+    sh, err = _logging_utils.open_log_spreadsheet()
+    if sh is None:
+        return False, err
+
+    try:
+        cols_needed = max(80, len(df.columns) + 5)
+        rows_needed = max(5000, len(df) + 20)
+        ws = _logging_utils.get_or_create_worksheet(sh, worksheet_name, rows=rows_needed, cols=cols_needed)
+
+        try:
+            target_rows = max(getattr(ws, "row_count", 0) or 0, rows_needed)
+            target_cols = max(getattr(ws, "col_count", 0) or 0, cols_needed)
+            ws.resize(rows=target_rows, cols=target_cols)
+        except Exception:
+            pass
+
+        headers = [str(c) for c in df.columns.tolist()]
+        existing_header = ws.row_values(1)
+        if existing_header != headers:
+            end_col = _v15196_col_letter(len(headers))
+            ws.update(f"A1:{end_col}1", [headers], value_input_option="USER_ENTERED")
+
+        rows = df.fillna("").astype(str).values.tolist()
+        if rows:
+            ws.append_rows(rows, value_input_option="USER_ENTERED")
+
+        if len(rows) == 1:
+            return True, "Einzelanalyse erfolgreich in Google Sheets gespeichert."
+        return True, f"{len(rows)} Analysen erfolgreich in Google Sheets gespeichert."
+    except Exception as e:
+        return False, str(e)
+
+
 # ---------- v15.16: Export-/Sheets-Schutzschicht fuer neue Analysefelder ----------
 def _export_safe_value(value):
     """Macht komplexe Werte CSV-/Sheets-tauglich, ohne den eigentlichen Export zu brechen."""
@@ -2335,6 +2389,21 @@ div.stButton > button[kind="secondary"]{
     color:#f8fafc !important;
     font-weight:800;
     line-height:1;
+}
+
+
+/* v15.19.6: Exportbuttons CSV/Sheets als native Streamlit-Buttons gleich hoch */
+div[data-testid="stDownloadButton"] > button,
+div[data-testid="stButton"] > button{
+    min-height:2.55rem !important;
+    height:2.55rem !important;
+    padding:0.25rem 0.95rem !important;
+    line-height:1 !important;
+}
+div[data-testid="stDownloadButton"] > button p,
+div[data-testid="stButton"] > button p{
+    margin:0 !important;
+    line-height:1 !important;
 }
 
 </style>
@@ -14041,13 +14110,17 @@ if result is not None:
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
         with se_outer1:
-            st.markdown(
-                f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
-                unsafe_allow_html=True
+            st.download_button(
+                "CSV",
+                data=csv_payload,
+                file_name=csv_filename,
+                mime="text/csv",
+                use_container_width=True,
+                key=f"csv_download_single_{ticker}",
             )
         with se_outer2:
             if st.button("Sheets", use_container_width=True, key=f"sheet_log_single_{ticker}"):
-                ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
+                ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
                 show_sheet_result(ok, msg)
         with se_outer3:
             st.markdown("", unsafe_allow_html=True)

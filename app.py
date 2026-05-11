@@ -11032,15 +11032,17 @@ if workspace_mode:
                 entry_series = pd.to_numeric(radar_df["Einstieg jetzt attraktiv?"], errors="coerce") if "Einstieg jetzt attraktiv?" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
                 invest_series = pd.to_numeric(radar_df["Investment-Attraktivität"], errors="coerce") if "Investment-Attraktivität" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
 
+                # v15.20.5: Pandas-Series-Masken muessen elementweise mit | kombiniert werden.
+                # Python `or` erzeugt sonst "truth value of a Series is ambiguous" im Kandidaten-Radar.
                 mask_now = (
                     trigger_series.isin(["Aktiv", "Jetzt prüfbar"])
-                    or (entry_series >= 75)
+                    | (entry_series >= 75)
                 )
                 mask_near = (
                     trigger_series.isin(["Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"])
-                    or ((entry_series >= 58) & (invest_series >= 60) & ~mask_now)
+                    | ((entry_series >= 58) & (invest_series >= 60) & ~mask_now)
                 )
-                mask_later = ~(mask_now - mask_near)
+                mask_later = ~(mask_now | mask_near)
 
                 def sort_section_df(df_section):
                     if df_section is None or df_section.empty:
@@ -11993,7 +11995,7 @@ def detect_candlestick_signal(df, context_hint=""):
         entry_hint = "Noch kein Kaufsignal, aber Setup fuer Folgeausbruch entsteht."
         exit_hint = "Noch keine Exit-Warnung, aber Richtungsentscheidung steht an."
 
-    # v15.20.4: Neutral-Falle entschaerfen.
+    # v15.20.5: Neutral-Falle entschaerfen.
     # Die alte Candle-Logik erkannte fast nur klassische Muster wie Hammer/Engulfing/Doji.
     # Viele reale Aktien liefern aber keine Lehrbuchkerze, sondern eher Momentum-, Rejection-
     # oder Close-in-Range-Hinweise. Diese Regeln bleiben bewusst moderat, machen die
@@ -13849,7 +13851,7 @@ if result is not None:
         tactical_label=final_tactical_label if "final_tactical_label" in locals() else "-",
     )
 
-    # v15.20.4: Aktion und operativen Trigger konsistent halten.
+    # v15.20.5: Aktion und operativen Trigger konsistent halten.
     # "kaufen" darf in Pre-Entry nur stehen, wenn der Einstieg wirklich aktiv ist.
     final_action_label, final_action_reason = align_action_with_trigger_v1520_2(
         final_action_label if "final_action_label" in locals() else "-",
@@ -13969,7 +13971,7 @@ if result is not None:
             )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ---------- v15.20.4: Risiko konkret garantiert sichtbar (native Streamlit, theme-sicher) ----------
+    # ---------- v15.20.5: Risiko konkret garantiert sichtbar (native Streamlit, theme-sicher) ----------
     with st.container():
         st.markdown("### Risiko konkret")
         st.caption(

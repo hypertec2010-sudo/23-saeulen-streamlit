@@ -200,133 +200,176 @@ except Exception:
     _telegram_utils = None
 
 
-# ---------- v15.19.3: bestehende Multi-Sheet-Logging-Logik behalten, Secrets robuster lesen ----------
-def _v15193_secret_to_plain(obj):
-    """Konvertiert Streamlit-Secret-Objekte/AttrDicts rekursiv in normale Python-Typen."""
+# ---------- v15.19.4: Multi-Sheet-Logging behalten, GCP_CREDENTIALS rekursiv finden ----------
+def _v15194_plain_secret(obj):
+    """Streamlit-Secret-Objekte rekursiv in normale Python-Typen wandeln."""
     try:
         if hasattr(obj, "to_dict"):
             obj = obj.to_dict()
     except Exception:
         pass
     if isinstance(obj, dict):
-        return {str(k): _v15193_secret_to_plain(v) for k, v in obj.items()}
+        return {str(k): _v15194_plain_secret(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return [_v15193_secret_to_plain(v) for v in obj]
+        return [_v15194_plain_secret(v) for v in obj]
     return obj
 
 
-def _v15193_get_secret_or_env(key, default=None):
-    """Wie logging_utils.get_secret_or_env, aber auch fuer TOML-Bloecke und verschachtelte Secrets."""
-    try:
-        if key in st.secrets:
-            return _v15193_secret_to_plain(st.secrets[key])
-    except Exception:
-        pass
-    try:
-        # Haefige alternative Ablageorte, ohne die bestehende Spreadsheet-Name-Architektur zu aendern.
-        for section in ("gcp", "sheets", "google_sheets", "connections"):
-            if section in st.secrets:
-                sec = _v15193_secret_to_plain(st.secrets[section])
-                if isinstance(sec, dict):
-                    if key in sec:
-                        return sec.get(key)
-                    if section == "connections" and isinstance(sec.get("gsheets"), dict):
-                        gs = sec.get("gsheets") or {}
-                        if key in gs:
-                            return gs.get(key)
-    except Exception:
-        pass
-    return os.environ.get(key, default)
+def _v15194_parse_secret_candidate(raw):
+    """Versucht aus einem Secret-Kandidaten ein Service-Account-Dict zu machen."""
+    val = _v15194_plain_secret(raw)
+    if val is None:
+        return None
 
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return None
+        # Unterstuetzt auch Secrets, die versehentlich mit einfachen oder doppelten
+        # Aussenquotes gespeichert wurden.
+        if (s.startswith("'") and s.endswith("'")) or (s.startswith('"') and s.endswith('"')):
+            s = s[1:-1].strip()
+        try:
+            val = json.loads(s)
+        except Exception:
+            return None
 
-def _v15193_extract_gcp_credentials():
-    """Liest Service-Account-Credentials als JSON-String oder TOML-Block.
+    if not isinstance(val, dict):
+        return None
 
-    Bewusst ohne GOOGLE_SHEET_ID: Die bestehende Logik oeffnet weiterhin per
-    LOG_SPREADSHEET_NAME und schreibt in mehrere Worksheets.
-    """
-    candidates = []
-    try:
-        for key in ("GCP_CREDENTIALS", "gcp_service_account", "google_service_account"):
-            if key in st.secrets:
-                candidates.append(st.secrets[key])
-        for section in ("gcp", "sheets", "google_sheets"):
-            if section in st.secrets:
-                sec = _v15193_secret_to_plain(st.secrets[section])
-                if isinstance(sec, dict):
-                    for key in ("GCP_CREDENTIALS", "credentials", "service_account"):
-                        if key in sec:
-                            candidates.append(sec[key])
-        if "connections" in st.secrets:
-            con = _v15193_secret_to_plain(st.secrets["connections"])
-            if isinstance(con, dict):
-                gs = con.get("gsheets") or con.get("gspread") or {}
-                if isinstance(gs, dict):
-                    for key in ("GCP_CREDENTIALS", "credentials", "service_account"):
-                        if key in gs:
-                            candidates.append(gs[key])
-                    # Manche Streamlit-Connections legen die Service-Account-Felder direkt hier ab.
-                    candidates.append(gs)
-    except Exception:
-        pass
-    env_val = os.environ.get("GCP_CREDENTIALS")
-    if env_val:
-        candidates.append(env_val)
+    # Manche Formate wrappen die Credentials unter einem Unter-Key.
+    for nested_key in ("credentials", "service_account", "GCP_CREDENTIALS", "gcp_credentials", "google_service_account"):
+        nested = val.get(nested_key)
+        nested_parsed = _v15194_parse_secret_candidate(nested) if nested is not None else None
+        if nested_parsed:
+            val = nested_parsed
+            break
 
     allowed = {
         "type", "project_id", "private_key_id", "private_key", "client_email",
         "client_id", "auth_uri", "token_uri", "auth_provider_x509_cert_url",
         "client_x509_cert_url", "universe_domain",
     }
+    cleaned = {str(k): v for k, v in val.items() if str(k) in allowed}
+
+    if cleaned.get("private_key"):
+        cleaned["private_key"] = str(cleaned["private_key"]).replace("\\n", "\n")
+
+    # Mindestfelder fuer gspread.service_account_from_dict.
+    if cleaned.get("client_email") and cleaned.get("private_key"):
+        cleaned.setdefault("type", "service_account")
+        cleaned.setdefault("token_uri", "https://oauth2.googleapis.com/token")
+        return cleaned
+    return None
+
+
+def _v15194_walk_secret_candidates(obj):
+    """Findet moegliche Credential-Kandidaten rekursiv, unabhaengig vom TOML-Ort."""
+    obj = _v15194_plain_secret(obj)
+    yield obj
+    if isinstance(obj, dict):
+        # Erst direkte Treffer bevorzugen.
+        priority_keys = [
+            "GCP_CREDENTIALS", "gcp_credentials", "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+            "google_application_credentials_json", "gcp_service_account",
+            "google_service_account", "service_account", "credentials",
+        ]
+        for key in priority_keys:
+            if key in obj:
+                yield obj.get(key)
+        for v in obj.values():
+            yield from _v15194_walk_secret_candidates(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _v15194_walk_secret_candidates(v)
+
+
+def _v15194_get_secret_or_env(key, default=None):
+    """Kompatibel zur alten logging_utils-Funktion, nur toleranter."""
+    try:
+        sec = _v15194_plain_secret(st.secrets)
+        if isinstance(sec, dict):
+            # Case-sensitive und case-insensitive Top-Level-Suche.
+            if key in sec:
+                return sec.get(key)
+            low = str(key).lower()
+            for k, v in sec.items():
+                if str(k).lower() == low:
+                    return v
+            # Haefige verschachtelte Orte.
+            for section in ("logging", "sheets", "google_sheets", "gcp", "connections"):
+                block = sec.get(section)
+                if isinstance(block, dict):
+                    if key in block:
+                        return block.get(key)
+                    for k, v in block.items():
+                        if str(k).lower() == low:
+                            return v
+                    gs = block.get("gsheets") if isinstance(block.get("gsheets"), dict) else None
+                    if gs:
+                        if key in gs:
+                            return gs.get(key)
+                        for k, v in gs.items():
+                            if str(k).lower() == low:
+                                return v
+    except Exception:
+        pass
+    return os.environ.get(key, default)
+
+
+def _v15194_extract_gcp_credentials():
+    try:
+        sec = _v15194_plain_secret(st.secrets)
+    except Exception:
+        sec = {}
+
+    candidates = []
+    # 1) Komplette Secrets rekursiv durchsuchen.
+    candidates.extend(list(_v15194_walk_secret_candidates(sec)))
+    # 2) Env-Fallbacks.
+    for env_key in ("GCP_CREDENTIALS", "GOOGLE_APPLICATION_CREDENTIALS_JSON"):
+        env_val = os.environ.get(env_key)
+        if env_val:
+            candidates.append(env_val)
+
+    seen = set()
     for raw in candidates:
-        val = _v15193_secret_to_plain(raw)
-        if not val:
+        marker = repr(type(raw)) + ":" + repr(raw)[:300]
+        if marker in seen:
             continue
-        if isinstance(val, str):
-            s = val.strip()
-            if not s:
-                continue
-            try:
-                val = json.loads(s)
-            except Exception:
-                continue
-        if isinstance(val, dict):
-            # Falls ein Wrapper wie {credentials:{...}} genutzt wird.
-            for nested_key in ("credentials", "service_account", "GCP_CREDENTIALS"):
-                nested = val.get(nested_key)
-                if nested:
-                    nested_plain = _v15193_secret_to_plain(nested)
-                    if isinstance(nested_plain, str):
-                        try:
-                            nested_plain = json.loads(nested_plain.strip())
-                        except Exception:
-                            nested_plain = None
-                    if isinstance(nested_plain, dict) and nested_plain.get("client_email"):
-                        val = nested_plain
-                        break
-            cleaned = {k: v for k, v in val.items() if k in allowed}
-            if cleaned.get("private_key"):
-                cleaned["private_key"] = str(cleaned["private_key"]).replace("\\n", "\n")
-            if cleaned.get("client_email") and cleaned.get("private_key"):
-                return cleaned, None
-    return None, "GCP_CREDENTIALS fehlt oder wurde nicht in einem unterstuetzten Format gefunden. Unterstuetzt sind JSON-String, [GCP_CREDENTIALS], [gcp_service_account] oder [google_service_account]."
+        seen.add(marker)
+        creds = _v15194_parse_secret_candidate(raw)
+        if creds:
+            return creds, None
+
+    # Keine echten Secrets ausgeben; nur harmlose Struktur-Hilfe.
+    try:
+        top_keys = sorted([str(k) for k in (_v15194_plain_secret(st.secrets) or {}).keys()])
+    except Exception:
+        top_keys = []
+    return None, (
+        "GCP_CREDENTIALS fehlt oder wurde nicht als Google-Service-Account erkannt. "
+        "Gefundene Top-Level-Secret-Keys: " + (", ".join(top_keys) if top_keys else "keine/unerreichbar") + ". "
+        "Erwartet wird entweder GCP_CREDENTIALS als JSON-String oder ein TOML-Block mit client_email und private_key."
+    )
 
 
-def _v15193_get_gsheet_client():
-    creds, err = _v15193_extract_gcp_credentials()
+def _v15194_get_gsheet_client():
+    creds, err = _v15194_extract_gcp_credentials()
     if not creds:
         return None, err
     try:
-        gc = gspread.service_account_from_dict(creds)
-        return gc, None
+        return gspread.service_account_from_dict(creds), None
     except Exception as e:
         return None, f"GCP_CREDENTIALS ungueltig: {e}"
 
-# Monkey-Patch im logging_utils-Modul: append_df_to_gsheet und die Watchlist-/Alert-Funktionen
-# behalten ihre Multi-Sheet-Logik, lesen Secrets aber robuster.
+
+# Wichtig: Multi-Sheet-Architektur aus logging_utils bleibt erhalten.
+# Nur die Secret-Leser im Modul werden ersetzt, damit append_df_to_gsheet,
+# Watchlists, Trigger_Log, Auto_Run_Log und Alert_History weiter wie bisher arbeiten.
 try:
-    _logging_utils.get_secret_or_env = _v15193_get_secret_or_env
-    _logging_utils.get_gsheet_client = _v15193_get_gsheet_client
+    _logging_utils.get_secret_or_env = _v15194_get_secret_or_env
+    _logging_utils.get_gsheet_client = _v15194_get_gsheet_client
 except Exception:
     pass
 
@@ -387,7 +430,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         base = base.head(1).copy()
 
     def add_col(name, value, default=""):
-        # v15.19.2: Bestehende leere Spalten nachfuellen, ohne an Pandas-3
+        # v15.19.1: Bestehende leere Spalten nachfuellen, ohne an Pandas-3
         # Dtype-Upcast-Regeln zu scheitern. Einige Exportspalten kommen aus
         # build_export_df numerisch typisiert an; wenn wir dort spaeter Text-
         # Fallbacks wie "n/a", "Neutral" oder "stabil" eintragen, wirft
@@ -420,7 +463,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.19.2",
+        "Export_Version": "v15.19.4",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -12702,11 +12745,13 @@ try:
 except Exception:
     single_export_df = pd.DataFrame()
 
-# v15.19.2: Sheets-Logging nicht mehr per Query-Parameter/Link ausloesen.
-# Der Link hatte ein neues Browserfenster bzw. eine Reanalyse getriggert.
-# Stattdessen wird unten im Exportbereich ein echter Streamlit-Button verwendet,
-# der die bestehende ausgereifte logging_utils.append_df_to_gsheet-Logik erhaelt.
 sheet_log_triggered = False
+try:
+    qp = st.query_params
+    if str(qp.get("sheet_log", "0")) == "1":
+        sheet_log_triggered = True
+except Exception:
+    sheet_log_triggered = False
 
 if result is not None:
     ticker = result["ticker"]
@@ -13996,17 +14041,27 @@ if result is not None:
         csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
         csv_href = f"data:text/csv;base64,{csv_b64}"
 
+        if sheet_log_triggered:
+            ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
+            show_sheet_result(ok, msg)
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
+        sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
         with se_outer1:
             st.markdown(
                 f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
                 unsafe_allow_html=True
             )
         with se_outer2:
-            if st.button("Sheets", key=f"single_sheet_log_{ticker}", use_container_width=True):
-                ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
-                show_sheet_result(ok, msg)
+            st.markdown(
+                f'<a class="export-action-btn" href="{sheet_href}"><span>Sheets</span></a>',
+                unsafe_allow_html=True
+            )
         with se_outer3:
             st.markdown("", unsafe_allow_html=True)
 

@@ -5629,11 +5629,14 @@ def build_red_flags(
     items = []
 
     def add_item(category, detail, penalty):
+        is_hard_red_flag = penalty >= 6
         items.append({
             "Kategorie": category,
-            "Status": "🔴" if penalty >= 6 else "🟡",
+            "Status": "🔴" if is_hard_red_flag else "🟡",
+            "Schwere": "Red Flag" if is_hard_red_flag else "Hinweis",
             "Detail": detail,
-            "Penalty": penalty
+            "Penalty": penalty,
+            "Score_Wirksam": is_hard_red_flag
         })
 
     # v15.23.2: Earnings-Growth nicht mehr als harte Einzel-Red-Flag werten.
@@ -5651,9 +5654,11 @@ def build_red_flags(
         if revenue_growth_weak_for_earnings or margin_weak_for_earnings or cashflow_weak_for_earnings:
             add_item("Ertrags-Risiko", "Gewinnwachstum stark negativ mit operativer Bestaetigung", 7)
         elif earnings_growth_very_weak:
-            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum sehr schwach", 4)
+            # Nur Hinweis, keine harte Red Flag und kein starker Score-Abzug.
+            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum sehr schwach", 0)
         else:
-            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum negativ", 3)
+            # Nur Hinweis, keine harte Red Flag und kein Score-Abzug.
+            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum negativ", 0)
     if pd.notna(profit_margin) and profit_margin < 0:
         add_item("Ertrags-Risiko", "Gewinnmarge negativ", 8)
     if pd.notna(revenue_growth) and revenue_growth < -0.10:
@@ -5684,7 +5689,9 @@ def build_red_flags(
     if has_upcoming_earnings and pd.notna(days_earn) and days_earn <= 7:
         add_item("Event-Risiko", f"Earnings in {int(days_earn)} Tagen", 6)
 
-    total_penalty = sum(x["Penalty"] for x in items)
+    # v15.23.4: Nur echte rote Red Flags sollen das Gesamtergebnis spürbar belasten.
+    # Gelbe Hinweise bleiben sichtbar, verfälschen aber nicht mehr die Kernbewertung.
+    total_penalty = sum(x["Penalty"] for x in items if x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
     return items, total_penalty
 
 
@@ -7813,7 +7820,10 @@ def _legacy_analyze_stock(
         has_upcoming_earnings=has_upcoming_earnings,
         days_earn=days_earn
     )
-    red_flag_notes = [f"{x['Kategorie']}: {x['Detail']}" for x in red_flag_items]
+    hard_red_flag_items = [x for x in red_flag_items if x.get("Score_Wirksam", x.get("Penalty", 0) >= 6)]
+    soft_red_flag_items = [x for x in red_flag_items if not x.get("Score_Wirksam", x.get("Penalty", 0) >= 6)]
+    red_flag_notes = [f"{x['Kategorie']}: {x['Detail']}" for x in hard_red_flag_items]
+    red_flag_hint_notes = [f"{x['Kategorie']}: {x['Detail']}" for x in soft_red_flag_items]
 
     coverage_penalty = 0
     if fund_cov < 0.35:
@@ -13760,8 +13770,10 @@ if result is not None:
             f"Fundamentaldaten teilweise vorhanden ({fund_cov*100:.0f}% Abdeckung, {fund_fields_loaded}/21 Felder)."
         )
 
-    if red_flag_items:
+    if hard_red_flag_items:
         st.warning("Red Flags erkannt: " + " - ".join(red_flag_notes[:4]))
+    elif red_flag_hint_notes:
+        st.info("Hinweise erkannt: " + " - ".join(red_flag_hint_notes[:4]))
 
     # ---------- Scores ----------
     # ---------- v10.0B Overview ----------

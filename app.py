@@ -641,7 +641,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.24.2",
+        "Export_Version": "v15.24.4",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -774,7 +774,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.24.3.1"
+APP_VERSION = "v15.24.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -10209,24 +10209,43 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# v15.24.3.1: Workspace-Landingblock entfernt; Moduswechsel nur kompakt.
-with st.expander("Modus wechseln", expanded=False):
-    wc1, wc2, wc3, wc4 = st.columns(4)
-    with wc1:
-        if st.button("Sofortanalyse", use_container_width=True, key="workspace_analysis_btn"):
-            st.session_state.workspace_mode = "Sofortanalyse"
-    with wc2:
-        if st.button("Watchlisten", use_container_width=True, key="workspace_watchlist_btn"):
-            st.session_state.workspace_mode = "Watchlisten"
-    with wc3:
-        if st.button("Positionen", use_container_width=True, key="workspace_position_btn"):
-            st.session_state.workspace_mode = "Positionen"
-    with wc4:
-        if st.button("Radar", use_container_width=True, key="workspace_candidate_radar_btn"):
-            st.session_state.workspace_mode = "Kandidaten-Radar"
+# v15.24.4: Einstieg bleibt sichtbar, Landing-/Workspace-Text entfernt.
+st.markdown("""<div class="landing-cards-wrap compact-entry-buttons">""", unsafe_allow_html=True)
+wc1, wc2, wc3, wc4 = st.columns(4)
+with wc1:
+    if st.button(
+        "🔎 Sofortanalyse",
+        use_container_width=True,
+        key="workspace_analysis_btn"
+    ):
+        st.session_state.workspace_mode = "Sofortanalyse"
+with wc2:
+    if st.button(
+        "📋 Watchlisten",
+        use_container_width=True,
+        key="workspace_watchlist_btn"
+    ):
+        st.session_state.workspace_mode = "Watchlisten"
+with wc3:
+    if st.button(
+        "🛡️ Positionen",
+        use_container_width=True,
+        key="workspace_position_btn"
+    ):
+        st.session_state.workspace_mode = "Positionen"
+with wc4:
+    if st.button(
+        "🎯 Radar",
+        use_container_width=True,
+        key="workspace_candidate_radar_btn"
+    ):
+        st.session_state.workspace_mode = "Kandidaten-Radar"
+
+st.markdown("""</div>""", unsafe_allow_html=True)
+st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
 # v15.24.1: Hilfen nur noch als Expander, keine extra Karte.
-with st.expander("Hilfen & Verwaltung", expanded=False):
+with st.sidebar.expander("Hilfen & Verwaltung", expanded=False):
     st.markdown("#### Kurzanleitung")
     st.markdown(
         "- **Sofortanalyse**: spontane Einzelanalyse oder Vergleich mehrerer Aktien.\n"
@@ -14274,6 +14293,84 @@ if result is not None:
     else:
         exit_action_sub_display = "Exit-Einordnung der aktuellen Lage"
 
+
+    # ---------- v15.24.4: Chart zuerst, Details einklappbar ----------
+    st.markdown("### Chart & Zeitraum")
+    chart_range = st.selectbox(
+        "Zeitraum",
+        ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
+        index=2,
+        key=f"chart_range_{ticker}"
+    )
+
+    chart_overlay_col1, chart_overlay_col2 = st.columns(2)
+    with chart_overlay_col1:
+        show_sr_zones = st.checkbox("Unterstützung / Widerstand anzeigen", value=True, key=f"show_sr_{ticker}")
+    with chart_overlay_col2:
+        show_trend_channel = st.checkbox("Trendkanal anzeigen", value=False, key=f"show_channel_{ticker}")
+
+    chart_df = compute_chart_df(df, chart_range)
+    chart_sr_basis_df = compute_chart_df(df, "1 Jahr")
+    chart_structures = None
+    if show_sr_zones or show_trend_channel:
+        try:
+            chart_structures = build_chart_structures(chart_df, sr_basis_df=chart_sr_basis_df)
+        except Exception:
+            chart_structures = None
+    fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
+    st.plotly_chart(fig, use_container_width=True)
+    _chart_perf_pct, _chart_perf_abs = compute_chart_period_performance(chart_df)
+    render_chart_period_performance_block(
+        chart_period_label if "chart_period_label" in locals() else (chart_period if "chart_period" in locals() else "Zeitraum"),
+        _chart_perf_pct,
+        perf_abs=_chart_perf_abs,
+    )
+    if chart_structures and show_sr_zones:
+        st.caption(f"S/R-Basis: {chart_structures.get('sr_basis_label', '1 Jahr')}")
+
+    with st.expander("Technische Chartdetails", expanded=False):
+        if chart_structures:
+            chart_text_items = summarize_chart_structures(chart_df, chart_structures)
+            if chart_text_items:
+                st.markdown("**Technische Einordnung aus dem Chart**")
+                for _item in chart_text_items[:3]:
+                    st.markdown(f"- {_item}")
+
+            ultra_signal = compute_ultra_short_term_zone_signal(chart_df, chart_structures)
+            ultra_tone = ultra_signal.get("tone", "green")
+            ultra_icon = "🟢" if ultra_tone == "green" else "🟠" if ultra_tone == "amber" else "🔵" if ultra_tone == "blue" else "⚪" if ultra_tone == "neutral" else "🔴"
+            st.markdown("**Ultra-Kurzfrist an S/R-Zonen**")
+            st.markdown(
+                f"""
+                <div class="horizon-card {ultra_tone}" style="min-height:120px;">
+                    <div class="horizon-top">
+                        <div class="horizon-label">Ultra-Kurzfrist-Signal</div>
+                        <div class="horizon-icon">{ultra_icon}</div>
+                    </div>
+                    <div class="horizon-value" style="font-size:1.0rem;">{ultra_signal.get('label', '-')}</div>
+                    <div class="horizon-sub">Bias: {infer_ultra_bias_from_signal(ultra_signal)[1]} {infer_ultra_bias_from_signal(ultra_signal)[0]}</div>
+                    <div class="horizon-sub">Staerke: {fmt_num(ultra_signal.get('strength', 0),0)}/100 - Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"**Hauptgrund:** {ultra_signal.get('reason', '-')}")
+            ultra_bullets = ultra_signal.get("bullets", []) or []
+            if ultra_bullets:
+                for _item in ultra_bullets[:4]:
+                    st.markdown(f"- {_item}")
+        else:
+            ultra_signal = {"label": "Kein Signal", "tone": "neutral", "strength": 0, "confirmation": "fehlt", "reason": "Keine S/R-Struktur verfügbar."}
+
+        result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
+        hourly_candle_df = get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df)
+        candle_bias_pkg = build_candlestick_bias_package(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []))
+        if isinstance(result, dict):
+            result["candlestick_bias_pkg"] = candle_bias_pkg
+            result["candlestick_bias_label"] = candle_bias_pkg.get("label", "neutral")
+            result["candlestick_bias_score"] = candle_bias_pkg.get("score", 0)
+        render_candlestick_dual_timeframe_block(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []), result=result if "result" in locals() else None)
+
     if is_expert_mode:
         st.markdown(
             f"""
@@ -14810,7 +14907,7 @@ if result is not None:
             """
             <div class="section-head">
                 <div class="section-title">Die wichtigsten Begründungen</div>
-                <div class="section-meta-line">Die App trennt jetzt klarer zwischen Kernaussage, operativer Ausführung und Diagnose.</div>
+                <div class="section-meta-line">Stärken, Bremsen und das jetzt wichtigste Kriterium.</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -14854,66 +14951,67 @@ if result is not None:
                 unsafe_allow_html=True,
             )
 
-        st.markdown(
-            """
-            <div class="section-head">
-                <div class="section-title">Kernbereiche</div>
-                <div class="section-meta-line">Die wichtigsten Bausteine des Gesamturteils, standardmäßig sprachlich statt numerisch gelesen.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        kb1, kb2, kb3, kb4 = st.columns(4)
-        with kb1:
+        with st.expander("Kernbereiche im Detail", expanded=False):
             st.markdown(
-                f"""
-                <div class="compact-panel" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
-                    <div class="cp-label">Trade-Struktur</div>
-                    <div class="cp-value">{quality_label_phase_ui(tradeability_score)}</div>
-                    <div class="cp-sub">{("Diagnose: " + str(fmt_num(tradeability_score,0)) + "/100 · ") if scores_visible() else ""}{tradeability_text}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with kb2:
-            st.markdown(
-                f"""
-                <div class="compact-panel" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
-                    <div class="cp-label">Setup-Confidence</div>
-                    <div class="cp-value">{quality_label_phase_ui(setup_confidence)}</div>
-                    <div class="cp-sub">{("Diagnose: " + str(fmt_num(setup_confidence,0)) + "/100 · ") if scores_visible() else ""}{setup_confidence_text}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with kb3:
-            st.markdown(
-                f"""
-                <div class="compact-panel" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
-                    <div class="cp-label">Company Quality</div>
-                    <div class="cp-value">{quality_label_phase_ui(company)}</div>
-                    <div class="cp-sub">{("Diagnose: " + str(company) + "/100 · ") if scores_visible() else ""}{ampel(company)}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with kb4:
-            st.markdown(
-                f"""
-                <div class="compact-panel" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
-                    <div class="cp-label">Investment Score</div>
-                    <div class="cp-value">{quality_label_phase_ui(investment)}</div>
-                    <div class="cp-sub">{("Diagnose: " + str(investment) + "/100 · ") if scores_visible() else ""}{ampel(investment)}</div>
+                """
+                <div class="section-head">
+                    <div class="section-title">Kernbereiche</div>
+                    <div class="section-meta-line">Detailbausteine des Gesamturteils.</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-        st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
+            kb1, kb2, kb3, kb4 = st.columns(4)
+            with kb1:
+                st.markdown(
+                    f"""
+                    <div class="compact-panel" title="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.">
+                        <div class="cp-label">Trade-Struktur</div>
+                        <div class="cp-value">{quality_label_phase_ui(tradeability_score)}</div>
+                        <div class="cp-sub">{("Diagnose: " + str(fmt_num(tradeability_score,0)) + "/100 · ") if scores_visible() else ""}{tradeability_text}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with kb2:
+                st.markdown(
+                    f"""
+                    <div class="compact-panel" title="Wie sauber und belastbar das erkannte Setup aktuell wirkt.">
+                        <div class="cp-label">Setup-Confidence</div>
+                        <div class="cp-value">{quality_label_phase_ui(setup_confidence)}</div>
+                        <div class="cp-sub">{("Diagnose: " + str(fmt_num(setup_confidence,0)) + "/100 · ") if scores_visible() else ""}{setup_confidence_text}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with kb3:
+                st.markdown(
+                    f"""
+                    <div class="compact-panel" title="Kombiniert Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko.">
+                        <div class="cp-label">Company Quality</div>
+                        <div class="cp-value">{quality_label_phase_ui(company)}</div>
+                        <div class="cp-sub">{("Diagnose: " + str(company) + "/100 · ") if scores_visible() else ""}{ampel(company)}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with kb4:
+                st.markdown(
+                    f"""
+                    <div class="compact-panel" title="Gesamtbewertung aus technischer und fundamentaler Qualität.">
+                        <div class="cp-label">Investment Score</div>
+                        <div class="cp-value">{quality_label_phase_ui(investment)}</div>
+                        <div class="cp-sub">{("Diagnose: " + str(investment) + "/100 · ") if scores_visible() else ""}{ampel(investment)}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-    st.markdown('<div class="secondary-section-caption">Sekundäre Diagnose: Treiber und Bremsfaktoren sind bewusst ruhiger dargestellt als die Entscheidungsblöcke.</div>', unsafe_allow_html=True)
+            st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+            st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="secondary-section-caption">Treiber und Bremsfaktoren.</div>', unsafe_allow_html=True)
     why_col, risk_col = st.columns(2)
     with why_col:
         render_reason_box("Warum attraktiv", driver_summary.get("positives", []), empty_text="Keine klaren positiven Treiber erkannt.")
@@ -14921,53 +15019,54 @@ if result is not None:
         render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
 
 
-    st.markdown(
-        """
-        <div class="section-head quiet-section-head">
-            <div class="section-title">Leadership & Marktbreite</div>
-            <div class="section-meta-line">Kontextblock: relative Stärke und Marktbreite werden bewusst unterhalb der Kernbereiche geführt.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    leadership_sub = (f"Diagnose: {fmt_num(leadership_score_display,0)}/100" if scores_visible() else leadership_status_display)
-    industry_sub = (f"Diagnose: {fmt_num(industry_strength_display,0)}/100" if scores_visible() else industry_label_display)
-    rs_sub = (f"Diagnose: {fmt_num(rs_acceleration_display,0)}/100" if scores_visible() else "gegenüber Benchmark")
-    st.markdown(
-        f"""
-        <div class="quiet-fact-grid">
-            <div class="quiet-fact-card">
-                <div class="quiet-fact-label">Leadership</div>
-                <div class="quiet-fact-value">{leadership_label_phase_ui(leadership_score_display)}</div>
-                <div class="quiet-fact-sub">{leadership_sub}</div>
+    with st.expander("Markt & Relative Stärke", expanded=False):
+        st.markdown(
+            """
+            <div class="section-head quiet-section-head">
+                <div class="section-title">Leadership & Marktbreite</div>
+                <div class="section-meta-line">Kontextblock: relative Stärke und Marktbreite werden bewusst unterhalb der Kernbereiche geführt.</div>
             </div>
-            <div class="quiet-fact-card">
-                <div class="quiet-fact-label">Industrie</div>
-                <div class="quiet-fact-value">{industry_strength_label_phase_ui(industry_strength_display)}</div>
-                <div class="quiet-fact-sub">{industry_sub}</div>
-            </div>
-            <div class="quiet-fact-card">
-                <div class="quiet-fact-label">Relative Stärke</div>
-                <div class="quiet-fact-value">{rs_accel_label_phase_ui(rs_acceleration_display)}</div>
-                <div class="quiet-fact-sub">{rs_sub}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f"""
-            <div class="section-card quiet-section-card">
-                <div class="premium-title">Einordnung</div>
-                <div class="premium-value">Leadership: {leadership_label_phase_ui(leadership_score_display)}</div>
-                <div class="premium-sub">
-                    Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark bleibt ein wichtiger Treiber, ist hier aber bewusst als Kontext statt als Hauptentscheidung dargestellt.
+            """,
+            unsafe_allow_html=True,
+        )
+        leadership_sub = (f"Diagnose: {fmt_num(leadership_score_display,0)}/100" if scores_visible() else leadership_status_display)
+        industry_sub = (f"Diagnose: {fmt_num(industry_strength_display,0)}/100" if scores_visible() else industry_label_display)
+        rs_sub = (f"Diagnose: {fmt_num(rs_acceleration_display,0)}/100" if scores_visible() else "gegenüber Benchmark")
+        st.markdown(
+            f"""
+            <div class="quiet-fact-grid">
+                <div class="quiet-fact-card">
+                    <div class="quiet-fact-label">Leadership</div>
+                    <div class="quiet-fact-value">{leadership_label_phase_ui(leadership_score_display)}</div>
+                    <div class="quiet-fact-sub">{leadership_sub}</div>
+                </div>
+                <div class="quiet-fact-card">
+                    <div class="quiet-fact-label">Industrie</div>
+                    <div class="quiet-fact-value">{industry_strength_label_phase_ui(industry_strength_display)}</div>
+                    <div class="quiet-fact-sub">{industry_sub}</div>
+                </div>
+                <div class="quiet-fact-card">
+                    <div class="quiet-fact-label">Relative Stärke</div>
+                    <div class="quiet-fact-value">{rs_accel_label_phase_ui(rs_acceleration_display)}</div>
+                    <div class="quiet-fact-sub">{rs_sub}</div>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+
+        st.markdown(
+            f"""
+                <div class="section-card quiet-section-card">
+                    <div class="premium-title">Einordnung</div>
+                    <div class="premium-value">Leadership: {leadership_label_phase_ui(leadership_score_display)}</div>
+                    <div class="premium-sub">
+                        Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark bleibt ein wichtiger Treiber, ist hier aber bewusst als Kontext statt als Hauptentscheidung dargestellt.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     if is_pro_mode or is_expert_mode:
         with st.expander("Setup & Timing", expanded=False):
@@ -15542,82 +15641,7 @@ if result is not None:
                 summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
                 st.write(summary_short)
 
-            st.markdown(f"**Chart & Performance - {ticker} ({ccy})**")
-            chart_range = st.selectbox(
-                "Zeitraum",
-                ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
-                index=2,
-                key=f"chart_range_{ticker}"
-            )
-
-            chart_overlay_col1, chart_overlay_col2 = st.columns(2)
-            with chart_overlay_col1:
-                show_sr_zones = st.checkbox("Unterstützung / Widerstand anzeigen", value=True, key=f"show_sr_{ticker}")
-            with chart_overlay_col2:
-                show_trend_channel = st.checkbox("Trendkanal anzeigen", value=False, key=f"show_channel_{ticker}")
-
-            chart_df = compute_chart_df(df, chart_range)
-            chart_sr_basis_df = compute_chart_df(df, "1 Jahr")
-            chart_structures = None
-            if show_sr_zones or show_trend_channel:
-                try:
-                    chart_structures = build_chart_structures(chart_df, sr_basis_df=chart_sr_basis_df)
-                except Exception:
-                    chart_structures = None
-            fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
-            st.plotly_chart(fig, use_container_width=True)
-            _chart_perf_pct, _chart_perf_abs = compute_chart_period_performance(chart_df)
-            render_chart_period_performance_block(
-                chart_period_label if "chart_period_label" in locals() else (chart_period if "chart_period" in locals() else "Zeitraum"),
-                _chart_perf_pct,
-                perf_abs=_chart_perf_abs,
-            )
-            if chart_structures and show_sr_zones:
-                st.caption(f"S/R-Basis: {chart_structures.get('sr_basis_label', '1 Jahr')}")
-
-            # v15.15: Chartnahe technische Einordnung direkt unter Zeitraum-Performance,
-            # damit S/R-Kontext und Ultra-Signal vor der Candlestick-Detailanalyse erscheinen.
-            if chart_structures:
-                chart_text_items = summarize_chart_structures(chart_df, chart_structures)
-                if chart_text_items:
-                    st.markdown("**Technische Einordnung aus dem Chart**")
-                    for _item in chart_text_items[:3]:
-                        st.markdown(f"- {_item}")
-
-                ultra_signal = compute_ultra_short_term_zone_signal(chart_df, chart_structures)
-                ultra_tone = ultra_signal.get("tone", "green")
-                ultra_icon = "🟢" if ultra_tone == "green" else "🟠" if ultra_tone == "amber" else "🔵" if ultra_tone == "blue" else "⚪" if ultra_tone == "neutral" else "🔴"
-                st.markdown("**Ultra-Kurzfrist an S/R-Zonen**")
-                st.markdown(
-                    f"""
-                    <div class="horizon-card {ultra_tone}" style="min-height:120px;">
-                        <div class="horizon-top">
-                            <div class="horizon-label">Ultra-Kurzfrist-Signal</div>
-                            <div class="horizon-icon">{ultra_icon}</div>
-                        </div>
-                        <div class="horizon-value" style="font-size:1.0rem;">{ultra_signal.get('label', '-')}</div>
-                        <div class="horizon-sub">Bias: {infer_ultra_bias_from_signal(ultra_signal)[1]} {infer_ultra_bias_from_signal(ultra_signal)[0]}</div>
-                        <div class="horizon-sub">Staerke: {fmt_num(ultra_signal.get('strength', 0),0)}/100 - Bestaetigung: {ultra_signal.get('confirmation', '-')}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f"**Hauptgrund:** {ultra_signal.get('reason', '-')}")
-                ultra_bullets = ultra_signal.get("bullets", []) or []
-                if ultra_bullets:
-                    for _item in ultra_bullets[:4]:
-                        st.markdown(f"- {_item}")
-
-            result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
-            hourly_candle_df = get_intraday_hourly_df_for_candles(result=result if "result" in locals() else None, chart_df=chart_df)
-            candle_bias_pkg = build_candlestick_bias_package(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []))
-            if isinstance(result, dict):
-                result["candlestick_bias_pkg"] = candle_bias_pkg
-                result["candlestick_bias_label"] = candle_bias_pkg.get("label", "neutral")
-                result["candlestick_bias_score"] = candle_bias_pkg.get("score", 0)
-            render_candlestick_dual_timeframe_block(chart_df, hourly_candle_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []), result=result if "result" in locals() else None)
-
-            # Zeitraum-Performance wird direkt unter dem Chart gezeigt
+            st.caption("Chart, Zeitraum-Performance und technische Details stehen jetzt oben vor der Entscheidungsebene.")
 
         with t1:
             st.subheader("Trading-Case")

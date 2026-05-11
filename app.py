@@ -641,7 +641,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.22",
+        "Export_Version": "v15.24",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -774,7 +774,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v14.1.5"
+APP_VERSION = "v15.24"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1694,7 +1694,7 @@ pre{white-space:pre-wrap !important;}
 }
 .section-title{
     color:#f8fafc;
-    font-size:1.02rem;
+    font-size:0.86rem;
     font-weight:900;
     letter-spacing:0.01em;
 }
@@ -1986,7 +1986,7 @@ div[data-testid="stExpander"] summary{
     color:#94a3b8;
 }
 .candle-dash-main{
-    font-size:1.02rem;
+    font-size:0.86rem;
     font-weight:800;
     line-height:1.3;
     color:#f8fafc;
@@ -2218,7 +2218,7 @@ div[data-testid="stExpander"] summary{
 .mobile-ranking-head{margin-bottom:10px;}
 .mobile-ranking-ticker{
     color:#f8fafc;
-    font-size:1.02rem;
+    font-size:0.86rem;
     font-weight:900;
     letter-spacing:0.02em;
 }
@@ -3929,8 +3929,8 @@ def compute_overall_setup_quality_phase_ui(
 
 
 def render_model_debug_panel(debug_pkg):
-    if not (bool(st.session_state.get("show_model_debug", False)) or bool(st.session_state.get("show_model_debug_local", False))):
-        return
+    # v15.24: Debug-Ausgabe aus der produktiven Oberfläche entfernt.
+    return
     if not isinstance(debug_pkg, dict):
         return
 
@@ -10014,8 +10014,6 @@ with top1:
         )
 with top2:
     st.markdown("")
-st.caption("Investment- und Trading-Entscheidungen in einer hochwertigen, klar lesbaren Oberfläche. Multi-Screening, Setup-Logik, Trade-Plan, Positionsmanagement, Watchlisten und Telegram-Alerts.")
-
 
 st.markdown(
     """
@@ -10023,8 +10021,8 @@ st.markdown(
     .landing-stage{
         position:relative;
         margin: 8px 0 22px 0;
-        padding: 26px 26px 24px 26px;
-        border-radius: 28px;
+        padding: 14px 18px 13px 18px;
+        border-radius: 20px;
         background:
             radial-gradient(circle at top left, rgba(96,165,250,0.20), rgba(0,0,0,0) 32%),
             radial-gradient(circle at top right, rgba(14,165,233,0.12), rgba(0,0,0,0) 24%),
@@ -10047,7 +10045,7 @@ st.markdown(
         align-items:center;
         gap:10px;
         flex-wrap:wrap;
-        margin-bottom:12px;
+        margin-bottom:6px;
         position:relative;
         z-index:1;
     }
@@ -10072,7 +10070,7 @@ st.markdown(
     .landing-title{
         position:relative;
         z-index:1;
-        font-size:2.25rem;
+        font-size:1.35rem;
         line-height:1.02;
         font-weight:950;
         color:#f8fafc;
@@ -10084,10 +10082,10 @@ st.markdown(
         position:relative;
         z-index:1;
         color:#cbd5e1;
-        font-size:1.02rem;
-        line-height:1.62;
+        font-size:0.86rem;
+        line-height:1.35;
         max-width:860px;
-        margin-bottom:18px;
+        margin-bottom:6px;
     }
     .landing-feature-row{
         position:relative;
@@ -10137,10 +10135,10 @@ st.markdown(
         white-space: pre-line !important;
         line-height: 1.28 !important;
         font-weight: 900 !important;
-        border-radius: 28px !important;
-        min-height: 8.2rem !important;
-        padding-top: 1.25rem !important;
-        padding-bottom: 1.15rem !important;
+        border-radius: 18px !important;
+        min-height: 4.6rem !important;
+        padding-top: 0.65rem !important;
+        padding-bottom: 0.60rem !important;
         background:
             radial-gradient(circle at top left, rgba(191,219,254,0.24), rgba(0,0,0,0) 34%),
             linear-gradient(180deg, #2563eb 0%, #111827 100%) !important;
@@ -10215,15 +10213,11 @@ st.markdown(
     """
     <div class="landing-stage">
         <div class="landing-topline">
-            <div class="landing-kicker">PREMIUM WORKSPACE</div>
+            <div class="landing-kicker">WORKSPACE</div>
             <div class="landing-statusdot"></div>
         </div>
-        <div class="landing-title">Wähle deinen Einstieg.</div>
-        <div class="landing-sub">
-            Sofortanalyse, Watchlisten und Positionen stehen als Hauptaktionen im Fokus.
-            Verwaltung und Hilfen bleiben bewusst darunter und optisch ruhiger.
-        </div>
-        <div class="landing-divider"></div>
+        <div class="landing-title">Analyse starten.</div>
+        <div class="landing-sub">Sofortanalyse, Watchlisten, Positionen und Radar.</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -10262,20 +10256,15 @@ with wc4:
 st.markdown("""</div>""", unsafe_allow_html=True)
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-st.markdown("""<div class="landing-mini-note">Tipp: Die vier Hauptkarten sind für den täglichen Schnellzugriff optimiert.</div>""", unsafe_allow_html=True)
-
 st.markdown(
     """
     <div class="utility-shell">
         <div class="utility-title">Hilfen & Verwaltung</div>
-        <div class="utility-sub">Kurzanleitung, Auto-Run und Technik bewusst zurückgenommen unter den Hauptaktionen.</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 with st.expander("Hilfen & Verwaltung", expanded=False):
-    st.caption("Kurzanleitung, Auto-Run Control Center und Technik / Admin sind hier gebündelt.")
-
     st.markdown("#### Kurzanleitung")
     st.markdown(
         "- **Sofortanalyse**: spontane Einzelanalyse oder Vergleich mehrerer Aktien.\n"
@@ -14232,7 +14221,7 @@ if result is not None:
     }
     .compact-summary-title{font-size:0.72rem;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;line-height:1.15;min-height:18px;}
     .compact-summary-card.is-primary .compact-summary-title{font-size:0.72rem;color:#bfdbfe;font-weight:900;}
-    .compact-summary-value{font-size:1.02rem;font-weight:820;margin-top:7px;color:#e2e8f0;line-height:1.12;min-height:24px;}
+    .compact-summary-value{font-size:0.86rem;font-weight:820;margin-top:7px;color:#e2e8f0;line-height:1.12;min-height:24px;}
     .compact-summary-card.is-primary .compact-summary-value{font-size:1.08rem;font-weight:950;color:#f8fafc;margin-top:7px;}
     .compact-summary-sub{
         font-size:0.72rem;
@@ -14288,9 +14277,9 @@ if result is not None:
         background:linear-gradient(180deg, rgba(15,23,42,0.62), rgba(15,23,42,0.38));
         box-shadow:0 14px 32px rgba(2,6,23,0.16);
     }
-    .mode-split-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:12px;}
+    .mode-split-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
     .mode-split-kicker{font-size:0.70rem;color:#93c5fd;text-transform:uppercase;letter-spacing:0.065em;font-weight:950;}
-    .mode-split-title{font-size:1.02rem;color:#f8fafc;font-weight:930;line-height:1.18;margin-top:3px;}
+    .mode-split-title{font-size:0.86rem;color:#f8fafc;font-weight:930;line-height:1.18;margin-top:3px;}
     .mode-split-sub{font-size:0.80rem;color:#94a3b8;line-height:1.35;margin-top:4px;max-width:760px;}
     .mode-pill{font-size:0.72rem;font-weight:900;text-transform:uppercase;letter-spacing:0.04em;border-radius:999px;padding:6px 10px;border:1px solid rgba(147,197,253,0.24);background:rgba(30,41,59,0.52);color:#bfdbfe;white-space:nowrap;}
     .mode-task-card{border:1px solid rgba(148,163,184,0.11);border-radius:16px;padding:12px 13px;background:rgba(15,23,42,0.34);min-height:126px;}
@@ -14583,10 +14572,7 @@ if result is not None:
     # ---------- v15.20.5: Risiko konkret garantiert sichtbar (native Streamlit, theme-sicher) ----------
     with st.container():
         st.markdown("### Risiko konkret")
-        st.caption(
-            "Konkrete Risikotreiber hinter dem Gesamtlabel: Volatilität, Gap/Event, "
-            "Liquidität/Volumen, Trend/Exit und Markt/Regime."
-        )
+        st.caption("Wichtigste Risikotreiber hinter dem Gesamturteil.")
         try:
             _risk_pkg = risk_detail_pkg or {}
             _risk_factors = _risk_pkg.get("factors", []) or []
@@ -15109,90 +15095,91 @@ if result is not None:
         csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
         csv_href = f"data:text/csv;base64,{csv_b64}"
 
-        st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
-        st.markdown("""
-        <style>
-        /* v15.19.13: ruhige Export-Actions statt Primary-CTA-Look.
-           CSV und Sheets bleiben nebeneinander, wirken aber bewusst sekundaer. */
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button,
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stDownloadButton"] > button,
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button,
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button{
-            min-height:38px !important;
-            height:38px !important;
-            max-height:38px !important;
-            padding:0 0.95rem !important;
-            line-height:1 !important;
-            border-radius:14px !important;
-            display:flex !important;
-            align-items:center !important;
-            justify-content:center !important;
-            white-space:nowrap !important;
-            transform:none !important;
-            box-shadow:none !important;
-            background:rgba(15,23,42,0.28) !important;
-            border:1px solid rgba(148,163,184,0.28) !important;
-            color:rgba(226,232,240,0.92) !important;
-            font-size:0.88rem !important;
-            font-weight:400 !important;
-            letter-spacing:0 !important;
-            text-transform:none !important;
-        }
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button::before,
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button::before,
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button::before{
-            content:none !important;
-            display:none !important;
-        }
-        [class*="st-key-export_buttons_bar_single"] button *,
-        [class*="st-key-export_buttons_bar_single"] button p,
-        [class*="st-key-export_buttons_bar_single"] button span,
-        [class*="st-key-export_buttons_bar_single"] button div{
-            margin:0 !important;
-            padding:0 !important;
-            line-height:1 !important;
-            min-height:0 !important;
-            height:auto !important;
-            display:flex !important;
-            align-items:center !important;
-            justify-content:center !important;
-            font-size:0.88rem !important;
-            font-weight:400 !important;
-            letter-spacing:0 !important;
-            text-transform:none !important;
-        }
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button:hover,
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button:hover{
-            background:rgba(30,41,59,0.42) !important;
-            border-color:rgba(147,197,253,0.45) !important;
-            color:rgba(255,255,255,0.98) !important;
-            box-shadow:0 4px 12px rgba(15,23,42,0.18) !important;
-        }
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"],
-        [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"]{
-            min-height:38px !important;
-            height:38px !important;
-            margin:0 !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        with st.container(key="export_buttons_bar_single"):
-            export_col_csv, export_col_sheets, export_col_spacer = st.columns([1, 1, 5], vertical_alignment="top")
-            with export_col_csv:
-                st.download_button(
-                    "CSV herunterladen",
-                    data=csv_payload,
-                    file_name=csv_filename,
-                    mime="text/csv",
-                    use_container_width=True,
-                    key=f"csv_download_single_{ticker}",
-                )
-            with export_col_sheets:
-                if st.button("In Sheets speichern", use_container_width=True, key=f"sheet_log_single_{ticker}"):
-                    ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
-                    show_sheet_result(ok, msg)
+        with st.expander("Export & Logging", expanded=False):
+            st.caption("CSV und Sheets verwenden denselben finalen Export.")
+            st.markdown("""
+            <style>
+            /* v15.19.13: ruhige Export-Actions statt Primary-CTA-Look.
+               CSV und Sheets bleiben nebeneinander, wirken aber bewusst sekundaer. */
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button,
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stDownloadButton"] > button,
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button,
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button{
+                min-height:38px !important;
+                height:38px !important;
+                max-height:38px !important;
+                padding:0 0.95rem !important;
+                line-height:1 !important;
+                border-radius:14px !important;
+                display:flex !important;
+                align-items:center !important;
+                justify-content:center !important;
+                white-space:nowrap !important;
+                transform:none !important;
+                box-shadow:none !important;
+                background:rgba(15,23,42,0.28) !important;
+                border:1px solid rgba(148,163,184,0.28) !important;
+                color:rgba(226,232,240,0.92) !important;
+                font-size:0.88rem !important;
+                font-weight:400 !important;
+                letter-spacing:0 !important;
+                text-transform:none !important;
+            }
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button::before,
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button::before,
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button::before{
+                content:none !important;
+                display:none !important;
+            }
+            [class*="st-key-export_buttons_bar_single"] button *,
+            [class*="st-key-export_buttons_bar_single"] button p,
+            [class*="st-key-export_buttons_bar_single"] button span,
+            [class*="st-key-export_buttons_bar_single"] button div{
+                margin:0 !important;
+                padding:0 !important;
+                line-height:1 !important;
+                min-height:0 !important;
+                height:auto !important;
+                display:flex !important;
+                align-items:center !important;
+                justify-content:center !important;
+                font-size:0.88rem !important;
+                font-weight:400 !important;
+                letter-spacing:0 !important;
+                text-transform:none !important;
+            }
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button:hover,
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button:hover{
+                background:rgba(30,41,59,0.42) !important;
+                border-color:rgba(147,197,253,0.45) !important;
+                color:rgba(255,255,255,0.98) !important;
+                box-shadow:0 4px 12px rgba(15,23,42,0.18) !important;
+            }
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"],
+            [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"]{
+                min-height:38px !important;
+                height:38px !important;
+                margin:0 !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            with st.container(key="export_buttons_bar_single"):
+                export_col_csv, export_col_sheets, export_col_spacer = st.columns([1, 1, 5], vertical_alignment="top")
+                with export_col_csv:
+                    st.download_button(
+                        "CSV herunterladen",
+                        data=csv_payload,
+                        file_name=csv_filename,
+                        mime="text/csv",
+                        use_container_width=True,
+                        key=f"csv_download_single_{ticker}",
+                    )
+                with export_col_sheets:
+                    if st.button("In Sheets speichern", use_container_width=True, key=f"sheet_log_single_{ticker}"):
+                        ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
+                        show_sheet_result(ok, msg)
 
-        with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
+        with st.expander("Detaildiagnose / Scores anzeigen", expanded=False):
             c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
             with c1:
                 render_score_card("Company Quality", f"{company}/100", ampel(company), "company", tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens.")
@@ -15220,7 +15207,7 @@ if result is not None:
             position:relative;
             margin: 8px 0 18px 0;
             padding: 22px 22px 18px 22px;
-            border-radius: 28px;
+            border-radius: 20px;
             background:
                 radial-gradient(circle at top left, rgba(96,165,250,0.14), rgba(0,0,0,0) 30%),
                 linear-gradient(180deg, rgba(15,23,42,0.98), rgba(15,23,42,0.88));
@@ -15375,7 +15362,7 @@ if result is not None:
             margin-bottom:5px;
         }
         .exec-v2-list-value{
-            font-size:1.02rem;
+            font-size:0.86rem;
             line-height:1.35;
             color:#f8fafc;
             font-weight:800;
@@ -15470,9 +15457,7 @@ if result is not None:
 
         with t0:
             st.subheader("Überblick")
-            st.markdown('<div class="panel-caption">Der Überblick priorisiert Marktumfeld, Urteil, Timing, Risiko und Aktion. Diagnosewerte erscheinen nur bei Bedarf.</div>', unsafe_allow_html=True)
-            st.toggle("Modell-Debug anzeigen", value=False, key="show_model_debug_local", help="Zeigt Basislabels, Regime-Anpassungen, Konflikt-Anpassungen und finale Modellstufen direkt im Überblick.")
-
+            st.markdown('<div class="panel-caption">Kurzüberblick der aktuellen Analyse.</div>', unsafe_allow_html=True)
             st.markdown(
                 f"""
                 <div class="quiet-fact-grid">
@@ -15495,9 +15480,6 @@ if result is not None:
 
             render_signal_conflict_block(conflict_pkg)
             render_overall_setup_quality_block(overall_setup_pkg)
-            render_model_debug_panel(model_debug_pkg)
-
-
             trigger_display_v1523_12 = operational_trigger_text_v1523_12(
                 next_trigger if "next_trigger" in locals() else "-",
                 trigger_status if "trigger_status" in locals() else "-",
@@ -15633,7 +15615,7 @@ if result is not None:
                 perf_abs=_chart_perf_abs,
             )
             if chart_structures and show_sr_zones:
-                st.caption(f"S/R-Zonen werden aus dem Basisfenster {chart_structures.get('sr_basis_label', '1 Jahr')} berechnet; der gewählte Zeitraum steuert nur die Anzeige.")
+                st.caption(f"S/R-Basis: {chart_structures.get('sr_basis_label', '1 Jahr')}.")
 
             # v15.15: Chartnahe technische Einordnung direkt unter Zeitraum-Performance,
             # damit S/R-Kontext und Ultra-Signal vor der Candlestick-Detailanalyse erscheinen.

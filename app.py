@@ -9404,9 +9404,21 @@ def _legacy_analyze_stock(
             pm_action = "Halten, Stop enger"
             pm_action_reason = "Grundsetup bleibt haltbar, kurzfristige Schwäche verlangt aber engere Führung."
             pm_exit_pressure = "mittel"
+        elif (
+            str(add_on_action).lower().startswith("ja")
+            and _max_exit_pressure < 18
+            and winner_context
+            and market_info["regime"] == "POSITIV"
+            and setup_confidence >= 75
+            and trading_case_score >= 72
+            and signal_conflict_label.lower() in {"konsistent", "-", ""}
+        ):
+            pm_action = "Aufstocken prüfen"
+            pm_action_reason = "Position ist im Gewinn, Setup/Timing sind hochwertig, Marktregime unterstützt und Exit-Druck bleibt sehr niedrig."
+            pm_exit_pressure = "niedrig"
         elif str(add_on_action).lower().startswith("ja") and _max_exit_pressure < 25 and winner_context and market_info["regime"] == "POSITIV":
             pm_action = "Halten / selektiv aufstocken"
-            pm_action_reason = "Position ist konstruktiv, Marktregime unterstützt und Exit-Druck bleibt niedrig."
+            pm_action_reason = "Position ist konstruktiv, Marktregime unterstützt und Exit-Druck bleibt niedrig; Ausbau nur bei sauberem Trigger."
             pm_exit_pressure = "niedrig"
         elif loser_context and trading_case_score < 58:
             pm_action = "Nicht nachkaufen"
@@ -9440,7 +9452,9 @@ def _legacy_analyze_stock(
         else:
             pm_profit_plan = "Noch kein separater Gewinnschutz nötig"
 
-        if pm_action == "Halten / selektiv aufstocken":
+        if pm_action == "Aufstocken prüfen":
+            pm_add_plan = "Aufstocken aktiv prüfen - nur mit sauberem Add-on-Trigger und begrenzter Positionsgröße"
+        elif pm_action == "Halten / selektiv aufstocken":
             pm_add_plan = "Nur selektiv aufstocken, nicht in Überdehnung oder vor Event-Risiko"
         elif _max_exit_pressure >= 35 or loser_context or market_info["regime"] == "NEGATIV":
             pm_add_plan = "Nicht nachkaufen"
@@ -12827,6 +12841,8 @@ def render_mobile_ranking_cards(df):
             return "Teilgewinn / Stop prüfen"
         if exit_score >= 30:
             return "Halten, enger führen"
+        if entry >= 75 and setup >= 75 and leadership in {"leader", "stark"} and exit_score < 20:
+            return "Aufstocken prüfen"
         if entry >= 68 and setup >= 60 and leadership in {"leader", "stark"}:
             return "Halten / selektiv ausbauen"
         return "Halten"
@@ -12867,6 +12883,8 @@ def render_mobile_ranking_cards(df):
         leadership = str(row.get("Leadership-Status", "") or "").strip().lower()
         if exit_score >= 35:
             return "nicht nachkaufen"
+        if entry >= 75 and setup >= 75 and leadership in {"leader", "stark"} and exit_score < 20:
+            return "aktiv prüfen"
         if entry >= 70 and setup >= 65 and leadership in {"leader", "stark"}:
             return "nur selektiv"
         return "kein Add-on-Signal"

@@ -3443,6 +3443,60 @@ def render_chart_period_performance_block(chart_period_label, perf_pct, perf_abs
 
 
 
+
+
+
+def align_action_with_trigger_v1520_2(action_label, action_reason, next_trigger, trigger_status, entry_quality, position_mode=False):
+    """Keep the action label consistent with the operative trigger text.
+
+    In Pre-Entry mode, "kaufen" should only appear when the entry is active/now
+    (for example: trigger active, now checkable, good entry zone). If the next trigger
+    says to wait for a pullback/confirmation/better environment, the correct action is
+    "vorbereiten" or "abwarten".
+    """
+    action = str(action_label or "-").strip().lower()
+    reason = str(action_reason or "").strip() or "Die Aktion folgt Timing, Risiko und Triggerstatus."
+    nt = str(next_trigger or "").strip().lower()
+    ts = str(trigger_status or "").strip().lower()
+    eq = str(entry_quality or "").strip().lower()
+
+    if position_mode or action != "kaufen":
+        return action_label, reason
+
+    wait_words = (
+        "abwarten", "warten", "rücksetzer", "ruecksetzer", "confirmation",
+        "bestätigung", "bestaetigung", "besseres marktumfeld", "neu prüfen",
+        "neu pruefen", "verbessern", "klareres setup", "neues setup"
+    )
+    active_words = ("jetzt", "aktiv", "prüfbar", "pruefbar", "in entry-zone", "entry-zone")
+
+    says_wait = any(w in nt for w in wait_words)
+    says_active = any(w in nt for w in active_words) or ts == "aktiv" or eq == "gut"
+
+    if says_wait and not says_active:
+        if ts in {"passiv", "warten"}:
+            return "abwarten", "Kein Sofortkauf: Der operative Trigger verlangt noch Geduld."
+        return "vorbereiten", "Noch kein Sofortkauf: Der nächste Schritt ist ein Trigger/Entry-Zone abzuwarten."
+
+    if not says_active and ts not in {"aktiv"} and eq != "gut":
+        return "vorbereiten", "Kaufen wird erst freigegeben, wenn der Einstiegstrigger wirklich aktiv ist."
+
+    return action_label, reason
+
+
+def action_trigger_note_v1520_2(action_label, next_trigger, negative_trigger="-"):
+    action = str(action_label or "").strip().lower()
+    nt = str(next_trigger or "-").strip()
+    neg = str(negative_trigger or "-").strip()
+    if action == "kaufen":
+        if neg and neg not in {"-", "None", "nan"}:
+            return f"Negativer Trigger: {neg}"
+        return "Negativer Trigger: Einstieg verwerfen, wenn der Kurs die Entry-/Support-Zone klar verliert."
+    if nt and nt not in {"-", "None", "nan"}:
+        return f"Nächster Trigger: {nt}"
+    return "Nächster Trigger: sauberer nächster Bestätigungsschritt"
+
+
 def apply_conflict_to_timing_label(base_timing, conflict_pkg, risk_label="stabil"):
     result = str(base_timing or "noch nicht reif")
     conflict = str((conflict_pkg or {}).get("label", "konsistent")).lower()
@@ -13795,6 +13849,28 @@ if result is not None:
         tactical_label=final_tactical_label if "final_tactical_label" in locals() else "-",
     )
 
+    # v15.20.2: Aktion und operativen Trigger konsistent halten.
+    # "kaufen" darf in Pre-Entry nur stehen, wenn der Einstieg wirklich aktiv ist.
+    final_action_label, final_action_reason = align_action_with_trigger_v1520_2(
+        final_action_label if "final_action_label" in locals() else "-",
+        final_action_reason if "final_action_reason" in locals() else "-",
+        next_trigger if "next_trigger" in locals() else "-",
+        trigger_status if "trigger_status" in locals() else "-",
+        entry_quality if "entry_quality" in locals() else "-",
+        position_mode=position_mode if "position_mode" in locals() else False,
+    )
+
+    conflict_pkg = compute_signal_conflict_phase_ui(
+        investment_case=final_investment_case if "final_investment_case" in locals() else "-",
+        timing_label=final_timing_label if "final_timing_label" in locals() else "-",
+        risk_label=final_risk_label if "final_risk_label" in locals() else "-",
+        action_label=final_action_label if "final_action_label" in locals() else "-",
+        candle_daily=daily_sig if "daily_sig" in locals() else None,
+        candle_hourly=hourly_sig if "hourly_sig" in locals() else None,
+        ultra_label=final_ultra_label if "final_ultra_label" in locals() and final_ultra_label else (ultra_signal.get("label", "-") if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else "-"),
+        tactical_label=final_tactical_label if "final_tactical_label" in locals() else "-",
+    )
+
 
     overall_setup_pkg = compute_overall_setup_quality_phase_ui(
         investment_case=final_investment_case if "final_investment_case" in locals() else "-",
@@ -14098,7 +14174,7 @@ if result is not None:
                         <div class="dc-label">Aktion</div>
                         <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
                         <div class="dc-sub">{compact_action_text_phase_ui(final_action_label)}</div>
-                        <div class="dc-note">Nächster Trigger: {next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "sauberer nächster Bestätigungsschritt"}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
+                        <div class="dc-note">{action_trigger_note_v1520_2(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-")}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,

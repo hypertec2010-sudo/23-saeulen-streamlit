@@ -13241,10 +13241,6 @@ if st.session_state.get("analysis_requested", False):
         ranking_df["Industrie-Stärke"] = ranking_df["Ticker"].astype(str).map(industry_strength_map)
         ranking_df["RS-Benchmark-Score"] = ranking_df["Ticker"].astype(str).map(rs_benchmark_map)
         ranking_df["RS-Beschleunigung"] = ranking_df["Ticker"].astype(str).map(rs_accel_map)
-        sector_label_map = {str(k): v.get("sector_label", v.get("sector", "-")) for k, v in results_map.items()}
-        industry_label_map = {str(k): v.get("industry_label", v.get("industry", "-")) for k, v in results_map.items()}
-        ranking_df["Sektor"] = ranking_df["Ticker"].astype(str).map(sector_label_map)
-        ranking_df["Industrie"] = ranking_df["Ticker"].astype(str).map(industry_label_map)
         ranking_df["Trendqualität"] = ranking_df["Ticker"].astype(str).map(trend_quality_map)
         ranking_df["Base-Qualität"] = ranking_df["Ticker"].astype(str).map(base_quality_map)
         ranking_df["Setup-Typ-Qualität"] = ranking_df["Ticker"].astype(str).map(setup_type_quality_map)

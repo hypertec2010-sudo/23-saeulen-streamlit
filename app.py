@@ -175,7 +175,7 @@ import yfinance as yf
 from plotly.subplots import make_subplots
 from logging_utils import (
     append_auto_run_log,
-    append_df_to_gsheet as _append_df_to_gsheet_original,
+    append_df_to_gsheet,
     add_entries_to_watchlist,
     build_export_df,
     build_trigger_log_df,
@@ -193,237 +193,6 @@ from logging_utils import (
     update_watchlist_alert_mode,
     update_watchlist_check_frequency,
 )
-
-
-# ---------- v15.19.3: robustes Google-Sheets-Logging ----------
-def _v15192_secret_value(*paths):
-    """Liest Streamlit-Secrets robust aus Top-Level- und verschachtelten TOML-Bloecken."""
-    for path in paths:
-        try:
-            cur = st.secrets
-            ok = True
-            for part in path:
-                if hasattr(cur, "get"):
-                    cur = cur.get(part)
-                else:
-                    cur = cur[part]
-                if cur is None:
-                    ok = False
-                    break
-            if ok and cur not in (None, ""):
-                return cur
-        except Exception:
-            continue
-    return None
-
-
-def _v15192_as_plain_dict(value):
-    if value is None:
-        return None
-    if isinstance(value, dict):
-        return dict(value)
-    try:
-        return {k: value[k] for k in value.keys()}
-    except Exception:
-        return None
-
-
-def _v15193_case_insensitive_get(mapping, key):
-    try:
-        if key in mapping:
-            return mapping[key]
-        key_l = str(key).lower()
-        for k in mapping.keys():
-            if str(k).lower() == key_l:
-                return mapping[k]
-    except Exception:
-        pass
-    return None
-
-
-def _v15193_secret_value_flexible(*paths):
-    """Wie _v15192_secret_value, aber tolerant gegen Gross-/Kleinschreibung."""
-    for path in paths:
-        try:
-            cur = st.secrets
-            ok = True
-            for key in path:
-                nxt = _v15193_case_insensitive_get(cur, key)
-                if nxt is None:
-                    ok = False
-                    break
-                cur = nxt
-            if ok and cur not in (None, ""):
-                return cur
-        except Exception:
-            continue
-    return None
-
-
-def _v15193_parse_secret_blob(raw):
-    """Macht aus JSON-String, TOML-Block/AttrDict oder verschachtelten Blocks ein Dict."""
-    if raw is None:
-        return None
-    if isinstance(raw, str):
-        txt = raw.strip()
-        if not txt:
-            return None
-        try:
-            parsed = json.loads(txt)
-        except Exception:
-            return None
-        return _v15193_parse_secret_blob(parsed)
-    plain = _v15192_as_plain_dict(raw)
-    if not plain:
-        return None
-    return plain
-
-
-def _v15193_is_service_account_dict(d):
-    if not isinstance(d, dict):
-        return False
-    keys = {str(k).lower() for k in d.keys()}
-    return ("private_key" in keys and "client_email" in keys) or ("type" in keys and "service_account" in str(_v15193_case_insensitive_get(d, "type")).lower())
-
-
-def _v15193_find_service_account_dict(obj, depth=0):
-    """Sucht auch in [GCP_CREDENTIALS], [connections.gsheets] oder credentials/service_account-Unterblocks."""
-    if depth > 5:
-        return None
-    d = _v15193_parse_secret_blob(obj)
-    if not isinstance(d, dict):
-        return None
-    if _v15193_is_service_account_dict(d):
-        return d
-    preferred = [
-        "credentials", "service_account", "gcp_credentials", "GCP_CREDENTIALS",
-        "gcp_service_account", "google_service_account", "gsheets", "google_sheets",
-    ]
-    for key in preferred:
-        child = _v15193_case_insensitive_get(d, key)
-        found = _v15193_find_service_account_dict(child, depth + 1)
-        if found:
-            return found
-    for child in d.values():
-        found = _v15193_find_service_account_dict(child, depth + 1)
-        if found:
-            return found
-    return None
-
-
-def _v15192_load_gcp_credentials():
-    """Akzeptiert mehrere gaengige Secret-Formate fuer Service-Account-Credentials."""
-    raw = _v15193_secret_value_flexible(
-        ("GCP_CREDENTIALS",),
-        ("gcp_credentials",),
-        ("gcp", "GCP_CREDENTIALS"),
-        ("google", "GCP_CREDENTIALS"),
-        ("sheets", "GCP_CREDENTIALS"),
-        ("google_sheets", "GCP_CREDENTIALS"),
-        ("service_account",),
-        ("gcp_service_account",),
-        ("google_service_account",),
-        ("connections", "gsheets", "credentials"),
-        ("connections", "gsheets"),
-    )
-    creds = _v15193_find_service_account_dict(raw)
-    if not creds:
-        # Letzter Fallback: direkt in st.secrets suchen, falls die Credentials
-        # z. B. als [GCP_CREDENTIALS] oder [connections.gsheets] anders verschachtelt sind.
-        creds = _v15193_find_service_account_dict(st.secrets)
-    if not creds:
-        return None
-    creds = dict(creds)
-    # Streamlit Connections enthaelt manchmal Zusatzfelder, die service_account_from_dict stoeren koennen.
-    allowed_keys = {
-        "type", "project_id", "private_key_id", "private_key", "client_email",
-        "client_id", "auth_uri", "token_uri", "auth_provider_x509_cert_url",
-        "client_x509_cert_url", "universe_domain",
-    }
-    cleaned = {}
-    for k, v in creds.items():
-        sk = str(k)
-        if sk in allowed_keys:
-            cleaned[sk] = v
-    if "private_key" in cleaned and isinstance(cleaned["private_key"], str):
-        cleaned["private_key"] = cleaned["private_key"].replace("\\n", "\n")
-    return cleaned or creds
-
-def _v15192_load_sheet_id():
-    return _v15192_secret_value(
-        ("GOOGLE_SHEET_ID",),
-        ("GCP_SHEET_ID",),
-        ("SHEET_ID",),
-        ("SPREADSHEET_ID",),
-        ("GSHEET_ID",),
-        ("sheets", "sheet_id"),
-        ("sheets", "spreadsheet_id"),
-        ("google_sheets", "sheet_id"),
-        ("google_sheets", "spreadsheet_id"),
-        ("logging", "sheet_id"),
-        ("logging", "spreadsheet_id"),
-    )
-
-
-def _v15192_robust_append_df_to_gsheet(df, worksheet_name="Analysis_Log"):
-    creds = _v15192_load_gcp_credentials()
-    if not creds:
-        return False, "GCP_CREDENTIALS wurde in st.secrets nicht in einem unterstuetzten Format gefunden. Unterstuetzt: Top-Level GCP_CREDENTIALS als JSON-String, [GCP_CREDENTIALS], [gcp_service_account], [google_service_account] oder [connections.gsheets]."
-    sheet_id = _v15192_load_sheet_id()
-    if not sheet_id:
-        return False, "Sheet-ID fehlt. Bitte z. B. GOOGLE_SHEET_ID, SHEET_ID oder SPREADSHEET_ID in Streamlit Secrets setzen."
-    try:
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ]
-        gc = gspread.service_account_from_dict(creds, scopes=scopes)
-        sh = gc.open_by_key(str(sheet_id).strip())
-        try:
-            ws = sh.worksheet(worksheet_name)
-        except Exception:
-            ws = sh.add_worksheet(title=worksheet_name, rows=1000, cols=max(26, len(df.columns) + 5))
-
-        out = df.copy()
-        out = out.where(pd.notna(out), "")
-        header = [str(c) for c in out.columns.tolist()]
-        values = out.astype(str).values.tolist()
-
-        existing = ws.get_all_values()
-        if not existing:
-            ws.append_row(header, value_input_option="USER_ENTERED")
-        elif existing[0] != header:
-            current_header = existing[0]
-            missing = [c for c in header if c not in current_header]
-            if missing:
-                merged_header = current_header + missing
-                ws.update("1:1", [merged_header])
-                out = out.reindex(columns=merged_header, fill_value="")
-                values = out.astype(str).values.tolist()
-            else:
-                out = out.reindex(columns=current_header, fill_value="")
-                values = out.astype(str).values.tolist()
-
-        if values:
-            ws.append_rows(values, value_input_option="USER_ENTERED")
-        return True, f"Google-Sheet-Logging erfolgreich: {len(values)} Zeile(n) in '{worksheet_name}' geschrieben."
-    except Exception as exc:
-        return False, f"Google-Sheet-Logging fehlgeschlagen: {exc}"
-
-
-def append_df_to_gsheet(df, worksheet_name="Analysis_Log"):
-    """Wrapper: zuerst alte Logging-Logik, bei Secrets-Fehler robuster Fallback."""
-    try:
-        ok, msg = _append_df_to_gsheet_original(df, worksheet_name=worksheet_name)
-        if ok:
-            return ok, msg
-        if "GCP_CREDENTIALS" not in str(msg):
-            return ok, msg
-    except Exception as exc:
-        msg = str(exc)
-        if "GCP_CREDENTIALS" not in msg:
-            return False, f"Google-Sheet-Logging fehlgeschlagen: {exc}"
-    return _v15192_robust_append_df_to_gsheet(df, worksheet_name=worksheet_name)
 try:
     import telegram_utils as _telegram_utils
 except Exception:
@@ -486,7 +255,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         base = base.head(1).copy()
 
     def add_col(name, value, default=""):
-        # v15.19.3: Bestehende leere Spalten nachfuellen, ohne an Pandas-3
+        # v15.19.1: Bestehende leere Spalten nachfuellen, ohne an Pandas-3
         # Dtype-Upcast-Regeln zu scheitern. Einige Exportspalten kommen aus
         # build_export_df numerisch typisiert an; wenn wir dort spaeter Text-
         # Fallbacks wie "n/a", "Neutral" oder "stabil" eintragen, wirft
@@ -519,7 +288,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.19.3",
+        "Export_Version": "v15.19.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -14107,15 +13876,17 @@ if result is not None:
 
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
+        sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
         with se_outer1:
             st.markdown(
                 f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
                 unsafe_allow_html=True
             )
         with se_outer2:
-            if st.button("Sheets", key=f"sheet_log_btn_{ticker if 'ticker' in locals() else 'single'}", use_container_width=True):
-                ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
-                show_sheet_result(ok, msg)
+            st.markdown(
+                f'<a class="export-action-btn" href="{sheet_href}"><span>Sheets</span></a>',
+                unsafe_allow_html=True
+            )
         with se_outer3:
             st.markdown("", unsafe_allow_html=True)
 

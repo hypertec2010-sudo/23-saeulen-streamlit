@@ -11993,7 +11993,7 @@ def detect_candlestick_signal(df, context_hint=""):
         entry_hint = "Noch kein Kaufsignal, aber Setup fuer Folgeausbruch entsteht."
         exit_hint = "Noch keine Exit-Warnung, aber Richtungsentscheidung steht an."
 
-    # v15.20.1: Neutral-Falle entschaerfen.
+    # v15.20.3: Neutral-Falle entschaerfen.
     # Die alte Candle-Logik erkannte fast nur klassische Muster wie Hammer/Engulfing/Doji.
     # Viele reale Aktien liefern aber keine Lehrbuchkerze, sondern eher Momentum-, Rejection-
     # oder Close-in-Range-Hinweise. Diese Regeln bleiben bewusst moderat, machen die
@@ -13849,7 +13849,7 @@ if result is not None:
         tactical_label=final_tactical_label if "final_tactical_label" in locals() else "-",
     )
 
-    # v15.20.2: Aktion und operativen Trigger konsistent halten.
+    # v15.20.3: Aktion und operativen Trigger konsistent halten.
     # "kaufen" darf in Pre-Entry nur stehen, wenn der Einstieg wirklich aktiv ist.
     final_action_label, final_action_reason = align_action_with_trigger_v1520_2(
         final_action_label if "final_action_label" in locals() else "-",
@@ -13969,7 +13969,16 @@ if result is not None:
             )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ---------- v15.20: Risiko konkretisieren ----------
+    # ---------- v15.20.3: Risiko konkret sichtbar direkt unter Risiko-Kontext ----------
+    st.markdown(
+        """
+        <div style="margin-top:1.05rem;margin-bottom:0.35rem;">
+            <div style="font-size:1.02rem;font-weight:750;color:rgba(248,250,252,0.96);">Risiko konkret</div>
+            <div style="font-size:0.84rem;color:rgba(203,213,225,0.78);line-height:1.35;">Konkrete Risikotreiber hinter dem Gesamtlabel: Volatilität, Gap/Event, Liquidität/Volumen, Trend/Exit und Markt/Regime.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown("""
     <style>
     .risk-detail-shell{margin:0.85rem 0 0.45rem 0;padding:1rem 1.05rem;border:1px solid rgba(148,163,184,0.18);border-radius:18px;background:linear-gradient(135deg, rgba(15,23,42,0.38), rgba(15,23,42,0.18));}

@@ -774,7 +774,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.24.3"
+APP_VERSION = "v15.24.3.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -9997,7 +9997,7 @@ with top1:
         st.markdown(
             f"""
             <div style="text-align:left; margin-top:6px; margin-bottom:6px;">
-                <span class="model-pill">Release {APP_VERSION}</span>
+                <span class="model-pill">Release {APP_VERSION} - Premium Dashboard</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -10007,7 +10007,7 @@ with top1:
         st.markdown(
             f"""
             <div style="text-align:left; margin-top:6px; margin-bottom:6px;">
-                <span class="model-pill">Release {APP_VERSION}</span>
+                <span class="model-pill">Release {APP_VERSION} - Premium Dashboard</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -10209,8 +10209,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# v15.24.3: Oberen Workspace-/Landingblock entfernt.
-# Die Analyse startet direkt mit den relevanten Eingaben; Moduswechsel liegt bewusst kompakt im Expander.
+# v15.24.3.1: Workspace-Landingblock entfernt; Moduswechsel nur kompakt.
 with st.expander("Modus wechseln", expanded=False):
     wc1, wc2, wc3, wc4 = st.columns(4)
     with wc1:
@@ -10227,7 +10226,7 @@ with st.expander("Modus wechseln", expanded=False):
             st.session_state.workspace_mode = "Kandidaten-Radar"
 
 # v15.24.1: Hilfen nur noch als Expander, keine extra Karte.
-with st.sidebar.expander("Hilfen & Verwaltung", expanded=False):
+with st.expander("Hilfen & Verwaltung", expanded=False):
     st.markdown("#### Kurzanleitung")
     st.markdown(
         "- **Sofortanalyse**: spontane Einzelanalyse oder Vergleich mehrerer Aktien.\n"
@@ -10631,7 +10630,7 @@ except Exception:
     workspace_mode = "Expertenmodus"
 
 if not workspace_mode:
-    st.info("Bitte einen Analysemodus wählen.")
+    st.info("Wähle oben einen Arbeitsmodus aus. Erst danach werden die passenden Eingaben und Werkzeuge eingeblendet.")
 elif workspace_mode == "Sofortanalyse":
     st.markdown("<div class='section-accent blue'>Sofortanalyse aktiv</div>", unsafe_allow_html=True)
 elif workspace_mode == "Watchlisten":

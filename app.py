@@ -7329,15 +7329,22 @@ def build_short_thesis(investment, tb_score, market_regime, top_red_flag, positi
 def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
     """Robuste Firmenname-Anzeige fuer Radar/Ranking.
 
-    Hintergrund: Nach den Radar-Umbauten stand in der Spalte `Name` teilweise nur
-    nochmals der Ticker. Dieser Helper zieht den echten Unternehmensnamen aus
-    result["name"] oder result["info"] und faellt nur dann auf den Ticker
-    zurueck, wenn kein brauchbarer Name vorhanden ist.
+    Zieht den echten Unternehmensnamen aus Analyse-Result, Snapshot-Zeile oder
+    notfalls aus der Yahoo-Suche. Wichtig fuer Radar-Snapshots: In gespeicherten
+    Abschnitts-Frames kann `Name` bereits auf den Ticker zurueckgefallen sein.
+    Dann wird hier erneut aufgeloest, statt den Ticker als Namen stehen zu lassen.
     """
     result = result or {}
     ticker = str(fallback_ticker or result.get("ticker", "") or result.get("Ticker", "") or "").strip()
     info = result.get("info", {}) or {}
+    if not isinstance(info, dict):
+        info = {}
+
     candidates = [
+        result.get("company_name"),
+        result.get("Unternehmen"),
+        result.get("longName"),
+        result.get("shortName"),
         result.get("name"),
         result.get("Name"),
         info.get("longName"),
@@ -7345,16 +7352,45 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
         info.get("displayName"),
         info.get("quoteSourceName"),
     ]
+
     ticker_norm = ticker.strip().upper()
     ticker_root = ticker_norm.split(".")[0] if ticker_norm else ""
-    for cand in candidates:
-        val = str(cand or "").strip()
+
+    def _usable_name(val):
+        val = str(val or "").strip()
         if not val or val.lower() in {"-", "nan", "none", "null"}:
-            continue
+            return None
         val_norm = val.upper().strip()
         if val_norm in {ticker_norm, ticker_root}:
-            continue
-        return shorten_text(val, max_len)
+            return None
+        return val
+
+    for cand in candidates:
+        val = _usable_name(cand)
+        if val:
+            return shorten_text(val, max_len)
+
+    # v15.23.9: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
+    # Yahoo-Suche liefert fuer reine Ticker oft shortname/longname; das verhindert
+    # insbesondere im Abschnitt "Jetzt spannend" die Anzeige Ticker = Name.
+    if ticker:
+        try:
+            matches = search_tickers(ticker, max_results=6)
+            ticker_upper = ticker.upper()
+            ticker_root_upper = ticker_upper.split('.')[0]
+            for m in matches:
+                sym = str(m.get("symbol", "") or "").upper()
+                if sym in {ticker_upper, ticker_root_upper}:
+                    val = _usable_name(m.get("longname") or m.get("shortname") or m.get("name"))
+                    if val:
+                        return shorten_text(val, max_len)
+            for m in matches:
+                val = _usable_name(m.get("longname") or m.get("shortname") or m.get("name"))
+                if val:
+                    return shorten_text(val, max_len)
+        except Exception:
+            pass
+
     return ticker or "-"
 
 

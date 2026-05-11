@@ -12774,44 +12774,169 @@ def render_mobile_ranking_cards(df):
         if v is None:
             return "-"
         s = str(v).strip()
+        if s.lower() in {"nan", "none", "nat"}:
+            return "-"
         try:
             return html.escape(s) if s else "-"
         except Exception:
             return s if s else "-"
 
-    key_columns = [
-        ("Investment-Attraktivität", "Investment"),
-        ("Einstieg jetzt attraktiv?", "Einstieg"),
-        ("Setup-Confidence", "Setup"),
-        ("Trade-Struktur", "Trade"),
-        ("Kurzfrist-Timing", "Timing"),
-        ("Trigger-Status", "Trigger"),
-        ("Handlung", "Aktion"),
-        ("Exit-Score", "Exit"),
-        ("Exit-Aktion", "Exit-Aktion"),
-    ]
+    def _num(v, default=None):
+        try:
+            x = pd.to_numeric(v, errors="coerce")
+            if pd.isna(x):
+                return default
+            return float(x)
+        except Exception:
+            return default
+
+    def _score_label(v, positive=True):
+        n = _num(v, None)
+        if n is None:
+            return "-"
+        if positive:
+            if n >= 75:
+                return "stark"
+            if n >= 60:
+                return "solide"
+            if n >= 45:
+                return "gemischt"
+            return "schwach"
+        # inverse score: high value = more risk/exit pressure
+        if n >= 75:
+            return "hoch"
+        if n >= 55:
+            return "erhöht"
+        if n >= 30:
+            return "beobachten"
+        return "niedrig"
+
+    def _position_action_from_row(row):
+        exit_action = str(row.get("Exit-Aktion", "") or "").strip()
+        exit_score = _num(row.get("Exit-Score", None), 0) or 0
+        entry = _num(row.get("Einstieg jetzt attraktiv?", None), 0) or 0
+        setup = _num(row.get("Setup-Confidence", None), 0) or 0
+        leadership = str(row.get("Leadership-Status", "") or "").strip().lower()
+
+        ea = exit_action.lower()
+        if "verkaufen" in ea or exit_score >= 80:
+            return "Exit prüfen"
+        if "reduzieren" in ea or exit_score >= 65:
+            return "Reduzieren / absichern"
+        if "teilgewinn" in ea or exit_score >= 45:
+            return "Teilgewinn / Stop prüfen"
+        if exit_score >= 30:
+            return "Halten, enger führen"
+        if entry >= 68 and setup >= 60 and leadership in {"leader", "stark"}:
+            return "Halten / selektiv ausbauen"
+        return "Halten"
+
+    def _position_risk_from_row(row):
+        exit_score = _num(row.get("Exit-Score", None), 0) or 0
+        event_risk = _num(row.get("Event-Risiko", None), 0) or 0
+        distribution = _num(row.get("Distribution", None), 0) or 0
+        risk = max(exit_score, event_risk, distribution)
+        if risk >= 75:
+            return "hoch"
+        if risk >= 55:
+            return "erhöht"
+        if risk >= 30:
+            return "normal"
+        return "niedrig"
+
+    def _position_stop_from_row(row):
+        exit_score = _num(row.get("Exit-Score", None), 0) or 0
+        if exit_score >= 65:
+            return "Stop/Exit aktiv prüfen"
+        if exit_score >= 35:
+            return "Stop enger kontrollieren"
+        return "Stop beibehalten"
+
+    def _position_profit_from_row(row):
+        exit_score = _num(row.get("Exit-Score", None), 0) or 0
+        if exit_score >= 45:
+            return "Gewinnschutz prüfen"
+        if exit_score >= 25:
+            return "Gewinne laufen lassen, Stop beobachten"
+        return "kein akuter Schutzdruck"
+
+    def _position_add_from_row(row):
+        exit_score = _num(row.get("Exit-Score", None), 0) or 0
+        entry = _num(row.get("Einstieg jetzt attraktiv?", None), 0) or 0
+        setup = _num(row.get("Setup-Confidence", None), 0) or 0
+        leadership = str(row.get("Leadership-Status", "") or "").strip().lower()
+        if exit_score >= 35:
+            return "nicht nachkaufen"
+        if entry >= 70 and setup >= 65 and leadership in {"leader", "stark"}:
+            return "nur selektiv"
+        return "kein Add-on-Signal"
+
+    is_position_view = str(st.session_state.get("workspace_mode", "")) == "Positionen"
+
+    if is_position_view:
+        key_columns = [
+            ("__pm_action", "Führung"),
+            ("__pm_risk", "Risiko"),
+            ("__pm_stop", "Stop"),
+            ("__pm_profit", "Gewinnschutz"),
+            ("__pm_add", "Aufstocken"),
+            ("Exit-Aktion", "Exit-Modell"),
+        ]
+    else:
+        key_columns = [
+            ("Investment-Attraktivität", "Investment"),
+            ("Einstieg jetzt attraktiv?", "Einstieg"),
+            ("Setup-Confidence", "Setup"),
+            ("Trade-Struktur", "Trade"),
+            ("Kurzfrist-Timing", "Timing"),
+            ("Trigger-Status", "Trigger"),
+            ("Handlung", "Aktion"),
+            ("Exit-Score", "Exit"),
+            ("Exit-Aktion", "Exit-Aktion"),
+        ]
 
     for _, row in df.iterrows():
+        row = row.copy()
         ticker = _safe(row.get("Ticker", "-"))
         name = _safe(row.get("Unternehmen", row.get("Name", "-")))
+
+        if is_position_view:
+            row["__pm_action"] = _position_action_from_row(row)
+            row["__pm_risk"] = _position_risk_from_row(row)
+            row["__pm_stop"] = _position_stop_from_row(row)
+            row["__pm_profit"] = _position_profit_from_row(row)
+            row["__pm_add"] = _position_add_from_row(row)
+
         subtitle_bits = []
-        if "Sektor-Stärke" in df.columns:
-            subtitle_bits.append(f"Sektor: {_safe(row.get('Sektor-Stärke', '-'))}")
-        if "Leadership-Status" in df.columns:
-            subtitle_bits.append(f"Leadership: {_safe(row.get('Leadership-Status', '-'))}")
+        sector_text = _safe(row.get("Sektor", "-")) if "Sektor" in df.columns else "-"
+        industry_text = _safe(row.get("Industrie", "-")) if "Industrie" in df.columns else "-"
+        sector_strength = _safe(row.get("Sektor-Stärke", "-")) if "Sektor-Stärke" in df.columns else "-"
+        leadership_status = _safe(row.get("Leadership-Status", "-")) if "Leadership-Status" in df.columns else "-"
+
+        if sector_text != "-":
+            subtitle_bits.append(f"Sektor: {sector_text}")
+        elif sector_strength != "-":
+            subtitle_bits.append(f"Sektor-Stärke: {_score_label(sector_strength)}")
+        if industry_text != "-":
+            subtitle_bits.append(f"Industrie: {industry_text}")
+        if leadership_status != "-":
+            subtitle_bits.append(f"Leadership: {leadership_status}")
         subtitle = " - ".join([b for b in subtitle_bits if b])
 
         chips = []
         for col, label in key_columns:
-            if col in df.columns:
+            if col in row.index or col.startswith("__pm_"):
+                value = row.get(col, "-")
+                if is_position_view and col == "Exit-Score":
+                    value = _score_label(value, positive=False)
                 chips.append(
                     f"<div class='mobile-rank-chip'><div class='mobile-rank-chip-label'>{label}</div>"
-                    f"<div class='mobile-rank-chip-value'>{_safe(row.get(col, '-'))}</div></div>"
+                    f"<div class='mobile-rank-chip-value'>{_safe(value)}</div></div>"
                 )
 
         st.markdown(
             f"""
-            <div class="mobile-ranking-card">
+            <div class="mobile-ranking-card {'position-monitor-card' if is_position_view else ''}">
                 <div class="mobile-ranking-head">
                     <div class="mobile-ranking-ticker">{ticker}</div>
                     <div class="mobile-ranking-name">{name}</div>
@@ -13082,10 +13207,18 @@ if st.session_state.get("analysis_requested", False):
         ranking_df["Industrie-Stärke"] = ranking_df["Ticker"].astype(str).map(industry_strength_map)
         ranking_df["RS-Benchmark-Score"] = ranking_df["Ticker"].astype(str).map(rs_benchmark_map)
         ranking_df["RS-Beschleunigung"] = ranking_df["Ticker"].astype(str).map(rs_accel_map)
+        sector_label_map = {str(k): v.get("sector_label", v.get("sector", "-")) for k, v in results_map.items()}
+        industry_label_map = {str(k): v.get("industry_label", v.get("industry", "-")) for k, v in results_map.items()}
+        ranking_df["Sektor"] = ranking_df["Ticker"].astype(str).map(sector_label_map)
+        ranking_df["Industrie"] = ranking_df["Ticker"].astype(str).map(industry_label_map)
         ranking_df["Trendqualität"] = ranking_df["Ticker"].astype(str).map(trend_quality_map)
         ranking_df["Base-Qualität"] = ranking_df["Ticker"].astype(str).map(base_quality_map)
         ranking_df["Setup-Typ-Qualität"] = ranking_df["Ticker"].astype(str).map(setup_type_quality_map)
         ranking_df["Setup-Priorität"] = ranking_df["Ticker"].astype(str).map(setup_priority_map)
+        sector_label_map = {str(r.get("ticker", "")): r.get("sector_label", r.get("sector", "-")) for r in results}
+        industry_label_map = {str(r.get("ticker", "")): r.get("industry_label", r.get("industry", "-")) for r in results}
+        ranking_df["Sektor"] = ranking_df["Ticker"].astype(str).map(sector_label_map)
+        ranking_df["Industrie"] = ranking_df["Ticker"].astype(str).map(industry_label_map)
         volume_quality_map = {str(r.get("ticker", "")): r.get("volume_quality_score", np.nan) for r in results}
         accumulation_map = {str(r.get("ticker", "")): r.get("accumulation_score", np.nan) for r in results}
         distribution_map = {str(r.get("ticker", "")): r.get("distribution_pressure_score", np.nan) for r in results}
@@ -13249,7 +13382,7 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
 
     ranking_cols = [
         c for c in [
-            "Ticker", "Name", "Kandidatentyp", "Radar-Risiko", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
+            "Ticker", "Name", "Sektor", "Industrie", "Kandidatentyp", "Radar-Risiko", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
             "Leadership", "Leadership-Status", "Sektor-Stärke",
             "Trendqualität", "Base-Qualität", "Setup-Priorität",
             "Volumenqualität",

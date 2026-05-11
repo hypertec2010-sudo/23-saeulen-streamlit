@@ -641,7 +641,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.20",
+        "Export_Version": "v15.21",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1157,6 +1157,98 @@ def radar_reason_professional(result, style_name_local):
     suffix = f"Typ: {typ}; Risiko: {risk}; Regime: {regime}."
     return f"{base} — {suffix}"
 
+
+def radar_setup_maturity(result):
+    """v15.21: Setup-Reife im Radar nicht nur aus einem Score, sondern aus Trigger, Entry und Setup-Confidence ableiten."""
+    trigger = str(result.get("trigger_status", "") or "")
+    entry = _radar_safe_num(result.get("trading_case_score"), 0)
+    confidence = _radar_safe_num(result.get("setup_confidence"), 50)
+    valid = bool(result.get("valid_trade_setup", False))
+    risk = radar_risk_bucket(result)
+
+    if trigger in {"Aktiv", "Jetzt prüfbar"} and entry >= 70 and valid and risk != "hoch":
+        return "prüfbar"
+    if trigger in {"Aktiv", "Jetzt prüfbar", "Nahe dran", "Fast prüfbar"} and entry >= 58 and confidence >= 50:
+        return "nahe dran"
+    if entry >= 48 or confidence >= 55 or trigger in {"Frühe Beobachtung", "Früh interessant", "Beobachten", "Weiter beobachten"}:
+        return "aufbauen"
+    return "früh"
+
+
+def radar_priority_label(result, style_name_local="Ausgewogen"):
+    maturity = radar_setup_maturity(result)
+    risk = radar_risk_bucket(result)
+    typ = radar_candidate_type(result)
+    invest = _radar_safe_num(result.get("investment_case_score"), 0)
+    entry = _radar_safe_num(result.get("trading_case_score"), 0)
+    style_name_local = str(style_name_local or "Ausgewogen")
+
+    if maturity == "prüfbar" and invest >= 60 and risk not in {"hoch"}:
+        if typ in {"Leader", "Base-Setup", "Ausgewogen"} or style_name_local == "Turnaround":
+            return "hoch"
+    if maturity in {"prüfbar", "nahe dran"} and invest >= 55 and risk != "hoch":
+        return "mittel"
+    if typ in {"Hype / Event", "Riskant"} or risk == "hoch" or entry < 45:
+        return "niedrig"
+    return "mittel" if invest >= 65 else "niedrig"
+
+
+def radar_next_step(result):
+    maturity = radar_setup_maturity(result)
+    typ = radar_candidate_type(result)
+    risk = radar_risk_bucket(result)
+    trigger = str(result.get("trigger_status", "") or "")
+    next_trigger = str(result.get("next_trigger", "") or "").strip()
+
+    if risk == "hoch":
+        return "Nur klein/defensiv prüfen; Risiko zuerst klären"
+    if typ == "Hype / Event":
+        return "Nicht jagen; erst Abkühlung oder saubere Zone abwarten"
+    if maturity == "prüfbar":
+        return "Entry-Zone und negativen Trigger prüfen"
+    if maturity == "nahe dran":
+        return next_trigger if next_trigger and next_trigger != "-" else "Bestätigung oder Rücksetzer abwarten"
+    if maturity == "aufbauen":
+        return "Auf Watchlist lassen; Setup-Reife beobachten"
+    if trigger:
+        return "Weiter beobachten"
+    return "Noch kein aktiver Fokus"
+
+
+def radar_brake_reason(result):
+    risk = radar_risk_bucket(result)
+    typ = radar_candidate_type(result)
+    top_red_flag = str(result.get("top_red_flag", "") or "").strip()
+    regime = str((result.get("market_info", {}) or {}).get("regime", "") or "").upper()
+    entry = _radar_safe_num(result.get("trading_case_score"), 0)
+    lead = _radar_safe_num(result.get("leadership_score"), 50)
+
+    if top_red_flag and top_red_flag != "-":
+        return shorten_text(top_red_flag, 52)
+    if risk == "hoch":
+        return "Risiko/Volatilität zu hoch für aggressives Vorgehen"
+    if typ == "Hype / Event":
+        return "Event-/Momentumrisiko kann Einstieg verzerren"
+    if typ == "Bounce":
+        return "Bounce ist noch kein bestätigter Leader"
+    if regime == "NEGATIV":
+        return "Marktumfeld bremst neue Entries"
+    if entry < 55:
+        return "Einstiegsreife noch zu schwach"
+    if lead < 50:
+        return "Relative Stärke noch nicht überzeugend"
+    return "keine dominante Bremse"
+
+
+def radar_reason_professional_v1521(result, style_name_local):
+    typ = radar_candidate_type(result)
+    maturity = radar_setup_maturity(result)
+    priority = radar_priority_label(result, style_name_local)
+    risk = radar_risk_bucket(result)
+    next_step = radar_next_step(result)
+    brake = radar_brake_reason(result)
+    return f"{typ}; Reife: {maturity}; Priorität: {priority}; Risiko: {risk}. Nächster Schritt: {next_step}. Bremse: {brake}."
+
 def build_radar_reason_shared(result, style_name_local):
     trigger = str(result.get("trigger_status", "") or "")
     setup_type_local = str(result.get("setup_type", "") or "")
@@ -1251,7 +1343,7 @@ def run_radar_snapshot_job(job):
             return False, "Keine auswertbaren Ergebnisse", {"analyzed_count": 0, "resolution_rows": resolution_rows, "errors": errors}
         radar_df = build_ranking_table(results)
         result_map = {str(r.get("ticker", "")): r for r in results}
-        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_reason_professional(r, style_name) for r in results})
+        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_reason_professional_v1521(r, style_name) for r in results})
         radar_df["__style_sort"] = radar_df.apply(lambda row: compute_radar_style_sort_shared(row, result_map, style_name), axis=1)
         signature = _radar_snapshot_signature(universe, style_name, max_candidates, custom_text)
         payload = {
@@ -7211,6 +7303,10 @@ def build_ranking_table(results):
             "Setup-Typ": r.get("setup_type", "-"),
             "Kandidatentyp": radar_candidate_type(r),
             "Radar-Risiko": radar_risk_bucket(r),
+            "Setup-Reife": radar_setup_maturity(r),
+            "Radar-Priorität": radar_priority_label(r, "Ausgewogen"),
+            "Nächster Schritt": radar_next_step(r),
+            "Was bremst": radar_brake_reason(r),
             "Benchmark": r.get("benchmark_label", "-"),
             "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
             "Company Quality": r.get("company", np.nan),
@@ -10962,9 +11058,14 @@ if workspace_mode:
                     radar_result_map = {str(r.get("ticker", "")): r for r in radar_results} if radar_results else {}
                 else:
                     radar_df = build_ranking_table(radar_results)
-                    radar_reason_map = {str(r.get("ticker", "")): radar_reason_professional(r, str(st.session_state.get("radar_screening_style", "Leader") or "Leader")) for r in radar_results}
+                    radar_reason_map = {str(r.get("ticker", "")): radar_reason_professional_v1521(r, str(st.session_state.get("radar_screening_style", "Leader") or "Leader")) for r in radar_results}
                     radar_result_map = {str(r.get("ticker", "")): r for r in radar_results}
                     radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map(radar_reason_map)
+                    _radar_style_for_cols = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
+                    radar_df["Setup-Reife"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_setup_maturity(r) for r in radar_results})
+                    radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_priority_label(r, _radar_style_for_cols) for r in radar_results})
+                    radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_next_step(r) for r in radar_results})
+                    radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_brake_reason(r) for r in radar_results})
                     radar_df["__trigger_sort"] = radar_df.get("Trigger-Status", pd.Series(dtype=str)).map(trigger_rank_map).fillna(0)
 
                 def compute_radar_style_sort(row):
@@ -10974,6 +11075,17 @@ if workspace_mode:
 
                 if "__style_sort" not in radar_df.columns or radar_df["__style_sort"].isna().all():
                     radar_df["__style_sort"] = radar_df.apply(compute_radar_style_sort, axis=1)
+
+                # v15.21: professionelle Radar-Spalten auch fuer gespeicherte Snapshots nachbefuellen.
+                _radar_style_for_cols = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
+                for _col_name in ["Setup-Reife", "Radar-Priorität", "Nächster Schritt", "Was bremst"]:
+                    if _col_name not in radar_df.columns:
+                        radar_df[_col_name] = "-"
+                if radar_result_map:
+                    radar_df["Setup-Reife"] = radar_df.apply(lambda _row: radar_setup_maturity(radar_result_map.get(str(_row.get("Ticker", "")), {})) if str(_row.get("Setup-Reife", "")) in {"", "-", "nan"} else _row.get("Setup-Reife"), axis=1)
+                    radar_df["Radar-Priorität"] = radar_df.apply(lambda _row: radar_priority_label(radar_result_map.get(str(_row.get("Ticker", "")), {}), _radar_style_for_cols) if str(_row.get("Radar-Priorität", "")) in {"", "-", "nan"} else _row.get("Radar-Priorität"), axis=1)
+                    radar_df["Nächster Schritt"] = radar_df.apply(lambda _row: radar_next_step(radar_result_map.get(str(_row.get("Ticker", "")), {})) if str(_row.get("Nächster Schritt", "")) in {"", "-", "nan"} else _row.get("Nächster Schritt"), axis=1)
+                    radar_df["Was bremst"] = radar_df.apply(lambda _row: radar_brake_reason(radar_result_map.get(str(_row.get("Ticker", "")), {})) if str(_row.get("Was bremst", "")) in {"", "-", "nan"} else _row.get("Was bremst"), axis=1)
 
                 if not radar_prebuilt_rows and not radar_df.empty:
                     radar_snapshot_payload = {
@@ -10992,7 +11104,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("Aufbau, Darstellung und Auswahl sind jetzt für alle Listen identisch. Die Einteilung erfolgt immer zuerst über den vollständigen Radar-Lauf und wird erst danach je Abschnitt begrenzt.")
+                st.caption("v15.21: Der Radar trennt Kandidatentyp, Setup-Reife, Radar-Priorität, Risiko, nächsten Schritt und Bremsfaktor. Sortiert wird nicht mehr nur score-lastig.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -11002,6 +11114,8 @@ if workspace_mode:
                             "Radar-Score",
                             "Investment-Attraktivität",
                             "Einstieg jetzt attraktiv?",
+                            "Radar-Priorität",
+                            "Setup-Reife",
                             "Setup-Priorität",
                             "Trigger-Stufe",
                             "Ticker",
@@ -11021,6 +11135,8 @@ if workspace_mode:
                     "Radar-Score": "__style_sort",
                     "Investment-Attraktivität": "Investment-Attraktivität",
                     "Einstieg jetzt attraktiv?": "Einstieg jetzt attraktiv?",
+                    "Radar-Priorität": "__priority_sort",
+                    "Setup-Reife": "__maturity_sort",
                     "Setup-Priorität": "Setup-Priorität",
                     "Trigger-Stufe": "__trigger_sort",
                     "Ticker": "Ticker",
@@ -11028,6 +11144,8 @@ if workspace_mode:
                 radar_user_sort_col = radar_sort_key_map.get(radar_sort_display, "__style_sort")
                 radar_user_sort_ascending = (radar_sort_order == "Aufsteigend")
 
+                radar_df["__priority_sort"] = radar_df.get("Radar-Priorität", pd.Series([""] * len(radar_df))).astype(str).str.lower().map({"hoch": 3, "mittel": 2, "niedrig": 1}).fillna(0)
+                radar_df["__maturity_sort"] = radar_df.get("Setup-Reife", pd.Series([""] * len(radar_df))).astype(str).str.lower().map({"prüfbar": 4, "pruefbar": 4, "nahe dran": 3, "aufbauen": 2, "früh": 1, "frueh": 1}).fillna(0)
                 trigger_series = radar_df["Trigger-Status"].astype(str).fillna("") if "Trigger-Status" in radar_df.columns else pd.Series([""] * len(radar_df))
                 entry_series = pd.to_numeric(radar_df["Einstieg jetzt attraktiv?"], errors="coerce") if "Einstieg jetzt attraktiv?" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
                 invest_series = pd.to_numeric(radar_df["Investment-Attraktivität"], errors="coerce") if "Investment-Attraktivität" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
@@ -11150,8 +11268,8 @@ if workspace_mode:
                             unsafe_allow_html=True,
                         )
                     else:
-                        header_cols = st.columns([0.7, 0.9, 1.8, 1.4, 1.3, 1.6, 1.4, 1.4, 1.6, 2.8])
-                        headers = ["Auswahl", "Ticker", "Name", "Typ", "Risiko", "Investment", "Einstieg", "Priorität", "Trigger", "Warum heute auffällig"]
+                        header_cols = st.columns([0.6, 0.8, 1.7, 1.25, 1.0, 1.0, 1.05, 1.15, 1.25, 1.4, 2.4, 1.8])
+                        headers = ["Auswahl", "Ticker", "Name", "Typ", "Reife", "Risiko", "Radar-Prio", "Investment", "Einstieg", "Trigger", "Nächster Schritt", "Was bremst"]
                         for _col, _hdr in zip(header_cols, headers):
                             _col.markdown(f"**{_hdr}**")
 
@@ -11163,7 +11281,7 @@ if workspace_mode:
                             if checkbox_key not in st.session_state:
                                 st.session_state[checkbox_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
 
-                            row_cols = st.columns([0.7, 0.9, 1.8, 1.4, 1.3, 1.6, 1.4, 1.4, 1.6, 2.8])
+                            row_cols = st.columns([0.6, 0.8, 1.7, 1.25, 1.0, 1.0, 1.05, 1.15, 1.25, 1.4, 2.4, 1.8])
                             is_selected = row_cols[0].checkbox(
                                 "",
                                 value=bool(st.session_state.get(checkbox_key, False)),
@@ -11176,12 +11294,14 @@ if workspace_mode:
                             row_cols[1].write(_ticker)
                             row_cols[2].write(str(_row.get("Name", "-")))
                             row_cols[3].write(str(_row.get("Kandidatentyp", _row.get("Setup-Typ", "-"))))
-                            row_cols[4].write(str(_row.get("Radar-Risiko", "-")))
-                            row_cols[5].write(radar_score_badge(_row.get("Investment-Attraktivität", "-")))
-                            row_cols[6].write(radar_score_badge(_row.get("Einstieg jetzt attraktiv?", "-")))
-                            row_cols[7].write(radar_score_badge(_row.get("Setup-Priorität", "-")))
-                            row_cols[8].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
-                            row_cols[9].write(str(_row.get("Warum heute auffällig", _row.get("Kurzfazit", "-"))))
+                            row_cols[4].write(str(_row.get("Setup-Reife", "-")))
+                            row_cols[5].write(str(_row.get("Radar-Risiko", "-")))
+                            row_cols[6].write(radar_priority_badge(_row.get("Radar-Priorität", _row.get("Watchlist-Priorität", "-"))))
+                            row_cols[7].write(radar_score_badge(_row.get("Investment-Attraktivität", "-")))
+                            row_cols[8].write(radar_score_badge(_row.get("Einstieg jetzt attraktiv?", "-")))
+                            row_cols[9].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
+                            row_cols[10].write(str(_row.get("Nächster Schritt", "-")))
+                            row_cols[11].write(str(_row.get("Was bremst", _row.get("Top Red Flag", "-"))))
 
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 

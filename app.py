@@ -11416,6 +11416,18 @@ if workspace_mode:
                         return f"🔴 {raw}"
                     return raw if raw else '-'
 
+                # v15.23.8: Name-Anzeige auch im gerenderten Abschnitt robust machen.
+                # Der Abschnitt "Jetzt spannend" kann aus sortierten/gesplitteten Frames kommen,
+                # in denen Name noch den Ticker-Fallback enthaelt. Direkt beim Rendern erneut pruefen.
+                def _radar_render_name_v15238(_row):
+                    _ticker = str(_row.get("Ticker", "") or "").strip()
+                    _current = str(_row.get("Name", "") or "").strip()
+                    _ticker_norm = _ticker.upper()
+                    _root = _ticker_norm.split(".")[0] if _ticker_norm else ""
+                    if (not _current) or _current.lower() in {"-", "nan", "none", "null"} or _current.upper() in {_ticker_norm, _root}:
+                        return radar_company_display_name_v15237(radar_result_map.get(_ticker, {}), _ticker, 30)
+                    return shorten_text(_current, 30)
+
                 section_specs = [
                     ("Jetzt spannend", "Aktive oder direkt prüfbare Kandidaten mit brauchbarer Einstiegsreife.", radar_now_df),
                     ("Nahe dran", "Interessante Kandidaten, bei denen Timing oder Bestätigung noch einen Schritt brauchen.", radar_near_df),
@@ -11488,7 +11500,7 @@ if workspace_mode:
                                 selected_radar_tickers.append(_ticker)
 
                             row_cols[1].write(_ticker)
-                            row_cols[2].write(str(_row.get("Name", "-")))
+                            row_cols[2].write(_radar_render_name_v15238(_row))
                             row_cols[3].write(str(_row.get("Kandidatentyp", _row.get("Setup-Typ", "-"))))
                             row_cols[4].write(str(_row.get("Setup-Reife", "-")))
                             row_cols[5].write(str(_row.get("Radar-Risiko", "-")))

@@ -2407,7 +2407,7 @@ div[data-testid="stButton"] > button p{
 }
 
 
-/* v15.19.7: harte Angleichung nur der nativen Export-Buttons */
+/* v15.19.10: harte Angleichung nur der nativen Export-Buttons */
 div[data-testid="stDownloadButton"] button,
 div[data-testid="stButton"] button{
     min-height:38px !important;
@@ -14138,7 +14138,7 @@ if result is not None:
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         st.markdown("""
         <style>
-        /* v15.19.8: Export-Buttons gezielt ueber Streamlit-Key angleichen.
+        /* v15.19.10: Export-Buttons gezielt ueber Streamlit-Key angleichen.
            Wichtig: spaet injiziert, damit fruehere globale HorizontalBlock-Button-Regeln
            den Sheets-Button nicht mehr auf Landing-/Radar-Button-Hoehe ziehen. */
         [class*="st-key-csv_download_single_"] button,
@@ -14169,22 +14169,20 @@ if result is not None:
         }
         </style>
         """, unsafe_allow_html=True)
-        se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
-        with se_outer1:
-            st.download_button(
-                "CSV",
-                data=csv_payload,
-                file_name=csv_filename,
-                mime="text/csv",
-                use_container_width=True,
-                key=f"csv_download_single_{ticker}",
-            )
-        with se_outer2:
-            if st.button("Sheets", use_container_width=True, key=f"sheet_log_single_{ticker}"):
-                ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
-                show_sheet_result(ok, msg)
-        with se_outer3:
-            st.markdown("", unsafe_allow_html=True)
+        # v15.19.10: Export-Buttons bewusst nicht mehr in st.columns() rendern.
+        # Grund: globale HorizontalBlock-/CTA-Styles blaehen native st.button-Elemente in Spalten auf.
+        # Gestapelt bleiben CSV und Sheets konsistent, ohne neues Fenster und ohne URL-Reanalyse.
+        st.download_button(
+            "CSV",
+            data=csv_payload,
+            file_name=csv_filename,
+            mime="text/csv",
+            use_container_width=False,
+            key=f"csv_download_single_{ticker}",
+        )
+        if st.button("Sheets", use_container_width=False, key=f"sheet_log_single_{ticker}"):
+            ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
+            show_sheet_result(ok, msg)
 
         with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
             c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
@@ -15584,42 +15582,3 @@ if result is not None:
                 )
 
             st.caption("Diese erweiterte Sicht zeigt die zusätzlichen Diagnose- und Einordnungsbausteine der Entscheidung.")
-
-# ---------- v15.19.9: finaler CSS-Override fuer Export-Buttons ----------
-# Wird bewusst ganz am Ende injiziert, damit spaeter gerenderte globale Button-Regeln
-# den Sheets-Button nicht wieder auf CTA-Hoehe ziehen.
-st.markdown("""
-<style>
-[class*="st-key-csv_download_single_"] button,
-[class*="st-key-sheet_log_single_"] button,
-div[data-testid="stHorizontalBlock"]:has([class*="st-key-csv_download_single_"]) div[data-testid="stDownloadButton"] > button,
-div[data-testid="stHorizontalBlock"]:has([class*="st-key-sheet_log_single_"]) div[data-testid="stButton"] > button{
-    min-height:38px !important;
-    height:38px !important;
-    max-height:38px !important;
-    padding:0 0.95rem !important;
-    line-height:1 !important;
-    border-radius:14px !important;
-    display:inline-flex !important;
-    align-items:center !important;
-    justify-content:center !important;
-    white-space:nowrap !important;
-    transform:none !important;
-}
-[class*="st-key-csv_download_single_"] button::before,
-[class*="st-key-sheet_log_single_"] button::before,
-div[data-testid="stHorizontalBlock"]:has([class*="st-key-sheet_log_single_"]) div[data-testid="stButton"] > button::before{
-    content:none !important;
-    display:none !important;
-}
-[class*="st-key-csv_download_single_"] button *,
-[class*="st-key-sheet_log_single_"] button *,
-div[data-testid="stHorizontalBlock"]:has([class*="st-key-sheet_log_single_"]) div[data-testid="stButton"] > button *{
-    min-height:0 !important;
-    height:auto !important;
-    margin:0 !important;
-    padding:0 !important;
-    line-height:1 !important;
-}
-</style>
-""", unsafe_allow_html=True)

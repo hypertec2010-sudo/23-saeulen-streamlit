@@ -14136,6 +14136,39 @@ if result is not None:
         csv_href = f"data:text/csv;base64,{csv_b64}"
 
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
+        st.markdown("""
+        <style>
+        /* v15.19.8: Export-Buttons gezielt ueber Streamlit-Key angleichen.
+           Wichtig: spaet injiziert, damit fruehere globale HorizontalBlock-Button-Regeln
+           den Sheets-Button nicht mehr auf Landing-/Radar-Button-Hoehe ziehen. */
+        [class*="st-key-csv_download_single_"] button,
+        [class*="st-key-sheet_log_single_"] button{
+            min-height:38px !important;
+            height:38px !important;
+            max-height:38px !important;
+            padding:0 0.95rem !important;
+            line-height:1 !important;
+            border-radius:14px !important;
+            display:inline-flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+            white-space:nowrap !important;
+            transform:none !important;
+        }
+        [class*="st-key-csv_download_single_"] button::before,
+        [class*="st-key-sheet_log_single_"] button::before{
+            content:none !important;
+            display:none !important;
+        }
+        [class*="st-key-csv_download_single_"] button *,
+        [class*="st-key-sheet_log_single_"] button *{
+            margin:0 !important;
+            padding:0 !important;
+            line-height:1 !important;
+            min-height:0 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
         with se_outer1:
             st.download_button(

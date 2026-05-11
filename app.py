@@ -3204,6 +3204,53 @@ def apply_regime_to_action(base_action, regime_ctx, timing_label="noch nicht rei
     return result, reason
 
 
+def _exec_summary_improve_text_v1523_11(next_trigger, final_action="-", verdict="-"):
+    """Macht aus Trigger-Status saubere Executive-Summary-Sprache.
+
+    Die Executive Summary soll keine Statuswerte wie "Jetzt prüfbar" als
+    Bedingung anzeigen. Diese Funktion übersetzt solche Werte in konkrete,
+    handlungsnahe Aussagen.
+    """
+    nt = str(next_trigger or "").strip()
+    low = nt.lower()
+    fa = str(final_action or "").strip().lower()
+    vd = str(verdict or "").strip().lower()
+
+    if low in {"", "-", "none", "nan", "nicht anwendbar"}:
+        return "sauberem Trigger nach oben"
+
+    # Reine Statuslabels sind keine sinnvollen "Verbessert sich bei"-Bedingungen.
+    if low in {"jetzt prüfbar", "jetzt pruefbar", "aktiv"}:
+        if fa == "kaufen" or vd == "ja":
+            return "Einstieg bleibt prüfbar, solange Kurs und Triggerzone halten."
+        return "klarer Bestätigung des aktiven Triggers"
+
+    # Wenn die Aktion noch nicht Kaufen ist, darf der Wartetrigger explizit bleiben.
+    return nt
+
+
+def _exec_summary_worsen_text_v1523_11(negative_trigger, top_red_flag="-"):
+    """Filtert nicht-operative Fundamentalhinweise aus "Kippt bei" heraus.
+
+    "Kippt bei" soll eine konkrete Invalidation / einen Risikotrigger nennen.
+    Einzelne Fundamental-Hinweise wie kurzfristig negatives Gewinnwachstum sind
+    dafür zu unscharf und wirkten in der UI alarmistisch.
+    """
+    val = str(negative_trigger or "").strip()
+    low = val.lower()
+    bad_tokens = [
+        "gewinnwachstum",
+        "ertrags-risiko",
+        "ertragsrisiko",
+        "ertragsdynamik",
+        "wachstum stark negativ",
+        "kurzfristiges gewinnwachstum",
+    ]
+    if low in {"", "-", "none", "nan"} or any(t in low for t in bad_tokens):
+        return "Bruch der nächsten relevanten Support- oder Trigger-Zone"
+    return val
+
+
 def build_exec_summary_phase1(final_timing, final_risk, final_action, regime_ctx, next_trigger="-", negative_trigger="-"):
     ft = str(final_timing or "noch nicht reif")
     fr = str(final_risk or "stabil")
@@ -3240,8 +3287,8 @@ def build_exec_summary_phase1(final_timing, final_risk, final_action, regime_ctx
     elif bias < 0:
         why = why + " Das Marktumfeld macht frühe Long-Signale aktuell anfälliger."
 
-    improve = next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"
-    worsen = negative_trigger if str(negative_trigger).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"
+    improve = _exec_summary_improve_text_v1523_11(next_trigger, final_action=fa, verdict=verdict)
+    worsen = _exec_summary_worsen_text_v1523_11(negative_trigger)
     return verdict, why, improve, worsen
 
 
@@ -7370,7 +7417,7 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
         if val:
             return shorten_text(val, max_len)
 
-    # v15.23.10: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
+    # v15.23.11: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
     # Yahoo-Suche liefert fuer reine Ticker oft shortname/longname; das verhindert
     # insbesondere im Abschnitt "Jetzt spannend" die Anzeige Ticker = Name.
     if ticker:

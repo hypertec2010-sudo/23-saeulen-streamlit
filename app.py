@@ -173,6 +173,7 @@ import streamlit as st
 from analysis_core import analyze_stock
 import yfinance as yf
 from plotly.subplots import make_subplots
+import logging_utils as _logging_utils
 from logging_utils import (
     append_auto_run_log,
     append_df_to_gsheet,
@@ -197,6 +198,137 @@ try:
     import telegram_utils as _telegram_utils
 except Exception:
     _telegram_utils = None
+
+
+# ---------- v15.19.3: bestehende Multi-Sheet-Logging-Logik behalten, Secrets robuster lesen ----------
+def _v15193_secret_to_plain(obj):
+    """Konvertiert Streamlit-Secret-Objekte/AttrDicts rekursiv in normale Python-Typen."""
+    try:
+        if hasattr(obj, "to_dict"):
+            obj = obj.to_dict()
+    except Exception:
+        pass
+    if isinstance(obj, dict):
+        return {str(k): _v15193_secret_to_plain(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_v15193_secret_to_plain(v) for v in obj]
+    return obj
+
+
+def _v15193_get_secret_or_env(key, default=None):
+    """Wie logging_utils.get_secret_or_env, aber auch fuer TOML-Bloecke und verschachtelte Secrets."""
+    try:
+        if key in st.secrets:
+            return _v15193_secret_to_plain(st.secrets[key])
+    except Exception:
+        pass
+    try:
+        # Haefige alternative Ablageorte, ohne die bestehende Spreadsheet-Name-Architektur zu aendern.
+        for section in ("gcp", "sheets", "google_sheets", "connections"):
+            if section in st.secrets:
+                sec = _v15193_secret_to_plain(st.secrets[section])
+                if isinstance(sec, dict):
+                    if key in sec:
+                        return sec.get(key)
+                    if section == "connections" and isinstance(sec.get("gsheets"), dict):
+                        gs = sec.get("gsheets") or {}
+                        if key in gs:
+                            return gs.get(key)
+    except Exception:
+        pass
+    return os.environ.get(key, default)
+
+
+def _v15193_extract_gcp_credentials():
+    """Liest Service-Account-Credentials als JSON-String oder TOML-Block.
+
+    Bewusst ohne GOOGLE_SHEET_ID: Die bestehende Logik oeffnet weiterhin per
+    LOG_SPREADSHEET_NAME und schreibt in mehrere Worksheets.
+    """
+    candidates = []
+    try:
+        for key in ("GCP_CREDENTIALS", "gcp_service_account", "google_service_account"):
+            if key in st.secrets:
+                candidates.append(st.secrets[key])
+        for section in ("gcp", "sheets", "google_sheets"):
+            if section in st.secrets:
+                sec = _v15193_secret_to_plain(st.secrets[section])
+                if isinstance(sec, dict):
+                    for key in ("GCP_CREDENTIALS", "credentials", "service_account"):
+                        if key in sec:
+                            candidates.append(sec[key])
+        if "connections" in st.secrets:
+            con = _v15193_secret_to_plain(st.secrets["connections"])
+            if isinstance(con, dict):
+                gs = con.get("gsheets") or con.get("gspread") or {}
+                if isinstance(gs, dict):
+                    for key in ("GCP_CREDENTIALS", "credentials", "service_account"):
+                        if key in gs:
+                            candidates.append(gs[key])
+                    # Manche Streamlit-Connections legen die Service-Account-Felder direkt hier ab.
+                    candidates.append(gs)
+    except Exception:
+        pass
+    env_val = os.environ.get("GCP_CREDENTIALS")
+    if env_val:
+        candidates.append(env_val)
+
+    allowed = {
+        "type", "project_id", "private_key_id", "private_key", "client_email",
+        "client_id", "auth_uri", "token_uri", "auth_provider_x509_cert_url",
+        "client_x509_cert_url", "universe_domain",
+    }
+    for raw in candidates:
+        val = _v15193_secret_to_plain(raw)
+        if not val:
+            continue
+        if isinstance(val, str):
+            s = val.strip()
+            if not s:
+                continue
+            try:
+                val = json.loads(s)
+            except Exception:
+                continue
+        if isinstance(val, dict):
+            # Falls ein Wrapper wie {credentials:{...}} genutzt wird.
+            for nested_key in ("credentials", "service_account", "GCP_CREDENTIALS"):
+                nested = val.get(nested_key)
+                if nested:
+                    nested_plain = _v15193_secret_to_plain(nested)
+                    if isinstance(nested_plain, str):
+                        try:
+                            nested_plain = json.loads(nested_plain.strip())
+                        except Exception:
+                            nested_plain = None
+                    if isinstance(nested_plain, dict) and nested_plain.get("client_email"):
+                        val = nested_plain
+                        break
+            cleaned = {k: v for k, v in val.items() if k in allowed}
+            if cleaned.get("private_key"):
+                cleaned["private_key"] = str(cleaned["private_key"]).replace("\\n", "\n")
+            if cleaned.get("client_email") and cleaned.get("private_key"):
+                return cleaned, None
+    return None, "GCP_CREDENTIALS fehlt oder wurde nicht in einem unterstuetzten Format gefunden. Unterstuetzt sind JSON-String, [GCP_CREDENTIALS], [gcp_service_account] oder [google_service_account]."
+
+
+def _v15193_get_gsheet_client():
+    creds, err = _v15193_extract_gcp_credentials()
+    if not creds:
+        return None, err
+    try:
+        gc = gspread.service_account_from_dict(creds)
+        return gc, None
+    except Exception as e:
+        return None, f"GCP_CREDENTIALS ungueltig: {e}"
+
+# Monkey-Patch im logging_utils-Modul: append_df_to_gsheet und die Watchlist-/Alert-Funktionen
+# behalten ihre Multi-Sheet-Logik, lesen Secrets aber robuster.
+try:
+    _logging_utils.get_secret_or_env = _v15193_get_secret_or_env
+    _logging_utils.get_gsheet_client = _v15193_get_gsheet_client
+except Exception:
+    pass
 
 
 # ---------- v15.16: Export-/Sheets-Schutzschicht fuer neue Analysefelder ----------

@@ -12745,13 +12745,10 @@ try:
 except Exception:
     single_export_df = pd.DataFrame()
 
+# v15.19.5: Sheets-Logging nicht mehr per Query-Parameter/Link ausloesen.
+# Der fruehere href ?sheet_log=1 oeffnete je nach Browser/Deployment ein neues Fenster
+# und startete die Analyse erneut. Ab jetzt wird nur ein nativer Streamlit-Button genutzt.
 sheet_log_triggered = False
-try:
-    qp = st.query_params
-    if str(qp.get("sheet_log", "0")) == "1":
-        sheet_log_triggered = True
-except Exception:
-    sheet_log_triggered = False
 
 if result is not None:
     ticker = result["ticker"]
@@ -14041,27 +14038,17 @@ if result is not None:
         csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
         csv_href = f"data:text/csv;base64,{csv_b64}"
 
-        if sheet_log_triggered:
-            ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
-            show_sheet_result(ok, msg)
-            try:
-                st.query_params.clear()
-            except Exception:
-                pass
-
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
-        sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
         with se_outer1:
             st.markdown(
                 f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
                 unsafe_allow_html=True
             )
         with se_outer2:
-            st.markdown(
-                f'<a class="export-action-btn" href="{sheet_href}"><span>Sheets</span></a>',
-                unsafe_allow_html=True
-            )
+            if st.button("Sheets", use_container_width=True, key=f"sheet_log_single_{ticker}"):
+                ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
+                show_sheet_result(ok, msg)
         with se_outer3:
             st.markdown("", unsafe_allow_html=True)
 

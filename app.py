@@ -14138,51 +14138,68 @@ if result is not None:
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         st.markdown("""
         <style>
-        /* v15.19.10: Export-Buttons gezielt ueber Streamlit-Key angleichen.
-           Wichtig: spaet injiziert, damit fruehere globale HorizontalBlock-Button-Regeln
-           den Sheets-Button nicht mehr auf Landing-/Radar-Button-Hoehe ziehen. */
-        [class*="st-key-csv_download_single_"] button,
-        [class*="st-key-sheet_log_single_"] button{
+        /* v15.19.11: Export-Buttons wieder nebeneinander, aber lokal vom globalen
+           stHorizontalBlock-CTA-Style entkoppelt. Der Container-Key ist absichtlich
+           der Zielanker, weil die globalen Regeln sonst alle Buttons in Spalten aufblasen. */
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button,
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stDownloadButton"] > button,
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button,
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button{
             min-height:38px !important;
             height:38px !important;
             max-height:38px !important;
             padding:0 0.95rem !important;
             line-height:1 !important;
             border-radius:14px !important;
-            display:inline-flex !important;
+            display:flex !important;
             align-items:center !important;
             justify-content:center !important;
             white-space:nowrap !important;
             transform:none !important;
+            box-shadow:0 8px 18px rgba(15,23,42,0.18) !important;
         }
-        [class*="st-key-csv_download_single_"] button::before,
-        [class*="st-key-sheet_log_single_"] button::before{
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button::before,
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button::before,
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button::before{
             content:none !important;
             display:none !important;
         }
-        [class*="st-key-csv_download_single_"] button *,
-        [class*="st-key-sheet_log_single_"] button *{
+        [class*="st-key-export_buttons_bar_single"] button *,
+        [class*="st-key-export_buttons_bar_single"] button p,
+        [class*="st-key-export_buttons_bar_single"] button span,
+        [class*="st-key-export_buttons_bar_single"] button div{
             margin:0 !important;
             padding:0 !important;
             line-height:1 !important;
             min-height:0 !important;
+            height:auto !important;
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+        }
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"],
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"]{
+            min-height:38px !important;
+            height:38px !important;
+            margin:0 !important;
         }
         </style>
         """, unsafe_allow_html=True)
-        # v15.19.10: Export-Buttons bewusst nicht mehr in st.columns() rendern.
-        # Grund: globale HorizontalBlock-/CTA-Styles blaehen native st.button-Elemente in Spalten auf.
-        # Gestapelt bleiben CSV und Sheets konsistent, ohne neues Fenster und ohne URL-Reanalyse.
-        st.download_button(
-            "CSV",
-            data=csv_payload,
-            file_name=csv_filename,
-            mime="text/csv",
-            use_container_width=False,
-            key=f"csv_download_single_{ticker}",
-        )
-        if st.button("Sheets", use_container_width=False, key=f"sheet_log_single_{ticker}"):
-            ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
-            show_sheet_result(ok, msg)
+        with st.container(key="export_buttons_bar_single"):
+            export_col_csv, export_col_sheets, export_col_spacer = st.columns([1, 1, 5], vertical_alignment="top")
+            with export_col_csv:
+                st.download_button(
+                    "CSV",
+                    data=csv_payload,
+                    file_name=csv_filename,
+                    mime="text/csv",
+                    use_container_width=True,
+                    key=f"csv_download_single_{ticker}",
+                )
+            with export_col_sheets:
+                if st.button("Sheets", use_container_width=True, key=f"sheet_log_single_{ticker}"):
+                    ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
+                    show_sheet_result(ok, msg)
 
         with st.expander("Diagnose-Scores und Hilfswerte anzeigen", expanded=False):
             c1, c2, c3, c4, c5, c6, c7 = st.columns(7)

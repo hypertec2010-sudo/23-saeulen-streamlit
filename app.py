@@ -14138,9 +14138,8 @@ if result is not None:
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         st.markdown("""
         <style>
-        /* v15.19.12: Export-Buttons wieder nebeneinander, aber lokal vom globalen
-           stHorizontalBlock-CTA-Style entkoppelt. Der Container-Key ist absichtlich
-           der Zielanker, weil die globalen Regeln sonst alle Buttons in Spalten aufblasen. */
+        /* v15.19.13: ruhige Export-Actions statt Primary-CTA-Look.
+           CSV und Sheets bleiben nebeneinander, wirken aber bewusst sekundaer. */
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button,
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stDownloadButton"] > button,
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button,
@@ -14156,9 +14155,12 @@ if result is not None:
             justify-content:center !important;
             white-space:nowrap !important;
             transform:none !important;
-            box-shadow:0 8px 18px rgba(15,23,42,0.18) !important;
-            font-size:0.95rem !important;
-            font-weight:500 !important;
+            box-shadow:none !important;
+            background:rgba(15,23,42,0.28) !important;
+            border:1px solid rgba(148,163,184,0.28) !important;
+            color:rgba(226,232,240,0.92) !important;
+            font-size:0.88rem !important;
+            font-weight:400 !important;
             letter-spacing:0 !important;
             text-transform:none !important;
         }
@@ -14180,10 +14182,17 @@ if result is not None:
             display:flex !important;
             align-items:center !important;
             justify-content:center !important;
-            font-size:0.95rem !important;
-            font-weight:500 !important;
+            font-size:0.88rem !important;
+            font-weight:400 !important;
             letter-spacing:0 !important;
             text-transform:none !important;
+        }
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button:hover,
+        [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button:hover{
+            background:rgba(30,41,59,0.42) !important;
+            border-color:rgba(147,197,253,0.45) !important;
+            color:rgba(255,255,255,0.98) !important;
+            box-shadow:0 4px 12px rgba(15,23,42,0.18) !important;
         }
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"],
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"]{
@@ -14197,7 +14206,7 @@ if result is not None:
             export_col_csv, export_col_sheets, export_col_spacer = st.columns([1, 1, 5], vertical_alignment="top")
             with export_col_csv:
                 st.download_button(
-                    "CSV",
+                    "CSV herunterladen",
                     data=csv_payload,
                     file_name=csv_filename,
                     mime="text/csv",
@@ -14205,7 +14214,7 @@ if result is not None:
                     key=f"csv_download_single_{ticker}",
                 )
             with export_col_sheets:
-                if st.button("Sheets", use_container_width=True, key=f"sheet_log_single_{ticker}"):
+                if st.button("In Sheets speichern", use_container_width=True, key=f"sheet_log_single_{ticker}"):
                     ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
                     show_sheet_result(ok, msg)
 

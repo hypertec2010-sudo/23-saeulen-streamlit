@@ -5636,8 +5636,24 @@ def build_red_flags(
             "Penalty": penalty
         })
 
-    if pd.notna(earnings_growth) and earnings_growth < -0.15:
-        add_item("Ertrags-Risiko", "Gewinnwachstum stark negativ", 8)
+    # v15.23.2: Earnings-Growth nicht mehr als harte Einzel-Red-Flag werten.
+    # yfinance `earningsGrowth` ist oft ein kurzfristiger Quartals-/YoY-Wert und kann
+    # bei Qualitätsunternehmen durch Basiseffekte/Sondereffekte temporär negativ sein.
+    # Deshalb: alleine nur gelbe Bremse; rot erst zusammen mit schwachem Umsatz,
+    # negativer Marge oder negativem Cashflow.
+    earnings_growth_weak = pd.notna(earnings_growth) and earnings_growth < -0.15
+    earnings_growth_very_weak = pd.notna(earnings_growth) and earnings_growth < -0.35
+    revenue_growth_weak_for_earnings = pd.notna(revenue_growth) and revenue_growth < -0.03
+    margin_weak_for_earnings = pd.notna(profit_margin) and profit_margin < 0
+    cashflow_weak_for_earnings = (pd.notna(fcf) and fcf < 0) or (pd.notna(op_cf) and op_cf < 0)
+
+    if earnings_growth_weak:
+        if revenue_growth_weak_for_earnings or margin_weak_for_earnings or cashflow_weak_for_earnings:
+            add_item("Ertrags-Risiko", "Gewinnwachstum stark negativ mit operativer Bestaetigung", 7)
+        elif earnings_growth_very_weak:
+            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum sehr schwach", 4)
+        else:
+            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum negativ", 3)
     if pd.notna(profit_margin) and profit_margin < 0:
         add_item("Ertrags-Risiko", "Gewinnmarge negativ", 8)
     if pd.notna(revenue_growth) and revenue_growth < -0.10:

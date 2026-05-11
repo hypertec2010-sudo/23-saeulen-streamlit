@@ -1072,7 +1072,7 @@ def radar_risk_bucket(result):
     exit_score = _radar_safe_num(result.get("exit_score"), 0)
     distribution = _radar_safe_num(result.get("distribution_pressure_score"), 0)
 
-    # v15.23.6: exit_score is already a risk/pressure score in this app:
+    # v15.23.7: exit_score is already a risk/pressure score in this app:
     # low values such as EXIT=1 mean low exit pressure, not high risk.
     # The previous radar logic inverted low exit scores via 100-exit_score,
     # which made almost every candidate look high-risk and forced all radar
@@ -5696,7 +5696,7 @@ def build_red_flags(
     if has_upcoming_earnings and pd.notna(days_earn) and days_earn <= 7:
         add_item("Event-Risiko", f"Earnings in {int(days_earn)} Tagen", 6)
 
-    # v15.23.6: Nur echte rote Red Flags sollen das Gesamtergebnis spürbar belasten.
+    # v15.23.7: Nur echte rote Red Flags sollen das Gesamtergebnis spürbar belasten.
     # Gelbe Hinweise bleiben sichtbar, verfälschen aber nicht mehr die Kernbewertung.
     total_penalty = sum(x["Penalty"] for x in items if x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
     return items, total_penalty
@@ -7326,6 +7326,38 @@ def build_short_thesis(investment, tb_score, market_regime, top_red_flag, positi
     return txt
 
 
+def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
+    """Robuste Firmenname-Anzeige fuer Radar/Ranking.
+
+    Hintergrund: Nach den Radar-Umbauten stand in der Spalte `Name` teilweise nur
+    nochmals der Ticker. Dieser Helper zieht den echten Unternehmensnamen aus
+    result["name"] oder result["info"] und faellt nur dann auf den Ticker
+    zurueck, wenn kein brauchbarer Name vorhanden ist.
+    """
+    result = result or {}
+    ticker = str(fallback_ticker or result.get("ticker", "") or result.get("Ticker", "") or "").strip()
+    info = result.get("info", {}) or {}
+    candidates = [
+        result.get("name"),
+        result.get("Name"),
+        info.get("longName"),
+        info.get("shortName"),
+        info.get("displayName"),
+        info.get("quoteSourceName"),
+    ]
+    ticker_norm = ticker.strip().upper()
+    ticker_root = ticker_norm.split(".")[0] if ticker_norm else ""
+    for cand in candidates:
+        val = str(cand or "").strip()
+        if not val or val.lower() in {"-", "nan", "none", "null"}:
+            continue
+        val_norm = val.upper().strip()
+        if val_norm in {ticker_norm, ticker_root}:
+            continue
+        return shorten_text(val, max_len)
+    return ticker or "-"
+
+
 def build_ranking_table(results):
     rows = []
     for r in results:
@@ -7336,7 +7368,7 @@ def build_ranking_table(results):
 
         rows.append({
             "Ticker": r.get("ticker", "-"),
-            "Name": shorten_text(r.get("name", r.get("ticker", "-")), 28),
+            "Name": radar_company_display_name_v15237(r, r.get("ticker", "-"), 28),
             "Setup-Typ": r.get("setup_type", "-"),
             "Kandidatentyp": radar_candidate_type(r),
             "Radar-Risiko": radar_risk_bucket(r),
@@ -11236,6 +11268,21 @@ if workspace_mode:
                     radar_df["Nächster Schritt"] = radar_df.apply(lambda _row: radar_next_step(radar_result_map.get(str(_row.get("Ticker", "")), {})) if str(_row.get("Nächster Schritt", "")) in {"", "-", "nan"} else _row.get("Nächster Schritt"), axis=1)
                     radar_df["Was bremst"] = radar_df.apply(lambda _row: radar_brake_reason(radar_result_map.get(str(_row.get("Ticker", "")), {})) if str(_row.get("Was bremst", "")) in {"", "-", "nan"} else _row.get("Was bremst"), axis=1)
 
+                # v15.23.7: Firmenname im Radar robust nachfuellen.
+                # Bei gespeicherten Snapshots oder Ticker-Fallbacks stand sonst in `Name` oft nur erneut der Ticker.
+                if "Name" not in radar_df.columns:
+                    radar_df["Name"] = "-"
+                if radar_result_map and not radar_df.empty:
+                    def _radar_name_fix_v15237(_row):
+                        _ticker = str(_row.get("Ticker", "") or "").strip()
+                        _current = str(_row.get("Name", "") or "").strip()
+                        _norm = _current.upper()
+                        _root = _ticker.upper().split(".")[0] if _ticker else ""
+                        if (not _current) or _current.lower() in {"-", "nan", "none", "null"} or _norm in {_ticker.upper(), _root}:
+                            return radar_company_display_name_v15237(radar_result_map.get(_ticker, {}), _ticker, 28)
+                        return shorten_text(_current, 28)
+                    radar_df["Name"] = radar_df.apply(_radar_name_fix_v15237, axis=1)
+
                 if not radar_prebuilt_rows and not radar_df.empty:
                     radar_snapshot_payload = {
                         "radar_display_rows": radar_df.to_dict("records"),
@@ -13544,7 +13591,7 @@ if result is not None:
     fund_data_warning = result["fund_data_warning"]
     red_flag_items = result["red_flag_items"]
     red_flags_df = result["red_flags_df"]
-    # v15.23.6: Red-Flag-Anzeige robust pro Ergebnis neu ableiten.
+    # v15.23.7: Red-Flag-Anzeige robust pro Ergebnis neu ableiten.
     # In manchen Renderpfaden existierten hard_red_flag_items/red_flag_hint_notes
     # nur lokal in analyze_stock() und nicht im UI-Scope.
     hard_red_flag_items = [

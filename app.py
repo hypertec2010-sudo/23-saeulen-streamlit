@@ -641,7 +641,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.24.1",
+        "Export_Version": "v15.24.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -14559,8 +14559,7 @@ if result is not None:
     st.markdown('</div>', unsafe_allow_html=True)
 
     # ---------- v15.20.5: Risiko konkret garantiert sichtbar (native Streamlit, theme-sicher) ----------
-    with st.container():
-        st.markdown("### Risiko konkret")
+    with st.expander("Risiko konkret", expanded=False):
         st.caption("Wichtigste Risikotreiber hinter dem Gesamturteil.")
         try:
             _risk_pkg = risk_detail_pkg or {}
@@ -14665,36 +14664,37 @@ if result is not None:
             ("Positionsrisiko", sizing_text, f"CRV: {fmt_num(crv_value, 2)} - Entry-Lage: {entry_quality}", False),
         ]
 
-    st.markdown(
-        f'''
-        <div class="mode-split-shell">
-            <div class="mode-split-head">
-                <div>
-                    <div class="mode-split-kicker">Arbeitsmodus</div>
-                    <div class="mode-split-title">{mode_headline}</div>
-                    <div class="mode-split-sub">{mode_intro}</div>
+    with st.expander("Arbeitsmodus / Triggerdetails", expanded=False):
+        st.markdown(
+            f'''
+            <div class="mode-split-shell">
+                <div class="mode-split-head">
+                    <div>
+                        <div class="mode-split-kicker">Arbeitsmodus</div>
+                        <div class="mode-split-title">{mode_headline}</div>
+                        <div class="mode-split-sub">{mode_intro}</div>
+                    </div>
+                    <div class="mode-pill">{mode_pill}</div>
                 </div>
-                <div class="mode-pill">{mode_pill}</div>
             </div>
-        </div>
-        ''',
-        unsafe_allow_html=True,
-    )
-    _mode_cols = st.columns(4)
-    for _mode_col, (_label, _value, _sub, _main) in zip(_mode_cols, mode_cards):
-        with _mode_col:
-            _main_class = " is-main" if _main else ""
-            st.markdown(
-                f'''
-                <div class="mode-task-card{_main_class}">
-                    <div class="mode-task-label">{_label}</div>
-                    <div class="mode-task-value">{_value}</div>
-                    <div class="mode-task-sub">{_sub}</div>
-                </div>
-                ''',
-                unsafe_allow_html=True,
-            )
-
+            ''',
+            unsafe_allow_html=True,
+        )
+        _mode_cols = st.columns(4)
+        for _mode_col, (_label, _value, _sub, _main) in zip(_mode_cols, mode_cards):
+            with _mode_col:
+                _main_class = " is-main" if _main else ""
+                st.markdown(
+                    f'''
+                    <div class="mode-task-card{_main_class}">
+                        <div class="mode-task-label">{_label}</div>
+                        <div class="mode-task-value">{_value}</div>
+                        <div class="mode-task-sub">{_sub}</div>
+                    </div>
+                    ''',
+                    unsafe_allow_html=True,
+                )
+    
     if is_pro_mode or is_expert_mode:
         decision_meta = (
             f"Positionsmodus - Risiko: {shorten_text(risk_note, 42)}"

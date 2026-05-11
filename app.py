@@ -15584,3 +15584,42 @@ if result is not None:
                 )
 
             st.caption("Diese erweiterte Sicht zeigt die zusätzlichen Diagnose- und Einordnungsbausteine der Entscheidung.")
+
+# ---------- v15.19.9: finaler CSS-Override fuer Export-Buttons ----------
+# Wird bewusst ganz am Ende injiziert, damit spaeter gerenderte globale Button-Regeln
+# den Sheets-Button nicht wieder auf CTA-Hoehe ziehen.
+st.markdown("""
+<style>
+[class*="st-key-csv_download_single_"] button,
+[class*="st-key-sheet_log_single_"] button,
+div[data-testid="stHorizontalBlock"]:has([class*="st-key-csv_download_single_"]) div[data-testid="stDownloadButton"] > button,
+div[data-testid="stHorizontalBlock"]:has([class*="st-key-sheet_log_single_"]) div[data-testid="stButton"] > button{
+    min-height:38px !important;
+    height:38px !important;
+    max-height:38px !important;
+    padding:0 0.95rem !important;
+    line-height:1 !important;
+    border-radius:14px !important;
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    white-space:nowrap !important;
+    transform:none !important;
+}
+[class*="st-key-csv_download_single_"] button::before,
+[class*="st-key-sheet_log_single_"] button::before,
+div[data-testid="stHorizontalBlock"]:has([class*="st-key-sheet_log_single_"]) div[data-testid="stButton"] > button::before{
+    content:none !important;
+    display:none !important;
+}
+[class*="st-key-csv_download_single_"] button *,
+[class*="st-key-sheet_log_single_"] button *,
+div[data-testid="stHorizontalBlock"]:has([class*="st-key-sheet_log_single_"]) div[data-testid="stButton"] > button *{
+    min-height:0 !important;
+    height:auto !important;
+    margin:0 !important;
+    padding:0 !important;
+    line-height:1 !important;
+}
+</style>
+""", unsafe_allow_html=True)

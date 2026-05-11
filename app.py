@@ -11993,7 +11993,7 @@ def detect_candlestick_signal(df, context_hint=""):
         entry_hint = "Noch kein Kaufsignal, aber Setup fuer Folgeausbruch entsteht."
         exit_hint = "Noch keine Exit-Warnung, aber Richtungsentscheidung steht an."
 
-    # v15.20.3: Neutral-Falle entschaerfen.
+    # v15.20.4: Neutral-Falle entschaerfen.
     # Die alte Candle-Logik erkannte fast nur klassische Muster wie Hammer/Engulfing/Doji.
     # Viele reale Aktien liefern aber keine Lehrbuchkerze, sondern eher Momentum-, Rejection-
     # oder Close-in-Range-Hinweise. Diese Regeln bleiben bewusst moderat, machen die
@@ -13849,7 +13849,7 @@ if result is not None:
         tactical_label=final_tactical_label if "final_tactical_label" in locals() else "-",
     )
 
-    # v15.20.3: Aktion und operativen Trigger konsistent halten.
+    # v15.20.4: Aktion und operativen Trigger konsistent halten.
     # "kaufen" darf in Pre-Entry nur stehen, wenn der Einstieg wirklich aktiv ist.
     final_action_label, final_action_reason = align_action_with_trigger_v1520_2(
         final_action_label if "final_action_label" in locals() else "-",
@@ -13969,71 +13969,83 @@ if result is not None:
             )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ---------- v15.20.3: Risiko konkret sichtbar direkt unter Risiko-Kontext ----------
-    st.markdown(
-        """
-        <div style="margin-top:1.05rem;margin-bottom:0.35rem;">
-            <div style="font-size:1.02rem;font-weight:750;color:rgba(248,250,252,0.96);">Risiko konkret</div>
-            <div style="font-size:0.84rem;color:rgba(203,213,225,0.78);line-height:1.35;">Konkrete Risikotreiber hinter dem Gesamtlabel: Volatilität, Gap/Event, Liquidität/Volumen, Trend/Exit und Markt/Regime.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown("""
-    <style>
-    .risk-detail-shell{margin:0.85rem 0 0.45rem 0;padding:1rem 1.05rem;border:1px solid rgba(148,163,184,0.18);border-radius:18px;background:linear-gradient(135deg, rgba(15,23,42,0.38), rgba(15,23,42,0.18));}
-    .risk-detail-head{display:grid;grid-template-columns:1.15fr 0.85fr;gap:1rem;align-items:center;}
-    .risk-detail-kicker{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.12em;color:rgba(148,163,184,0.88);font-weight:700;margin-bottom:0.25rem;}
-    .risk-detail-title{font-size:1.05rem;color:rgba(248,250,252,0.96);font-weight:750;margin-bottom:0.2rem;}
-    .risk-detail-sub{font-size:0.86rem;color:rgba(203,213,225,0.84);line-height:1.35;}
-    .risk-detail-action{font-size:0.84rem;color:rgba(226,232,240,0.9);line-height:1.35;padding:0.75rem 0.85rem;border-radius:14px;border:1px solid rgba(148,163,184,0.16);background:rgba(2,6,23,0.26);}
-    .risk-factor-card{min-height:112px;padding:0.78rem 0.82rem;border-radius:16px;border:1px solid rgba(148,163,184,0.16);background:rgba(15,23,42,0.28);margin-bottom:0.35rem;}
-    .risk-factor-name{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.11em;color:rgba(148,163,184,0.82);font-weight:700;margin-bottom:0.28rem;}
-    .risk-factor-label{font-size:0.98rem;color:rgba(248,250,252,0.95);font-weight:720;margin-bottom:0.28rem;}
-    .risk-factor-reason{font-size:0.78rem;line-height:1.28;color:rgba(203,213,225,0.8);}
-    .risk-factor-card.risk-low{border-color:rgba(34,197,94,0.20);}
-    .risk-factor-card.risk-normal{border-color:rgba(148,163,184,0.20);}
-    .risk-factor-card.risk-elevated{border-color:rgba(245,158,11,0.34);background:rgba(120,53,15,0.13);}
-    .risk-factor-card.risk-high{border-color:rgba(248,113,113,0.36);background:rgba(127,29,29,0.16);}
-    @media(max-width:900px){.risk-detail-head{grid-template-columns:1fr;}}
-    </style>
-    """, unsafe_allow_html=True)
-    try:
-        _risk_factors = (risk_detail_pkg or {}).get("factors", [])
-    except Exception:
-        _risk_factors = []
-    st.markdown(
-        f"""
-        <div class="risk-detail-shell">
-            <div class="risk-detail-head">
-                <div>
-                    <div class="risk-detail-kicker">Risiko konkret</div>
-                    <div class="risk-detail-title">{html.escape(str((risk_detail_pkg or {}).get("overall_label", final_risk_label if "final_risk_label" in locals() else "-"))).capitalize()}</div>
-                    <div class="risk-detail-sub">{html.escape(str((risk_detail_pkg or {}).get("summary", "-")))}</div>
-                </div>
-                <div class="risk-detail-action">{html.escape(str((risk_detail_pkg or {}).get("action_hint", "-")))}</div>
+    # ---------- v15.20.4: Risiko konkret garantiert sichtbar (native Streamlit, theme-sicher) ----------
+    with st.container():
+        st.markdown("### Risiko konkret")
+        st.caption(
+            "Konkrete Risikotreiber hinter dem Gesamtlabel: Volatilität, Gap/Event, "
+            "Liquidität/Volumen, Trend/Exit und Markt/Regime."
+        )
+        try:
+            _risk_pkg = risk_detail_pkg or {}
+            _risk_factors = _risk_pkg.get("factors", []) or []
+        except Exception:
+            _risk_pkg = {}
+            _risk_factors = []
+
+        _risk_overall = str(_risk_pkg.get("overall_label", final_risk_label if "final_risk_label" in locals() else "-"))
+        _risk_summary = str(_risk_pkg.get("summary", "-"))
+        _risk_action = str(_risk_pkg.get("action_hint", "-"))
+
+        st.markdown(
+            f"""
+            <div class="ch-risk-visible-box">
+                <div class="ch-risk-visible-topline">Gesamtrisiko: <strong>{html.escape(_risk_overall.capitalize())}</strong></div>
+                <div class="ch-risk-visible-summary">{html.escape(_risk_summary)}</div>
+                <div class="ch-risk-visible-action">{html.escape(_risk_action)}</div>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    _risk_cols = st.columns(5)
-    for _risk_col, _risk_factor in zip(_risk_cols, _risk_factors):
-        with _risk_col:
-            _rf_name = html.escape(str(_risk_factor.get("name", "-")))
-            _rf_label = html.escape(str(_risk_factor.get("label", "-"))).capitalize()
-            _rf_reason = html.escape(str(_risk_factor.get("reason", "-")))
-            _rf_class = html.escape(str(_risk_factor.get("class", "risk-normal")))
-            st.markdown(
-                f"""
-                <div class="risk-factor-card {_rf_class}">
-                    <div class="risk-factor-name">{_rf_name}</div>
-                    <div class="risk-factor-label">{_rf_label}</div>
-                    <div class="risk-factor-reason">{_rf_reason}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            """
+            <style>
+            .ch-risk-visible-box{
+                margin:0.45rem 0 0.75rem 0;
+                padding:0.95rem 1rem;
+                border:1px solid rgba(148,163,184,0.30);
+                border-radius:14px;
+                background:rgba(148,163,184,0.08);
+            }
+            .ch-risk-visible-topline{font-size:0.95rem;margin-bottom:0.25rem;}
+            .ch-risk-visible-summary{font-size:0.86rem;opacity:0.88;line-height:1.35;margin-bottom:0.5rem;}
+            .ch-risk-visible-action{font-size:0.84rem;line-height:1.35;padding:0.55rem 0.65rem;border-radius:10px;background:rgba(148,163,184,0.10);}
+            .ch-risk-factor-card{
+                min-height:108px;
+                padding:0.72rem 0.75rem;
+                border:1px solid rgba(148,163,184,0.28);
+                border-radius:13px;
+                background:rgba(148,163,184,0.07);
+                margin-bottom:0.35rem;
+            }
+            .ch-risk-factor-name{font-size:0.70rem;text-transform:uppercase;letter-spacing:0.08em;opacity:0.70;font-weight:700;margin-bottom:0.25rem;}
+            .ch-risk-factor-label{font-size:0.98rem;font-weight:720;margin-bottom:0.25rem;}
+            .ch-risk-factor-reason{font-size:0.78rem;line-height:1.30;opacity:0.82;}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if _risk_factors:
+            _risk_cols = st.columns(min(5, max(1, len(_risk_factors))))
+            for _risk_col, _risk_factor in zip(_risk_cols, _risk_factors):
+                with _risk_col:
+                    _rf_name = html.escape(str(_risk_factor.get("name", "-")))
+                    _rf_label = html.escape(str(_risk_factor.get("label", "-"))).capitalize()
+                    _rf_reason = html.escape(str(_risk_factor.get("reason", "-")))
+                    st.markdown(
+                        f"""
+                        <div class="ch-risk-factor-card">
+                            <div class="ch-risk-factor-name">{_rf_name}</div>
+                            <div class="ch-risk-factor-label">{_rf_label}</div>
+                            <div class="ch-risk-factor-reason">{_rf_reason}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+        else:
+            st.info("Für diese Analyse konnten keine konkreten Risikotreiber berechnet werden.")
 
     # ---------- v15.13: klare Trennung Pre-Entry vs. Post-Entry ----------
     if position_mode:

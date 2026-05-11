@@ -255,13 +255,20 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         base = base.head(1).copy()
 
     def add_col(name, value, default=""):
-        # v15.19: Nicht nur neue Spalten anlegen, sondern auch bestehende leere
-        # Exportfelder mit finalen/fallback-Werten nachfuellen. Genau das hat
-        # bei CSV/Sheets zu vorhandenen Spalten ohne Inhalt gefuehrt.
+        # v15.19.1: Bestehende leere Spalten nachfuellen, ohne an Pandas-3
+        # Dtype-Upcast-Regeln zu scheitern. Einige Exportspalten kommen aus
+        # build_export_df numerisch typisiert an; wenn wir dort spaeter Text-
+        # Fallbacks wie "n/a", "Neutral" oder "stabil" eintragen, wirft
+        # Pandas sonst einen TypeError. Darum wird die Zielspalte vor dem
+        # Nachfuellen explizit auf object gecastet.
         final_value = _export_first_non_empty(value, default=default)
         if name not in base.columns:
-            base[name] = [final_value]
+            base[name] = pd.Series([final_value], dtype="object")
         elif len(base.index) > 0 and _export_is_empty(base.iloc[0].get(name)):
+            try:
+                base[name] = base[name].astype("object")
+            except Exception:
+                pass
             base.at[base.index[0], name] = final_value
 
     # Direkte Basisdaten / neue Screener- und Risikofelder aus dem Analyse-Result.
@@ -281,7 +288,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.19",
+        "Export_Version": "v15.19.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),

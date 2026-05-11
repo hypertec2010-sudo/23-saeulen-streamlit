@@ -14138,7 +14138,7 @@ if result is not None:
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         st.markdown("""
         <style>
-        /* v15.19.11: Export-Buttons wieder nebeneinander, aber lokal vom globalen
+        /* v15.19.12: Export-Buttons wieder nebeneinander, aber lokal vom globalen
            stHorizontalBlock-CTA-Style entkoppelt. Der Container-Key ist absichtlich
            der Zielanker, weil die globalen Regeln sonst alle Buttons in Spalten aufblasen. */
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button,
@@ -14157,6 +14157,10 @@ if result is not None:
             white-space:nowrap !important;
             transform:none !important;
             box-shadow:0 8px 18px rgba(15,23,42,0.18) !important;
+            font-size:0.95rem !important;
+            font-weight:500 !important;
+            letter-spacing:0 !important;
+            text-transform:none !important;
         }
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button::before,
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button::before,
@@ -14176,6 +14180,10 @@ if result is not None:
             display:flex !important;
             align-items:center !important;
             justify-content:center !important;
+            font-size:0.95rem !important;
+            font-weight:500 !important;
+            letter-spacing:0 !important;
+            text-transform:none !important;
         }
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"],
         [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"]{

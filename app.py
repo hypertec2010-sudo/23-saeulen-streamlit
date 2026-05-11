@@ -2406,6 +2406,34 @@ div[data-testid="stButton"] > button p{
     line-height:1 !important;
 }
 
+
+/* v15.19.7: harte Angleichung nur der nativen Export-Buttons */
+div[data-testid="stDownloadButton"] button,
+div[data-testid="stButton"] button{
+    min-height:38px !important;
+    height:38px !important;
+    max-height:38px !important;
+    padding-top:0 !important;
+    padding-bottom:0 !important;
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    line-height:1 !important;
+}
+div[data-testid="stDownloadButton"] button *,
+div[data-testid="stButton"] button *{
+    margin-top:0 !important;
+    margin-bottom:0 !important;
+    padding-top:0 !important;
+    padding-bottom:0 !important;
+    line-height:1 !important;
+}
+div[data-testid="stDownloadButton"],
+div[data-testid="stButton"]{
+    min-height:38px !important;
+    height:auto !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 

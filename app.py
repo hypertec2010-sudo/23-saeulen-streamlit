@@ -215,6 +215,32 @@ def _export_safe_value(value):
     return value
 
 
+def _export_is_empty(value):
+    """True fuer Werte, die im Export als fachlich leer gelten."""
+    try:
+        if value is None:
+            return True
+        if isinstance(value, float) and pd.isna(value):
+            return True
+        if pd.isna(value):
+            return True
+    except Exception:
+        pass
+    try:
+        return str(value).strip() in {"", "nan", "NaN", "None", "none", "null"}
+    except Exception:
+        return False
+
+
+def _export_first_non_empty(*values, default=""):
+    """Nimmt den ersten nicht-leeren Wert und macht ihn export-sicher."""
+    for value in values:
+        safe = _export_safe_value(value)
+        if not _export_is_empty(safe):
+            return safe
+    return default
+
+
 def enrich_single_export_df_v1516(export_df, result, context=None):
     """
     Erweitert den bestehenden logging_utils.build_export_df um Felder,
@@ -228,13 +254,34 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     if len(base) > 1:
         base = base.head(1).copy()
 
-    def add_col(name, value):
+    def add_col(name, value, default=""):
+        # v15.19: Nicht nur neue Spalten anlegen, sondern auch bestehende leere
+        # Exportfelder mit finalen/fallback-Werten nachfuellen. Genau das hat
+        # bei CSV/Sheets zu vorhandenen Spalten ohne Inhalt gefuehrt.
+        final_value = _export_first_non_empty(value, default=default)
         if name not in base.columns:
-            base[name] = [_export_safe_value(value)]
+            base[name] = [final_value]
+        elif len(base.index) > 0 and _export_is_empty(base.iloc[0].get(name)):
+            base.at[base.index[0], name] = final_value
 
     # Direkte Basisdaten / neue Screener- und Risikofelder aus dem Analyse-Result.
+    regime_ctx_export = context.get("regime_ctx") or {}
+    regime_bias_export = regime_ctx_export.get("bias_factor", "")
+    regime_score_export = {1: 75, 0: 50, -1: 25}.get(regime_bias_export, "")
+    radar_risk_export = _export_first_non_empty((result or {}).get("radar_risk"), radar_risk_bucket(result or {}) if isinstance(result, dict) else "")
+    candidate_type_export = _export_first_non_empty((result or {}).get("candidate_type"), (result or {}).get("setup_type"), radar_candidate_type(result or {}) if isinstance(result, dict) else "")
+    title_risk_export = _export_first_non_empty((result or {}).get("title_risk_score"), (result or {}).get("short_term_gap_risk_score"), default="n/a")
+    volatility_risk_export = _export_first_non_empty((result or {}).get("instrument_volatility_risk_score"), default="n/a")
+    tactical_exit_risk_export = _export_first_non_empty((result or {}).get("tactical_exit_risk"), (result or {}).get("exit_score"), default="n/a")
+    tactical_exit_text_export = _export_first_non_empty((result or {}).get("tactical_exit_text"), (result or {}).get("exit_score_text"), default="n/a")
+    tactical_exit_action_export = _export_first_non_empty((result or {}).get("tactical_exit_action"), (result or {}).get("exit_action"), default="n/a")
+    tactical_exit_reason_export = _export_first_non_empty((result or {}).get("tactical_exit_reason_top"), (result or {}).get("exit_reason_top"), default="n/a")
+    sector_strength_export = _export_first_non_empty((result or {}).get("sector_strength_score"), (result or {}).get("sector_score"), default="n/a")
+    regime_fit_export = _export_first_non_empty((result or {}).get("regime_fit_score"), regime_score_export, default="n/a")
+    regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
+
     result_fields = {
-        "Export_Version": "v15.16",
+        "Export_Version": "v15.19",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -243,28 +290,32 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Analyse_Perspektive": context.get("mode_label") or (result or {}).get("mode_label"),
         "Position_Mode": context.get("position_mode"),
         "Buy_In_Override": context.get("buy_in_override"),
-        "Kandidatentyp": (result or {}).get("candidate_type") or (result or {}).get("setup_type"),
-        "Radar_Risiko": (result or {}).get("radar_risk") or (result or {}).get("title_risk_score"),
+        "Kandidatentyp": candidate_type_export,
+        "Radar_Risiko": radar_risk_export,
         "Setup_Typ": (result or {}).get("setup_type"),
         "Watchlist_Prioritaet": (result or {}).get("watchlist_priority"),
         "Watchlist_Prioritaet_Score": (result or {}).get("watchlist_priority_score"),
         "Leadership_Score": (result or {}).get("leadership_score"),
         "Leadership_Status": (result or {}).get("leadership_status"),
-        "Sektor_Staerke_Score": (result or {}).get("sector_strength_score"),
+        "Sektor_Staerke_Score": sector_strength_export,
+        "Sektor-Stärke": sector_strength_export,
         "Sektor_Trend": (result or {}).get("sector_trend_text"),
         "Industrie_Staerke_Score": (result or {}).get("industry_strength_score"),
         "Industrie_Trend": (result or {}).get("industry_trend_text"),
         "RS_Benchmark_Score": (result or {}).get("rs_benchmark_score"),
         "RS_Beschleunigung_Score": (result or {}).get("rs_acceleration_score"),
-        "Regime_Fit_Score": (result or {}).get("regime_fit_score"),
-        "Regime_Adjustment_Score": (result or {}).get("regime_adjustment_score"),
-        "Titel_Risiko_Score": (result or {}).get("title_risk_score"),
-        "Short_Term_Gap_Risk_Score": (result or {}).get("short_term_gap_risk_score"),
-        "Instrument_Volatility_Risk_Score": (result or {}).get("instrument_volatility_risk_score"),
-        "Tactical_Exit_Risk": (result or {}).get("tactical_exit_risk"),
-        "Tactical_Exit_Text": (result or {}).get("tactical_exit_text"),
-        "Tactical_Exit_Action": (result or {}).get("tactical_exit_action"),
-        "Tactical_Exit_Reason": (result or {}).get("tactical_exit_reason_top"),
+        "Regime_Fit_Score": regime_fit_export,
+        "Regime_Adjustment_Score": regime_adjustment_export,
+        "Titel_Risiko_Score": title_risk_export,
+        "Short_Term_Gap_Risk_Score": _export_first_non_empty((result or {}).get("short_term_gap_risk_score"), title_risk_export, default="n/a"),
+        "Instrument_Volatility_Risk_Score": volatility_risk_export,
+        "Tactical_Exit_Risk": tactical_exit_risk_export,
+        "Tactical_Exit_Text": tactical_exit_text_export,
+        "Tactical_Exit_Action": tactical_exit_action_export,
+        "Tactical_Exit_Reason": tactical_exit_reason_export,
+        "Marktregime-Score": regime_score_export,
+        "Regime-Fit": regime_fit_export,
+        "Regime-Anpassung": regime_adjustment_export,
         "Exit_Score": (result or {}).get("exit_score"),
         "Exit_Text": (result or {}).get("exit_score_text"),
         "Exit_Aktion": (result or {}).get("exit_action"),
@@ -299,7 +350,13 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Signal_Konflikt_Details": conflict_pkg.get("reasons"),
         "Gesamt_Setup_Qualitaet": overall_pkg.get("label") or model_debug.get("overall_setup_quality"),
         "Gesamt_Setup_Zusammenfassung": overall_pkg.get("summary"),
-        "Gesamt_Setup_Grund": overall_pkg.get("reason"),
+        "Gesamt_Setup_Grund": _export_first_non_empty(
+            overall_pkg.get("reason"),
+            overall_pkg.get("top_down"),
+            overall_pkg.get("top_up"),
+            overall_pkg.get("summary"),
+            default="n/a",
+        ),
         "Marktregime_Label": (context.get("regime_ctx") or {}).get("label"),
         "Marktregime_Summary": (context.get("regime_ctx") or {}).get("summary"),
         "Candlestick_Daily": (context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}).get("bias") if isinstance((context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}), dict) else "",
@@ -316,7 +373,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Candlestick_Bias_Score": ((result or {}).get("candlestick_bias_pkg") or {}).get("score") or (result or {}).get("candlestick_bias_score"),
         "Candlestick_Bias_Reasons": ((result or {}).get("candlestick_bias_pkg") or {}).get("reasons"),
         "Ultra_Signal": (context.get("ultra_signal") or {}).get("label") if isinstance(context.get("ultra_signal"), dict) else "",
-        "Ultra_Bias": (context.get("ultra_signal") or {}).get("bias") if isinstance(context.get("ultra_signal"), dict) else "",
+        "Ultra_Bias": _export_first_non_empty((context.get("ultra_signal") or {}).get("bias") if isinstance(context.get("ultra_signal"), dict) else "", (context.get("ultra_signal") or {}).get("tone") if isinstance(context.get("ultra_signal"), dict) else "", "Neutral" if str((context.get("ultra_signal") or {}).get("label", "")).lower() in {"kein signal", "keine signal", "none", ""} else ""),
         "Ultra_Strength": (context.get("ultra_signal") or {}).get("strength") if isinstance(context.get("ultra_signal"), dict) else "",
         "Ultra_Confirmation": (context.get("ultra_signal") or {}).get("confirmation") if isinstance(context.get("ultra_signal"), dict) else "",
         "Ultra_Grund": (context.get("ultra_signal") or {}).get("reason") if isinstance(context.get("ultra_signal"), dict) else "",

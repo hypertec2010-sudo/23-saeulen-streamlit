@@ -1069,9 +1069,16 @@ def radar_candidate_type(result):
 def radar_risk_bucket(result):
     volatility_risk = _radar_safe_num(result.get("instrument_volatility_risk_score"), 0)
     tactical_risk = _radar_safe_num(result.get("tactical_exit_risk"), 0)
-    exit_score = _radar_safe_num(result.get("exit_score"), 50)
+    exit_score = _radar_safe_num(result.get("exit_score"), 0)
     distribution = _radar_safe_num(result.get("distribution_pressure_score"), 0)
-    combined = max(volatility_risk, tactical_risk, distribution * 0.9, 100 - exit_score if exit_score < 45 else 0)
+
+    # v15.23.6: exit_score is already a risk/pressure score in this app:
+    # low values such as EXIT=1 mean low exit pressure, not high risk.
+    # The previous radar logic inverted low exit scores via 100-exit_score,
+    # which made almost every candidate look high-risk and forced all radar
+    # priorities to "niedrig" with the defensive next-step text.
+    combined = max(volatility_risk, tactical_risk, distribution * 0.9, exit_score)
+
     if combined >= 72:
         return "hoch"
     if combined >= 52:
@@ -5689,7 +5696,7 @@ def build_red_flags(
     if has_upcoming_earnings and pd.notna(days_earn) and days_earn <= 7:
         add_item("Event-Risiko", f"Earnings in {int(days_earn)} Tagen", 6)
 
-    # v15.23.4: Nur echte rote Red Flags sollen das Gesamtergebnis spürbar belasten.
+    # v15.23.6: Nur echte rote Red Flags sollen das Gesamtergebnis spürbar belasten.
     # Gelbe Hinweise bleiben sichtbar, verfälschen aber nicht mehr die Kernbewertung.
     total_penalty = sum(x["Penalty"] for x in items if x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
     return items, total_penalty
@@ -13537,7 +13544,7 @@ if result is not None:
     fund_data_warning = result["fund_data_warning"]
     red_flag_items = result["red_flag_items"]
     red_flags_df = result["red_flags_df"]
-    # v15.23.5: Red-Flag-Anzeige robust pro Ergebnis neu ableiten.
+    # v15.23.6: Red-Flag-Anzeige robust pro Ergebnis neu ableiten.
     # In manchen Renderpfaden existierten hard_red_flag_items/red_flag_hint_notes
     # nur lokal in analyze_stock() und nicht im UI-Scope.
     hard_red_flag_items = [

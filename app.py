@@ -13537,7 +13537,23 @@ if result is not None:
     fund_data_warning = result["fund_data_warning"]
     red_flag_items = result["red_flag_items"]
     red_flags_df = result["red_flags_df"]
-    red_flag_notes = result["red_flag_notes"]
+    # v15.23.5: Red-Flag-Anzeige robust pro Ergebnis neu ableiten.
+    # In manchen Renderpfaden existierten hard_red_flag_items/red_flag_hint_notes
+    # nur lokal in analyze_stock() und nicht im UI-Scope.
+    hard_red_flag_items = [
+        x for x in (red_flag_items or [])
+        if bool(x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
+    ]
+    soft_red_flag_items = [
+        x for x in (red_flag_items or [])
+        if not bool(x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
+    ]
+    red_flag_notes = [
+        f"{x.get('Kategorie', '-')}: {x.get('Detail', '-')}" for x in hard_red_flag_items
+    ]
+    red_flag_hint_notes = [
+        f"{x.get('Kategorie', '-')}: {x.get('Detail', '-')}" for x in soft_red_flag_items
+    ]
     red_flag_penalty_total = result["red_flag_penalty_total"]
     quality_score = result["quality_score"]
     growth_score = result["growth_score"]

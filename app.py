@@ -641,7 +641,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.24",
+        "Export_Version": "v15.24.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -774,7 +774,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.24"
+APP_VERSION = "v15.24.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3929,7 +3929,7 @@ def compute_overall_setup_quality_phase_ui(
 
 
 def render_model_debug_panel(debug_pkg):
-    # v15.24: Debug-Ausgabe aus der produktiven Oberfläche entfernt.
+    # v15.24.1: Debug-Ausgabe aus der produktiven Oberfläche entfernt.
     return
     if not isinstance(debug_pkg, dict):
         return
@@ -10216,8 +10216,8 @@ st.markdown(
             <div class="landing-kicker">WORKSPACE</div>
             <div class="landing-statusdot"></div>
         </div>
-        <div class="landing-title">Analyse starten.</div>
-        <div class="landing-sub">Sofortanalyse, Watchlisten, Positionen und Radar.</div>
+        <div class="landing-title">Analyse</div>
+        <div class="landing-sub">Modus wählen und starten.</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -10226,28 +10226,28 @@ st.markdown("""<div class="landing-cards-wrap">""", unsafe_allow_html=True)
 wc1, wc2, wc3, wc4 = st.columns(4)
 with wc1:
     if st.button(
-        "🔎 Sofortanalyse\nEinzelaktie oder Vergleich",
+        "🔎 Sofortanalyse",
         use_container_width=True,
         key="workspace_analysis_btn"
     ):
         st.session_state.workspace_mode = "Sofortanalyse"
 with wc2:
     if st.button(
-        "📋 Watchlisten\nListen pflegen und prüfen",
+        "📋 Watchlisten",
         use_container_width=True,
         key="workspace_watchlist_btn"
     ):
         st.session_state.workspace_mode = "Watchlisten"
 with wc3:
     if st.button(
-        "🛡️ Positionen\nPositionen überwachen",
+        "🛡️ Positionen",
         use_container_width=True,
         key="workspace_position_btn"
     ):
         st.session_state.workspace_mode = "Positionen"
 with wc4:
     if st.button(
-        "🎯 Kandidaten-Radar\nInteressante Werte vorsortieren",
+        "🎯 Radar",
         use_container_width=True,
         key="workspace_candidate_radar_btn"
     ):
@@ -10256,14 +10256,7 @@ with wc4:
 st.markdown("""</div>""", unsafe_allow_html=True)
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-st.markdown(
-    """
-    <div class="utility-shell">
-        <div class="utility-title">Hilfen & Verwaltung</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# v15.24.1: Hilfen nur noch als Expander, keine extra Karte.
 with st.expander("Hilfen & Verwaltung", expanded=False):
     st.markdown("#### Kurzanleitung")
     st.markdown(
@@ -10631,8 +10624,8 @@ st.markdown(
         white-space:pre-line !important;
         line-height:1.35 !important;
         font-weight:900 !important;
-        border-radius:22px !important;
-        min-height:5.35rem !important;
+        border-radius:16px !important;
+        min-height:3.15rem !important;
         background:linear-gradient(180deg,var(--blue-1) 0%, #111827 100%) !important;
         color:var(--text-main) !important;
         border:1px solid var(--blue-3) !important;
@@ -10652,8 +10645,8 @@ st.markdown(
         .section-title{font-size:1.02rem !important;}
         .premium-value, .wrap-metric-value, .compact-summary-value{font-size:1.08rem !important;}
         div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button{
-            min-height:4.85rem !important;
-            border-radius:20px !important;
+            min-height:3.05rem !important;
+            border-radius:16px !important;
         }
     }
     </style>
@@ -10671,16 +10664,12 @@ if not workspace_mode:
     st.info("Wähle oben einen Arbeitsmodus aus. Erst danach werden die passenden Eingaben und Werkzeuge eingeblendet.")
 elif workspace_mode == "Sofortanalyse":
     st.markdown("<div class='section-accent blue'>Sofortanalyse aktiv</div>", unsafe_allow_html=True)
-    st.caption("Direkter Einstieg für spontane Einzelanalysen oder Multi-Screenings.")
 elif workspace_mode == "Watchlisten":
     st.markdown("<div class='section-accent purple'>Watchlisten aktiv</div>", unsafe_allow_html=True)
-    st.caption("Hier organisierst du Beobachtungslisten und kannst sie direkt analysieren oder mit Telegram prüfen.")
 elif workspace_mode == "Kandidaten-Radar":
     st.markdown("<div class='section-accent blue'>Kandidaten-Radar aktiv</div>", unsafe_allow_html=True)
-    st.caption("Neue Werte vorsortieren, bevor du sie tiefer in der Analyse oder Watchlist bearbeitest.")
 else:
     st.markdown("<div class='section-accent amber'>Positionen aktiv</div>", unsafe_allow_html=True)
-    st.caption("Hier konzentrierst du dich auf bestehende Positionen und führst sie als Positions-Watchlisten.")
 
 # ---------- Watchlisten direkt in der App ----------
 if workspace_mode in {"Watchlisten", "Positionen"}:
@@ -11025,7 +11014,7 @@ if workspace_mode:
             <div class="mobile-form-card" style="border-left:5px solid #8b5cf6;">
                 <div class="mobile-form-title">Watchlist-Analyse</div>
                 <div class="mobile-form-sub">
-                    Du kannst spontan analysieren oder direkt eine Watchlist in die Analyse laden. Watchlisten-Verwaltung und Alerts stehen darüber bereit.
+                    Watchlist wählen, analysieren oder Alerts prüfen.
                 </div>
             </div>
             """,
@@ -11037,7 +11026,7 @@ if workspace_mode:
             <div class="mobile-form-card" style="border-left:5px solid #3b82f6;">
                 <div class="mobile-form-title">Kandidaten-Radar</div>
                 <div class="mobile-form-sub">
-                    Dieser Bereich soll dir interessante Kaufkandidaten vorsortieren, bevor du sie tiefer analysierst. Als erster echter Vorschlagsmodus ist jetzt <strong>US Tech</strong> aktiv. Eigene Listen bleiben zusätzlich möglich.
+                    Kandidaten vorsortieren und anschließend gezielt analysieren.
                 </div>
             </div>
             """,
@@ -11748,7 +11737,7 @@ if workspace_mode:
             <div class="mobile-form-card" style="border-left:5px solid #f59e0b;">
                 <div class="mobile-form-title">Positionsüberwachung</div>
                 <div class="mobile-form-sub">
-                    Nutze bevorzugt Positions-Watchlisten für bestehende Depotwerte. Zusätzliche Sofortanalysen bleiben weiterhin möglich.
+                    Bestehende Positionen überwachen und führen.
                 </div>
             </div>
             """,
@@ -15095,8 +15084,8 @@ if result is not None:
         csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
         csv_href = f"data:text/csv;base64,{csv_b64}"
 
-        with st.expander("Export & Logging", expanded=False):
-            st.caption("CSV und Sheets verwenden denselben finalen Export.")
+        with st.expander("Export", expanded=False):
+            st.caption("CSV und Sheets nutzen denselben Datensatz.")
             st.markdown("""
             <style>
             /* v15.19.13: ruhige Export-Actions statt Primary-CTA-Look.
@@ -15457,7 +15446,7 @@ if result is not None:
 
         with t0:
             st.subheader("Überblick")
-            st.markdown('<div class="panel-caption">Kurzüberblick der aktuellen Analyse.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-caption">Kernaussage und wichtigste Treiber.</div>', unsafe_allow_html=True)
             st.markdown(
                 f"""
                 <div class="quiet-fact-grid">
@@ -15580,9 +15569,9 @@ if result is not None:
             st.markdown("**Kurzfazit**")
             st.write(short_thesis)
 
-            st.markdown("**Kurzbeschreibung**")
-            summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
-            st.write(summary_short)
+            with st.expander("Unternehmensbeschreibung anzeigen", expanded=False):
+                summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary
+                st.write(summary_short)
 
             st.markdown(f"**Chart & Performance - {ticker} ({ccy})**")
             chart_range = st.selectbox(
@@ -15615,7 +15604,7 @@ if result is not None:
                 perf_abs=_chart_perf_abs,
             )
             if chart_structures and show_sr_zones:
-                st.caption(f"S/R-Basis: {chart_structures.get('sr_basis_label', '1 Jahr')}.")
+                st.caption(f"S/R-Basis: {chart_structures.get('sr_basis_label', '1 Jahr')}")
 
             # v15.15: Chartnahe technische Einordnung direkt unter Zeitraum-Performance,
             # damit S/R-Kontext und Ultra-Signal vor der Candlestick-Detailanalyse erscheinen.

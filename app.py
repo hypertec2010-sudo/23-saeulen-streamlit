@@ -470,6 +470,130 @@ def _export_first_non_empty(*values, default=""):
     return default
 
 
+# ---------- v15.20: konkretere Risiko-Kommunikation ----------
+def _risk_v1520_num(*values, default=0.0):
+    for value in values:
+        try:
+            if value is None:
+                continue
+            if isinstance(value, str) and not value.strip():
+                continue
+            f = float(value)
+            if pd.isna(f):
+                continue
+            return f
+        except Exception:
+            continue
+    return float(default)
+
+
+def _risk_v1520_label(score):
+    try:
+        score = float(score)
+    except Exception:
+        score = 0.0
+    if score >= 72:
+        return "hoch"
+    if score >= 55:
+        return "erhöht"
+    if score >= 35:
+        return "normal"
+    return "niedrig"
+
+
+def _risk_v1520_class(label):
+    lbl = str(label or "").lower()
+    if "hoch" in lbl:
+        return "risk-high"
+    if "erh" in lbl:
+        return "risk-elevated"
+    if "normal" in lbl:
+        return "risk-normal"
+    return "risk-low"
+
+
+def _risk_v1520_short_reason(title, score, result, regime_ctx=None):
+    title_l = str(title or "").lower()
+    label = _risk_v1520_label(score)
+    if "volatil" in title_l:
+        if label in {"hoch", "erhöht"}:
+            return "Schwankung/Gaps enger einplanen; Positionsgröße konservativer wählen."
+        return "Schwankung wirkt aktuell kontrollierbar."
+    if "gap" in title_l or "event" in title_l:
+        if label in {"hoch", "erhöht"}:
+            return "Event- oder Gap-Risiko kann Einstiege/Stops verzerren."
+        return "Kein dominanter Event- oder Gap-Störfaktor sichtbar."
+    if "liquid" in title_l:
+        if label in {"hoch", "erhöht"}:
+            return "Ausführung und Positionsgröße vorsichtiger planen."
+        return "Liquiditäts-/Volumenbild wirkt nicht störend."
+    if "trend" in title_l or "exit" in title_l:
+        if label in {"hoch", "erhöht"}:
+            return "Trend-/Exit-Warnungen verlangen engere Kontrolle."
+        return "Kein akuter struktureller Exit-Druck."
+    if "markt" in title_l:
+        regime_label = str((regime_ctx or {}).get("label", "Neutral"))
+        if label in {"hoch", "erhöht"}:
+            return f"Marktumfeld ({regime_label}) erhöht die Fehleranfälligkeit."
+        return f"Marktumfeld ({regime_label}) belastet das Setup nicht stark."
+    return "Risikotreiber wird als Kontextfaktor berücksichtigt."
+
+
+def build_concrete_risk_package_v1520(result, regime_ctx=None, final_risk_label=None, position_mode=False):
+    """Erzeugt eine fachlich konkretere Risikozerlegung für UI und Export."""
+    r = result or {}
+    regime_ctx = regime_ctx or {}
+    exit_score = _risk_v1520_num(r.get("exit_score"), default=50)
+    volatility = _risk_v1520_num(r.get("instrument_volatility_risk_score"), r.get("volatility_risk_score"), r.get("atr_risk_score"), default=0)
+    gap_event = max(_risk_v1520_num(r.get("short_term_gap_risk_score"), default=0), _risk_v1520_num(r.get("event_risk_score"), default=0), _risk_v1520_num(r.get("earnings_event_score"), default=0))
+    volume_quality = _risk_v1520_num(r.get("volume_quality_score"), default=55)
+    liquidity = max(_risk_v1520_num(r.get("liquidity_risk_score"), default=0), max(0, 55 - volume_quality))
+    trend_exit = max(_risk_v1520_num(r.get("tactical_exit_risk"), default=0), _risk_v1520_num(r.get("trend_break_score"), default=0), _risk_v1520_num(r.get("momentum_collapse_score"), default=0), _risk_v1520_num(r.get("distribution_score"), r.get("distribution_pressure_score"), default=0), max(0, 55 - exit_score))
+    regime_label = str(regime_ctx.get("label", r.get("regime_label", "Neutral")) or "Neutral")
+    regime_adj = abs(_risk_v1520_num(r.get("regime_adjustment_score"), default=0))
+    regime_risk = 20
+    if regime_label.lower() in {"risk-off", "negativ", "negative"}:
+        regime_risk = 68
+    elif regime_label.lower() in {"neutral", "gemischt"}:
+        regime_risk = 42
+    elif regime_label.lower() in {"positiv", "positive"}:
+        regime_risk = 24
+    regime_risk = max(regime_risk, regime_adj)
+    factors = [
+        {"name": "Volatilität", "score": round(volatility, 1)},
+        {"name": "Gap/Event", "score": round(gap_event, 1)},
+        {"name": "Liquidität/Volumen", "score": round(liquidity, 1)},
+        {"name": "Trend/Exit", "score": round(trend_exit, 1)},
+        {"name": "Markt/Regime", "score": round(regime_risk, 1)},
+    ]
+    for f in factors:
+        f["label"] = _risk_v1520_label(f["score"])
+        f["class"] = _risk_v1520_class(f["label"])
+        f["reason"] = _risk_v1520_short_reason(f["name"], f["score"], r, regime_ctx)
+    sorted_factors = sorted(factors, key=lambda x: _risk_v1520_num(x.get("score"), default=0), reverse=True)
+    top = sorted_factors[0]
+    second = sorted_factors[1] if len(sorted_factors) > 1 else top
+    overall_score = max(_risk_v1520_num(top.get("score")), _risk_v1520_num(r.get("tactical_exit_risk"), default=0))
+    overall_label = str(final_risk_label or "").strip() or _risk_v1520_label(overall_score)
+    if overall_label.lower() in {"stabil", "ruhig"} and overall_score >= 55:
+        overall_label = "erhöht"
+    if overall_score >= 72:
+        overall_label = "kritisch" if position_mode else "hoch"
+    if str(overall_label).lower() in {"kritisch", "hoch"}:
+        summary = f"Hauptlast liegt bei {top['name']}; Positionsgröße/Stop sollten defensiv bleiben."
+    elif str(overall_label).lower() in {"erhöht"}:
+        summary = f"Risiko ist nicht dominant, aber {top['name']} und {second['name']} sollten beobachtet werden."
+    else:
+        summary = f"Risiko wirkt kontrollierbar; wichtigster Kontextfaktor bleibt {top['name']}."
+    if position_mode:
+        action_hint = "Bestehende Position über Stop/Teilgewinn führen; neue Aufstockung nur bei bestätigtem Trigger."
+    else:
+        action_hint = "Neueinstieg nur mit sauberem Trigger; Positionsgröße an den stärksten Risikotreiber anpassen."
+    if str(overall_label).lower() in {"stabil", "niedrig", "normal"}:
+        action_hint = "Risikobild erlaubt normale Planung, solange Trigger und Invalidation sauber bleiben."
+    return {"overall_label": overall_label, "overall_score": round(overall_score, 1), "summary": summary, "action_hint": action_hint, "top_driver": top.get("name", "-"), "top_driver_label": top.get("label", "-"), "factors": factors}
+
+
 def enrich_single_export_df_v1516(export_df, result, context=None):
     """
     Erweitert den bestehenden logging_utils.build_export_df um Felder,
@@ -517,7 +641,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.19.4",
+        "Export_Version": "v15.20",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -576,6 +700,15 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Timing_Final": model_debug.get("final_timing") or context.get("final_timing_label"),
         "Timing_Grund_Final": model_debug.get("final_timing_reason") or context.get("final_timing_reason"),
         "Risiko_Final": model_debug.get("final_risk") or context.get("final_risk_label"),
+        "Risiko_Konkret_Summary": (context.get("risk_detail_pkg") or {}).get("summary"),
+        "Risiko_Konkret_Top_Treiber": (context.get("risk_detail_pkg") or {}).get("top_driver"),
+        "Risiko_Konkret_Top_Treiber_Label": (context.get("risk_detail_pkg") or {}).get("top_driver_label"),
+        "Risiko_Konkret_Handlung": (context.get("risk_detail_pkg") or {}).get("action_hint"),
+        "Risiko_Volatilitaet": next((f.get("label") for f in ((context.get("risk_detail_pkg") or {}).get("factors") or []) if f.get("name") == "Volatilität"), ""),
+        "Risiko_Gap_Event": next((f.get("label") for f in ((context.get("risk_detail_pkg") or {}).get("factors") or []) if f.get("name") == "Gap/Event"), ""),
+        "Risiko_Liquiditaet_Volumen": next((f.get("label") for f in ((context.get("risk_detail_pkg") or {}).get("factors") or []) if f.get("name") == "Liquidität/Volumen"), ""),
+        "Risiko_Trend_Exit": next((f.get("label") for f in ((context.get("risk_detail_pkg") or {}).get("factors") or []) if f.get("name") == "Trend/Exit"), ""),
+        "Risiko_Markt_Regime": next((f.get("label") for f in ((context.get("risk_detail_pkg") or {}).get("factors") or []) if f.get("name") == "Markt/Regime"), ""),
         "Setup_Prioritaet_Final": model_debug.get("final_priority") or context.get("final_priority_label"),
         "Setup_Prioritaet_Grund_Final": model_debug.get("final_priority_reason") or context.get("final_priority_reason"),
         "Taktik_Final": model_debug.get("final_tactical") or context.get("final_tactical_label"),
@@ -13641,6 +13774,13 @@ if result is not None:
         "exec_verdict": exec_verdict if "exec_verdict" in locals() else "-",
         "exec_why": exec_why if "exec_why" in locals() else "-",
     }
+    risk_detail_pkg = build_concrete_risk_package_v1520(
+        result,
+        regime_ctx=regime_ctx if "regime_ctx" in locals() else {},
+        final_risk_label=final_risk_label if "final_risk_label" in locals() else None,
+        position_mode=position_mode if "position_mode" in locals() else False,
+    )
+
     primary_summary_data = [
         ("Aktion", final_action_label, ((display_mode_label(mode_label) + " · " + compact_action_text_phase_ui(final_action_label)) if scores_visible() else compact_action_text_phase_ui(final_action_label))),
         ("Setup-Qualität", str(overall_setup_pkg.get("label", "brauchbar")).capitalize(), overall_setup_pkg.get("summary", "-")),
@@ -13684,6 +13824,63 @@ if result is not None:
                 unsafe_allow_html=True,
             )
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------- v15.20: Risiko konkretisieren ----------
+    st.markdown("""
+    <style>
+    .risk-detail-shell{margin:0.85rem 0 0.45rem 0;padding:1rem 1.05rem;border:1px solid rgba(148,163,184,0.18);border-radius:18px;background:linear-gradient(135deg, rgba(15,23,42,0.38), rgba(15,23,42,0.18));}
+    .risk-detail-head{display:grid;grid-template-columns:1.15fr 0.85fr;gap:1rem;align-items:center;}
+    .risk-detail-kicker{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.12em;color:rgba(148,163,184,0.88);font-weight:700;margin-bottom:0.25rem;}
+    .risk-detail-title{font-size:1.05rem;color:rgba(248,250,252,0.96);font-weight:750;margin-bottom:0.2rem;}
+    .risk-detail-sub{font-size:0.86rem;color:rgba(203,213,225,0.84);line-height:1.35;}
+    .risk-detail-action{font-size:0.84rem;color:rgba(226,232,240,0.9);line-height:1.35;padding:0.75rem 0.85rem;border-radius:14px;border:1px solid rgba(148,163,184,0.16);background:rgba(2,6,23,0.26);}
+    .risk-factor-card{min-height:112px;padding:0.78rem 0.82rem;border-radius:16px;border:1px solid rgba(148,163,184,0.16);background:rgba(15,23,42,0.28);margin-bottom:0.35rem;}
+    .risk-factor-name{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.11em;color:rgba(148,163,184,0.82);font-weight:700;margin-bottom:0.28rem;}
+    .risk-factor-label{font-size:0.98rem;color:rgba(248,250,252,0.95);font-weight:720;margin-bottom:0.28rem;}
+    .risk-factor-reason{font-size:0.78rem;line-height:1.28;color:rgba(203,213,225,0.8);}
+    .risk-factor-card.risk-low{border-color:rgba(34,197,94,0.20);}
+    .risk-factor-card.risk-normal{border-color:rgba(148,163,184,0.20);}
+    .risk-factor-card.risk-elevated{border-color:rgba(245,158,11,0.34);background:rgba(120,53,15,0.13);}
+    .risk-factor-card.risk-high{border-color:rgba(248,113,113,0.36);background:rgba(127,29,29,0.16);}
+    @media(max-width:900px){.risk-detail-head{grid-template-columns:1fr;}}
+    </style>
+    """, unsafe_allow_html=True)
+    try:
+        _risk_factors = (risk_detail_pkg or {}).get("factors", [])
+    except Exception:
+        _risk_factors = []
+    st.markdown(
+        f"""
+        <div class="risk-detail-shell">
+            <div class="risk-detail-head">
+                <div>
+                    <div class="risk-detail-kicker">Risiko konkret</div>
+                    <div class="risk-detail-title">{html.escape(str((risk_detail_pkg or {}).get("overall_label", final_risk_label if "final_risk_label" in locals() else "-"))).capitalize()}</div>
+                    <div class="risk-detail-sub">{html.escape(str((risk_detail_pkg or {}).get("summary", "-")))}</div>
+                </div>
+                <div class="risk-detail-action">{html.escape(str((risk_detail_pkg or {}).get("action_hint", "-")))}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    _risk_cols = st.columns(5)
+    for _risk_col, _risk_factor in zip(_risk_cols, _risk_factors):
+        with _risk_col:
+            _rf_name = html.escape(str(_risk_factor.get("name", "-")))
+            _rf_label = html.escape(str(_risk_factor.get("label", "-"))).capitalize()
+            _rf_reason = html.escape(str(_risk_factor.get("reason", "-")))
+            _rf_class = html.escape(str(_risk_factor.get("class", "risk-normal")))
+            st.markdown(
+                f"""
+                <div class="risk-factor-card {_rf_class}">
+                    <div class="risk-factor-name">{_rf_name}</div>
+                    <div class="risk-factor-label">{_rf_label}</div>
+                    <div class="risk-factor-reason">{_rf_reason}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     # ---------- v15.13: klare Trennung Pre-Entry vs. Post-Entry ----------
     if position_mode:
@@ -14127,6 +14324,7 @@ if result is not None:
                 "final_priority_reason": final_priority_reason if "final_priority_reason" in locals() else None,
                 "final_tactical_label": final_tactical_label if "final_tactical_label" in locals() else None,
                 "final_ultra_label": final_ultra_label if "final_ultra_label" in locals() else None,
+                "risk_detail_pkg": risk_detail_pkg if "risk_detail_pkg" in locals() else {},
                 "exec_verdict": exec_verdict if "exec_verdict" in locals() else None,
                 "exec_why": exec_why if "exec_why" in locals() else None,
             },

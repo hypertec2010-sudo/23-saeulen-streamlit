@@ -3204,53 +3204,6 @@ def apply_regime_to_action(base_action, regime_ctx, timing_label="noch nicht rei
     return result, reason
 
 
-def _exec_summary_improve_text_v1523_11(next_trigger, final_action="-", verdict="-"):
-    """Macht aus Trigger-Status saubere Executive-Summary-Sprache.
-
-    Die Executive Summary soll keine Statuswerte wie "Jetzt prüfbar" als
-    Bedingung anzeigen. Diese Funktion übersetzt solche Werte in konkrete,
-    handlungsnahe Aussagen.
-    """
-    nt = str(next_trigger or "").strip()
-    low = nt.lower()
-    fa = str(final_action or "").strip().lower()
-    vd = str(verdict or "").strip().lower()
-
-    if low in {"", "-", "none", "nan", "nicht anwendbar"}:
-        return "sauberem Trigger nach oben"
-
-    # Reine Statuslabels sind keine sinnvollen "Verbessert sich bei"-Bedingungen.
-    if low in {"jetzt prüfbar", "jetzt pruefbar", "aktiv"}:
-        if fa == "kaufen" or vd == "ja":
-            return "Einstieg bleibt prüfbar, solange Kurs und Triggerzone halten."
-        return "klarer Bestätigung des aktiven Triggers"
-
-    # Wenn die Aktion noch nicht Kaufen ist, darf der Wartetrigger explizit bleiben.
-    return nt
-
-
-def _exec_summary_worsen_text_v1523_11(negative_trigger, top_red_flag="-"):
-    """Filtert nicht-operative Fundamentalhinweise aus "Kippt bei" heraus.
-
-    "Kippt bei" soll eine konkrete Invalidation / einen Risikotrigger nennen.
-    Einzelne Fundamental-Hinweise wie kurzfristig negatives Gewinnwachstum sind
-    dafür zu unscharf und wirkten in der UI alarmistisch.
-    """
-    val = str(negative_trigger or "").strip()
-    low = val.lower()
-    bad_tokens = [
-        "gewinnwachstum",
-        "ertrags-risiko",
-        "ertragsrisiko",
-        "ertragsdynamik",
-        "wachstum stark negativ",
-        "kurzfristiges gewinnwachstum",
-    ]
-    if low in {"", "-", "none", "nan"} or any(t in low for t in bad_tokens):
-        return "Bruch der nächsten relevanten Support- oder Trigger-Zone"
-    return val
-
-
 def build_exec_summary_phase1(final_timing, final_risk, final_action, regime_ctx, next_trigger="-", negative_trigger="-"):
     ft = str(final_timing or "noch nicht reif")
     fr = str(final_risk or "stabil")
@@ -3287,8 +3240,8 @@ def build_exec_summary_phase1(final_timing, final_risk, final_action, regime_ctx
     elif bias < 0:
         why = why + " Das Marktumfeld macht frühe Long-Signale aktuell anfälliger."
 
-    improve = _exec_summary_improve_text_v1523_11(next_trigger, final_action=fa, verdict=verdict)
-    worsen = _exec_summary_worsen_text_v1523_11(negative_trigger)
+    improve = next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"
+    worsen = negative_trigger if str(negative_trigger).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"
     return verdict, why, improve, worsen
 
 
@@ -3637,16 +3590,58 @@ def align_action_with_trigger_v1520_2(action_label, action_reason, next_trigger,
     return action_label, reason
 
 
-def action_trigger_note_v1520_2(action_label, next_trigger, negative_trigger="-"):
+def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trigger_reason="-", action_label="-", entry_quality="-"):
+    """Uebersetzt technische Trigger-Statuslabels in handlungsnahe Sprache.
+
+    Labels wie "Jetzt pruefbar" sind intern hilfreich, aber allein in der UI
+    zu vage. Diese Funktion erzeugt deshalb immer eine konkrete Aussage: was
+    pruefen, woran gueltig, oder worauf warten.
+    """
+    nt = str(next_trigger or "").strip()
+    ts = str(trigger_status or "").strip().lower()
+    tr = str(trigger_reason or "").strip()
     action = str(action_label or "").strip().lower()
-    nt = str(next_trigger or "-").strip()
+    entry = str(entry_quality or "").strip().lower()
+    low = nt.lower()
+
+    empty_vals = {"", "-", "none", "nan", "nicht anwendbar"}
+
+    if low in {"jetzt prüfbar", "jetzt pruefbar", "aktiv"} or ts == "aktiv":
+        if action == "kaufen":
+            return "Einstieg ist jetzt prüfbar; nur gültig, solange Kurs und Trigger-/Support-Zone halten."
+        return "Setup ist jetzt prüfbar; Einstieg nur bei sauberer Bestätigung in der Entry-Zone."
+
+    if low in empty_vals:
+        if ts in {"nahe dran", "fast prüfbar", "fast pruefbar"}:
+            return "Noch keinen Soforteinstieg erzwingen; auf Bestätigung oder Rücksetzer in die Entry-Zone warten."
+        if ts in {"passiv", "warten"}:
+            return "Noch kein aktiver Einstieg; erst bei klarerem Setup oder besserem Umfeld neu prüfen."
+        return "Sauberen nächsten Bestätigungsschritt abwarten."
+
+    # Wenn der Text schon konkret ist, nicht unnötig umformulieren.
+    concrete_tokens = [
+        "rücksetzer", "ruecksetzer", "entry-zone", "support", "widerstand",
+        "zahlen", "marktumfeld", "confirmation", "bestätigung", "bestaetigung",
+        "setup", "trigger", "prüfen", "pruefen", "warten", "zone"
+    ]
+    if any(tok in low for tok in concrete_tokens):
+        return nt
+
+    if tr and tr.lower() not in empty_vals:
+        return tr
+    return nt
+
+
+def action_trigger_note_v1520_2(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-"):
+    action = str(action_label or "").strip().lower()
+    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality)
     neg = str(negative_trigger or "-").strip()
     if action == "kaufen":
         if neg and neg not in {"-", "None", "nan"}:
             return f"Negativer Trigger: {neg}"
         return "Negativer Trigger: Einstieg verwerfen, wenn der Kurs die Entry-/Support-Zone klar verliert."
-    if nt and nt not in {"-", "None", "nan"}:
-        return f"Nächster Trigger: {nt}"
+    if nt_display and nt_display not in {"-", "None", "nan"}:
+        return f"Nächster Trigger: {nt_display}"
     return "Nächster Trigger: sauberer nächster Bestätigungsschritt"
 
 
@@ -7417,7 +7412,7 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
         if val:
             return shorten_text(val, max_len)
 
-    # v15.23.11: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
+    # v15.23.12: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
     # Yahoo-Suche liefert fuer reine Ticker oft shortname/longname; das verhindert
     # insbesondere im Abschnitt "Jetzt spannend" die Anzeige Ticker = Name.
     if ticker:
@@ -8814,8 +8809,8 @@ def _legacy_analyze_stock(
             trigger_status = "Aktiv"
             watchlist_priority = "Hoch"
             watchlist_priority_score = 85
-            next_trigger = "Jetzt prüfbar"
-            trigger_reason = "Setup valide, Timing stimmig und in Entry-Zone"
+            next_trigger = "Einstieg in Entry-Zone prüfen; gültig solange Trigger-/Support-Zone hält"
+            trigger_reason = "Setup valide, Timing stimmig und Kurs in sinnvoller Entry-Zone"
         elif valid_trade_setup and entry_quality == "abwarten" and trading_case_score >= 60 and setup_confidence >= 55:
             trigger_status = "Nahe dran"
             watchlist_priority = "Hoch"
@@ -14766,7 +14761,7 @@ if result is not None:
                         <div class="dc-label">Aktion</div>
                         <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
                         <div class="dc-sub">{compact_action_text_phase_ui(final_action_label)}</div>
-                        <div class="dc-note">{action_trigger_note_v1520_2(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-")}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
+                        <div class="dc-note">{action_trigger_note_v1520_2(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-", trigger_status if "trigger_status" in locals() else "-", trigger_reason if "trigger_reason" in locals() else "-", entry_quality if "entry_quality" in locals() else "-")}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -15458,11 +15453,18 @@ if result is not None:
             render_model_debug_panel(model_debug_pkg)
 
 
+            trigger_display_v1523_12 = operational_trigger_text_v1523_12(
+                next_trigger if "next_trigger" in locals() else "-",
+                trigger_status if "trigger_status" in locals() else "-",
+                trigger_reason if "trigger_reason" in locals() else "-",
+                final_action_label if "final_action_label" in locals() else "-",
+                entry_quality if "entry_quality" in locals() else "-",
+            )
             st.markdown(
                 f"""
                     <div class="section-card">
                         <div class="premium-title">Nächster Trigger</div>
-                        <div class="premium-value">Bullisher bei: {next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"}</div>
+                        <div class="premium-value">Bullisher bei: {trigger_display_v1523_12 if str(trigger_display_v1523_12).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"}</div>
                         <div class="premium-sub">Bearisher bei: {top_red_flag if str(top_red_flag).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"}</div>
                     </div>
                     """,
@@ -16411,7 +16413,7 @@ if result is not None:
                 w1, w2, w3 = st.columns(3)
                 w1.metric("Trigger-Status", display_trigger_status_label(trigger_status))
                 w2.metric("Watchlist-Priorität", watchlist_priority)
-                w3.metric("Nächster Trigger", next_trigger)
+                w3.metric("Nächster Trigger", operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, final_action_label if "final_action_label" in locals() else "-", entry_quality if "entry_quality" in locals() else "-"))
 
                 st.markdown("**Warum steht die Aktie auf der Watchlist so weit oben?**")
                 st.write(trigger_reason)

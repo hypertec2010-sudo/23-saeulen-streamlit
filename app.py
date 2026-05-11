@@ -255,7 +255,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         base = base.head(1).copy()
 
     def add_col(name, value, default=""):
-        # v15.19.1: Bestehende leere Spalten nachfuellen, ohne an Pandas-3
+        # v15.19.2: Bestehende leere Spalten nachfuellen, ohne an Pandas-3
         # Dtype-Upcast-Regeln zu scheitern. Einige Exportspalten kommen aus
         # build_export_df numerisch typisiert an; wenn wir dort spaeter Text-
         # Fallbacks wie "n/a", "Neutral" oder "stabil" eintragen, wirft
@@ -288,7 +288,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.19.1",
+        "Export_Version": "v15.19.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -12570,13 +12570,11 @@ try:
 except Exception:
     single_export_df = pd.DataFrame()
 
+# v15.19.2: Sheets-Logging nicht mehr per Query-Parameter/Link ausloesen.
+# Der Link hatte ein neues Browserfenster bzw. eine Reanalyse getriggert.
+# Stattdessen wird unten im Exportbereich ein echter Streamlit-Button verwendet,
+# der die bestehende ausgereifte logging_utils.append_df_to_gsheet-Logik erhaelt.
 sheet_log_triggered = False
-try:
-    qp = st.query_params
-    if str(qp.get("sheet_log", "0")) == "1":
-        sheet_log_triggered = True
-except Exception:
-    sheet_log_triggered = False
 
 if result is not None:
     ticker = result["ticker"]
@@ -13866,27 +13864,17 @@ if result is not None:
         csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
         csv_href = f"data:text/csv;base64,{csv_b64}"
 
-        if sheet_log_triggered:
-            ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
-            show_sheet_result(ok, msg)
-            try:
-                st.query_params.clear()
-            except Exception:
-                pass
-
         st.markdown('<div class="secondary-action-row"><div class="muted-meta">Export und Logging der aktuellen Einzelanalyse</div><div class="secondary-action-note">CSV und Sheets verwenden denselben finalen Export inklusive neuer Synthese-, Risiko-, Radar- und Positionsfelder.</div></div>', unsafe_allow_html=True)
         se_outer1, se_outer2, se_outer3 = st.columns([1.0, 1.0, 2.3])
-        sheet_href = f"?sheet_log=1&sheet_nonce={datetime.now().strftime('%Y%m%d%H%M%S%f')}"
         with se_outer1:
             st.markdown(
                 f'<a class="export-action-btn" href="{csv_href}" download="{csv_filename}"><span>CSV</span></a>',
                 unsafe_allow_html=True
             )
         with se_outer2:
-            st.markdown(
-                f'<a class="export-action-btn" href="{sheet_href}"><span>Sheets</span></a>',
-                unsafe_allow_html=True
-            )
+            if st.button("Sheets", key=f"single_sheet_log_{ticker}", use_container_width=True):
+                ok, msg = append_df_to_gsheet(single_export_df, worksheet_name="Analysis_Log")
+                show_sheet_result(ok, msg)
         with se_outer3:
             st.markdown("", unsafe_allow_html=True)
 

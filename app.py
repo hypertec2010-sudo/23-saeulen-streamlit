@@ -641,7 +641,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.24.5",
+        "Export_Version": "v15.24.6",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -15023,239 +15023,247 @@ if result is not None:
         render_reason_box("Was bremst", driver_summary.get("negatives", []), empty_text="Keine klaren Bremsfaktoren erkannt.")
 
 
-    with st.expander("Markt & Relative Stärke", expanded=False):
-        st.markdown(
-            """
-            <div class="section-head quiet-section-head">
-                <div class="section-title">Leadership & Marktbreite</div>
-                <div class="section-meta-line">Kontextblock: relative Stärke und Marktbreite werden bewusst unterhalb der Kernbereiche geführt.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        leadership_sub = (f"Diagnose: {fmt_num(leadership_score_display,0)}/100" if scores_visible() else leadership_status_display)
-        industry_sub = (f"Diagnose: {fmt_num(industry_strength_display,0)}/100" if scores_visible() else industry_label_display)
-        rs_sub = (f"Diagnose: {fmt_num(rs_acceleration_display,0)}/100" if scores_visible() else "gegenüber Benchmark")
-        st.markdown(
-            f"""
-            <div class="quiet-fact-grid">
-                <div class="quiet-fact-card">
-                    <div class="quiet-fact-label">Leadership</div>
-                    <div class="quiet-fact-value">{leadership_label_phase_ui(leadership_score_display)}</div>
-                    <div class="quiet-fact-sub">{leadership_sub}</div>
+    # ---------- v15.24.6: Detailbereiche hinter einem ersten kompakten Gate sammeln ----------
+    show_deep_details = st.toggle(
+        "Weitere Details, Export und Diagnose anzeigen",
+        value=False,
+        key=f"deep_details_gate_{ticker}",
+        help="Blendet Markt-/Setup-/Fundamental-/Risiko-Details, Export und Diagnosebereiche ein.",
+    )
+    if show_deep_details:
+        with st.expander("Markt & Relative Stärke", expanded=False):
+            st.markdown(
+                """
+                <div class="section-head quiet-section-head">
+                    <div class="section-title">Leadership & Marktbreite</div>
+                    <div class="section-meta-line">Kontextblock: relative Stärke und Marktbreite werden bewusst unterhalb der Kernbereiche geführt.</div>
                 </div>
-                <div class="quiet-fact-card">
-                    <div class="quiet-fact-label">Industrie</div>
-                    <div class="quiet-fact-value">{industry_strength_label_phase_ui(industry_strength_display)}</div>
-                    <div class="quiet-fact-sub">{industry_sub}</div>
-                </div>
-                <div class="quiet-fact-card">
-                    <div class="quiet-fact-label">Relative Stärke</div>
-                    <div class="quiet-fact-value">{rs_accel_label_phase_ui(rs_acceleration_display)}</div>
-                    <div class="quiet-fact-sub">{rs_sub}</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            f"""
-                <div class="section-card quiet-section-card">
-                    <div class="premium-title">Einordnung</div>
-                    <div class="premium-value">Leadership: {leadership_label_phase_ui(leadership_score_display)}</div>
-                    <div class="premium-sub">
-                        Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark bleibt ein wichtiger Treiber, ist hier aber bewusst als Kontext statt als Hauptentscheidung dargestellt.
+                """,
+                unsafe_allow_html=True,
+            )
+            leadership_sub = (f"Diagnose: {fmt_num(leadership_score_display,0)}/100" if scores_visible() else leadership_status_display)
+            industry_sub = (f"Diagnose: {fmt_num(industry_strength_display,0)}/100" if scores_visible() else industry_label_display)
+            rs_sub = (f"Diagnose: {fmt_num(rs_acceleration_display,0)}/100" if scores_visible() else "gegenüber Benchmark")
+            st.markdown(
+                f"""
+                <div class="quiet-fact-grid">
+                    <div class="quiet-fact-card">
+                        <div class="quiet-fact-label">Leadership</div>
+                        <div class="quiet-fact-value">{leadership_label_phase_ui(leadership_score_display)}</div>
+                        <div class="quiet-fact-sub">{leadership_sub}</div>
+                    </div>
+                    <div class="quiet-fact-card">
+                        <div class="quiet-fact-label">Industrie</div>
+                        <div class="quiet-fact-value">{industry_strength_label_phase_ui(industry_strength_display)}</div>
+                        <div class="quiet-fact-sub">{industry_sub}</div>
+                    </div>
+                    <div class="quiet-fact-card">
+                        <div class="quiet-fact-label">Relative Stärke</div>
+                        <div class="quiet-fact-value">{rs_accel_label_phase_ui(rs_acceleration_display)}</div>
+                        <div class="quiet-fact-sub">{rs_sub}</div>
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-    if is_pro_mode or is_expert_mode:
-        with st.expander("Setup & Timing", expanded=False):
-            render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
-        with st.expander("Volumen & Akkumulation", expanded=False):
-            render_diagnostic_section("Volumen & Akkumulation", diag_sections_126a.get("Volumen & Akkumulation", []))
-        with st.expander("Event & Katalysator", expanded=False):
-            render_diagnostic_section("Event & Katalysator", diag_sections_126a.get("Event & Katalysator", []))
-        with st.expander("Qualität & Fundamentals", expanded=False):
-            render_diagnostic_section("Qualität & Fundamentals", diag_sections_126a.get("Qualität & Fundamentals", []))
-        with st.expander("Marktregime", expanded=False):
-            render_diagnostic_section("Marktregime", diag_sections_126a.get("Marktregime", []))
-        with st.expander("Exit & Risiko", expanded=False):
-            render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
+            st.markdown(
+                f"""
+                    <div class="section-card quiet-section-card">
+                        <div class="premium-title">Einordnung</div>
+                        <div class="premium-value">Leadership: {leadership_label_phase_ui(leadership_score_display)}</div>
+                        <div class="premium-sub">
+                            Sektor wirkt {sector_trend_text_display}, Industrie wirkt {industry_trend_text_display}. Relative Stärke gegenüber dem Benchmark bleibt ein wichtiger Treiber, ist hier aber bewusst als Kontext statt als Hauptentscheidung dargestellt.
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        if is_pro_mode or is_expert_mode:
+            with st.expander("Setup & Timing", expanded=False):
+                render_diagnostic_section("Setup & Timing", diag_sections_126a.get("Setup & Timing", []))
+            with st.expander("Volumen & Akkumulation", expanded=False):
+                render_diagnostic_section("Volumen & Akkumulation", diag_sections_126a.get("Volumen & Akkumulation", []))
+            with st.expander("Event & Katalysator", expanded=False):
+                render_diagnostic_section("Event & Katalysator", diag_sections_126a.get("Event & Katalysator", []))
+            with st.expander("Qualität & Fundamentals", expanded=False):
+                render_diagnostic_section("Qualität & Fundamentals", diag_sections_126a.get("Qualität & Fundamentals", []))
+            with st.expander("Marktregime", expanded=False):
+                render_diagnostic_section("Marktregime", diag_sections_126a.get("Marktregime", []))
+            with st.expander("Exit & Risiko", expanded=False):
+                render_diagnostic_section("Exit & Risiko", diag_sections_126a.get("Exit & Risiko", []))
 
 
-        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-        st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
+            st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+            st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
 
-        # ---------- v15.16: finaler CSV-/Sheets-Export nach allen Synthese-Layern ----------
-        try:
-            single_export_df = build_export_df([result]) if result is not None else pd.DataFrame()
-        except Exception:
-            single_export_df = pd.DataFrame()
+            # ---------- v15.16: finaler CSV-/Sheets-Export nach allen Synthese-Layern ----------
+            try:
+                single_export_df = build_export_df([result]) if result is not None else pd.DataFrame()
+            except Exception:
+                single_export_df = pd.DataFrame()
 
-        # v15.17: Export-Werte fuer Candlestick und Ultra vor dem Export aktiv berechnen.
-        # Vorher wurden die Spalten zwar angelegt, aber die eigentlichen UI-Variablen
-        # entstanden erst spaeter im Chart-/Candlestick-Block. Ergebnis: leere Exportfelder.
-        export_daily_sig = daily_sig if "daily_sig" in locals() and isinstance(daily_sig, dict) else {}
-        export_hourly_sig = hourly_sig if "hourly_sig" in locals() and isinstance(hourly_sig, dict) else {}
-        export_ultra_signal = ultra_signal if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else {}
-        try:
-            _export_chart_range = st.session_state.get(f"chart_range_{ticker}", "1 Jahr") if "ticker" in locals() else "1 Jahr"
-            _export_chart_df = compute_chart_df(df, _export_chart_range)
-            _export_sr_basis_df = compute_chart_df(df, "1 Jahr")
-            _export_structures = build_chart_structures(_export_chart_df, sr_basis_df=_export_sr_basis_df)
-            export_ultra_signal = compute_ultra_short_term_zone_signal(_export_chart_df, _export_structures)
-        except Exception:
-            pass
-        try:
-            _export_intraday_result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
-            _export_hourly_df = get_intraday_hourly_df_for_candles(result=_export_intraday_result, chart_df=_export_chart_df if "_export_chart_df" in locals() else df)
-            _export_candle_pkg = build_candlestick_bias_package(_export_chart_df if "_export_chart_df" in locals() else df, _export_hourly_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []))
-            if isinstance(_export_candle_pkg, dict):
-                export_daily_sig = _export_candle_pkg.get("daily", {}) or {}
-                export_hourly_sig = _export_candle_pkg.get("hourly", {}) or {}
-                if isinstance(result, dict):
-                    result["candlestick_bias_pkg"] = _export_candle_pkg
-                    result["candlestick_bias_label"] = _export_candle_pkg.get("label", "neutral")
-                    result["candlestick_bias_score"] = _export_candle_pkg.get("score", 0)
-        except Exception:
-            pass
+            # v15.17: Export-Werte fuer Candlestick und Ultra vor dem Export aktiv berechnen.
+            # Vorher wurden die Spalten zwar angelegt, aber die eigentlichen UI-Variablen
+            # entstanden erst spaeter im Chart-/Candlestick-Block. Ergebnis: leere Exportfelder.
+            export_daily_sig = daily_sig if "daily_sig" in locals() and isinstance(daily_sig, dict) else {}
+            export_hourly_sig = hourly_sig if "hourly_sig" in locals() and isinstance(hourly_sig, dict) else {}
+            export_ultra_signal = ultra_signal if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else {}
+            try:
+                _export_chart_range = st.session_state.get(f"chart_range_{ticker}", "1 Jahr") if "ticker" in locals() else "1 Jahr"
+                _export_chart_df = compute_chart_df(df, _export_chart_range)
+                _export_sr_basis_df = compute_chart_df(df, "1 Jahr")
+                _export_structures = build_chart_structures(_export_chart_df, sr_basis_df=_export_sr_basis_df)
+                export_ultra_signal = compute_ultra_short_term_zone_signal(_export_chart_df, _export_structures)
+            except Exception:
+                pass
+            try:
+                _export_intraday_result = attach_intraday_hourly_to_result(result, ticker=ticker if "ticker" in locals() else None)
+                _export_hourly_df = get_intraday_hourly_df_for_candles(result=_export_intraday_result, chart_df=_export_chart_df if "_export_chart_df" in locals() else df)
+                _export_candle_pkg = build_candlestick_bias_package(_export_chart_df if "_export_chart_df" in locals() else df, _export_hourly_df, context_hint=" - ".join(chart_context_lines if "chart_context_lines" in locals() else []))
+                if isinstance(_export_candle_pkg, dict):
+                    export_daily_sig = _export_candle_pkg.get("daily", {}) or {}
+                    export_hourly_sig = _export_candle_pkg.get("hourly", {}) or {}
+                    if isinstance(result, dict):
+                        result["candlestick_bias_pkg"] = _export_candle_pkg
+                        result["candlestick_bias_label"] = _export_candle_pkg.get("label", "neutral")
+                        result["candlestick_bias_score"] = _export_candle_pkg.get("score", 0)
+            except Exception:
+                pass
 
-        single_export_df = enrich_single_export_df_v1516(
-            single_export_df,
-            result,
-            context={
-                "mode_label": mode_label if "mode_label" in locals() else None,
-                "position_mode": position_mode if "position_mode" in locals() else None,
-                "buy_in_override": buy_in_override if "buy_in_override" in locals() else None,
-                "model_debug_pkg": model_debug_pkg if "model_debug_pkg" in locals() else {},
-                "conflict_pkg": conflict_pkg if "conflict_pkg" in locals() else {},
-                "overall_setup_pkg": overall_setup_pkg if "overall_setup_pkg" in locals() else {},
-                "regime_ctx": regime_ctx if "regime_ctx" in locals() else {},
-                "daily_sig": export_daily_sig if "export_daily_sig" in locals() else (daily_sig if "daily_sig" in locals() else {}),
-                "hourly_sig": export_hourly_sig if "export_hourly_sig" in locals() else (hourly_sig if "hourly_sig" in locals() else {}),
-                "ultra_signal": export_ultra_signal if "export_ultra_signal" in locals() else (ultra_signal if "ultra_signal" in locals() else {}),
-                "final_action_label": final_action_label if "final_action_label" in locals() else None,
-                "final_action_reason": final_action_reason if "final_action_reason" in locals() else None,
-                "final_timing_label": final_timing_label if "final_timing_label" in locals() else None,
-                "final_timing_reason": final_timing_reason if "final_timing_reason" in locals() else None,
-                "final_risk_label": final_risk_label if "final_risk_label" in locals() else None,
-                "final_priority_label": final_priority_label if "final_priority_label" in locals() else None,
-                "final_priority_reason": final_priority_reason if "final_priority_reason" in locals() else None,
-                "final_tactical_label": final_tactical_label if "final_tactical_label" in locals() else None,
-                "final_ultra_label": final_ultra_label if "final_ultra_label" in locals() else None,
-                "risk_detail_pkg": risk_detail_pkg if "risk_detail_pkg" in locals() else {},
-                "exec_verdict": exec_verdict if "exec_verdict" in locals() else None,
-                "exec_why": exec_why if "exec_why" in locals() else None,
-            },
-        )
-        csv_payload = single_export_df.to_csv(index=False).encode("utf-8-sig")
-        csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
-        csv_href = f"data:text/csv;base64,{csv_b64}"
+            single_export_df = enrich_single_export_df_v1516(
+                single_export_df,
+                result,
+                context={
+                    "mode_label": mode_label if "mode_label" in locals() else None,
+                    "position_mode": position_mode if "position_mode" in locals() else None,
+                    "buy_in_override": buy_in_override if "buy_in_override" in locals() else None,
+                    "model_debug_pkg": model_debug_pkg if "model_debug_pkg" in locals() else {},
+                    "conflict_pkg": conflict_pkg if "conflict_pkg" in locals() else {},
+                    "overall_setup_pkg": overall_setup_pkg if "overall_setup_pkg" in locals() else {},
+                    "regime_ctx": regime_ctx if "regime_ctx" in locals() else {},
+                    "daily_sig": export_daily_sig if "export_daily_sig" in locals() else (daily_sig if "daily_sig" in locals() else {}),
+                    "hourly_sig": export_hourly_sig if "export_hourly_sig" in locals() else (hourly_sig if "hourly_sig" in locals() else {}),
+                    "ultra_signal": export_ultra_signal if "export_ultra_signal" in locals() else (ultra_signal if "ultra_signal" in locals() else {}),
+                    "final_action_label": final_action_label if "final_action_label" in locals() else None,
+                    "final_action_reason": final_action_reason if "final_action_reason" in locals() else None,
+                    "final_timing_label": final_timing_label if "final_timing_label" in locals() else None,
+                    "final_timing_reason": final_timing_reason if "final_timing_reason" in locals() else None,
+                    "final_risk_label": final_risk_label if "final_risk_label" in locals() else None,
+                    "final_priority_label": final_priority_label if "final_priority_label" in locals() else None,
+                    "final_priority_reason": final_priority_reason if "final_priority_reason" in locals() else None,
+                    "final_tactical_label": final_tactical_label if "final_tactical_label" in locals() else None,
+                    "final_ultra_label": final_ultra_label if "final_ultra_label" in locals() else None,
+                    "risk_detail_pkg": risk_detail_pkg if "risk_detail_pkg" in locals() else {},
+                    "exec_verdict": exec_verdict if "exec_verdict" in locals() else None,
+                    "exec_why": exec_why if "exec_why" in locals() else None,
+                },
+            )
+            csv_payload = single_export_df.to_csv(index=False).encode("utf-8-sig")
+            csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
+            csv_href = f"data:text/csv;base64,{csv_b64}"
 
-        with st.expander("Export", expanded=False):
-            st.caption("CSV und Sheets nutzen denselben Datensatz.")
-            st.markdown("""
-            <style>
-            /* v15.19.13: ruhige Export-Actions statt Primary-CTA-Look.
-               CSV und Sheets bleiben nebeneinander, wirken aber bewusst sekundaer. */
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button,
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stDownloadButton"] > button,
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button,
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button{
-                min-height:38px !important;
-                height:38px !important;
-                max-height:38px !important;
-                padding:0 0.95rem !important;
-                line-height:1 !important;
-                border-radius:14px !important;
-                display:flex !important;
-                align-items:center !important;
-                justify-content:center !important;
-                white-space:nowrap !important;
-                transform:none !important;
-                box-shadow:none !important;
-                background:rgba(15,23,42,0.28) !important;
-                border:1px solid rgba(148,163,184,0.28) !important;
-                color:rgba(226,232,240,0.92) !important;
-                font-size:0.88rem !important;
-                font-weight:400 !important;
-                letter-spacing:0 !important;
-                text-transform:none !important;
-            }
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button::before,
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button::before,
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button::before{
-                content:none !important;
-                display:none !important;
-            }
-            [class*="st-key-export_buttons_bar_single"] button *,
-            [class*="st-key-export_buttons_bar_single"] button p,
-            [class*="st-key-export_buttons_bar_single"] button span,
-            [class*="st-key-export_buttons_bar_single"] button div{
-                margin:0 !important;
-                padding:0 !important;
-                line-height:1 !important;
-                min-height:0 !important;
-                height:auto !important;
-                display:flex !important;
-                align-items:center !important;
-                justify-content:center !important;
-                font-size:0.88rem !important;
-                font-weight:400 !important;
-                letter-spacing:0 !important;
-                text-transform:none !important;
-            }
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button:hover,
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button:hover{
-                background:rgba(30,41,59,0.42) !important;
-                border-color:rgba(147,197,253,0.45) !important;
-                color:rgba(255,255,255,0.98) !important;
-                box-shadow:0 4px 12px rgba(15,23,42,0.18) !important;
-            }
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"],
-            [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"]{
-                min-height:38px !important;
-                height:38px !important;
-                margin:0 !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            with st.container(key="export_buttons_bar_single"):
-                export_col_csv, export_col_sheets, export_col_spacer = st.columns([1, 1, 5], vertical_alignment="top")
-                with export_col_csv:
-                    st.download_button(
-                        "CSV herunterladen",
-                        data=csv_payload,
-                        file_name=csv_filename,
-                        mime="text/csv",
-                        use_container_width=True,
-                        key=f"csv_download_single_{ticker}",
-                    )
-                with export_col_sheets:
-                    if st.button("In Sheets speichern", use_container_width=True, key=f"sheet_log_single_{ticker}"):
-                        ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
-                        show_sheet_result(ok, msg)
+            with st.expander("Export", expanded=False):
+                st.caption("CSV und Sheets nutzen denselben Datensatz.")
+                st.markdown("""
+                <style>
+                /* v15.19.13: ruhige Export-Actions statt Primary-CTA-Look.
+                   CSV und Sheets bleiben nebeneinander, wirken aber bewusst sekundaer. */
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button,
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stDownloadButton"] > button,
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button,
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button{
+                    min-height:38px !important;
+                    height:38px !important;
+                    max-height:38px !important;
+                    padding:0 0.95rem !important;
+                    line-height:1 !important;
+                    border-radius:14px !important;
+                    display:flex !important;
+                    align-items:center !important;
+                    justify-content:center !important;
+                    white-space:nowrap !important;
+                    transform:none !important;
+                    box-shadow:none !important;
+                    background:rgba(15,23,42,0.28) !important;
+                    border:1px solid rgba(148,163,184,0.28) !important;
+                    color:rgba(226,232,240,0.92) !important;
+                    font-size:0.88rem !important;
+                    font-weight:400 !important;
+                    letter-spacing:0 !important;
+                    text-transform:none !important;
+                }
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button::before,
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button::before,
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button::before{
+                    content:none !important;
+                    display:none !important;
+                }
+                [class*="st-key-export_buttons_bar_single"] button *,
+                [class*="st-key-export_buttons_bar_single"] button p,
+                [class*="st-key-export_buttons_bar_single"] button span,
+                [class*="st-key-export_buttons_bar_single"] button div{
+                    margin:0 !important;
+                    padding:0 !important;
+                    line-height:1 !important;
+                    min-height:0 !important;
+                    height:auto !important;
+                    display:flex !important;
+                    align-items:center !important;
+                    justify-content:center !important;
+                    font-size:0.88rem !important;
+                    font-weight:400 !important;
+                    letter-spacing:0 !important;
+                    text-transform:none !important;
+                }
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"] > button:hover,
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"] > button:hover{
+                    background:rgba(30,41,59,0.42) !important;
+                    border-color:rgba(147,197,253,0.45) !important;
+                    color:rgba(255,255,255,0.98) !important;
+                    box-shadow:0 4px 12px rgba(15,23,42,0.18) !important;
+                }
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stButton"],
+                [class*="st-key-export_buttons_bar_single"] div[data-testid="stDownloadButton"]{
+                    min-height:38px !important;
+                    height:38px !important;
+                    margin:0 !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                with st.container(key="export_buttons_bar_single"):
+                    export_col_csv, export_col_sheets, export_col_spacer = st.columns([1, 1, 5], vertical_alignment="top")
+                    with export_col_csv:
+                        st.download_button(
+                            "CSV herunterladen",
+                            data=csv_payload,
+                            file_name=csv_filename,
+                            mime="text/csv",
+                            use_container_width=True,
+                            key=f"csv_download_single_{ticker}",
+                        )
+                    with export_col_sheets:
+                        if st.button("In Sheets speichern", use_container_width=True, key=f"sheet_log_single_{ticker}"):
+                            ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
+                            show_sheet_result(ok, msg)
 
-        with st.expander("Detaildiagnose / Scores anzeigen", expanded=False):
-            c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-            with c1:
-                render_score_card("Company Quality", f"{company}/100", ampel(company), "company", tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens.")
-            with c2:
-                render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup", tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter.")
-            with c3:
-                render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment", tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität.")
-            with c4:
-                render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}/100", tradeability_text, "kb", tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.")
-            with c5:
-                render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} - Board: {tb_score} Punkte", "board", tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard.")
-            with c6:
-                render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short", tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke.")
-            with c7:
-                render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper", tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt.")
+            with st.expander("Detaildiagnose / Scores anzeigen", expanded=False):
+                c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+                with c1:
+                    render_score_card("Company Quality", f"{company}/100", ampel(company), "company", tooltip="Bewertet Profitabilität, Wachstum, Bilanz, Bewertung, Sentiment und Risiko des Unternehmens.")
+                with c2:
+                    render_score_card("Setup Quality", f"{setup_adj}/100", ampel(setup_adj), "setup", tooltip="Bewertet das technische Gesamtbild der Aktie. Enthält Trend, Momentum, Volumen, Volatilität und einen kleinen Marktfilter.")
+                with c3:
+                    render_score_card("Investment Score", f"{investment}/100", ampel(investment), "investment", tooltip="Gesamtbewertung aus technischer und fundamentaler Qualität.")
+                with c4:
+                    render_score_card("Trade-Struktur", f"{fmt_num(tradeability_score,0)}/100", tradeability_text, "kb", tooltip="Wie gut das Setup grundsätzlich handelbar aufgebaut werden kann.")
+                with c5:
+                    render_score_card("Kurzfrist-Timing", f"{tb_score_100}/100", f"{tb_timing_text} - Board: {tb_score} Punkte", "board", tooltip="Schneller Taktik- und Timing-Blick aus dem TradingBoard.")
+                with c6:
+                    render_score_card("Kurzfrist Core", f"{short_term_score}/100", ampel(short_term_score), "short", tooltip="Kurzfristige Kernbewertung aus Momentum, Volumen, Volatilität und relativer Stärke.")
+                with c7:
+                    render_score_card("Setup-Confidence", f"{fmt_num(setup_confidence,0)}/100", setup_confidence_text, "helper", tooltip="Wie sauber und belastbar das erkannte Setup aktuell wirkt.")
 
 
 

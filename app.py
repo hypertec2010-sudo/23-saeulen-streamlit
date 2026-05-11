@@ -3241,7 +3241,7 @@ def build_exec_summary_phase1(final_timing, final_risk, final_action, regime_ctx
         why = why + " Das Marktumfeld macht frühe Long-Signale aktuell anfälliger."
 
     improve = next_trigger if str(next_trigger).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"
-    worsen = negative_trigger if str(negative_trigger).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"
+    worsen = sanitize_operational_bearish_trigger_v1523_13(negative_trigger) if "sanitize_operational_bearish_trigger_v1523_13" in globals() else (negative_trigger if str(negative_trigger).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone")
     return verdict, why, improve, worsen
 
 
@@ -3631,6 +3631,51 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
         return tr
     return nt
 
+
+
+def sanitize_operational_bearish_trigger_v1523_13(value="-", fallback="Bruch der nächsten relevanten Support-Zone"):
+    """Nur operative/charttechnische Kipp-Punkte als bearishen Trigger anzeigen.
+
+    Fundamentale Diagnosehinweise wie negatives Gewinnwachstum sind Bremsfaktoren,
+    aber kein konkreter Trading-Trigger. Solche Texte werden deshalb aus
+    'Bearisher bei' / 'Kippt bei' entfernt und durch eine technische Invalidation ersetzt.
+    """
+    txt = str(value or "").strip()
+    empty_vals = {"", "-", "none", "nan", "nicht anwendbar", "None"}
+    if txt in empty_vals or txt.lower() in empty_vals:
+        return fallback
+
+    low = txt.lower()
+    fundamental_tokens = (
+        "gewinnwachstum", "ertrags", "earnings", "umsatzwachstum", "marge",
+        "cashflow", "free cash flow", "operativer cashflow", "fundamental",
+        "bewertung", "valuation", "analyst", "revision"
+    )
+    # Diese Punkte gehören in Bremsfaktoren/Red Flags, nicht in operative Trigger.
+    if any(tok in low for tok in fundamental_tokens):
+        return fallback
+
+    # Wenn es bereits ein konkreter technischer/operativer Kipp-Punkt ist, behalten.
+    technical_tokens = (
+        "bruch", "unter", "support", "stop", "entry-zone", "trigger", "zone",
+        "reaktionstief", "tagestief", "kerzentief", "trend", "ema", "sma",
+        "widerstand", "rückfall", "rueckfall", "invalid", "verliert"
+    )
+    if any(tok in low for tok in technical_tokens):
+        return txt
+
+    return fallback
+
+
+def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-"):
+    action = str(action_label or "").strip().lower()
+    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality)
+    neg = sanitize_operational_bearish_trigger_v1523_13(negative_trigger)
+    if action == "kaufen":
+        return f"Negativer Trigger: {neg}"
+    if nt_display and str(nt_display).strip() not in {"", "-", "None", "nan"}:
+        return f"Nächster Trigger: {nt_display}"
+    return "Nächster Trigger: sauberer nächster Bestätigungsschritt"
 
 def action_trigger_note_v1520_2(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-"):
     action = str(action_label or "").strip().lower()
@@ -7412,7 +7457,7 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
         if val:
             return shorten_text(val, max_len)
 
-    # v15.23.12: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
+    # v15.23.13: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
     # Yahoo-Suche liefert fuer reine Ticker oft shortname/longname; das verhindert
     # insbesondere im Abschnitt "Jetzt spannend" die Anzeige Ticker = Name.
     if ticker:
@@ -14631,7 +14676,7 @@ if result is not None:
         if pd.notna(stop_used) and float(stop_used) > 0:
             invalid_if_text = f"Setup verliert Qualitaet unter ca. {float(stop_used):.2f} {ccy}"
         elif str(top_red_flag).strip() not in {"", "-", "None"}:
-            invalid_if_text = str(top_red_flag)
+            invalid_if_text = sanitize_operational_bearish_trigger_v1523_13(top_red_flag)
         else:
             invalid_if_text = "Kein harter Invalidation-Trigger ableitbar"
         if pd.notna(pos_size) and float(pos_size) > 0:
@@ -14761,7 +14806,7 @@ if result is not None:
                         <div class="dc-label">Aktion</div>
                         <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
                         <div class="dc-sub">{compact_action_text_phase_ui(final_action_label)}</div>
-                        <div class="dc-note">{action_trigger_note_v1520_2(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-", trigger_status if "trigger_status" in locals() else "-", trigger_reason if "trigger_reason" in locals() else "-", entry_quality if "entry_quality" in locals() else "-")}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
+                        <div class="dc-note">{action_trigger_note_v1523_13(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-", trigger_status if "trigger_status" in locals() else "-", trigger_reason if "trigger_reason" in locals() else "-", entry_quality if "entry_quality" in locals() else "-")}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -15465,7 +15510,7 @@ if result is not None:
                     <div class="section-card">
                         <div class="premium-title">Nächster Trigger</div>
                         <div class="premium-value">Bullisher bei: {trigger_display_v1523_12 if str(trigger_display_v1523_12).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"}</div>
-                        <div class="premium-sub">Bearisher bei: {top_red_flag if str(top_red_flag).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"}</div>
+                        <div class="premium-sub">Bearisher bei: {sanitize_operational_bearish_trigger_v1523_13(top_red_flag if "top_red_flag" in locals() else "-")}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,

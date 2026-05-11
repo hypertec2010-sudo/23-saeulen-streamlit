@@ -641,7 +641,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.24.4",
+        "Export_Version": "v15.24.5",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -5177,7 +5177,7 @@ def build_diagnostic_impacts(result):
     return items
 
 
-def build_driver_summary(result, max_pos=5, max_neg=4):
+def build_driver_summary(result, max_pos=3, max_neg=3):
     items = build_diagnostic_impacts(result)
     positives, negatives = [], []
     for item in items:
@@ -5204,25 +5204,25 @@ def build_driver_summary(result, max_pos=5, max_neg=4):
 
 
 def render_reason_box(title, items, empty_text="Keine klaren Treiber erkannt."):
-    st.markdown(f'<div class="reason-box"><div class="reason-title">{title}</div>', unsafe_allow_html=True)
+    """Kompakte Standardansicht für Treiber/Bremsen.
+
+    Die ausführlichen Diagnose-/Score-Bezüge stehen weiter unten in den Detailbereichen.
+    Im Überblick sollen diese Boxen nur noch die wichtigsten 2-3 Gründe zeigen.
+    """
+    st.markdown(f'<div class="reason-box compact-reasons"><div class="reason-title">{title}</div>', unsafe_allow_html=True)
     if not items:
-        st.markdown(f'<div class="reason-item"><div class="reason-meta">{empty_text}</div></div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="reason-item compact-reason-row"><span class="reason-label">{empty_text}</span></div></div>', unsafe_allow_html=True)
         return
     for item in items:
         label = item.get("label", "-")
         value = item.get("value", np.nan)
         impact = impact_label_phase_ui(item.get("impact", "-"))
-        affects = affects_text(item.get("affects", []))
-        score_part = f"Diagnose: {fmt_num(value,0)}/100" if scores_visible() and not pd.isna(value) else f"Einfluss: {impact}"
+        score_part = f"{fmt_num(value,0)}/100" if scores_visible() and not pd.isna(value) else impact.capitalize()
         st.markdown(
             f"""
-            <div class="reason-item">
-                <div class="reason-top">
-                    <div class="reason-label">{label}</div>
-                    <div class="reason-value">{impact.capitalize()}</div>
-                </div>
-                <div class="reason-meta">{score_part}</div>
-                <div class="affects-line">Beeinflusst: {affects}</div>
+            <div class="reason-item compact-reason-row">
+                <span class="reason-label">{label}</span>
+                <span class="reason-chip">{score_part}</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -10209,7 +10209,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# v15.24.4: Einstieg bleibt sichtbar, Landing-/Workspace-Text entfernt.
+# v15.24.5: Einstieg bleibt sichtbar, Landing-/Workspace-Text entfernt.
 st.markdown("""<div class="landing-cards-wrap compact-entry-buttons">""", unsafe_allow_html=True)
 wc1, wc2, wc3, wc4 = st.columns(4)
 with wc1:
@@ -14149,20 +14149,23 @@ if result is not None:
     st.markdown("""
     <style>
     .reason-box{
-        border:1px solid rgba(148,163,184,0.13);
-        border-radius:18px;
-        padding:12px 14px;
-        background:rgba(15,23,42,0.38);
-        margin:8px 0 12px 0;
+        border:1px solid rgba(148,163,184,0.11);
+        border-radius:14px;
+        padding:10px 11px;
+        background:rgba(15,23,42,0.28);
+        margin:6px 0 8px 0;
         box-shadow:none;
     }
-    .reason-title{font-size:0.92rem;font-weight:800;margin-bottom:7px;color:#cbd5e1;letter-spacing:0.01em;}
-    .reason-item{padding:7px 0;border-top:1px solid rgba(148,163,184,0.08);}
+    .reason-title{font-size:0.84rem;font-weight:750;margin-bottom:6px;color:#cbd5e1;letter-spacing:0.01em;}
+    .reason-item{padding:5px 0;border-top:1px solid rgba(148,163,184,0.07);}
     .reason-item:first-child{border-top:none;}
     .reason-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
-    .reason-label{font-weight:650;color:#e2e8f0;}
-    .reason-value{font-weight:750;color:#dbeafe;}
-    .reason-meta{margin-top:3px;font-size:0.80rem;color:#94a3b8;line-height:1.35;}
+    .reason-label{font-weight:600;color:#e2e8f0;}
+    .reason-value{font-weight:700;color:#dbeafe;}
+    .reason-meta{margin-top:3px;font-size:0.78rem;color:#94a3b8;line-height:1.3;}
+    .compact-reasons .compact-reason-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:26px;}
+    .compact-reasons .reason-label{font-size:0.86rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .compact-reasons .reason-chip{font-size:0.74rem;font-weight:700;color:#cbd5e1;border:1px solid rgba(148,163,184,0.13);border-radius:999px;padding:2px 8px;background:rgba(148,163,184,0.08);white-space:nowrap;}
     .diag-row{border:1px solid rgba(148,163,184,0.12);border-radius:16px;padding:10px 12px;margin:8px 0;background:rgba(15,23,42,0.42);}
     .diag-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;}
     .diag-label{font-weight:800;}
@@ -14173,6 +14176,7 @@ if result is not None:
     .diag-neu{background:#3f2f0a;color:#fde68a;}
     .diag-neg{background:#450a0a;color:#fca5a5;}
     .affects-line{margin-top:4px;font-size:0.82rem;color:#93c5fd;font-weight:700;}
+    .compact-caption{font-size:0.82rem!important;margin-top:8px!important;margin-bottom:4px!important;color:#94a3b8!important;}
     .compact-summary-card{
         border:1px solid rgba(148,163,184,0.10);
         border-radius:16px;
@@ -14294,7 +14298,7 @@ if result is not None:
         exit_action_sub_display = "Exit-Einordnung der aktuellen Lage"
 
 
-    # ---------- v15.24.4: Chart zuerst, Details einklappbar ----------
+    # ---------- v15.24.5: Chart zuerst, Details einklappbar ----------
     st.markdown("### Chart & Zeitraum")
     chart_range = st.selectbox(
         "Zeitraum",
@@ -15011,7 +15015,7 @@ if result is not None:
             st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
             st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="secondary-section-caption">Treiber und Bremsfaktoren.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="secondary-section-caption compact-caption">Treiber / Bremsen</div>', unsafe_allow_html=True)
     why_col, risk_col = st.columns(2)
     with why_col:
         render_reason_box("Warum attraktiv", driver_summary.get("positives", []), empty_text="Keine klaren positiven Treiber erkannt.")

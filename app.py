@@ -641,7 +641,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.21",
+        "Export_Version": "v15.22",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -684,6 +684,13 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Stop_Aktion": (result or {}).get("stop_action"),
         "Teilgewinn_Aktion": (result or {}).get("partial_profit_action"),
         "Ausbau_Aktion": (result or {}).get("add_on_action"),
+        "PM_Aktion": (result or {}).get("pm_action"),
+        "PM_Aktion_Grund": (result or {}).get("pm_action_reason"),
+        "PM_Stop_Plan": (result or {}).get("pm_stop_plan"),
+        "PM_Gewinnschutz": (result or {}).get("pm_profit_plan"),
+        "PM_Aufstocken": (result or {}).get("pm_add_plan"),
+        "PM_Exit_Druck": (result or {}).get("pm_exit_pressure"),
+        "PM_Nicht_Nachkaufen_Wenn": (result or {}).get("pm_no_add_if"),
     }
     for k, v in result_fields.items():
         add_col(k, v)
@@ -9373,6 +9380,94 @@ def _legacy_analyze_stock(
         if pd.notna(days_earn) and days_earn <= 7 and max(exit_score, tactical_exit_risk) >= 45:
             risk_note = f"Earnings-Risiko bei erhoehter Exit-Schwäche - {pnl_bucket}"
 
+        # ---------- v15.22: professioneller Positionsmanagement-Layer ----------
+        # Ziel: die Post-Entry-Ausgabe trennt Fuehrungsaktion, Stop/Absicherung,
+        # Gewinnschutz, Ausbauverbot und Exit-Druck klarer als die alte Sammellogik.
+        _max_exit_pressure = max(
+            float(exit_score) if pd.notna(exit_score) else 0.0,
+            float(tactical_exit_risk) if pd.notna(tactical_exit_risk) else 0.0,
+        )
+
+        if stop_broken or exit_action == "Verkaufen" or _max_exit_pressure >= 82:
+            pm_action = "Exit prüfen"
+            pm_action_reason = "Stop-/Exit-Signal ist kritisch genug, um die Position nicht mehr nur passiv zu halten."
+            pm_exit_pressure = "hoch"
+        elif exit_action == "Risiko reduzieren" or _max_exit_pressure >= 65:
+            pm_action = "Reduzieren / absichern"
+            pm_action_reason = "Exit- und Taktiksignale sprechen für Risikoabbau statt Nachkauf."
+            pm_exit_pressure = "erhöht"
+        elif str(partial_profit_action).lower().startswith("ja") or (winner_context and _max_exit_pressure >= 42):
+            pm_action = "Teilgewinn prüfen"
+            pm_action_reason = "Die Position liegt im Gewinn und erste Gegen-/Risikofaktoren nehmen zu."
+            pm_exit_pressure = "mittel"
+        elif tactical_exit_action == "Stop enger ziehen" or _max_exit_pressure >= 35:
+            pm_action = "Halten, Stop enger"
+            pm_action_reason = "Grundsetup bleibt haltbar, kurzfristige Schwäche verlangt aber engere Führung."
+            pm_exit_pressure = "mittel"
+        elif str(add_on_action).lower().startswith("ja") and _max_exit_pressure < 25 and winner_context and market_info["regime"] == "POSITIV":
+            pm_action = "Halten / selektiv aufstocken"
+            pm_action_reason = "Position ist konstruktiv, Marktregime unterstützt und Exit-Druck bleibt niedrig."
+            pm_exit_pressure = "niedrig"
+        elif loser_context and trading_case_score < 58:
+            pm_action = "Nicht nachkaufen"
+            pm_action_reason = "Verlustposition ohne klaren frischen Vorteil sollte nicht verbilligt werden."
+            pm_exit_pressure = "mittel"
+        else:
+            pm_action = "Halten"
+            pm_action_reason = "Keine ausreichend starken Signale für Ausbau, Teilgewinn oder Exit."
+            pm_exit_pressure = "niedrig" if _max_exit_pressure < 25 else "mittel"
+
+        # Stop-/Absicherungsplan verständlicher formulieren.
+        if stop_broken:
+            pm_stop_plan = "Stop/Invalidation verletzt - Exit sofort prüfen"
+        elif pd.notna(stop_used) and pd.notna(price) and float(stop_used) > 0:
+            if winner_context and pd.notna(tb_basispreis) and float(tb_basispreis) > 0:
+                _breakeven_stop = max(float(stop_used), float(tb_basispreis))
+                pm_stop_plan = f"Stop mindestens Richtung Einstand/Support führen: ca. {_breakeven_stop:.2f} {ccy}"
+            elif tactical_exit_action in {"Stop enger ziehen", "Kurzfristig vorsichtiger"} or _max_exit_pressure >= 35:
+                pm_stop_plan = f"Stop enger kontrollieren: aktuell ca. {float(stop_used):.2f} {ccy}"
+            else:
+                pm_stop_plan = f"Stop beibehalten: ca. {float(stop_used):.2f} {ccy}"
+        else:
+            pm_stop_plan = "Kein belastbares Stopniveau ableitbar"
+
+        if str(partial_profit_action).lower().startswith("ja") or pm_action == "Teilgewinn prüfen":
+            pm_profit_plan = "Teilgewinn prüfen, Restposition nur mit sauberem Stop führen"
+        elif winner_context and _max_exit_pressure < 35:
+            pm_profit_plan = "Gewinne laufen lassen, aber Stop systematisch nachziehen"
+        elif loser_context:
+            pm_profit_plan = "Kein Gewinnschutz - Fokus auf Verlustbegrenzung und Setup-Validität"
+        else:
+            pm_profit_plan = "Noch kein separater Gewinnschutz nötig"
+
+        if pm_action == "Halten / selektiv aufstocken":
+            pm_add_plan = "Nur selektiv aufstocken, nicht in Überdehnung oder vor Event-Risiko"
+        elif _max_exit_pressure >= 35 or loser_context or market_info["regime"] == "NEGATIV":
+            pm_add_plan = "Nicht nachkaufen"
+        else:
+            pm_add_plan = "Aufstocken nur bei frischem Trigger"
+
+        pm_no_add_if = "Nicht nachkaufen, wenn Exit-Druck steigt, der Stop fällt oder der Kurs ohne neuen Trigger überdehnt."
+        if market_info["regime"] == "NEGATIV":
+            pm_no_add_if = "Nicht nachkaufen im schwachen Marktregime; zuerst Stabilisierung und relative Stärke abwarten."
+        elif pd.notna(days_earn) and days_earn <= 7:
+            pm_no_add_if = "Nicht vor nahen Earnings aufstocken; Event-Risiko zuerst abwarten."
+        elif loser_context:
+            pm_no_add_if = "Nicht in eine Verlustposition hinein verbilligen, solange der Trading-Case nicht klar dreht."
+
+        # Hauptaktion mit dem neuen Positionsmanagement synchronisieren.
+        position_action = pm_action
+        risk_note = pm_action_reason
+
+    if not position_mode:
+        pm_action = "Nicht anwendbar"
+        pm_action_reason = "Pre-Entry-Modus"
+        pm_stop_plan = "Nicht anwendbar"
+        pm_profit_plan = "Nicht anwendbar"
+        pm_add_plan = "Nicht anwendbar"
+        pm_exit_pressure = "Nicht anwendbar"
+        pm_no_add_if = "Nicht anwendbar"
+
     exit_reason_list = []
     if pd.notna(price) and pd.notna(ma50) and price < ma50:
         exit_reason_list.append("Kurs unter MA50")
@@ -9503,6 +9598,13 @@ def _legacy_analyze_stock(
         "partial_profit_action": partial_profit_action,
         "stop_action": stop_action,
         "risk_note": risk_note,
+        "pm_action": pm_action,
+        "pm_action_reason": pm_action_reason,
+        "pm_stop_plan": pm_stop_plan,
+        "pm_profit_plan": pm_profit_plan,
+        "pm_add_plan": pm_add_plan,
+        "pm_exit_pressure": pm_exit_pressure,
+        "pm_no_add_if": pm_no_add_if,
         "trigger_status": trigger_status,
         "watchlist_priority": watchlist_priority,
         "watchlist_priority_score": watchlist_priority_score,
@@ -13282,6 +13384,13 @@ if result is not None:
     partial_profit_action = result["partial_profit_action"]
     stop_action = result["stop_action"]
     risk_note = result["risk_note"]
+    pm_action = result.get("pm_action", position_action)
+    pm_action_reason = result.get("pm_action_reason", risk_note)
+    pm_stop_plan = result.get("pm_stop_plan", stop_action)
+    pm_profit_plan = result.get("pm_profit_plan", partial_profit_action)
+    pm_add_plan = result.get("pm_add_plan", add_on_action)
+    pm_exit_pressure = result.get("pm_exit_pressure", result.get("exit_score_text", "-"))
+    pm_no_add_if = result.get("pm_no_add_if", "Nicht nachkaufen, wenn Exit-Druck steigt oder der Trigger fehlt.")
     trigger_status = result["trigger_status"]
     watchlist_priority = result["watchlist_priority"]
     watchlist_priority_score = result["watchlist_priority_score"]
@@ -13627,7 +13736,7 @@ if result is not None:
 
 
 
-    main_action_label = position_action if position_mode else display_emp_label(result.get("emp", "-"))
+    main_action_label = pm_action if position_mode else display_emp_label(result.get("emp", "-"))
     top_strengths = strengths[:3] if strengths else []
     top_weaknesses = weaknesses[:3] if weaknesses else []
 
@@ -14175,10 +14284,10 @@ if result is not None:
         mode_pill = "BESTAND"
         mode_intro = "Diese Ansicht bewertet eine bestehende Position. Im Fokus stehen Halten, Ausbauen, Teilgewinn, Stop-Fuehrung und Exit-Druck."
         mode_cards = [
-            ("Fuehrungsaktion", main_action_label, shorten_text(risk_note, 78), True),
-            ("Stop / Absicherung", stop_action, "Stop-Fuehrung und taktische Risikoabsicherung der laufenden Position.", False),
-            ("Exit-Druck", exit_action_display, shorten_text(exit_reason_top_display, 86), False),
-            ("Gewinnschutz / Ausbau", (partial_profit_action if str(partial_profit_action).strip().lower().startswith("ja") else add_on_action), "Teilgewinn und Ausbau werden getrennt von Neu-Einstiegen bewertet.", False),
+            ("Fuehrungsaktion", main_action_label, shorten_text(pm_action_reason, 92), True),
+            ("Stop / Absicherung", pm_stop_plan, "Konkrete Stop-Fuehrung statt nur allgemeines Risiko-Label.", False),
+            ("Gewinnschutz", pm_profit_plan, "Unterscheidet Gewinne laufen lassen, Teilgewinn und Verlustbegrenzung.", False),
+            ("Aufstocken / No-Add", pm_add_plan, shorten_text(pm_no_add_if, 92), False),
         ]
     else:
         mode_headline = "Pre-Entry / Watchlist"

@@ -7370,7 +7370,7 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
         if val:
             return shorten_text(val, max_len)
 
-    # v15.23.9: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
+    # v15.23.10: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
     # Yahoo-Suche liefert fuer reine Ticker oft shortname/longname; das verhindert
     # insbesondere im Abschnitt "Jetzt spannend" die Anzeige Ticker = Name.
     if ticker:
@@ -7492,7 +7492,7 @@ def _legacy_analyze_stock(
     vol = df["Volume"]
 
     price = float(override) if override > 0 else float(close.iloc[-1])
-    name = info.get("longName", ticker)
+    name = info.get("longName") or info.get("shortName") or info.get("displayName") or info.get("quoteSourceName") or ticker
     raw_ccy = info.get("currency", "USD")
     ccy = infer_display_currency(ticker, info, raw_ccy)
     exch = info.get("exchange", "-")
@@ -13044,7 +13044,7 @@ def render_mobile_ranking_cards(df):
     for _, row in df.iterrows():
         row = row.copy()
         ticker = _safe(row.get("Ticker", "-"))
-        name = _safe(row.get("Unternehmen", row.get("Name", "-")))
+        name = radar_company_display_name_v15237(row.to_dict() if hasattr(row, "to_dict") else row, ticker, 36)
 
         if is_position_view:
             row["__pm_action"] = _position_action_from_row(row)
@@ -13613,7 +13613,7 @@ if result is not None:
 
     df = result["df"]
     info = result["info"]
-    name = result["name"]
+    name = radar_company_display_name_v15237(result, ticker, 60)
     ccy = result["ccy"]
     exch = result["exch"]
     ts = result["ts"]

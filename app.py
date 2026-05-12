@@ -3596,12 +3596,40 @@ def align_action_with_trigger_v1520_2(action_label, action_reason, next_trigger,
     return action_label, reason
 
 
-def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trigger_reason="-", action_label="-", entry_quality="-", entry_zone="-"):
+def _parse_entry_zone_bounds_v1524_12(entry_zone):
+    """Parse simple price ranges like '420.62 - 424.84 USD' safely."""
+    import re
+    txt = str(entry_zone or "").replace(",", ".")
+    nums = [float(x) for x in re.findall(r"[-+]?\d+(?:\.\d+)?", txt)]
+    if len(nums) >= 2:
+        low, high = min(nums[0], nums[1]), max(nums[0], nums[1])
+        return low, high
+    return None, None
+
+
+def _entry_zone_position_text_v1524_12(entry_zone="-", current_price=None):
+    """Return a short explanation of where the current price sits vs. the entry zone."""
+    low, high = _parse_entry_zone_bounds_v1524_12(entry_zone)
+    try:
+        price = float(current_price)
+    except Exception:
+        price = float("nan")
+    if low is None or high is None or pd.isna(price):
+        return "", False, False, False
+    if low <= price <= high:
+        return "Kurs liegt bereits in der Entry-Zone; nicht auf die Zone warten, sondern Bestätigung/Invalidierung prüfen", True, False, False
+    if price < low:
+        return "Kurs liegt noch unter der Entry-Zone; erst Annäherung und Bestätigung abwarten", False, True, False
+    return "Kurs liegt oberhalb der Entry-Zone; Rücksetzer oder neuen Ausbruchstrigger abwarten", False, False, True
+
+
+def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trigger_reason="-", action_label="-", entry_quality="-", entry_zone="-", current_price=None):
     """Uebersetzt technische Trigger-Statuslabels in handlungsnahe Sprache.
 
     Labels wie "Jetzt pruefbar" sind intern hilfreich, aber allein in der UI
     zu vage. Diese Funktion erzeugt deshalb immer eine konkrete Aussage: was
-    pruefen, woran gueltig, oder worauf warten.
+    pruefen, woran gueltig, oder worauf warten. Seit v15.24.12 wird zusätzlich
+    geprüft, ob der aktuelle Kurs bereits in der Entry-Zone liegt.
     """
     nt = str(next_trigger or "").strip()
     ts = str(trigger_status or "").strip().lower()
@@ -3610,6 +3638,7 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
     entry = str(entry_quality or "").strip().lower()
     zone_txt = str(entry_zone or "-").strip()
     has_zone = zone_txt not in {"", "-", "None", "nan"}
+    zone_pos_txt, in_zone, below_zone, above_zone = _entry_zone_position_text_v1524_12(zone_txt, current_price)
     low = nt.lower()
 
     empty_vals = {"", "-", "none", "nan", "nicht anwendbar"}
@@ -3617,14 +3646,28 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
     if low in {"jetzt prüfbar", "jetzt pruefbar", "aktiv"} or ts == "aktiv":
         if action == "kaufen":
             if has_zone:
+                if in_zone:
+                    return f"Einstieg ist jetzt prüfbar; Entry-Zone: {zone_txt}. {zone_pos_txt}. Negativ wird es bei Bruch der Zone/Support-Bestätigung."
+                if below_zone:
+                    return f"Einstieg erst bei Annäherung an die Entry-Zone prüfen: {zone_txt}. {zone_pos_txt}."
+                if above_zone:
+                    return f"Einstieg nicht hinterherlaufen; Entry-Zone: {zone_txt}. {zone_pos_txt}."
                 return f"Einstieg ist jetzt prüfbar; Entry-Zone: {zone_txt}. Nur gültig, solange Kurs und Trigger-/Support-Zone halten."
             return "Einstieg ist jetzt prüfbar; nur gültig, solange Kurs und Trigger-/Support-Zone halten."
         if has_zone:
+            if in_zone:
+                return f"Setup ist jetzt prüfbar; Entry-Zone: {zone_txt}. {zone_pos_txt}. Einstieg nur bei sauberer Bestätigung, nicht blind."
+            if below_zone:
+                return f"Setup vorbereiten; Entry-Zone: {zone_txt}. {zone_pos_txt}."
+            if above_zone:
+                return f"Setup nicht hinterherlaufen; Entry-Zone: {zone_txt}. {zone_pos_txt}."
             return f"Setup ist jetzt prüfbar; Einstieg nur bei sauberer Bestätigung in der Entry-Zone: {zone_txt}."
         return "Setup ist jetzt prüfbar; Einstieg nur bei sauberer Bestätigung in der Entry-Zone."
 
     if low in empty_vals:
         if ts in {"nahe dran", "fast prüfbar", "fast pruefbar"}:
+            if has_zone and zone_pos_txt:
+                return f"Noch keinen Soforteinstieg erzwingen; Entry-Zone: {zone_txt}. {zone_pos_txt}."
             return f"Noch keinen Soforteinstieg erzwingen; auf Bestätigung oder Rücksetzer in die Entry-Zone: {zone_txt} warten." if has_zone else "Noch keinen Soforteinstieg erzwingen; auf Bestätigung oder Rücksetzer in die Entry-Zone warten."
         if ts in {"passiv", "warten"}:
             return "Noch kein aktiver Einstieg; erst bei klarerem Setup oder besserem Umfeld neu prüfen."
@@ -3637,6 +3680,8 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
         "setup", "trigger", "prüfen", "pruefen", "warten", "zone"
     ]
     if any(tok in low for tok in concrete_tokens):
+        if has_zone and zone_pos_txt and ("entry-zone" in low or "zone" in low):
+            return f"{nt}. {zone_pos_txt}."
         return nt
 
     if tr and tr.lower() not in empty_vals:
@@ -3679,9 +3724,9 @@ def sanitize_operational_bearish_trigger_v1523_13(value="-", fallback="Bruch der
     return fallback
 
 
-def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-"):
+def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-", current_price=None):
     action = str(action_label or "").strip().lower()
-    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality, entry_zone)
+    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality, entry_zone, current_price)
     neg = sanitize_operational_bearish_trigger_v1523_13(negative_trigger)
     if action == "kaufen":
         return f"Negativer Trigger: {neg}"
@@ -3689,9 +3734,9 @@ def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-
         return f"Nächster Trigger: {nt_display}"
     return "Nächster Trigger: sauberer nächster Bestätigungsschritt"
 
-def action_trigger_note_v1520_2(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-"):
+def action_trigger_note_v1520_2(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-", current_price=None):
     action = str(action_label or "").strip().lower()
-    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality, entry_zone)
+    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality, entry_zone, current_price)
     neg = str(negative_trigger or "-").strip()
     if action == "kaufen":
         if neg and neg not in {"-", "None", "nan"}:
@@ -6703,7 +6748,7 @@ def compute_ultra_short_term_zone_signal(df, structures):
     watch = int(round(clamp(watch, 0, 100)))
     confirm = int(round(clamp(confirm, 0, 100)))
 
-    # v15.24.11: Ultra-Kurzfrist war zu streng und fiel dadurch fast immer auf
+    # v15.24.12: Ultra-Kurzfrist war zu streng und fiel dadurch fast immer auf
     # "Kein Signal" zurück. Für den Nutzer ist aber bereits eine kurzfristige
     # Reaktion an/nahe einer Zone relevant. Deshalb: harte Signale bleiben streng,
     # frühe Reaktionen werden separat ausgewiesen, statt komplett neutral zu wirken.
@@ -12999,7 +13044,7 @@ def _candle_confirmation_summary(daily_sig, hourly_sig):
 def render_mobile_ranking_cards(df):
     """Render ranking cards without raw HTML in the content path.
 
-    v15.24.11: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
+    v15.24.12: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
     Streamlit-Renderpfaden wurde dieser HTML-Code als Text sichtbar. Deshalb
     wird die kompakte Ansicht jetzt vollständig mit nativen Streamlit-Elementen
     gerendert.
@@ -14812,7 +14857,7 @@ if result is not None:
                         <div class="dc-label">Aktion</div>
                         <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
                         <div class="dc-sub">{compact_action_text_phase_ui(final_action_label)}</div>
-                        <div class="dc-note">{action_trigger_note_v1523_13(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-", trigger_status if "trigger_status" in locals() else "-", trigger_reason if "trigger_reason" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-")}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
+                        <div class="dc-note">{action_trigger_note_v1523_13(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-", trigger_status if "trigger_status" in locals() else "-", trigger_reason if "trigger_reason" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-", price if "price" in locals() else None)}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -16395,7 +16440,7 @@ if result is not None:
                 w1, w2, w3 = st.columns(3)
                 w1.metric("Trigger-Status", display_trigger_status_label(trigger_status))
                 w2.metric("Watchlist-Priorität", watchlist_priority)
-                w3.metric("Nächster Trigger", operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, final_action_label if "final_action_label" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-"))
+                w3.metric("Nächster Trigger", operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, final_action_label if "final_action_label" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-", price if "price" in locals() else None))
 
                 st.markdown("**Warum steht die Aktie auf der Watchlist so weit oben?**")
                 st.write(trigger_reason)

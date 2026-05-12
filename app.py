@@ -12970,13 +12970,27 @@ def _candle_confirmation_summary(daily_sig, hourly_sig):
 def render_mobile_ranking_cards(df):
     """Render ranking cards without raw HTML in the content path.
 
-    v15.24.8: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
+    v15.24.9: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
     Streamlit-Renderpfaden wurde dieser HTML-Code als Text sichtbar. Deshalb
     wird die kompakte Ansicht jetzt vollständig mit nativen Streamlit-Elementen
     gerendert.
     """
     if df is None or df.empty:
         return
+
+    def _safe(value, fallback="-"):
+        """Local display sanitizer for ranking card values."""
+        try:
+            if value is None:
+                return fallback
+            if pd.isna(value):
+                return fallback
+        except Exception:
+            pass
+        text = str(value).strip()
+        if not text or text.lower() in {"nan", "none", "null", "nat"}:
+            return fallback
+        return text
 
     is_position_view = any(c in df.columns for c in ["PM_Aktion", "PM_Stop_Plan", "PM_Gewinnschutz"])
 

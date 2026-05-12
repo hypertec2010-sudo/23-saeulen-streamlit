@@ -15252,16 +15252,56 @@ if result is not None:
                     _pc = (_pkg or {}).get("put_call", {}) or {}
                     if _pc.get("available"):
                         _pc_data = _pc.get("data", {}) or {}
+                        def _fmt_pc(v):
+                            try:
+                                return f"{float(v):.2f}"
+                            except Exception:
+                                return "-"
+
+                        def _pc_lens(kind, value):
+                            try:
+                                x = float(value)
+                            except Exception:
+                                return "Nicht verfügbar."
+                            if kind == "equity":
+                                if x < 0.55:
+                                    return "Sehr call-lastig: Aktien-/Retail-Sentiment wirkt euphorisch; FOMO-Risiko erhöht."
+                                if x < 0.70:
+                                    return "Call-lastig: erhöhter Risikoappetit bei Aktienoptionen."
+                                if x > 1.05:
+                                    return "Defensiv: mehr Put-Absicherung, eher Angst als FOMO."
+                                return "Neutral: keine auffällige Call-Euphorie."
+                            if kind == "total":
+                                if x < 0.80:
+                                    return "Niedrig: der Gesamtoptionsmarkt wirkt eher sorglos/call-lastig."
+                                if x > 1.10:
+                                    return "Hoch: breitere Absicherung im Optionsmarkt."
+                                return "Neutral: keine extreme Gesamtpositionierung."
+                            if kind == "index":
+                                if x > 1.05:
+                                    return "Erhöht: Index-Hedging bleibt vorhanden; institutionelle Seite wirkt nicht völlig sorglos."
+                                if x < 0.80:
+                                    return "Niedrig: wenig Index-Absicherung, potenziell sorglos."
+                                return "Neutral: normales Index-Hedging."
+                            if kind == "spx":
+                                if x > 1.05:
+                                    return "Erhöht: S&P-500-Absicherung bleibt sichtbar."
+                                if x < 0.80:
+                                    return "Niedrig: wenig S&P-500-Absicherung, potenziell sorglos."
+                                return "Neutral: keine extreme SPX-Absicherung."
+                            return "-"
+
+                        _overall_notes = _put_call_interpretation(_pc_data)
+                        _overall_lens = " ".join(_overall_notes) if _overall_notes else "Keine auffällige Optionssentiment-Lage."
                         _pc_rows = [
-                            {"Kennzahl": "Equity Put/Call", "Wert": _pc_data.get("equity_put_call", "-"), "Lesart": "Aktienoptionen / eher Retail-Sentiment"},
-                            {"Kennzahl": "Total Put/Call", "Wert": _pc_data.get("total_put_call", "-"), "Lesart": "Gesamter Optionsmarkt"},
-                            {"Kennzahl": "Index Put/Call", "Wert": _pc_data.get("index_put_call", "-"), "Lesart": "Index-Hedging / institutioneller"},
-                            {"Kennzahl": "SPX Put/Call", "Wert": _pc_data.get("spx_put_call", "-"), "Lesart": "S&P-500-Hedging"},
+                            {"Kennzahl": "Gesamtlesart", "Wert": "-", "Lesart": _overall_lens},
+                            {"Kennzahl": "Equity Put/Call", "Wert": _fmt_pc(_pc_data.get("equity_put_call")), "Lesart": _pc_lens("equity", _pc_data.get("equity_put_call"))},
+                            {"Kennzahl": "Total Put/Call", "Wert": _fmt_pc(_pc_data.get("total_put_call")), "Lesart": _pc_lens("total", _pc_data.get("total_put_call"))},
+                            {"Kennzahl": "Index Put/Call", "Wert": _fmt_pc(_pc_data.get("index_put_call")), "Lesart": _pc_lens("index", _pc_data.get("index_put_call"))},
+                            {"Kennzahl": "SPX Put/Call", "Wert": _fmt_pc(_pc_data.get("spx_put_call")), "Lesart": _pc_lens("spx", _pc_data.get("spx_put_call"))},
                         ]
                         st.markdown("**Optionssentiment**")
                         st.dataframe(pd.DataFrame(_pc_rows), use_container_width=True, hide_index=True)
-                        for _note in _put_call_interpretation(_pc_data):
-                            st.caption("• " + _note)
                     else:
                         st.caption("Put/Call: nicht verfügbar; Markt-FOMO ohne Optionssentiment bewertet.")
 

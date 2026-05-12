@@ -3596,7 +3596,7 @@ def align_action_with_trigger_v1520_2(action_label, action_reason, next_trigger,
     return action_label, reason
 
 
-def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trigger_reason="-", action_label="-", entry_quality="-"):
+def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trigger_reason="-", action_label="-", entry_quality="-", entry_zone="-"):
     """Uebersetzt technische Trigger-Statuslabels in handlungsnahe Sprache.
 
     Labels wie "Jetzt pruefbar" sind intern hilfreich, aber allein in der UI
@@ -3608,18 +3608,24 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
     tr = str(trigger_reason or "").strip()
     action = str(action_label or "").strip().lower()
     entry = str(entry_quality or "").strip().lower()
+    zone_txt = str(entry_zone or "-").strip()
+    has_zone = zone_txt not in {"", "-", "None", "nan"}
     low = nt.lower()
 
     empty_vals = {"", "-", "none", "nan", "nicht anwendbar"}
 
     if low in {"jetzt prüfbar", "jetzt pruefbar", "aktiv"} or ts == "aktiv":
         if action == "kaufen":
+            if has_zone:
+                return f"Einstieg ist jetzt prüfbar; Entry-Zone: {zone_txt}. Nur gültig, solange Kurs und Trigger-/Support-Zone halten."
             return "Einstieg ist jetzt prüfbar; nur gültig, solange Kurs und Trigger-/Support-Zone halten."
+        if has_zone:
+            return f"Setup ist jetzt prüfbar; Einstieg nur bei sauberer Bestätigung in der Entry-Zone: {zone_txt}."
         return "Setup ist jetzt prüfbar; Einstieg nur bei sauberer Bestätigung in der Entry-Zone."
 
     if low in empty_vals:
         if ts in {"nahe dran", "fast prüfbar", "fast pruefbar"}:
-            return "Noch keinen Soforteinstieg erzwingen; auf Bestätigung oder Rücksetzer in die Entry-Zone warten."
+            return f"Noch keinen Soforteinstieg erzwingen; auf Bestätigung oder Rücksetzer in die Entry-Zone: {zone_txt} warten." if has_zone else "Noch keinen Soforteinstieg erzwingen; auf Bestätigung oder Rücksetzer in die Entry-Zone warten."
         if ts in {"passiv", "warten"}:
             return "Noch kein aktiver Einstieg; erst bei klarerem Setup oder besserem Umfeld neu prüfen."
         return "Sauberen nächsten Bestätigungsschritt abwarten."
@@ -3673,9 +3679,9 @@ def sanitize_operational_bearish_trigger_v1523_13(value="-", fallback="Bruch der
     return fallback
 
 
-def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-"):
+def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-"):
     action = str(action_label or "").strip().lower()
-    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality)
+    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality, entry_zone)
     neg = sanitize_operational_bearish_trigger_v1523_13(negative_trigger)
     if action == "kaufen":
         return f"Negativer Trigger: {neg}"
@@ -3683,9 +3689,9 @@ def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-
         return f"Nächster Trigger: {nt_display}"
     return "Nächster Trigger: sauberer nächster Bestätigungsschritt"
 
-def action_trigger_note_v1520_2(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-"):
+def action_trigger_note_v1520_2(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-"):
     action = str(action_label or "").strip().lower()
-    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality)
+    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality, entry_zone)
     neg = str(negative_trigger or "-").strip()
     if action == "kaufen":
         if neg and neg not in {"-", "None", "nan"}:
@@ -6697,7 +6703,7 @@ def compute_ultra_short_term_zone_signal(df, structures):
     watch = int(round(clamp(watch, 0, 100)))
     confirm = int(round(clamp(confirm, 0, 100)))
 
-    # v15.24.10: Ultra-Kurzfrist war zu streng und fiel dadurch fast immer auf
+    # v15.24.11: Ultra-Kurzfrist war zu streng und fiel dadurch fast immer auf
     # "Kein Signal" zurück. Für den Nutzer ist aber bereits eine kurzfristige
     # Reaktion an/nahe einer Zone relevant. Deshalb: harte Signale bleiben streng,
     # frühe Reaktionen werden separat ausgewiesen, statt komplett neutral zu wirken.
@@ -12993,7 +12999,7 @@ def _candle_confirmation_summary(daily_sig, hourly_sig):
 def render_mobile_ranking_cards(df):
     """Render ranking cards without raw HTML in the content path.
 
-    v15.24.10: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
+    v15.24.11: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
     Streamlit-Renderpfaden wurde dieser HTML-Code als Text sichtbar. Deshalb
     wird die kompakte Ansicht jetzt vollständig mit nativen Streamlit-Elementen
     gerendert.
@@ -14806,7 +14812,7 @@ if result is not None:
                         <div class="dc-label">Aktion</div>
                         <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
                         <div class="dc-sub">{compact_action_text_phase_ui(final_action_label)}</div>
-                        <div class="dc-note">{action_trigger_note_v1523_13(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-", trigger_status if "trigger_status" in locals() else "-", trigger_reason if "trigger_reason" in locals() else "-", entry_quality if "entry_quality" in locals() else "-")}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
+                        <div class="dc-note">{action_trigger_note_v1523_13(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-", trigger_status if "trigger_status" in locals() else "-", trigger_reason if "trigger_reason" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-")}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -16389,7 +16395,7 @@ if result is not None:
                 w1, w2, w3 = st.columns(3)
                 w1.metric("Trigger-Status", display_trigger_status_label(trigger_status))
                 w2.metric("Watchlist-Priorität", watchlist_priority)
-                w3.metric("Nächster Trigger", operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, final_action_label if "final_action_label" in locals() else "-", entry_quality if "entry_quality" in locals() else "-"))
+                w3.metric("Nächster Trigger", operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, final_action_label if "final_action_label" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-"))
 
                 st.markdown("**Warum steht die Aktie auf der Watchlist so weit oben?**")
                 st.write(trigger_reason)

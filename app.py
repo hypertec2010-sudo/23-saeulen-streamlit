@@ -12968,115 +12968,17 @@ def _candle_confirmation_summary(daily_sig, hourly_sig):
 
 
 def render_mobile_ranking_cards(df):
+    """Render ranking cards without raw HTML in the content path.
+
+    v15.24.8: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
+    Streamlit-Renderpfaden wurde dieser HTML-Code als Text sichtbar. Deshalb
+    wird die kompakte Ansicht jetzt vollständig mit nativen Streamlit-Elementen
+    gerendert.
+    """
     if df is None or df.empty:
         return
 
-    def _safe(v):
-        if v is None:
-            return "-"
-        s = str(v).strip()
-        if s.lower() in {"nan", "none", "nat"}:
-            return "-"
-        try:
-            return html.escape(s) if s else "-"
-        except Exception:
-            return s if s else "-"
-
-    def _num(v, default=None):
-        try:
-            x = pd.to_numeric(v, errors="coerce")
-            if pd.isna(x):
-                return default
-            return float(x)
-        except Exception:
-            return default
-
-    def _score_label(v, positive=True):
-        n = _num(v, None)
-        if n is None:
-            return "-"
-        if positive:
-            if n >= 75:
-                return "stark"
-            if n >= 60:
-                return "solide"
-            if n >= 45:
-                return "gemischt"
-            return "schwach"
-        # inverse score: high value = more risk/exit pressure
-        if n >= 75:
-            return "hoch"
-        if n >= 55:
-            return "erhöht"
-        if n >= 30:
-            return "beobachten"
-        return "niedrig"
-
-    def _position_action_from_row(row):
-        exit_action = str(row.get("Exit-Aktion", "") or "").strip()
-        exit_score = _num(row.get("Exit-Score", None), 0) or 0
-        entry = _num(row.get("Einstieg jetzt attraktiv?", None), 0) or 0
-        setup = _num(row.get("Setup-Confidence", None), 0) or 0
-        leadership = str(row.get("Leadership-Status", "") or "").strip().lower()
-
-        ea = exit_action.lower()
-        if "verkaufen" in ea or exit_score >= 80:
-            return "Exit prüfen"
-        if "reduzieren" in ea or exit_score >= 65:
-            return "Reduzieren / absichern"
-        if "teilgewinn" in ea or exit_score >= 45:
-            return "Teilgewinn / Stop prüfen"
-        if exit_score >= 30:
-            return "Halten, enger führen"
-        if entry >= 75 and setup >= 75 and leadership in {"leader", "stark"} and exit_score < 20:
-            return "Aufstocken prüfen"
-        if entry >= 68 and setup >= 60 and leadership in {"leader", "stark"}:
-            return "Halten / selektiv ausbauen"
-        return "Halten"
-
-    def _position_risk_from_row(row):
-        exit_score = _num(row.get("Exit-Score", None), 0) or 0
-        event_risk = _num(row.get("Event-Risiko", None), 0) or 0
-        distribution = _num(row.get("Distribution", None), 0) or 0
-        risk = max(exit_score, event_risk, distribution)
-        if risk >= 75:
-            return "hoch"
-        if risk >= 55:
-            return "erhöht"
-        if risk >= 30:
-            return "normal"
-        return "niedrig"
-
-    def _position_stop_from_row(row):
-        exit_score = _num(row.get("Exit-Score", None), 0) or 0
-        if exit_score >= 65:
-            return "Stop/Exit aktiv prüfen"
-        if exit_score >= 35:
-            return "Stop enger kontrollieren"
-        return "Stop beibehalten"
-
-    def _position_profit_from_row(row):
-        exit_score = _num(row.get("Exit-Score", None), 0) or 0
-        if exit_score >= 45:
-            return "Gewinnschutz prüfen"
-        if exit_score >= 25:
-            return "Gewinne laufen lassen, Stop beobachten"
-        return "kein akuter Schutzdruck"
-
-    def _position_add_from_row(row):
-        exit_score = _num(row.get("Exit-Score", None), 0) or 0
-        entry = _num(row.get("Einstieg jetzt attraktiv?", None), 0) or 0
-        setup = _num(row.get("Setup-Confidence", None), 0) or 0
-        leadership = str(row.get("Leadership-Status", "") or "").strip().lower()
-        if exit_score >= 35:
-            return "nicht nachkaufen"
-        if entry >= 75 and setup >= 75 and leadership in {"leader", "stark"} and exit_score < 20:
-            return "aktiv prüfen"
-        if entry >= 70 and setup >= 65 and leadership in {"leader", "stark"}:
-            return "nur selektiv"
-        return "kein Add-on-Signal"
-
-    is_position_view = str(st.session_state.get("workspace_mode", "")) == "Positionen"
+    is_position_view = any(c in df.columns for c in ["PM_Aktion", "PM_Stop_Plan", "PM_Gewinnschutz"])
 
     if is_position_view:
         key_columns = [
@@ -13088,9 +12990,6 @@ def render_mobile_ranking_cards(df):
             ("Exit-Aktion", "Exit-Modell"),
         ]
     else:
-        # v15.24.7: Mehrfach-Ranking nicht wieder score-lastig rendern.
-        # Die kompakten Karten sollen wie ein Auswahlwerkzeug wirken: Typ, Reife,
-        # Priorität, nächster Schritt und Bremsfaktor statt numerischer Score-Reihe.
         key_columns = [
             ("Kandidatentyp", "Typ"),
             ("Radar-Priorität", "Priorität"),
@@ -13127,48 +13026,43 @@ def render_mobile_ranking_cards(df):
             subtitle_bits.append(f"Industrie: {industry_text}")
         if leadership_status != "-":
             subtitle_bits.append(f"Leadership: {leadership_status}")
-        subtitle = " - ".join([b for b in subtitle_bits if b])
+        subtitle = " · ".join([b for b in subtitle_bits if b])
 
-        chips = []
-        for col, label in key_columns:
-            if col in row.index or col.startswith("__pm_"):
-                value = row.get(col, "-")
-                if is_position_view and col == "Exit-Score":
-                    value = _score_label(value, positive=False)
-                value_safe = _safe(value)
-                if value_safe == "-":
-                    continue
-                chips.append(
-                    f"<div class='mobile-rank-chip'><div class='mobile-rank-chip-label'>{label}</div>"
-                    f"<div class='mobile-rank-chip-value'>{value_safe}</div></div>"
-                )
+        with st.container(border=True):
+            st.markdown(f"**{ticker}**")
+            if name and name != "-" and name != ticker:
+                st.caption(name)
+            if subtitle:
+                st.caption(subtitle)
 
-        reason_text = ""
-        if not is_position_view:
-            for _reason_col in ["Warum heute auffällig", "Kurzfazit", "_Kurzfazit Full"]:
-                if _reason_col in row.index:
-                    _reason = _safe(row.get(_reason_col, "-"))
-                    if _reason != "-":
-                        reason_text = f"<div class='mobile-ranking-reason'>{_reason}</div>"
-                        break
+            reason_text = ""
+            if not is_position_view:
+                for _reason_col in ["Warum heute auffällig", "Kurzfazit", "_Kurzfazit Full"]:
+                    if _reason_col in row.index:
+                        _reason = _safe(row.get(_reason_col, "-"))
+                        if _reason != "-":
+                            reason_text = _reason
+                            break
+            if reason_text:
+                st.markdown(f"_{reason_text}_")
 
-        st.markdown(
-            f"""
-            <div class="mobile-ranking-card {'position-monitor-card' if is_position_view else ''}">
-                <div class="mobile-ranking-head">
-                    <div class="mobile-ranking-ticker">{ticker}</div>
-                    <div class="mobile-ranking-name">{name}</div>
-                    {"<div class='mobile-ranking-sub'>" + subtitle + "</div>" if subtitle else ""}
-                </div>
-                {reason_text}
-                <div class="mobile-ranking-grid">
-                    {''.join(chips)}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            chips = []
+            for col, label in key_columns:
+                if col in row.index or col.startswith("__pm_"):
+                    value = row.get(col, "-")
+                    if is_position_view and col == "Exit-Score":
+                        value = _score_label(value, positive=False)
+                    value_safe = _safe(value)
+                    if value_safe == "-":
+                        continue
+                    chips.append((label, value_safe))
 
+            if chips:
+                cols = st.columns(min(3, len(chips)))
+                for i, (label, value) in enumerate(chips):
+                    with cols[i % len(cols)]:
+                        st.caption(label)
+                        st.markdown(f"**{value}**")
 
 def style_ranking_table(df):
     if df is None or df.empty:

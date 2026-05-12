@@ -3617,10 +3617,10 @@ def _entry_zone_position_text_v1524_12(entry_zone="-", current_price=None):
     if low is None or high is None or pd.isna(price):
         return "", False, False, False
     if low <= price <= high:
-        return "Kurs liegt bereits in der Entry-Zone; nicht auf die Zone warten, sondern Bestätigung/Invalidierung prüfen", True, False, False
+        return "Kurs liegt bereits in der Entry-Zone", True, False, False
     if price < low:
-        return "Kurs liegt noch unter der Entry-Zone; erst Annäherung und Bestätigung abwarten", False, True, False
-    return "Kurs liegt oberhalb der Entry-Zone; Rücksetzer oder neuen Ausbruchstrigger abwarten", False, False, True
+        return "Kurs liegt noch unter der Entry-Zone", False, True, False
+    return "Kurs liegt oberhalb der Entry-Zone", False, False, True
 
 
 def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trigger_reason="-", action_label="-", entry_quality="-", entry_zone="-", current_price=None):
@@ -3628,7 +3628,7 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
 
     Labels wie "Jetzt pruefbar" sind intern hilfreich, aber allein in der UI
     zu vage. Diese Funktion erzeugt deshalb immer eine konkrete Aussage: was
-    pruefen, woran gueltig, oder worauf warten. Seit v15.24.12 wird zusätzlich
+    pruefen, woran gueltig, oder worauf warten. Seit v15.24.13 wird zusätzlich
     geprüft, ob der aktuelle Kurs bereits in der Entry-Zone liegt.
     """
     nt = str(next_trigger or "").strip()
@@ -3656,13 +3656,13 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
             return "Einstieg ist jetzt prüfbar; nur gültig, solange Kurs und Trigger-/Support-Zone halten."
         if has_zone:
             if in_zone:
-                return f"Setup ist jetzt prüfbar; Entry-Zone: {zone_txt}. {zone_pos_txt}. Einstieg nur bei sauberer Bestätigung, nicht blind."
+                return f"Entry-Zone {zone_txt} ist erreicht. Vorbereitung heißt jetzt: Bestätigung abwarten, z. B. Stabilisierung in der Zone, bullische Reaktion oder Bruch über ein kurzfristiges Hoch. Ungültig bei Bruch unter die Zone."
             if below_zone:
-                return f"Setup vorbereiten; Entry-Zone: {zone_txt}. {zone_pos_txt}."
+                return f"Entry-Zone {zone_txt} noch nicht erreicht. Rücklauf/Annäherung plus Bestätigung abwarten."
             if above_zone:
-                return f"Setup nicht hinterherlaufen; Entry-Zone: {zone_txt}. {zone_pos_txt}."
-            return f"Setup ist jetzt prüfbar; Einstieg nur bei sauberer Bestätigung in der Entry-Zone: {zone_txt}."
-        return "Setup ist jetzt prüfbar; Einstieg nur bei sauberer Bestätigung in der Entry-Zone."
+                return f"Kurs liegt über der Entry-Zone {zone_txt}. Kein Hinterherlaufen; Rücksetzer oder neuen Trigger abwarten."
+            return f"Entry-Zone {zone_txt}: Einstieg erst bei klarer Bestätigung, nicht nur wegen Erreichen der Zone."
+        return "Einstieg erst bei klarer Bestätigung; Zone/Support und Invalidierung prüfen."
 
     if low in empty_vals:
         if ts in {"nahe dran", "fast prüfbar", "fast pruefbar"}:
@@ -4109,7 +4109,7 @@ def compact_action_text_phase_ui(action_label):
     a = str(action_label or "").strip().lower()
     mapping = {
         "kaufen": "Setup und Timing passen aktuell zusammen.",
-        "vorbereiten": "Interessant, aber der nächste Trigger fehlt noch.",
+        "vorbereiten": "Interessant, aber erst mit klarer Bestätigung handeln.",
         "abwarten": "Noch keine saubere Freigabe für einen Einstieg.",
         "halten": "Aktuell kein dominanter Exit-Grund.",
         "teilgewinn prüfen": "Kurzfristiges Risiko oder Überdehnung nimmt zu.",
@@ -6748,7 +6748,7 @@ def compute_ultra_short_term_zone_signal(df, structures):
     watch = int(round(clamp(watch, 0, 100)))
     confirm = int(round(clamp(confirm, 0, 100)))
 
-    # v15.24.12: Ultra-Kurzfrist war zu streng und fiel dadurch fast immer auf
+    # v15.24.13: Ultra-Kurzfrist war zu streng und fiel dadurch fast immer auf
     # "Kein Signal" zurück. Für den Nutzer ist aber bereits eine kurzfristige
     # Reaktion an/nahe einer Zone relevant. Deshalb: harte Signale bleiben streng,
     # frühe Reaktionen werden separat ausgewiesen, statt komplett neutral zu wirken.
@@ -13044,7 +13044,7 @@ def _candle_confirmation_summary(daily_sig, hourly_sig):
 def render_mobile_ranking_cards(df):
     """Render ranking cards without raw HTML in the content path.
 
-    v15.24.12: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
+    v15.24.13: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
     Streamlit-Renderpfaden wurde dieser HTML-Code als Text sichtbar. Deshalb
     wird die kompakte Ansicht jetzt vollständig mit nativen Streamlit-Elementen
     gerendert.

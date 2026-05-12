@@ -15149,6 +15149,57 @@ if result is not None:
     with st.expander("FOMO / Smart Money", expanded=False):
         st.caption("Warnt, wenn Kursstärke eher nach Hinterherlaufen/FOMO aussieht oder der Gesamtmarkt überhitzt wirkt.")
 
+
+        def _render_wrapped_table(rows, columns):
+            """Render compact HTML table with wrapping text cells for FOMO detail tables."""
+            if not rows:
+                return
+            def _esc(v):
+                return html.escape(str(v if v is not None else "-"))
+            head = "".join(f"<th>{_esc(c)}</th>" for c in columns)
+            body_rows = []
+            for row in rows:
+                cells = "".join(f"<td>{_esc(row.get(c, '-'))}</td>" for c in columns)
+                body_rows.append(f"<tr>{cells}</tr>")
+            body = "".join(body_rows)
+            st.markdown(
+                f"""
+                <style>
+                .wrapped-fomo-table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.86rem;
+                    margin: 0.25rem 0 0.8rem 0;
+                }}
+                .wrapped-fomo-table th {{
+                    text-align: left;
+                    font-weight: 700;
+                    padding: 0.45rem 0.55rem;
+                    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+                    vertical-align: top;
+                    white-space: normal;
+                }}
+                .wrapped-fomo-table td {{
+                    padding: 0.45rem 0.55rem;
+                    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+                    vertical-align: top;
+                    white-space: normal;
+                    word-break: normal;
+                    overflow-wrap: anywhere;
+                    line-height: 1.35;
+                }}
+                .wrapped-fomo-table th:nth-child(1), .wrapped-fomo-table td:nth-child(1) {{ width: 28%; }}
+                .wrapped-fomo-table th:nth-child(2), .wrapped-fomo-table td:nth-child(2) {{ width: 18%; }}
+                .wrapped-fomo-table th:nth-child(3), .wrapped-fomo-table td:nth-child(3) {{ width: 54%; }}
+                </style>
+                <table class="wrapped-fomo-table">
+                    <thead><tr>{head}</tr></thead>
+                    <tbody>{body}</tbody>
+                </table>
+                """,
+                unsafe_allow_html=True,
+            )
+
         def _risk_word(v):
             try:
                 x = float(v)
@@ -15197,7 +15248,7 @@ if result is not None:
                 rows.append({"Faktor": label, "Status": _risk_word(val), "Wert": _fmt_score(val) + "/100", "Bedeutung": help_txt})
             if rows:
                 st.markdown("**Treiber der Einstufung**")
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                _render_wrapped_table(rows, ["Faktor", "Status", "Bedeutung"])
 
         def _put_call_interpretation(pc_data):
             def _num(x):
@@ -15301,7 +15352,7 @@ if result is not None:
                             {"Kennzahl": "SPX Put/Call", "Wert": _fmt_pc(_pc_data.get("spx_put_call")), "Lesart": _pc_lens("spx", _pc_data.get("spx_put_call"))},
                         ]
                         st.markdown("**Optionssentiment**")
-                        st.dataframe(pd.DataFrame(_pc_rows), use_container_width=True, hide_index=True)
+                        _render_wrapped_table(_pc_rows, ["Kennzahl", "Wert", "Lesart"])
                     else:
                         st.caption("Put/Call: nicht verfügbar; Markt-FOMO ohne Optionssentiment bewertet.")
 

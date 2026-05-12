@@ -15209,22 +15209,29 @@ if result is not None:
             total = _num(pc_data.get("total_put_call"))
             index = _num(pc_data.get("index_put_call"))
             spx = _num(pc_data.get("spx_put_call"))
+
+            retail_call = equity is not None and equity < 0.65
+            broad_complacency = total is not None and total < 0.80
+            institutional_hedge = (index is not None and index > 1.0) or (spx is not None and spx > 1.0)
+
             notes = []
-            if equity is not None:
-                if equity < 0.50:
-                    notes.append("Equity Put/Call sehr call-lastig: mögliche Retail-/FOMO-Euphorie.")
-                elif equity < 0.65:
-                    notes.append("Equity Put/Call niedrig: Aktienoptionen sind eher call-lastig.")
-                elif equity > 1.05:
-                    notes.append("Equity Put/Call hoch: eher Absicherung/Angst als FOMO.")
-                else:
-                    notes.append("Equity Put/Call neutral.")
-            if total is not None and total < 0.80:
-                notes.append("Total Put/Call niedrig: breitere Sorglosigkeit möglich.")
-            if index is not None and equity is not None and index > 1.0 and equity < 0.65:
-                notes.append("Auffällig: Index-Absicherung bleibt erhöht, während Equity-Optionen call-lastig sind.")
-            if spx is not None and equity is not None and spx > 1.0 and equity < 0.65:
-                notes.append("SPX-Absicherung wirkt höher als Einzelaktien-Sentiment: mögliches Profis-hedgen vs. Retail-Risikoappetit.")
+            if retail_call and institutional_hedge:
+                notes.append("Lesart: gemischt-riskant. Aktienoptionen sind stark call-lastig, während Index/SPX-Absicherung erhöht bleibt.")
+                notes.append("Interpretation: eher Retail-Risikoappetit bei gleichzeitiger institutioneller Absicherung - FOMO-Warnsignal, nicht automatisch Kaufsignal.")
+            elif retail_call:
+                notes.append("Lesart: call-lastig. Aktienoptionen zeigen erhöhten Risikoappetit/FOMO-Potenzial.")
+            elif equity is not None and equity > 1.05:
+                notes.append("Lesart: defensiv. Aktienoptionen zeigen eher Absicherung/Angst als FOMO.")
+            elif equity is not None:
+                notes.append("Lesart: neutral. Equity Put/Call zeigt keine auffällige Call-Euphorie.")
+
+            if broad_complacency and not institutional_hedge:
+                notes.append("Gesamtmarkt: Put/Call insgesamt niedrig - breitere Sorglosigkeit möglich.")
+            elif broad_complacency and institutional_hedge:
+                notes.append("Gesamtmarkt: insgesamt niedrige Put/Call-Werte, aber Index-Hedging bleibt vorhanden - keine einheitlich sorglose Lage.")
+            elif institutional_hedge and not retail_call:
+                notes.append("Index/SPX: erhöhte Absicherung spricht eher für Vorsicht institutioneller Marktteilnehmer.")
+
             return notes[:3]
 
         _fomo_cols = st.columns(2)

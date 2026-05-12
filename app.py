@@ -15148,6 +15148,85 @@ if result is not None:
 
     with st.expander("FOMO / Smart Money", expanded=False):
         st.caption("Warnt, wenn Kursstärke eher nach Hinterherlaufen/FOMO aussieht oder der Gesamtmarkt überhitzt wirkt.")
+
+        def _risk_word(v):
+            try:
+                x = float(v)
+            except Exception:
+                return "unklar"
+            if x >= 75:
+                return "hoch"
+            if x >= 55:
+                return "erhöht"
+            if x >= 35:
+                return "beobachten"
+            return "unauffällig"
+
+        def _fmt_score(v):
+            try:
+                x = float(v)
+                return str(int(round(x)))
+            except Exception:
+                return "-"
+
+        def _render_fomo_factors(title, pkg):
+            subs = (pkg or {}).get("subscores", {}) or {}
+            if not subs:
+                return
+            if title == "Einzelaktie":
+                mapping = [
+                    ("Preisnaehe", "Nähe zum Hoch", "Wie nah die Aktie an 52W-/ATH-Zonen steht."),
+                    ("Momentum", "Kurzfristiger Lauf", "Wie stark die jüngste Bewegung bereits gelaufen ist."),
+                    ("Entry_Stretch", "Abstand zur Entry-Zone", "Ob der Kurs dem sinnvollen Einstieg schon weggelaufen ist."),
+                    ("Smart_Money_Risiko", "Smart-Money-Bestätigung", "Ob Volumen, Akkumulation und Leadership die Bewegung ausreichend bestätigen."),
+                    ("Distribution", "Abgabedruck", "Ob Distribution/Verkaufsdruck gegen die Bewegung spricht."),
+                ]
+            else:
+                mapping = [
+                    ("Index_Hochnaehe", "Markt nahe Hoch", "Wie nah der Gesamtmarkt an Hoch-/Überhitzungszonen steht."),
+                    ("Index_Momentum", "Index-Momentum", "Wie stark der Markt kurzfristig gelaufen ist."),
+                    ("Trend_Stretch", "Abstand zum Trend", "Ob der Markt deutlich über wichtigen Durchschnitten liegt."),
+                    ("Put_Call_Sentiment", "Options-Euphorie", "Ob Optionsdaten auf Call-Euphorie/Sorglosigkeit hindeuten."),
+                    ("Regime", "Regime-Überhitzung", "Ob ein positives Marktregime bereits heiß läuft."),
+                ]
+            rows = []
+            for key, label, help_txt in mapping:
+                if key not in subs:
+                    continue
+                val = subs.get(key)
+                rows.append({"Faktor": label, "Status": _risk_word(val), "Wert": _fmt_score(val) + "/100", "Bedeutung": help_txt})
+            if rows:
+                st.markdown("**Treiber der Einstufung**")
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        def _put_call_interpretation(pc_data):
+            def _num(x):
+                try:
+                    return float(x)
+                except Exception:
+                    return None
+            equity = _num(pc_data.get("equity_put_call"))
+            total = _num(pc_data.get("total_put_call"))
+            index = _num(pc_data.get("index_put_call"))
+            spx = _num(pc_data.get("spx_put_call"))
+            notes = []
+            if equity is not None:
+                if equity < 0.50:
+                    notes.append("Equity Put/Call sehr call-lastig: mögliche Retail-/FOMO-Euphorie.")
+                elif equity < 0.65:
+                    notes.append("Equity Put/Call niedrig: Aktienoptionen sind eher call-lastig.")
+                elif equity > 1.05:
+                    notes.append("Equity Put/Call hoch: eher Absicherung/Angst als FOMO.")
+                else:
+                    notes.append("Equity Put/Call neutral.")
+            if total is not None and total < 0.80:
+                notes.append("Total Put/Call niedrig: breitere Sorglosigkeit möglich.")
+            if index is not None and equity is not None and index > 1.0 and equity < 0.65:
+                notes.append("Auffällig: Index-Absicherung bleibt erhöht, während Equity-Optionen call-lastig sind.")
+            if spx is not None and equity is not None and spx > 1.0 and equity < 0.65:
+                notes.append("SPX-Absicherung wirkt höher als Einzelaktien-Sentiment: mögliches Profis-hedgen vs. Retail-Risikoappetit.")
+            return notes[:3]
+
         _fomo_cols = st.columns(2)
         for _col, _title, _pkg in [(_fomo_cols[0], "Einzelaktie", stock_fomo_pkg_ui), (_fomo_cols[1], "Gesamtmarkt", market_fomo_pkg_ui)]:
             with _col:
@@ -15159,22 +15238,23 @@ if result is not None:
                 st.caption(_summary)
                 if _action:
                     st.caption("Handlung: " + _action)
-                for _reason in _reasons[:5]:
+                for _reason in _reasons[:4]:
                     st.write("- " + str(_reason))
-                _subs = (_pkg or {}).get("subscores", {}) or {}
-                if _subs:
-                    _sub_txt = " · ".join([f"{k}: {v}" for k, v in list(_subs.items())[:5]])
-                    st.caption("Subscores: " + _sub_txt)
+                _render_fomo_factors(_title, _pkg)
                 if _title == "Gesamtmarkt":
                     _pc = (_pkg or {}).get("put_call", {}) or {}
                     if _pc.get("available"):
                         _pc_data = _pc.get("data", {}) or {}
-                        st.caption("Put/Call: Equity {eq} · Total {to} · Index {ix} · SPX {spx}".format(
-                            eq=_pc_data.get("equity_put_call", "-"),
-                            to=_pc_data.get("total_put_call", "-"),
-                            ix=_pc_data.get("index_put_call", "-"),
-                            spx=_pc_data.get("spx_put_call", "-"),
-                        ))
+                        _pc_rows = [
+                            {"Kennzahl": "Equity Put/Call", "Wert": _pc_data.get("equity_put_call", "-"), "Lesart": "Aktienoptionen / eher Retail-Sentiment"},
+                            {"Kennzahl": "Total Put/Call", "Wert": _pc_data.get("total_put_call", "-"), "Lesart": "Gesamter Optionsmarkt"},
+                            {"Kennzahl": "Index Put/Call", "Wert": _pc_data.get("index_put_call", "-"), "Lesart": "Index-Hedging / institutioneller"},
+                            {"Kennzahl": "SPX Put/Call", "Wert": _pc_data.get("spx_put_call", "-"), "Lesart": "S&P-500-Hedging"},
+                        ]
+                        st.markdown("**Optionssentiment**")
+                        st.dataframe(pd.DataFrame(_pc_rows), use_container_width=True, hide_index=True)
+                        for _note in _put_call_interpretation(_pc_data):
+                            st.caption("• " + _note)
                     else:
                         st.caption("Put/Call: nicht verfügbar; Markt-FOMO ohne Optionssentiment bewertet.")
 

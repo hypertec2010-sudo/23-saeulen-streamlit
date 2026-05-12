@@ -6580,11 +6580,11 @@ def compute_ultra_short_term_zone_signal(df, structures):
         s_mid = float(s1.get("mid", np.nan))
         if pd.notna(s_mid) and current_price > 0:
             dist_support = abs((current_price / s_mid) - 1.0) * 100.0
-            if dist_support <= 1.2:
+            if dist_support <= 1.8:
                 bull += 26
                 near_support = True
                 reasons_bull.append("Kurs direkt an Support S1")
-            elif dist_support <= 2.0:
+            elif dist_support <= 3.2:
                 bull += 16
                 reasons_bull.append("Kurs nahe Support S1")
             if current_price < s_mid:
@@ -6596,11 +6596,11 @@ def compute_ultra_short_term_zone_signal(df, structures):
         r_mid = float(r1.get("mid", np.nan))
         if pd.notna(r_mid) and current_price > 0:
             dist_res = abs((r_mid / current_price) - 1.0) * 100.0
-            if dist_res <= 1.2:
+            if dist_res <= 1.8:
                 bear += 26
                 near_resistance = True
                 reasons_bear.append("Kurs direkt an Widerstand R1")
-            elif dist_res <= 2.0:
+            elif dist_res <= 3.2:
                 bear += 16
                 reasons_bear.append("Kurs nahe Widerstand R1")
             if current_price > r_mid:
@@ -6697,7 +6697,14 @@ def compute_ultra_short_term_zone_signal(df, structures):
     watch = int(round(clamp(watch, 0, 100)))
     confirm = int(round(clamp(confirm, 0, 100)))
 
-    if bull >= 55 and bull >= bear + 8:
+    # v15.24.10: Ultra-Kurzfrist war zu streng und fiel dadurch fast immer auf
+    # "Kein Signal" zurück. Für den Nutzer ist aber bereits eine kurzfristige
+    # Reaktion an/nahe einer Zone relevant. Deshalb: harte Signale bleiben streng,
+    # frühe Reaktionen werden separat ausgewiesen, statt komplett neutral zu wirken.
+    max_side = max(bull, bear)
+    side_gap = abs(bull - bear)
+
+    if bull >= 48 and bull >= bear + 6:
         signal.update({
             "label": "Ultra-Kurzfrist bullish",
             "strength": bull,
@@ -6705,7 +6712,7 @@ def compute_ultra_short_term_zone_signal(df, structures):
             "reason": reasons_bull[0] if reasons_bull else "Support wird kurzfristig verteidigt.",
             "bullets": list(dict.fromkeys(reasons_bull))[:4],
         })
-    elif bear >= 55 and bear >= bull + 8:
+    elif bear >= 48 and bear >= bull + 6:
         signal.update({
             "label": "Ultra-Kurzfrist bearish",
             "strength": bear,
@@ -6713,7 +6720,23 @@ def compute_ultra_short_term_zone_signal(df, structures):
             "reason": reasons_bear[0] if reasons_bear else "Widerstand wird kurzfristig bestaetigt.",
             "bullets": list(dict.fromkeys(reasons_bear))[:4],
         })
-    elif max(bull, bear, watch) >= 28:
+    elif bull >= 34 and bull >= bear + 5:
+        signal.update({
+            "label": "Frühe bullische Reaktion",
+            "strength": bull,
+            "tone": "amber",
+            "reason": reasons_bull[0] if reasons_bull else "Erste konstruktive Reaktion, Bestaetigung fehlt noch.",
+            "bullets": list(dict.fromkeys(reasons_bull + reasons_watch))[:4],
+        })
+    elif bear >= 34 and bear >= bull + 5:
+        signal.update({
+            "label": "Frühe bearische Reaktion",
+            "strength": bear,
+            "tone": "amber",
+            "reason": reasons_bear[0] if reasons_bear else "Erste Schwäche an einer relevanten Zone, Bestaetigung fehlt noch.",
+            "bullets": list(dict.fromkeys(reasons_bear + reasons_watch))[:4],
+        })
+    elif max(bull, bear, watch) >= 22:
         signal.update({
             "label": "Zone unter Beobachtung",
             "strength": max(bull, bear, watch),
@@ -12970,7 +12993,7 @@ def _candle_confirmation_summary(daily_sig, hourly_sig):
 def render_mobile_ranking_cards(df):
     """Render ranking cards without raw HTML in the content path.
 
-    v15.24.9: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
+    v15.24.10: Die vorherige Kartenansicht erzeugte HTML-Chips. In einzelnen
     Streamlit-Renderpfaden wurde dieser HTML-Code als Text sichtbar. Deshalb
     wird die kompakte Ansicht jetzt vollständig mit nativen Streamlit-Elementen
     gerendert.

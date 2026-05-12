@@ -616,7 +616,7 @@ def _fomo_v1525_label(score):
         score = float(score)
     except Exception:
         score = 0.0
-    # v15.25.3: vier echte Stufen. "Beobachten" darf nicht erst greifen,
+    # v15.25.4: vier echte Stufen. "Beobachten" darf nicht erst greifen,
     # wenn schon fast ein Warnfall vorliegt, sonst bleiben FOMO-Fruehphasen unsichtbar.
     if score >= 72:
         return "kritisch"
@@ -657,10 +657,111 @@ def _fomo_v1525_clamp(value, lo=0, hi=100):
     return max(lo, min(hi, value))
 
 
+def _fomo_v1525_parse_float(value):
+    try:
+        if value is None:
+            return None
+        txt = str(value).strip().replace(",", "")
+        if not txt:
+            return None
+        return float(txt)
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=6 * 60 * 60, show_spinner=False)
+def fetch_cboe_put_call_ratios_v1525():
+    """Liest Cboe Daily Market Statistics fuer Gesamtmarkt-Sentiment.
+
+    Optionaler Baustein: Wenn Cboe nicht erreichbar ist, faellt die App robust
+    auf die bisherigen Markt-FOMO-Faktoren zurueck.
+    """
+    url = "https://www.cboe.com/us/options/market_statistics/daily/?PrintPage=true"
+    try:
+        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code >= 400:
+            return {"available": False, "error": f"HTTP {resp.status_code}", "source": url}
+        text = resp.text or ""
+        clean = re.sub(r"<[^>]+>", " ", text)
+        clean = re.sub(r"\s+", " ", clean)
+        labels = {
+            "total_put_call": "TOTAL PUT/CALL RATIO",
+            "index_put_call": "INDEX PUT/CALL RATIO",
+            "etp_put_call": "EXCHANGE TRADED PRODUCTS PUT/CALL RATIO",
+            "equity_put_call": "EQUITY PUT/CALL RATIO",
+            "vix_put_call": "CBOE VOLATILITY INDEX (VIX) PUT/CALL RATIO",
+            "spx_put_call": "SPX + SPXW PUT/CALL RATIO",
+        }
+        out = {"available": True, "source": url}
+        for key, label in labels.items():
+            m = re.search(re.escape(label) + r"\s+([0-9]+(?:\.[0-9]+)?)", clean, flags=re.I)
+            out[key] = _fomo_v1525_parse_float(m.group(1)) if m else None
+        if all(out.get(k) is None for k in labels):
+            return {"available": False, "error": "keine Ratios gefunden", "source": url}
+        return out
+    except Exception as exc:
+        return {"available": False, "error": str(exc), "source": url}
+
+
+def build_put_call_fomo_subscore_v1525():
+    """Cboe Put/Call als Gesamtmarkt-FOMO-Indikator.
+
+    Equity Put/Call wird am staerksten gewichtet, weil es Retail-/Aktien-Call-Euphorie
+    besser abbildet als reine Index-Hedges. Sehr niedrige Werte bedeuten viel Call-
+    Nachfrage und werden konträr als FOMO/Sorglosigkeit interpretiert.
+    """
+    data = fetch_cboe_put_call_ratios_v1525()
+    if not data or not data.get("available"):
+        return {
+            "available": False,
+            "score": 0,
+            "label": "nicht verfügbar",
+            "summary": "Put/Call-Daten aktuell nicht verfügbar; Markt-FOMO ohne Optionssentiment bewertet.",
+            "data": data or {},
+        }
+    equity = data.get("equity_put_call")
+    total = data.get("total_put_call")
+    index = data.get("index_put_call")
+    spx = data.get("spx_put_call")
+    vix = data.get("vix_put_call")
+
+    score = 0.0
+    reasons = []
+    if equity is not None:
+        if equity <= 0.42:
+            score += 58; reasons.append(f"Equity Put/Call sehr niedrig ({equity:.2f})")
+        elif equity <= 0.50:
+            score += 46; reasons.append(f"Equity Put/Call niedrig ({equity:.2f})")
+        elif equity <= 0.60:
+            score += 30; reasons.append(f"Equity Put/Call unter Normalbereich ({equity:.2f})")
+        elif equity <= 0.70:
+            score += 12; reasons.append(f"Equity Put/Call leicht call-lastig ({equity:.2f})")
+    if total is not None:
+        if total <= 0.62:
+            score += 18; reasons.append(f"Total Put/Call niedrig ({total:.2f})")
+        elif total <= 0.75:
+            score += 9; reasons.append(f"Total Put/Call moderat niedrig ({total:.2f})")
+    # Besonders interessant: Retail/Equity call-lastig, aber Index/SPX zeigt Hedging.
+    hedge_ratio = max([x for x in [index, spx] if x is not None], default=None)
+    if equity is not None and hedge_ratio is not None and equity <= 0.58 and hedge_ratio >= 1.00:
+        score += 18
+        reasons.append("Equity call-lastig, waehrend Index/SPX-Hedging sichtbar ist")
+    if vix is not None and vix <= 0.25:
+        score += 6
+        reasons.append(f"VIX Put/Call sehr niedrig ({vix:.2f})")
+
+    score = round(_fomo_v1525_clamp(score), 1)
+    label = _fomo_v1525_label(score)
+    if not reasons:
+        reasons.append("Put/Call-Sentiment unauffällig")
+    summary = "Optionssentiment: " + "; ".join(reasons[:3]) + "."
+    return {"available": True, "score": score, "label": label, "summary": summary, "reasons": reasons[:5], "data": data}
+
+
 def build_stock_fomo_package_v1525(result):
     """Aktien-FOMO getrennt vom Gesamtmarkt bewerten.
 
-    v15.25.3 nutzt ein abgestuftes Subscore-System statt eines einzelnen Gates:
+    v15.25.4 nutzt ein abgestuftes Subscore-System statt eines einzelnen Gates:
     - Preisnaehe zum Hoch
     - Momentum/Überhitzung
     - Entry-Abstand / Hinterherlauf-Risiko
@@ -830,14 +931,22 @@ def build_market_fomo_package_v1525(market_info):
     except Exception:
         pass
     regime_heat = 16 if regime == "POSITIV" else 6 if regime == "NEUTRAL" else -8
+    put_call_pkg = build_put_call_fomo_subscore_v1525()
+    put_call_heat = _fomo_v1525_num((put_call_pkg or {}).get("score"), default=0) if (put_call_pkg or {}).get("available") else 0
 
-    raw_score = price_heat * 0.34 + momentum_heat * 0.30 + trend_stretch * 0.26 + regime_heat
+    raw_score = price_heat * 0.28 + momentum_heat * 0.25 + trend_stretch * 0.22 + put_call_heat * 0.25 + regime_heat
     if price_heat >= 72 and momentum_heat >= 42:
         raw_score = max(raw_score, 34)
     if price_heat >= 72 and trend_stretch >= 42:
         raw_score = max(raw_score, 48)
     if price_heat >= 86 and momentum_heat >= 58 and trend_stretch >= 40:
         raw_score = max(raw_score, 60)
+    if put_call_heat >= 50 and price_heat >= 50:
+        raw_score = max(raw_score, 52)
+    if put_call_heat >= 70 and price_heat >= 72:
+        raw_score = max(raw_score, 68)
+    if put_call_heat >= 78 and price_heat >= 72 and momentum_heat >= 45:
+        raw_score = max(raw_score, 74)
 
     score = round(_fomo_v1525_clamp(raw_score), 1)
     label = _fomo_v1525_label(score)
@@ -850,6 +959,8 @@ def build_market_fomo_package_v1525(market_info):
         reasons.append("Index-Momentum heiß")
     if trend_stretch >= 45:
         reasons.append("Abstand zu gleitenden Durchschnitten erhöht")
+    if put_call_heat >= 50:
+        reasons.append("Optionssentiment call-lastig")
     if regime == "POSITIV":
         reasons.append("positives Regime kann FOMO verstärken")
     if not reasons:
@@ -875,10 +986,12 @@ def build_market_fomo_package_v1525(market_info):
         "summary": summary,
         "action_hint": action_hint,
         "reasons": reasons[:5],
+        "put_call": put_call_pkg,
         "subscores": {
             "Index_Hochnaehe": round(price_heat, 1),
             "Index_Momentum": round(momentum_heat, 1),
             "Trend_Stretch": round(trend_stretch, 1),
+            "Put_Call_Sentiment": round(put_call_heat, 1),
             "Regime": round(regime_heat, 1),
         },
     }
@@ -979,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.25.3",
+        "Export_Version": "v15.25.4",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -14622,6 +14735,13 @@ if result is not None:
         background:rgba(15,23,42,0.30);
         box-shadow:none;
     }
+    .overview-context-card.fomo-ok{border-color:rgba(148,163,184,0.10);background:rgba(15,23,42,0.30);}
+    .overview-context-card.fomo-watch{border-color:rgba(245,158,11,0.24);border-left:4px solid rgba(245,158,11,0.70);background:linear-gradient(180deg, rgba(120,53,15,0.22), rgba(15,23,42,0.34));}
+    .overview-context-card.fomo-elevated{border-color:rgba(249,115,22,0.32);border-left:4px solid rgba(249,115,22,0.86);background:linear-gradient(180deg, rgba(154,52,18,0.28), rgba(15,23,42,0.36));}
+    .overview-context-card.fomo-critical{border-color:rgba(239,68,68,0.46);border-left:5px solid rgba(239,68,68,0.95);background:linear-gradient(180deg, rgba(127,29,29,0.38), rgba(15,23,42,0.42));box-shadow:0 10px 28px rgba(127,29,29,0.18);}
+    .overview-context-card.fomo-critical .overview-context-value{color:#fecaca;}
+    .overview-context-card.fomo-elevated .overview-context-value{color:#fed7aa;}
+    .overview-context-card.fomo-watch .overview-context-value{color:#fde68a;}
     .overview-context-title{font-size:0.69rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;font-weight:800;line-height:1.1;}
     .overview-context-value{font-size:0.98rem;font-weight:780;color:#dbeafe;line-height:1.15;margin-top:7px;word-break:break-word;overflow-wrap:anywhere;}
     .overview-context-sub{font-size:0.72rem;color:#94a3b8;line-height:1.28;margin-top:7px;}
@@ -15011,9 +15131,12 @@ if result is not None:
     context_cols = st.columns(min(6, len(context_summary_data)))
     for _col, (_title, _value, _sub) in zip(context_cols, context_summary_data):
         with _col:
+            _extra_cls = ""
+            if str(_title).strip().lower().startswith("fomo"):
+                _extra_cls = " " + str(fomo_pkg_ui.get("class", _fomo_v1525_class(fomo_pkg_ui.get("label", "unauffällig"))))
             st.markdown(
                 f"""
-                <div class="overview-context-card">
+                <div class="overview-context-card{_extra_cls}">
                     <div class="overview-context-title">{_title}</div>
                     <div class="overview-context-value">{_value}</div>
                     <div class="overview-context-sub">{_sub}</div>
@@ -15042,6 +15165,18 @@ if result is not None:
                 if _subs:
                     _sub_txt = " · ".join([f"{k}: {v}" for k, v in list(_subs.items())[:5]])
                     st.caption("Subscores: " + _sub_txt)
+                if _title == "Gesamtmarkt":
+                    _pc = (_pkg or {}).get("put_call", {}) or {}
+                    if _pc.get("available"):
+                        _pc_data = _pc.get("data", {}) or {}
+                        st.caption("Put/Call: Equity {eq} · Total {to} · Index {ix} · SPX {spx}".format(
+                            eq=_pc_data.get("equity_put_call", "-"),
+                            to=_pc_data.get("total_put_call", "-"),
+                            ix=_pc_data.get("index_put_call", "-"),
+                            spx=_pc_data.get("spx_put_call", "-"),
+                        ))
+                    else:
+                        st.caption("Put/Call: nicht verfügbar; Markt-FOMO ohne Optionssentiment bewertet.")
 
     # ---------- v15.20.5: Risiko konkret garantiert sichtbar (native Streamlit, theme-sicher) ----------
     with st.expander("Risiko konkret", expanded=False):

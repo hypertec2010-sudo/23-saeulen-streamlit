@@ -594,6 +594,209 @@ def build_concrete_risk_package_v1520(result, regime_ctx=None, final_risk_label=
     return {"overall_label": overall_label, "overall_score": round(overall_score, 1), "summary": summary, "action_hint": action_hint, "top_driver": top.get("name", "-"), "top_driver_label": top.get("label", "-"), "factors": factors}
 
 
+# ---------- v15.25: FOMO-/Smart-Money-Risiko fuer Aktie und Gesamtmarkt ----------
+def _fomo_v1525_num(*values, default=0.0):
+    for value in values:
+        try:
+            if value is None:
+                continue
+            if isinstance(value, str) and not value.strip():
+                continue
+            f = float(value)
+            if pd.isna(f):
+                continue
+            return f
+        except Exception:
+            continue
+    return float(default)
+
+
+def _fomo_v1525_label(score):
+    try:
+        score = float(score)
+    except Exception:
+        score = 0.0
+    if score >= 75:
+        return "kritisch"
+    if score >= 58:
+        return "erhöht"
+    if score >= 38:
+        return "beobachten"
+    return "unauffällig"
+
+
+def _fomo_v1525_class(label):
+    lbl = str(label or "").lower()
+    if "krit" in lbl:
+        return "fomo-critical"
+    if "erh" in lbl:
+        return "fomo-elevated"
+    if "beob" in lbl:
+        return "fomo-watch"
+    return "fomo-ok"
+
+
+def _fomo_v1525_score_to_text(score, high_text, mid_text, low_text):
+    try:
+        score = float(score)
+    except Exception:
+        score = 0.0
+    if score >= 70:
+        return high_text
+    if score >= 45:
+        return mid_text
+    return low_text
+
+
+def build_stock_fomo_package_v1525(result):
+    """Erkennt, ob Kursstärke eher gesund bestätigt ist oder FOMO-/Retail-getrieben wirkt."""
+    r = result or {}
+    price = _fomo_v1525_num(r.get("price"), default=float("nan"))
+    high52 = _fomo_v1525_num(r.get("high52"), default=float("nan"))
+    dist52 = _fomo_v1525_num(r.get("dist52"), default=float("nan"))
+    if (not pd.notna(dist52)) and pd.notna(price) and pd.notna(high52) and high52 > 0:
+        dist52 = price / high52 * 100.0
+
+    ret21 = _fomo_v1525_num(r.get("ret21"), default=0)
+    ret63 = _fomo_v1525_num(r.get("ret63"), default=0)
+    stretch = _fomo_v1525_num(r.get("stretch_risk_score"), default=0)
+    volume_quality = _fomo_v1525_num(r.get("volume_quality_score"), default=55)
+    accumulation = _fomo_v1525_num(r.get("accumulation_score"), default=50)
+    distribution = _fomo_v1525_num(r.get("distribution_pressure_score"), r.get("distribution_score"), default=20)
+    breakout_volume = _fomo_v1525_num(r.get("breakout_volume_score"), default=50)
+    leadership = _fomo_v1525_num(r.get("leadership_score"), default=50)
+    rs_acc = _fomo_v1525_num(r.get("rs_acceleration_score"), default=50)
+    entry_quality = str(r.get("entry_quality", "") or "").lower()
+
+    near_high = 0
+    if pd.notna(dist52):
+        near_high = 85 if dist52 >= 99 else 72 if dist52 >= 96 else 48 if dist52 >= 92 else 20
+    momentum_heat = max(0, min(100, ret21 * 2.2 + ret63 * 0.9 + 25))
+    weak_confirmation = max(0, 100 - max(volume_quality, accumulation, breakout_volume))
+    smart_money_divergence = max(0, weak_confirmation + max(0, 55 - leadership) * 0.75 + max(0, distribution - 40) * 0.65)
+    over_entry = 35 if any(x in entry_quality for x in ["spät", "extended", "hoch", "überdehnt"]) else 0
+
+    score = (near_high * 0.24) + (momentum_heat * 0.20) + (smart_money_divergence * 0.30) + (stretch * 0.16) + (over_entry * 0.10)
+    # Gute Leadership und echte Akkumulation neutralisieren FOMO bewusst: ATH-Leader sind nicht automatisch FOMO.
+    if leadership >= 72 and accumulation >= 62 and volume_quality >= 60:
+        score -= 18
+    if rs_acc >= 65 and breakout_volume >= 62:
+        score -= 8
+    score = max(0, min(100, round(score, 1)))
+    label = _fomo_v1525_label(score)
+
+    reasons = []
+    if pd.notna(dist52) and dist52 >= 96:
+        reasons.append("Kurs nahe 52W-/ATH-Zone")
+    if momentum_heat >= 60:
+        reasons.append("kurzfristige Kursdynamik bereits heiß")
+    if weak_confirmation >= 45:
+        reasons.append("Volumen/Akkumulation bestätigen nur teilweise")
+    if leadership < 58:
+        reasons.append("Leadership wirkt nicht stark genug")
+    if distribution >= 55:
+        reasons.append("Distribution/Abgabedruck sichtbar")
+    if not reasons:
+        reasons.append("Kursstärke wirkt aktuell ausreichend bestätigt")
+
+    if label == "kritisch":
+        summary = "FOMO-Gefahr: Kursstärke wirkt nicht ausreichend durch Smart Money bestätigt."
+        action_hint = "Kein Hinterherlaufen; neue Base, Rücksetzer oder klare Volumenbestätigung abwarten."
+    elif label == "erhöht":
+        summary = "FOMO-Risiko erhöht: Stärke ist sichtbar, aber Bestätigung/Leadership sind nicht voll überzeugend."
+        action_hint = "Einstieg kleiner/defensiver prüfen; Bestätigung und Invalidierung eng beachten."
+    elif label == "beobachten":
+        summary = "Leichtes FOMO-Risiko: Kurslage beachten, aber kein dominanter Warnfaktor."
+        action_hint = "Nicht aggressiv hinterherlaufen; Entry-Zone und Bestätigung priorisieren."
+    else:
+        summary = "Unauffällig: Kursstärke wird durch Qualität/Leadership/Volumen ausreichend getragen."
+        action_hint = "Kein zusätzlicher FOMO-Abschlag nötig."
+
+    return {
+        "label": label,
+        "score": score,
+        "class": _fomo_v1525_class(label),
+        "summary": summary,
+        "action_hint": action_hint,
+        "reasons": reasons[:4],
+    }
+
+
+def build_market_fomo_package_v1525(market_info):
+    """Gesamtmarkt-Warnung: positive Indizes, aber Überhitzung/FOMO-Gefahr nimmt zu."""
+    m = market_info or {}
+    regime = str(m.get("regime", "") or "").upper()
+    price = _fomo_v1525_num(m.get("price"), default=float("nan"))
+    high252 = _fomo_v1525_num(m.get("high252"), m.get("high52"), default=float("nan"))
+    dist252 = _fomo_v1525_num(m.get("dist252"), default=float("nan"))
+    if (not pd.notna(dist252)) and pd.notna(price) and pd.notna(high252) and high252 > 0:
+        dist252 = price / high252 * 100.0
+    ret21 = _fomo_v1525_num(m.get("ret21"), default=0)
+    ret63 = _fomo_v1525_num(m.get("ret63"), default=0)
+    ret126 = _fomo_v1525_num(m.get("ret126"), default=0)
+    ma50 = _fomo_v1525_num(m.get("ma50"), default=float("nan"))
+    ma200 = _fomo_v1525_num(m.get("ma200"), default=float("nan"))
+
+    near_high = 85 if pd.notna(dist252) and dist252 >= 99 else 70 if pd.notna(dist252) and dist252 >= 96 else 45 if pd.notna(dist252) and dist252 >= 92 else 15
+    momentum_heat = max(0, min(100, ret21 * 2.0 + ret63 * 0.95 + ret126 * 0.28 + 20))
+    trend_stretch = 0
+    try:
+        if pd.notna(price) and pd.notna(ma50) and ma50 > 0:
+            trend_stretch = max(trend_stretch, min(100, max(0, price / ma50 - 1) * 900))
+        if pd.notna(price) and pd.notna(ma200) and ma200 > 0:
+            trend_stretch = max(trend_stretch, min(100, max(0, price / ma200 - 1) * 420))
+    except Exception:
+        pass
+    regime_bonus = 14 if regime == "POSITIV" else 5 if regime == "NEUTRAL" else -8
+    score = near_high * 0.32 + momentum_heat * 0.30 + trend_stretch * 0.28 + regime_bonus
+    score = max(0, min(100, round(score, 1)))
+    label = _fomo_v1525_label(score)
+    reasons = []
+    if pd.notna(dist252) and dist252 >= 96:
+        reasons.append("Benchmark nahe Jahres-/Allzeithoch")
+    if momentum_heat >= 62:
+        reasons.append("Index-Momentum bereits heiß")
+    if trend_stretch >= 55:
+        reasons.append("Abstand zu gleitenden Durchschnitten erhöht")
+    if regime == "POSITIV":
+        reasons.append("positives Regime kann FOMO verstärken")
+    if not reasons:
+        reasons.append("keine klare Gesamtmarkt-Überhitzung")
+
+    if label == "kritisch":
+        summary = "Gesamtmarkt-FOMO kritisch: Indexstärke wirkt überhitzt; gute Einzelaktien defensiver behandeln."
+        action_hint = "Neue Käufe nur mit klarer Zone/Bestätigung; Positionsgröße reduzieren, kein Hinterherlaufen."
+    elif label == "erhöht":
+        summary = "Gesamtmarkt-FOMO erhöht: positives Umfeld, aber Überhitzungsrisiko nimmt zu."
+        action_hint = "Auch gute Setups selektiver handeln; Pullbacks/Bestätigung bevorzugen."
+    elif label == "beobachten":
+        summary = "Gesamtmarkt-FOMO beobachten: noch kein harter Warnfaktor, aber Timing diszipliniert halten."
+        action_hint = "Normale Planung, aber keine aggressiven Entries oberhalb sinnvoller Zonen."
+    else:
+        summary = "Gesamtmarkt-FOMO unauffällig."
+        action_hint = "Kein zusätzlicher Markt-FOMO-Abschlag nötig."
+
+    return {"label": label, "score": score, "class": _fomo_v1525_class(label), "summary": summary, "action_hint": action_hint, "reasons": reasons[:4]}
+
+
+def combine_fomo_packages_v1525(stock_pkg, market_pkg):
+    sp = stock_pkg or {}
+    mp = market_pkg or {}
+    score = max(_fomo_v1525_num(sp.get("score"), default=0), _fomo_v1525_num(mp.get("score"), default=0))
+    label = _fomo_v1525_label(score)
+    parts = []
+    if str(sp.get("label", "")).lower() in {"erhöht", "kritisch"}:
+        parts.append("Aktie: " + str(sp.get("summary", "")))
+    if str(mp.get("label", "")).lower() in {"erhöht", "kritisch"}:
+        parts.append("Markt: " + str(mp.get("summary", "")))
+    if not parts:
+        parts.append("Keine dominante FOMO-/Smart-Money-Warnung sichtbar.")
+    action_hint = str(sp.get("action_hint", ""))
+    if _fomo_v1525_num(mp.get("score"), default=0) >= _fomo_v1525_num(sp.get("score"), default=0):
+        action_hint = str(mp.get("action_hint", action_hint))
+    return {"label": label, "score": round(score, 1), "class": _fomo_v1525_class(label), "summary": " ".join(parts), "action_hint": action_hint}
+
+
 def enrich_single_export_df_v1516(export_df, result, context=None):
     """
     Erweitert den bestehenden logging_utils.build_export_df um Felder,
@@ -641,7 +844,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.24.6",
+        "Export_Version": "v15.25",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -652,6 +855,14 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Buy_In_Override": context.get("buy_in_override"),
         "Kandidatentyp": candidate_type_export,
         "Radar_Risiko": radar_risk_export,
+        "FOMO_Smart_Money_Label": ((result or {}).get("fomo_smart_money_pkg") or {}).get("label"),
+        "FOMO_Smart_Money_Score": ((result or {}).get("fomo_smart_money_pkg") or {}).get("score"),
+        "FOMO_Smart_Money_Summary": ((result or {}).get("fomo_smart_money_pkg") or {}).get("summary"),
+        "FOMO_Smart_Money_Handlung": ((result or {}).get("fomo_smart_money_pkg") or {}).get("action_hint"),
+        "FOMO_Aktie_Label": ((result or {}).get("stock_fomo_pkg") or {}).get("label"),
+        "FOMO_Aktie_Grund": ((result or {}).get("stock_fomo_pkg") or {}).get("summary"),
+        "FOMO_Markt_Label": ((result or {}).get("market_fomo_pkg") or {}).get("label"),
+        "FOMO_Markt_Grund": ((result or {}).get("market_fomo_pkg") or {}).get("summary"),
         "Setup_Typ": (result or {}).get("setup_type"),
         "Watchlist_Prioritaet": (result or {}).get("watchlist_priority"),
         "Watchlist_Prioritaet_Score": (result or {}).get("watchlist_priority_score"),
@@ -5648,6 +5859,9 @@ def evaluate_market_filter(benchmark_df):
             "ret21": np.nan,
             "ret63": np.nan,
             "ret126": np.nan,
+            "high252": np.nan,
+            "low252": np.nan,
+            "dist252": np.nan,
             "regime": "UNBEKANNT",
             "ampel": "⚪",
             "score": 50
@@ -5657,6 +5871,9 @@ def evaluate_market_filter(benchmark_df):
     price = safe_last(close, np.nan)
     ma50 = safe_last(close.rolling(50).mean(), np.nan)
     ma200 = safe_last(close.rolling(200).mean(), np.nan)
+    high252 = safe_last(close.rolling(252).max(), float(close.max()) if len(close.dropna()) else np.nan)
+    low252 = safe_last(close.rolling(252).min(), float(close.min()) if len(close.dropna()) else np.nan)
+    dist252 = price / high252 * 100 if pd.notna(price) and pd.notna(high252) and high252 else np.nan
 
     rets = calc_return_metrics(close)
 
@@ -5677,6 +5894,9 @@ def evaluate_market_filter(benchmark_df):
         "ret21": rets["ret21"],
         "ret63": rets["ret63"],
         "ret126": rets["ret126"],
+        "high252": high252,
+        "low252": low252,
+        "dist252": dist252,
         "regime": regime,
         "ampel": ampel_icon,
         "score": score
@@ -9801,6 +10021,25 @@ def _legacy_analyze_stock(
             hmap["Kurzfrist"] = min(hmap["Kurzfrist"], 48)
             hmap["Swing"] = min(hmap["Swing"], 50)
 
+    stock_fomo_pkg = build_stock_fomo_package_v1525({
+        "price": price,
+        "high52": high52,
+        "dist52": dist52,
+        "ret21": ret21,
+        "ret63": ret63,
+        "stretch_risk_score": stretch_risk_score,
+        "volume_quality_score": volume_quality_score,
+        "accumulation_score": accumulation_score,
+        "distribution_pressure_score": distribution_pressure_score,
+        "distribution_score": distribution_score,
+        "breakout_volume_score": breakout_volume_score,
+        "leadership_score": leadership_score,
+        "rs_acceleration_score": rs_acceleration_score,
+        "entry_quality": entry_quality,
+    })
+    market_fomo_pkg = build_market_fomo_package_v1525(market_info)
+    fomo_smart_money_pkg = combine_fomo_packages_v1525(stock_fomo_pkg, market_fomo_pkg)
+
     return {
         "ticker": ticker,
         "df": df,
@@ -9814,6 +10053,9 @@ def _legacy_analyze_stock(
         "company_summary": company_summary,
         "confidence_info": confidence_info,
         "market_info": market_info,
+        "stock_fomo_pkg": stock_fomo_pkg,
+        "market_fomo_pkg": market_fomo_pkg,
+        "fomo_smart_money_pkg": fomo_smart_money_pkg,
         "benchmark_symbol": benchmark_symbol,
         "benchmark_label": benchmark_label,
         "price": price,
@@ -14590,6 +14832,17 @@ if result is not None:
         position_mode=position_mode if "position_mode" in locals() else False,
     )
 
+    stock_fomo_pkg_ui = result.get("stock_fomo_pkg") or build_stock_fomo_package_v1525(result)
+    market_fomo_pkg_ui = result.get("market_fomo_pkg") or build_market_fomo_package_v1525(market_info if "market_info" in locals() else {})
+    fomo_pkg_ui = result.get("fomo_smart_money_pkg") or combine_fomo_packages_v1525(stock_fomo_pkg_ui, market_fomo_pkg_ui)
+
+    # FOMO/Smart-Money-Warnungen sollen nicht nur dekorativ sein: Bei kritischer
+    # Lage wird ein Sofortkauf in der Anzeige defensiver auf "vorbereiten" gesetzt.
+    if not position_mode and str(final_action_label).strip().lower() in {"kaufen", "buy"}:
+        if str(fomo_pkg_ui.get("label", "")).lower() == "kritisch":
+            final_action_label = "vorbereiten"
+            final_action_reason = "FOMO-/Smart-Money-Risiko ist kritisch; kein Hinterherlaufen trotz grundsätzlich gutem Setup."
+
     primary_summary_data = [
         ("Aktion", final_action_label, ((display_mode_label(mode_label) + " · " + compact_action_text_phase_ui(final_action_label)) if scores_visible() else compact_action_text_phase_ui(final_action_label))),
         ("Setup-Qualität", str(overall_setup_pkg.get("label", "brauchbar")).capitalize(), overall_setup_pkg.get("summary", "-")),
@@ -14617,9 +14870,10 @@ if result is not None:
         ("Timing", final_timing_label, ((f"Score: {trading_case_score}/100 · " if scores_visible() else "") + final_timing_reason)),
         ("Risiko", final_risk_label, ((f"Score: Exit {result.get('exit_score', 0)}/100 · " if scores_visible() else "") + final_risk_reason)),
         ("Setup-Priorität", final_priority_label, ((f"Score: {fmt_num(result.get('setup_priority_score', np.nan),0)}/100 · " if scores_visible() else "") + final_priority_reason)),
+        ("FOMO / Smart Money", str(fomo_pkg_ui.get("label", "unauffällig")).capitalize(), f"{fomo_pkg_ui.get('summary', '-')} {fomo_pkg_ui.get('action_hint', '')}"),
     ]
     st.markdown('<div class="overview-context-grid">', unsafe_allow_html=True)
-    context_cols = st.columns(5)
+    context_cols = st.columns(min(6, len(context_summary_data)))
     for _col, (_title, _value, _sub) in zip(context_cols, context_summary_data):
         with _col:
             st.markdown(
@@ -14633,6 +14887,22 @@ if result is not None:
                 unsafe_allow_html=True,
             )
     st.markdown('</div>', unsafe_allow_html=True)
+
+    with st.expander("FOMO / Smart Money", expanded=False):
+        st.caption("Warnt, wenn Kursstärke eher nach Hinterherlaufen/FOMO aussieht oder der Gesamtmarkt überhitzt wirkt.")
+        _fomo_cols = st.columns(2)
+        for _col, _title, _pkg in [(_fomo_cols[0], "Einzelaktie", stock_fomo_pkg_ui), (_fomo_cols[1], "Gesamtmarkt", market_fomo_pkg_ui)]:
+            with _col:
+                _lbl = str((_pkg or {}).get("label", "unauffällig")).capitalize()
+                _summary = html.escape(str((_pkg or {}).get("summary", "-")))
+                _action = html.escape(str((_pkg or {}).get("action_hint", "")))
+                _reasons = (_pkg or {}).get("reasons", []) or []
+                st.markdown(f"**{_title}: {_lbl}**")
+                st.caption(_summary)
+                if _action:
+                    st.caption("Handlung: " + _action)
+                for _reason in _reasons[:4]:
+                    st.write("- " + str(_reason))
 
     # ---------- v15.20.5: Risiko konkret garantiert sichtbar (native Streamlit, theme-sicher) ----------
     with st.expander("Risiko konkret", expanded=False):

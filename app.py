@@ -774,7 +774,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.24.1"
+APP_VERSION = "v15.24.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2232,6 +2232,12 @@ div[data-testid="stExpander"] summary{
     font-size:0.80rem;
     margin-top:4px;
     line-height:1.35;
+}
+.mobile-ranking-reason{
+    margin:8px 0 10px;
+    color:#cbd5e1;
+    font-size:0.88rem;
+    line-height:1.38;
 }
 .mobile-ranking-grid{
     display:grid;
@@ -13082,16 +13088,17 @@ def render_mobile_ranking_cards(df):
             ("Exit-Aktion", "Exit-Modell"),
         ]
     else:
+        # v15.24.7: Mehrfach-Ranking nicht wieder score-lastig rendern.
+        # Die kompakten Karten sollen wie ein Auswahlwerkzeug wirken: Typ, Reife,
+        # Priorität, nächster Schritt und Bremsfaktor statt numerischer Score-Reihe.
         key_columns = [
-            ("Investment-Attraktivität", "Investment"),
-            ("Einstieg jetzt attraktiv?", "Einstieg"),
-            ("Setup-Confidence", "Setup"),
-            ("Trade-Struktur", "Trade"),
-            ("Kurzfrist-Timing", "Timing"),
+            ("Kandidatentyp", "Typ"),
+            ("Radar-Priorität", "Priorität"),
+            ("Setup-Reife", "Reife"),
             ("Trigger-Status", "Trigger"),
             ("Handlung", "Aktion"),
-            ("Exit-Score", "Exit"),
-            ("Exit-Aktion", "Exit-Aktion"),
+            ("Nächster Schritt", "Nächster Schritt"),
+            ("Was bremst", "Bremse"),
         ]
 
     for _, row in df.iterrows():
@@ -13128,10 +13135,22 @@ def render_mobile_ranking_cards(df):
                 value = row.get(col, "-")
                 if is_position_view and col == "Exit-Score":
                     value = _score_label(value, positive=False)
+                value_safe = _safe(value)
+                if value_safe == "-":
+                    continue
                 chips.append(
                     f"<div class='mobile-rank-chip'><div class='mobile-rank-chip-label'>{label}</div>"
-                    f"<div class='mobile-rank-chip-value'>{_safe(value)}</div></div>"
+                    f"<div class='mobile-rank-chip-value'>{value_safe}</div></div>"
                 )
+
+        reason_text = ""
+        if not is_position_view:
+            for _reason_col in ["Warum heute auffällig", "Kurzfazit", "_Kurzfazit Full"]:
+                if _reason_col in row.index:
+                    _reason = _safe(row.get(_reason_col, "-"))
+                    if _reason != "-":
+                        reason_text = f"<div class='mobile-ranking-reason'>{_reason}</div>"
+                        break
 
         st.markdown(
             f"""
@@ -13141,6 +13160,7 @@ def render_mobile_ranking_cards(df):
                     <div class="mobile-ranking-name">{name}</div>
                     {"<div class='mobile-ranking-sub'>" + subtitle + "</div>" if subtitle else ""}
                 </div>
+                {reason_text}
                 <div class="mobile-ranking-grid">
                     {''.join(chips)}
                 </div>
@@ -13577,7 +13597,11 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
 
     ranking_cols = [
         c for c in [
-            "Ticker", "Name", "Sektor", "Industrie", "Kandidatentyp", "Radar-Risiko", "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
+            "Ticker", "Name", "Sektor", "Industrie",
+            "Kandidatentyp", "Radar-Priorität", "Setup-Reife", "Radar-Risiko",
+            "Nächster Schritt", "Was bremst", "Warum heute auffällig",
+            "Trigger-Status", "Handlung", "Watchlist-Priorität",
+            "Investment-Attraktivität", "Einstieg jetzt attraktiv?",
             "Leadership", "Leadership-Status", "Sektor-Stärke",
             "Trendqualität", "Base-Qualität", "Setup-Priorität",
             "Volumenqualität",
@@ -13587,7 +13611,7 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
             "Distribution",
             "Exit-Score", "Exit-Aktion",
             "Trade-Struktur", "Kurzfrist-Timing", "Setup-Confidence",
-            "Valides Setup", "Setup-Typ", "Watchlist-Priorität", "Handlung"
+            "Valides Setup", "Setup-Typ",
         ] if c in ranking_df.columns
     ]
     ranking_display_df = ranking_df[ranking_cols].copy()

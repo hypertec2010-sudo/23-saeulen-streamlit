@@ -616,11 +616,14 @@ def _fomo_v1525_label(score):
         score = float(score)
     except Exception:
         score = 0.0
-    if score >= 75:
+    # v15.25.1: FOMO darf nicht bei fast jedem Titel auf "beobachten" fallen.
+    # "Beobachten" ist erst ein echter Hinweis, wenn mehrere milde Faktoren
+    # zusammenkommen; Allzeithoch-/Marktnaehe allein soll nicht reichen.
+    if score >= 78:
         return "kritisch"
-    if score >= 58:
+    if score >= 62:
         return "erhöht"
-    if score >= 38:
+    if score >= 48:
         return "beobachten"
     return "unauffällig"
 
@@ -782,18 +785,38 @@ def build_market_fomo_package_v1525(market_info):
 def combine_fomo_packages_v1525(stock_pkg, market_pkg):
     sp = stock_pkg or {}
     mp = market_pkg or {}
-    score = max(_fomo_v1525_num(sp.get("score"), default=0), _fomo_v1525_num(mp.get("score"), default=0))
+    stock_score = _fomo_v1525_num(sp.get("score"), default=0)
+    market_score = _fomo_v1525_num(mp.get("score"), default=0)
+    stock_label = str(sp.get("label", "")).lower()
+    market_label = str(mp.get("label", "")).lower()
+
+    # v15.25.1: Der Gesamtmarkt soll warnen, aber nicht jede Einzelaktie pauschal
+    # auf "beobachten" ziehen. Markt-FOMO wird erst dann zur Kachel-Warnung,
+    # wenn es erhoeht/kritisch ist oder wenn auch die Aktie selbst Anzeichen zeigt.
+    if market_label in {"kritisch", "erhöht"}:
+        score = max(stock_score, market_score)
+    elif stock_label in {"kritisch", "erhöht", "beobachten"}:
+        score = max(stock_score, min(market_score, 47))
+    else:
+        score = stock_score
+
     label = _fomo_v1525_label(score)
     parts = []
-    if str(sp.get("label", "")).lower() in {"erhöht", "kritisch"}:
+    if stock_label in {"beobachten", "erhöht", "kritisch"}:
         parts.append("Aktie: " + str(sp.get("summary", "")))
-    if str(mp.get("label", "")).lower() in {"erhöht", "kritisch"}:
+    if market_label in {"erhöht", "kritisch"}:
         parts.append("Markt: " + str(mp.get("summary", "")))
+    elif market_label == "beobachten" and label != "unauffällig":
+        parts.append("Markt: Gesamtmarkt-Timing diszipliniert halten.")
     if not parts:
         parts.append("Keine dominante FOMO-/Smart-Money-Warnung sichtbar.")
+
     action_hint = str(sp.get("action_hint", ""))
-    if _fomo_v1525_num(mp.get("score"), default=0) >= _fomo_v1525_num(sp.get("score"), default=0):
+    if market_label in {"kritisch", "erhöht"} and market_score >= stock_score:
         action_hint = str(mp.get("action_hint", action_hint))
+    elif label == "unauffällig":
+        action_hint = "Kein zusätzlicher FOMO-Abschlag nötig."
+
     return {"label": label, "score": round(score, 1), "class": _fomo_v1525_class(label), "summary": " ".join(parts), "action_hint": action_hint}
 
 
@@ -844,7 +867,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.25",
+        "Export_Version": "v15.25.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),

@@ -4082,7 +4082,82 @@ def _entry_zone_position_text_v1524_12(entry_zone="-", current_price=None):
     return "Kurs liegt oberhalb der Entry-Zone", False, False, True
 
 
-def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trigger_reason="-", action_label="-", entry_quality="-", entry_zone="-", current_price=None):
+
+
+def _fmt_zone_range_v1525_9(zone, ccy=""):
+    """Formatiert eine S/R-Zone lesbar fuer Triggertexte."""
+    try:
+        low = float(zone.get("low", np.nan))
+        high = float(zone.get("high", np.nan))
+        mid = float(zone.get("mid", np.nan))
+    except Exception:
+        return ""
+    if pd.isna(low) or pd.isna(high):
+        return ""
+    suffix = f" {ccy}" if str(ccy or "").strip() else ""
+    if abs(high - low) / max(abs(mid), 1e-9) < 0.002:
+        return f"{mid:.2f}{suffix}"
+    return f"{low:.2f} - {high:.2f}{suffix}"
+
+
+def support_zone_text_v1525_9(structures=None, current_price=None, ccy="", fallback="Bruch der nächsten relevanten Support-Zone"):
+    """Gibt fuer UI-Trigger die konkrete naechste Supportzone aus.
+
+    Ziel: Texte wie 'Bruch der naechsten relevanten Support-Zone' sollen nicht
+    abstrakt bleiben. Wenn Chart-S/R-Zonen verfuegbar sind, wird S1 inkl. Zone
+    ausgegeben; falls der Kurs bereits in einer aktiven Zone liegt, wird diese
+    Zone als aktive Trigger-/Support-Zone verwendet.
+    """
+    try:
+        structures = structures or {}
+        active = structures.get("active_zones", []) or []
+        supports = structures.get("supports", []) or []
+        zone = None
+        label = "Support-Zone"
+        if active:
+            zone = active[0]
+            label = "aktive Trigger-/Support-Zone"
+        elif supports:
+            zone = supports[0]
+            label = "Support S1"
+        if zone:
+            zone_txt = _fmt_zone_range_v1525_9(zone, ccy)
+            if zone_txt:
+                try:
+                    mid = float(zone.get("mid", np.nan))
+                    cp = float(current_price) if current_price is not None and not pd.isna(current_price) else np.nan
+                    dist = abs((cp / mid) - 1.0) * 100.0 if pd.notna(cp) and pd.notna(mid) and mid else np.nan
+                    dist_txt = f", Abstand {dist:.1f}%" if pd.notna(dist) else ""
+                except Exception:
+                    dist_txt = ""
+                return f"Bruch der {label} bei {zone_txt}{dist_txt}"
+    except Exception:
+        pass
+    return fallback
+
+
+def explain_clearer_setup_trigger_v1525_9(entry_zone="-", current_price=None, structures=None, ccy=""):
+    """Ersetzt generische Trigger wie 'Auf klareres Setup warten'."""
+    zone_txt = str(entry_zone or "-").strip()
+    has_entry = zone_txt not in {"", "-", "None", "nan"}
+    if has_entry:
+        pos_txt, in_zone, below_zone, above_zone = _entry_zone_position_text_v1524_12(zone_txt, current_price)
+        if in_zone:
+            return f"Noch kein bullisher Trigger: Entry-Zone {zone_txt} ist erreicht, aber es fehlt Bestätigung. Nötig ist Stabilisierung in der Zone, bullische Reaktion oder Bruch über ein kurzfristiges Hoch."
+        if below_zone:
+            return f"Noch kein bullisher Trigger: Rücklauf in die Entry-Zone {zone_txt} plus Bestätigung abwarten."
+        if above_zone:
+            return f"Noch kein bullisher Trigger: Kurs liegt über der Entry-Zone {zone_txt}; nicht hinterherlaufen, sondern Rücksetzer oder neue Base abwarten."
+        return f"Noch kein bullisher Trigger: Entry-Zone {zone_txt} beobachten und erst bei klarer Bestätigung handeln."
+    support_txt = support_zone_text_v1525_9(structures, current_price, ccy, fallback="")
+    if support_txt:
+        # Aus 'Bruch der Support-Zone bei X' eine positive Beobachtungszone ableiten.
+        zone_part = support_txt.replace("Bruch der ", "").strip()
+        return f"Noch kein bullisher Trigger: erst Stabilisierung an der {zone_part} oder Bruch über ein kurzfristiges Hoch abwarten."
+    return "Noch kein bullisher Trigger: nötig ist ein klareres Setup, z. B. neue Base, Stabilisierung an Support oder Bruch über ein kurzfristiges Hoch."
+
+
+def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trigger_reason="-", action_label="-", entry_quality="-", entry_zone="-", current_price=None, structures=None, ccy=""):
     """Uebersetzt technische Trigger-Statuslabels in handlungsnahe Sprache.
 
     Labels wie "Jetzt pruefbar" sind intern hilfreich, aber allein in der UI
@@ -4132,6 +4207,10 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
             return "Noch kein aktiver Einstieg; erst bei klarerem Setup oder besserem Umfeld neu prüfen."
         return "Sauberen nächsten Bestätigungsschritt abwarten."
 
+    # Generische interne Statuswerte in konkrete Handlungsbedingungen uebersetzen.
+    if low in {"auf klareres setup warten", "auf neues setup warten", "trading-case verbessern", "setup-confirmation oder bessere entry-lage"}:
+        return explain_clearer_setup_trigger_v1525_9(entry_zone, current_price, structures, ccy)
+
     # Wenn der Text schon konkret ist, nicht unnötig umformulieren.
     concrete_tokens = [
         "rücksetzer", "ruecksetzer", "entry-zone", "support", "widerstand",
@@ -4149,7 +4228,7 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
 
 
 
-def sanitize_operational_bearish_trigger_v1523_13(value="-", fallback="Bruch der nächsten relevanten Support-Zone"):
+def sanitize_operational_bearish_trigger_v1523_13(value="-", fallback="Bruch der nächsten relevanten Support-Zone", structures=None, current_price=None, ccy=""):
     """Nur operative/charttechnische Kipp-Punkte als bearishen Trigger anzeigen.
 
     Fundamentale Diagnosehinweise wie negatives Gewinnwachstum sind Bremsfaktoren,
@@ -4169,7 +4248,7 @@ def sanitize_operational_bearish_trigger_v1523_13(value="-", fallback="Bruch der
     )
     # Diese Punkte gehören in Bremsfaktoren/Red Flags, nicht in operative Trigger.
     if any(tok in low for tok in fundamental_tokens):
-        return fallback
+        return concrete_fallback
 
     # Wenn es bereits ein konkreter technischer/operativer Kipp-Punkt ist, behalten.
     technical_tokens = (
@@ -4180,13 +4259,17 @@ def sanitize_operational_bearish_trigger_v1523_13(value="-", fallback="Bruch der
     if any(tok in low for tok in technical_tokens):
         return txt
 
-    return fallback
+    # Generische Support-Formulierungen konkretisieren.
+    if "nächsten relevanten support" in low or "naechsten relevanten support" in low or txt.strip().lower() == fallback.strip().lower():
+        return concrete_fallback
+
+    return concrete_fallback
 
 
-def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-", current_price=None):
+def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-", current_price=None, structures=None, ccy=""):
     action = str(action_label or "").strip().lower()
-    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality, entry_zone, current_price)
-    neg = sanitize_operational_bearish_trigger_v1523_13(negative_trigger)
+    nt_display = operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, action_label, entry_quality, entry_zone, current_price, structures, ccy)
+    neg = sanitize_operational_bearish_trigger_v1523_13(negative_trigger, structures=structures, current_price=current_price, ccy=ccy)
     if action == "kaufen":
         return f"Negativer Trigger: {neg}"
     if nt_display and str(nt_display).strip() not in {"", "-", "None", "nan"}:
@@ -15448,7 +15531,7 @@ if result is not None:
         if pd.notna(stop_used) and float(stop_used) > 0:
             invalid_if_text = f"Setup verliert Qualitaet unter ca. {float(stop_used):.2f} {ccy}"
         elif str(top_red_flag).strip() not in {"", "-", "None"}:
-            invalid_if_text = sanitize_operational_bearish_trigger_v1523_13(top_red_flag)
+            invalid_if_text = sanitize_operational_bearish_trigger_v1523_13(top_red_flag, structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"), current_price=price if "price" in locals() else None, ccy=ccy if "ccy" in locals() else "")
         else:
             invalid_if_text = "Kein harter Invalidation-Trigger ableitbar"
         if pd.notna(pos_size) and float(pos_size) > 0:
@@ -15579,7 +15662,7 @@ if result is not None:
                         <div class="dc-label">Aktion</div>
                         <div class="dc-value" style="font-size:clamp(1.0rem, 1.35vw, 1.18rem); line-height:1.18; word-break:break-word; overflow-wrap:anywhere;">{final_action_label}</div>
                         <div class="dc-sub">{compact_action_text_phase_ui(final_action_label)}</div>
-                        <div class="dc-note">{action_trigger_note_v1523_13(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-", trigger_status if "trigger_status" in locals() else "-", trigger_reason if "trigger_reason" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-", price if "price" in locals() else None)}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
+                        <div class="dc-note">{action_trigger_note_v1523_13(final_action_label, next_trigger if "next_trigger" in locals() else "-", top_red_flag if "top_red_flag" in locals() else "-", trigger_status if "trigger_status" in locals() else "-", trigger_reason if "trigger_reason" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-", price if "price" in locals() else None, chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"), ccy if "ccy" in locals() else "")}</div><div class="dc-note" style="margin-top:6px;">{("Diagnose: " + str(trigger_status) + " · Taktisch: " + final_tactical_label + " · " + final_tactical_reason) if scores_visible() and "final_tactical_label" in locals() else ("Taktisch: " + final_tactical_label) if "final_tactical_label" in locals() else ""}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -16283,13 +16366,17 @@ if result is not None:
                 trigger_reason if "trigger_reason" in locals() else "-",
                 final_action_label if "final_action_label" in locals() else "-",
                 entry_quality if "entry_quality" in locals() else "-",
+                suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+                price if "price" in locals() else None,
+                chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+                ccy if "ccy" in locals() else "",
             )
             st.markdown(
                 f"""
                     <div class="section-card">
                         <div class="premium-title">Nächster Trigger</div>
                         <div class="premium-value">Bullisher bei: {trigger_display_v1523_12 if str(trigger_display_v1523_12).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"}</div>
-                        <div class="premium-sub">Bearisher bei: {sanitize_operational_bearish_trigger_v1523_13(top_red_flag if "top_red_flag" in locals() else "-")}</div>
+                        <div class="premium-sub">Bearisher bei: {sanitize_operational_bearish_trigger_v1523_13(top_red_flag if "top_red_flag" in locals() else "-", structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"), current_price=price if "price" in locals() else None, ccy=ccy if "ccy" in locals() else "")}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -17162,7 +17249,7 @@ if result is not None:
                 w1, w2, w3 = st.columns(3)
                 w1.metric("Trigger-Status", display_trigger_status_label(trigger_status))
                 w2.metric("Watchlist-Priorität", watchlist_priority)
-                w3.metric("Nächster Trigger", operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, final_action_label if "final_action_label" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-", price if "price" in locals() else None))
+                w3.metric("Nächster Trigger", operational_trigger_text_v1523_12(next_trigger, trigger_status, trigger_reason, final_action_label if "final_action_label" in locals() else "-", entry_quality if "entry_quality" in locals() else "-", suggested_entry_zone if "suggested_entry_zone" in locals() else "-", price if "price" in locals() else None, chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"), ccy if "ccy" in locals() else ""))
 
                 st.markdown("**Warum steht die Aktie auf der Watchlist so weit oben?**")
                 st.write(trigger_reason)

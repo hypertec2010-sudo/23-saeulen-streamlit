@@ -1237,7 +1237,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.28"
+APP_VERSION = "v15.29"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -9835,6 +9835,32 @@ def _legacy_analyze_stock(
             context_rows.append({"Punkt": "Info", "Detail": line})
     tb_context_df = pd.DataFrame(context_rows)
 
+    # v15.29: Auch Kontext-/Symboltabellen bekommen konkrete Messwerte.
+    # Ziel: Keine Blackbox-Zeilen mit nur Haken/Kreuz oder Ampeltexten.
+    def _tb_value_safe(value, fmt="{:.1f}", suffix=""):
+        try:
+            if pd.isna(value):
+                return "n/a"
+            return fmt.format(float(value)) + suffix
+        except Exception:
+            return "n/a"
+
+    tb_context_value_map = {
+        "RSI / Vola-Kontext": f"RSI {_tb_value_safe(rsi, '{:.1f}')}",
+        "MACD": f"MACD {_tb_value_safe(macd_v, '{:.3f}')} / Signal {_tb_value_safe(signal_v, '{:.3f}')}",
+        "Smart Money": f"Akkumulation {_tb_value_safe(accumulation_score, '{:.0f}')} / Distribution {_tb_value_safe(distribution_pressure_score, '{:.0f}')}",
+        "ADX / Trendstärke": f"ADX {_tb_value_safe(adx, '{:.1f}')}",
+        "Stochastik": f"%K {_tb_value_safe(stoch_k_v, '{:.1f}')} / %D {_tb_value_safe(stoch_d_v, '{:.1f}')}",
+        "Williams %R": f"Williams %R {_tb_value_safe(willr_v, '{:.1f}')}",
+        "OBV / Volumen": f"Vol.-Ratio {_tb_value_safe(vol_ratio, '{:.2f}')}",
+        "20D-Range": f"{_tb_value_safe(prev20_low, '{:.2f}')} - {_tb_value_safe(prev20_high, '{:.2f}')} / Kurs {_tb_value_safe(price, '{:.2f}')}",
+        "Bollinger-Band": f"{_tb_value_safe(bb_lower, '{:.2f}')} - {_tb_value_safe(bb_upper, '{:.2f}')} / Kurs {_tb_value_safe(price, '{:.2f}')}",
+    }
+    if not tb_context_df.empty and "Punkt" in tb_context_df.columns:
+        tb_context_df["Wert"] = tb_context_df["Punkt"].astype(str).map(lambda p: tb_context_value_map.get(p, ""))
+        preferred_cols = [c for c in ["Punkt", "Wert", "Detail"] if c in tb_context_df.columns]
+        tb_context_df = tb_context_df[preferred_cols + [c for c in tb_context_df.columns if c not in preferred_cols]]
+
     red_flags_df = pd.DataFrame(red_flag_items) if red_flag_items else pd.DataFrame(
         [{"Kategorie": "-", "Status": "🟢", "Detail": "Keine relevanten Red Flags erkannt", "Penalty": 0}]
     )
@@ -12590,7 +12616,7 @@ if workspace_mode:
             unsafe_allow_html=True,
         )
 
-    # ---------- v15.28: kompakte Eingabezone nach gestarteter Analyse ----------
+    # ---------- v15.29: kompakte Eingabezone nach gestarteter Analyse ----------
     parameter_compact_active = (
         isinstance(st.session_state.get("ranking_results", {}), dict)
         and len(st.session_state.get("ranking_results", {}) or {}) > 0
@@ -16960,6 +16986,7 @@ if result is not None:
 
                 fallback_context_rows.append({
                     "Punkt": "RSI / Vola-Kontext",
+                    "Wert": f"RSI {_ctx_value(rsi)}",
                     "Detail": f"RSI {_ctx_value(rsi)} - {'neutral/konstruktiv' if pd.notna(rsi) and 20 < rsi < 80 else 'auffällig'}",
                 })
                 try:
@@ -16972,6 +16999,7 @@ if result is not None:
 
                 fallback_context_rows.append({
                     "Punkt": "MACD",
+                    "Wert": f"MACD {_ctx_value(macd_v, '{:.3f}')} / Signal {_ctx_value(signal_v, '{:.3f}')}",
                     "Detail": f"MACD {_ctx_value(macd_v, '{:.3f}')} / Signal {_ctx_value(signal_v, '{:.3f}')} - {'bullisch' if macd_bull_cross_ctx else 'kein bullisches MACD-Signal'}",
                 })
                 # v15.26.7: Kontextwerte lokal aus result holen, weil diese Variablen je nach
@@ -17017,18 +17045,22 @@ if result is not None:
 
                 fallback_context_rows.append({
                     "Punkt": "Smart Money",
+                    "Wert": f"Akkumulation {_ctx_value(ctx_accumulation_score, '{:.0f}')} / Distribution {_ctx_value(ctx_distribution_pressure_score, '{:.0f}')}",
                     "Detail": _smart_money_context_text(ctx_accumulation_score, ctx_distribution_pressure_score),
                 })
                 fallback_context_rows.append({
                     "Punkt": "ADX / Trendstärke",
+                    "Wert": f"ADX {_ctx_value(adx)}",
                     "Detail": f"ADX {_ctx_value(adx)} - {'starker Trend' if pd.notna(adx) and adx > 25 else 'noch kein starker Trend'}",
                 })
                 fallback_context_rows.append({
                     "Punkt": "Stochastik",
+                    "Wert": f"%K {_ctx_value(ctx_stoch_k_v)} / %D {_ctx_value(ctx_stoch_d_v)}",
                     "Detail": f"%K {_ctx_value(ctx_stoch_k_v)} / %D {_ctx_value(ctx_stoch_d_v)}",
                 })
                 fallback_context_rows.append({
                     "Punkt": "Williams %R",
+                    "Wert": f"Williams %R {_ctx_value(ctx_willr_v)}",
                     "Detail": f"Williams %R {_ctx_value(ctx_willr_v)}",
                 })
                 try:
@@ -17037,6 +17069,7 @@ if result is not None:
                     ctx_vol_confirmed = False
                 fallback_context_rows.append({
                     "Punkt": "OBV / Volumen",
+                    "Wert": f"Vol.-Ratio {_ctx_value(ctx_vol_ratio, '{:.2f}')}",
                     "Detail": f"Vol.-Ratio {_ctx_value(ctx_vol_ratio, '{:.2f}')} - {'bestätigt' if ctx_vol_confirmed else 'nicht klar bestätigt'}",
                 })
                 if pd.notna(ctx_prev20_low) and pd.notna(ctx_prev20_high):
@@ -17065,6 +17098,14 @@ if result is not None:
             except Exception:
                 pass
 
+            try:
+                if not tb_context_render_df.empty:
+                    if "Wert" not in tb_context_render_df.columns and "Punkt" in tb_context_render_df.columns:
+                        tb_context_render_df["Wert"] = ""
+                    _ctx_cols = [c for c in ["Punkt", "Wert", "Detail"] if c in tb_context_render_df.columns]
+                    tb_context_render_df = tb_context_render_df[_ctx_cols + [c for c in tb_context_render_df.columns if c not in _ctx_cols]]
+            except Exception:
+                pass
             st.dataframe(tb_context_render_df, hide_index=True, use_container_width=True)
 
         with t4:

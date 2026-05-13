@@ -16726,7 +16726,7 @@ if result is not None:
             st.markdown("**Board-Kontext (nicht im Score)**")
             st.caption("Diese Hinweise dienen nur der Einordnung und verändern den TradingBoard-Score nicht direkt.")
 
-            # v15.26.6: Kontext robust anzeigen. In manchen Renderpfaden kam tb_context_df leer an,
+            # v15.26.7: Kontext robust anzeigen. In manchen Renderpfaden kam tb_context_df leer an,
             # obwohl die Kennzahlen vorhanden waren. Dann bauen wir die Kontextzeilen hier aus den
             # aktuellen Analysewerten neu auf. Die Punkte bleiben ausdrücklich nicht score-wirksam.
             tb_context_render_df = tb_context_df.copy() if tb_context_df is not None else pd.DataFrame()
@@ -16757,7 +16757,7 @@ if result is not None:
                     "Punkt": "MACD",
                     "Detail": f"MACD {_ctx_value(macd_v, '{:.3f}')} / Signal {_ctx_value(signal_v, '{:.3f}')} - {'bullisch' if macd_bull_cross_ctx else 'kein bullisches MACD-Signal'}",
                 })
-                # v15.26.6: Kontextwerte lokal aus result holen, weil diese Variablen je nach
+                # v15.26.7: Kontextwerte lokal aus result holen, weil diese Variablen je nach
                 # Renderpfad nicht als lokale Namen existieren. So bleibt der Kontext robust.
                 ctx_accumulation_score = result.get("accumulation_score", np.nan)
                 ctx_distribution_pressure_score = result.get("distribution_pressure_score", result.get("distribution_score", np.nan))
@@ -16771,9 +16771,36 @@ if result is not None:
                 ctx_bb_lower = result.get("bb_lower", np.nan)
                 ctx_bb_upper = result.get("bb_upper", np.nan)
 
+                def _smart_money_context_text(acc, dist):
+                    acc_txt = _ctx_value(acc, "{:.0f}")
+                    dist_txt = _ctx_value(dist, "{:.0f}")
+                    try:
+                        acc_f = float(acc)
+                        dist_f = float(dist)
+                    except Exception:
+                        return f"Volumenbild: n/a - Akkumulation {acc_txt}, Distribution {dist_txt}."
+
+                    if acc_f >= 65 and acc_f >= dist_f + 15:
+                        label = "konstruktiv"
+                        meaning = "Akkumulation dominiert; groesseres Kapital scheint eher zu stuetzen."
+                    elif dist_f >= 65 and dist_f >= acc_f + 15:
+                        label = "defensiv"
+                        meaning = "Distribution dominiert; Abgabedruck ist klar hoeher als Kaufdruck."
+                    elif dist_f > acc_f + 8:
+                        label = "leicht defensiv"
+                        meaning = "Distribution liegt etwas ueber Akkumulation; kein klares Smart-Money-Kaufsignal."
+                    elif acc_f > dist_f + 8:
+                        label = "leicht konstruktiv"
+                        meaning = "Akkumulation liegt etwas ueber Distribution; Kaufdruck ist leicht besser."
+                    else:
+                        label = "neutral"
+                        meaning = "Akkumulation und Distribution sind nah beieinander; kein klarer Vorteil."
+
+                    return f"Volumenbild: {label} - {meaning} (Akkumulation {acc_txt}, Distribution {dist_txt})."
+
                 fallback_context_rows.append({
                     "Punkt": "Smart Money",
-                    "Detail": f"Akkumulation {_ctx_value(ctx_accumulation_score, '{:.0f}')} / Distribution {_ctx_value(ctx_distribution_pressure_score, '{:.0f}')}",
+                    "Detail": _smart_money_context_text(ctx_accumulation_score, ctx_distribution_pressure_score),
                 })
                 fallback_context_rows.append({
                     "Punkt": "ADX / Trendstärke",
@@ -16807,6 +16834,19 @@ if result is not None:
                     })
 
                 tb_context_render_df = pd.DataFrame(fallback_context_rows)
+
+            # v15.26.7: Auch vorberechnete Kontextzeilen lesbarer machen, falls sie noch
+            # reine Zahlen wie "Akkumulation 28 / Distribution 33" enthalten.
+            try:
+                if not tb_context_render_df.empty and "Punkt" in tb_context_render_df.columns and "Detail" in tb_context_render_df.columns:
+                    sm_mask = tb_context_render_df["Punkt"].astype(str).str.lower().str.contains("smart money", na=False)
+                    if sm_mask.any():
+                        ctx_accumulation_score = result.get("accumulation_score", np.nan)
+                        ctx_distribution_pressure_score = result.get("distribution_pressure_score", result.get("distribution_score", np.nan))
+                        if "_smart_money_context_text" in locals():
+                            tb_context_render_df.loc[sm_mask, "Detail"] = _smart_money_context_text(ctx_accumulation_score, ctx_distribution_pressure_score)
+            except Exception:
+                pass
 
             st.dataframe(tb_context_render_df, hide_index=True, use_container_width=True)
 

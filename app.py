@@ -1237,7 +1237,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.26.8"
+APP_VERSION = "v15.26.9"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -9402,9 +9402,9 @@ def _legacy_analyze_stock(
 
     if 40 < rsi < 60 or rsi < 30:
         tb_score += 1
-        tb_details.append(f"S5: RSI konstruktiv (RSI {rsi:.1f}) ✓")
+        tb_details.append(f"S5: RSI {rsi:.1f} konstruktiv ✓")
     else:
-        tb_details.append(f"S5: RSI hoch/niedrig (RSI {rsi:.1f}) ❌")
+        tb_details.append(f"S5: RSI {rsi:.1f} hoch/niedrig ❌")
 
     if position_mode:
         if tb_perf > 5:
@@ -16757,7 +16757,40 @@ if result is not None:
             c4.metric("TradingBoard Kursziel 2", f"{tp2:.2f} {ccy}")
 
             st.markdown("**Score-relevante Board-Punkte**")
-            st.dataframe(tb_df, hide_index=True, use_container_width=True)
+            # v15.26.9: RSI-Wert direkt in der S5/S6-Zeile erzwingen.
+            # Einige gespeicherte/ältere Ergebnisobjekte enthalten noch "RSI hoch/niedrig ❌"
+            # ohne Messwert. Deshalb wird die Tabelle direkt vor dem Rendern erneut repariert.
+            try:
+                _tb_show = tb_df.copy()
+                _rsi_display_val = result.get("rsi", result.get("RSI", None))
+                if _rsi_display_val is None or (isinstance(_rsi_display_val, float) and pd.isna(_rsi_display_val)):
+                    _rsi_display_val = globals().get("rsi", None)
+                try:
+                    _rsi_txt = f"RSI {float(_rsi_display_val):.1f}"
+                except Exception:
+                    _rsi_txt = "RSI n/a"
+                if not _tb_show.empty and "Detail" in _tb_show.columns:
+                    _mask_rsi = _tb_show["Detail"].astype(str).str.contains("RSI hoch/niedrig|RSI konstruktiv|RSI", case=False, na=False)
+                    if "Punkt" in _tb_show.columns:
+                        _mask_rsi = _mask_rsi | _tb_show["Punkt"].astype(str).str.contains("S5|S6", case=False, na=False) & _tb_show["Detail"].astype(str).str.contains("RSI", case=False, na=False)
+                    def _repair_rsi_detail(_d):
+                        _d = str(_d or "")
+                        if "RSI" not in _d:
+                            return _d
+                        if "hoch/niedrig" in _d:
+                            return f"{_rsi_txt} hoch/niedrig ❌"
+                        if "konstruktiv" in _d:
+                            return f"{_rsi_txt} konstruktiv ✓"
+                        return _d if any(ch.isdigit() for ch in _d) else f"{_rsi_txt} - {_d}"
+                    _tb_show.loc[_mask_rsi, "Detail"] = _tb_show.loc[_mask_rsi, "Detail"].map(_repair_rsi_detail)
+                    if "Wert" not in _tb_show.columns:
+                        _tb_show.insert(1, "Wert", "")
+                    _tb_show.loc[_mask_rsi, "Wert"] = _rsi_txt
+                    _cols = [c for c in ["Punkt", "Wert", "Detail"] if c in _tb_show.columns]
+                    _tb_show = _tb_show[_cols + [c for c in _tb_show.columns if c not in _cols]]
+            except Exception:
+                _tb_show = tb_df
+            st.dataframe(_tb_show, hide_index=True, use_container_width=True)
 
             st.markdown("**Board-Kontext (nicht im Score)**")
             st.caption("Diese Hinweise dienen nur der Einordnung und verändern den TradingBoard-Score nicht direkt.")

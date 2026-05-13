@@ -1237,7 +1237,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.26.3"
+APP_VERSION = "v15.26.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -9789,6 +9789,42 @@ def _legacy_analyze_stock(
         else:
             rows.append({"Punkt": "Info", "Detail": line})
     tb_df = pd.DataFrame(rows)
+
+    # v15.26.8: Score-relevante TradingBoard-Punkte mit konkreten Messwerten anzeigen.
+    # Hintergrund: In der Score-Tabelle stand bei RSI/Trend teils nur "hoch/niedrig"
+    # mit Haken/Kreuz, ohne direkt sichtbaren Messwert. Die Werte werden hier als
+    # eigene Spalte ergänzt und fehlende Klammerwerte in der Detailspalte nachgezogen.
+    def _tb_val_num(value, fmt="{:.1f}", suffix=""):
+        try:
+            if pd.isna(value):
+                return "n/a"
+            return fmt.format(float(value)) + suffix
+        except Exception:
+            return "n/a"
+
+    tb_value_map = {
+        "S0": f"Kurs {_tb_val_num(price, '{:.2f}')} {ccy}",
+        "S1 Earnings": earnings_dt.strftime('%d.%m.%Y') if pd.notna(earnings_ts) else "kein Datum",
+        "S2": f"Kurs {_tb_val_num(price, '{:.2f}')} / MA200 {_tb_val_num(ma200, '{:.2f}')}",
+        "S3": f"Kurs {_tb_val_num(price, '{:.2f}')} / MA50 {_tb_val_num(ma50, '{:.2f}')}",
+        "S4": f"MA50 {_tb_val_num(ma50, '{:.2f}')} / MA200 {_tb_val_num(ma200, '{:.2f}')}",
+        "S5": f"RSI {_tb_val_num(rsi, '{:.1f}')}",
+        "S6": f"Performance {_tb_val_num(tb_perf, '{:.1f}', '%')}" if position_mode else "Watchlist-Modus",
+        "S7": f"MACD-Hist. aktuell {_tb_val_num(macd_hist_current, '{:.4f}')} / vorher {_tb_val_num(macd_hist_prev, '{:.4f}')}",
+        "Info": "Hinweis",
+    }
+
+    if not tb_df.empty and "Punkt" in tb_df.columns:
+        tb_df["Wert"] = tb_df["Punkt"].astype(str).map(lambda p: tb_value_map.get(p, ""))
+        # RSI-Zeile zusätzlich in der Detailspalte absichern, falls alte Texte ohne Wert auftauchen.
+        if "Detail" in tb_df.columns:
+            rsi_mask = tb_df["Punkt"].astype(str).eq("S5")
+            tb_df.loc[rsi_mask, "Detail"] = tb_df.loc[rsi_mask, "Detail"].astype(str).map(
+                lambda d: d if "RSI" in d and any(ch.isdigit() for ch in d) else f"{d} (RSI {_tb_val_num(rsi, '{:.1f}')})"
+            )
+        # Bessere Spaltenreihenfolge: Punkt, Wert, Detail.
+        preferred_cols = [c for c in ["Punkt", "Wert", "Detail"] if c in tb_df.columns]
+        tb_df = tb_df[preferred_cols + [c for c in tb_df.columns if c not in preferred_cols]]
 
     context_rows = []
     for line in tb_context:

@@ -16726,7 +16726,7 @@ if result is not None:
             st.markdown("**Board-Kontext (nicht im Score)**")
             st.caption("Diese Hinweise dienen nur der Einordnung und verändern den TradingBoard-Score nicht direkt.")
 
-            # v15.26.5: Kontext robust anzeigen. In manchen Renderpfaden kam tb_context_df leer an,
+            # v15.26.6: Kontext robust anzeigen. In manchen Renderpfaden kam tb_context_df leer an,
             # obwohl die Kennzahlen vorhanden waren. Dann bauen wir die Kontextzeilen hier aus den
             # aktuellen Analysewerten neu auf. Die Punkte bleiben ausdrücklich nicht score-wirksam.
             tb_context_render_df = tb_context_df.copy() if tb_context_df is not None else pd.DataFrame()
@@ -16757,9 +16757,23 @@ if result is not None:
                     "Punkt": "MACD",
                     "Detail": f"MACD {_ctx_value(macd_v, '{:.3f}')} / Signal {_ctx_value(signal_v, '{:.3f}')} - {'bullisch' if macd_bull_cross_ctx else 'kein bullisches MACD-Signal'}",
                 })
+                # v15.26.6: Kontextwerte lokal aus result holen, weil diese Variablen je nach
+                # Renderpfad nicht als lokale Namen existieren. So bleibt der Kontext robust.
+                ctx_accumulation_score = result.get("accumulation_score", np.nan)
+                ctx_distribution_pressure_score = result.get("distribution_pressure_score", result.get("distribution_score", np.nan))
+                ctx_stoch_k_v = result.get("stoch_k_v", np.nan)
+                ctx_stoch_d_v = result.get("stoch_d_v", np.nan)
+                ctx_willr_v = result.get("willr_v", np.nan)
+                ctx_vol_ratio = result.get("vol_ratio", result.get("volume_ratio", np.nan))
+                ctx_obv_trend = result.get("obv_trend", "")
+                ctx_prev20_low = result.get("prev20_low", np.nan)
+                ctx_prev20_high = result.get("prev20_high", np.nan)
+                ctx_bb_lower = result.get("bb_lower", np.nan)
+                ctx_bb_upper = result.get("bb_upper", np.nan)
+
                 fallback_context_rows.append({
                     "Punkt": "Smart Money",
-                    "Detail": f"Akkumulation {_ctx_value(accumulation_score, '{:.0f}')} / Distribution {_ctx_value(distribution_pressure_score, '{:.0f}')}",
+                    "Detail": f"Akkumulation {_ctx_value(ctx_accumulation_score, '{:.0f}')} / Distribution {_ctx_value(ctx_distribution_pressure_score, '{:.0f}')}",
                 })
                 fallback_context_rows.append({
                     "Punkt": "ADX / Trendstärke",
@@ -16767,25 +16781,29 @@ if result is not None:
                 })
                 fallback_context_rows.append({
                     "Punkt": "Stochastik",
-                    "Detail": f"%K {_ctx_value(stoch_k_v)} / %D {_ctx_value(stoch_d_v)}",
+                    "Detail": f"%K {_ctx_value(ctx_stoch_k_v)} / %D {_ctx_value(ctx_stoch_d_v)}",
                 })
                 fallback_context_rows.append({
                     "Punkt": "Williams %R",
-                    "Detail": f"Williams %R {_ctx_value(willr_v)}",
+                    "Detail": f"Williams %R {_ctx_value(ctx_willr_v)}",
                 })
+                try:
+                    ctx_vol_confirmed = str(ctx_obv_trend).lower() == "steigend" and pd.notna(ctx_vol_ratio) and float(ctx_vol_ratio) >= 1.0
+                except Exception:
+                    ctx_vol_confirmed = False
                 fallback_context_rows.append({
                     "Punkt": "OBV / Volumen",
-                    "Detail": f"Vol.-Ratio {_ctx_value(vol_ratio, '{:.2f}')} - {'bestätigt' if str(obv_trend).lower() == 'steigend' and pd.notna(vol_ratio) and vol_ratio >= 1.0 else 'nicht klar bestätigt'}",
+                    "Detail": f"Vol.-Ratio {_ctx_value(ctx_vol_ratio, '{:.2f}')} - {'bestätigt' if ctx_vol_confirmed else 'nicht klar bestätigt'}",
                 })
-                if pd.notna(prev20_low) and pd.notna(prev20_high):
+                if pd.notna(ctx_prev20_low) and pd.notna(ctx_prev20_high):
                     fallback_context_rows.append({
                         "Punkt": "20D-Range",
-                        "Detail": f"{prev20_low:.2f} - {prev20_high:.2f}; Kurs {price:.2f}",
+                        "Detail": f"{float(ctx_prev20_low):.2f} - {float(ctx_prev20_high):.2f}; Kurs {price:.2f}",
                     })
-                if pd.notna(bb_lower) and pd.notna(bb_upper):
+                if pd.notna(ctx_bb_lower) and pd.notna(ctx_bb_upper):
                     fallback_context_rows.append({
                         "Punkt": "Bollinger-Band",
-                        "Detail": f"{bb_lower:.2f} - {bb_upper:.2f}; Kurs {price:.2f}",
+                        "Detail": f"{float(ctx_bb_lower):.2f} - {float(ctx_bb_upper):.2f}; Kurs {price:.2f}",
                     })
 
                 tb_context_render_df = pd.DataFrame(fallback_context_rows)

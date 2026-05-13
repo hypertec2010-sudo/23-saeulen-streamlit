@@ -16725,10 +16725,64 @@ if result is not None:
 
             st.markdown("**Board-Kontext (nicht im Score)**")
             st.caption("Diese Hinweise dienen nur der Einordnung und verändern den TradingBoard-Score nicht direkt.")
-            if tb_context_df is not None and not tb_context_df.empty:
-                st.dataframe(tb_context_df, hide_index=True, use_container_width=True)
-            else:
-                st.info("Kein zusätzlicher Board-Kontext verfügbar.")
+
+            # v15.26.4: Kontext robust anzeigen. In manchen Renderpfaden kam tb_context_df leer an,
+            # obwohl die Kennzahlen vorhanden waren. Dann bauen wir die Kontextzeilen hier aus den
+            # aktuellen Analysewerten neu auf. Die Punkte bleiben ausdrücklich nicht score-wirksam.
+            tb_context_render_df = tb_context_df.copy() if tb_context_df is not None else pd.DataFrame()
+            if tb_context_render_df.empty:
+                fallback_context_rows = []
+
+                def _ctx_value(value, fmt="{:.1f}"):
+                    try:
+                        if pd.notna(value):
+                            return fmt.format(float(value))
+                    except Exception:
+                        pass
+                    return "n/a"
+
+                fallback_context_rows.append({
+                    "Punkt": "RSI / Vola-Kontext",
+                    "Detail": f"RSI {_ctx_value(rsi)} - {'neutral/konstruktiv' if pd.notna(rsi) and 20 < rsi < 80 else 'auffällig'}",
+                })
+                fallback_context_rows.append({
+                    "Punkt": "MACD",
+                    "Detail": f"MACD {_ctx_value(macd_v, '{:.3f}')} / Signal {_ctx_value(signal_v, '{:.3f}')} - {'Bull-Cross' if macd_bull_cross else 'kein Bull-Cross'}",
+                })
+                fallback_context_rows.append({
+                    "Punkt": "Smart Money",
+                    "Detail": f"Akkumulation {_ctx_value(accumulation_score, '{:.0f}')} / Distribution {_ctx_value(distribution_pressure_score, '{:.0f}')}",
+                })
+                fallback_context_rows.append({
+                    "Punkt": "ADX / Trendstärke",
+                    "Detail": f"ADX {_ctx_value(adx)} - {'starker Trend' if pd.notna(adx) and adx > 25 else 'noch kein starker Trend'}",
+                })
+                fallback_context_rows.append({
+                    "Punkt": "Stochastik",
+                    "Detail": f"%K {_ctx_value(stoch_k_v)} / %D {_ctx_value(stoch_d_v)}",
+                })
+                fallback_context_rows.append({
+                    "Punkt": "Williams %R",
+                    "Detail": f"Williams %R {_ctx_value(willr_v)}",
+                })
+                fallback_context_rows.append({
+                    "Punkt": "OBV / Volumen",
+                    "Detail": f"Vol.-Ratio {_ctx_value(vol_ratio, '{:.2f}')} - {'bestätigt' if str(obv_trend).lower() == 'steigend' and pd.notna(vol_ratio) and vol_ratio >= 1.0 else 'nicht klar bestätigt'}",
+                })
+                if pd.notna(prev20_low) and pd.notna(prev20_high):
+                    fallback_context_rows.append({
+                        "Punkt": "20D-Range",
+                        "Detail": f"{prev20_low:.2f} - {prev20_high:.2f}; Kurs {price:.2f}",
+                    })
+                if pd.notna(bb_lower) and pd.notna(bb_upper):
+                    fallback_context_rows.append({
+                        "Punkt": "Bollinger-Band",
+                        "Detail": f"{bb_lower:.2f} - {bb_upper:.2f}; Kurs {price:.2f}",
+                    })
+
+                tb_context_render_df = pd.DataFrame(fallback_context_rows)
+
+            st.dataframe(tb_context_render_df, hide_index=True, use_container_width=True)
 
         with t4:
             st.subheader("Investment-Case")

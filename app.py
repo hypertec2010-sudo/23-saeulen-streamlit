@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.26.2",
+        "Export_Version": "v15.26.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1237,7 +1237,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.24.7"
+APP_VERSION = "v15.26.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -9383,28 +9383,28 @@ def _legacy_analyze_stock(
 
     if price > ma200:
         tb_score += 1
-        tb_details.append("S2: Über MA200 ✓")
+        tb_details.append(f"S2: Über MA200 (Kurs {price:.2f} / MA200 {ma200:.2f}) ✓")
     else:
-        tb_details.append("S2: Unter MA200 ❌")
+        tb_details.append(f"S2: Unter MA200 (Kurs {price:.2f} / MA200 {ma200:.2f}) ❌")
 
     if price > ma50:
         tb_score += 1
-        tb_details.append("S3: Über MA50 (+1) ✓")
+        tb_details.append(f"S3: Über MA50 (+1) (Kurs {price:.2f} / MA50 {ma50:.2f}) ✓")
     else:
         tb_score -= 1
-        tb_details.append("S3: Unter MA50 (-1) ❌")
+        tb_details.append(f"S3: Unter MA50 (-1) (Kurs {price:.2f} / MA50 {ma50:.2f}) ❌")
 
     if ma50 > ma200:
         tb_score += 1
-        tb_details.append("S4: Golden Cross ✓")
+        tb_details.append(f"S4: Golden Cross (MA50 {ma50:.2f} > MA200 {ma200:.2f}) ✓")
     else:
-        tb_details.append("S4: Trendstruktur schwach ❌")
+        tb_details.append(f"S4: Trendstruktur schwach (MA50 {ma50:.2f} / MA200 {ma200:.2f}) ❌")
 
     if 40 < rsi < 60 or rsi < 30:
         tb_score += 1
-        tb_details.append("S5: RSI konstruktiv ✓")
+        tb_details.append(f"S5: RSI konstruktiv (RSI {rsi:.1f}) ✓")
     else:
-        tb_details.append("S5: RSI hoch/niedrig ❌")
+        tb_details.append(f"S5: RSI hoch/niedrig (RSI {rsi:.1f}) ❌")
 
     if position_mode:
         if tb_perf > 5:
@@ -9426,55 +9426,55 @@ def _legacy_analyze_stock(
         tb_details.insert(0, "⚠️ EARNINGS IN <7 TAGEN (Vorsicht!)")
 
     if 20 < rsi < 80:
-        tb_context.append("S8: Vola ok ✓")
+        tb_context.append(f"S8: Vola ok (RSI {rsi:.1f}) ✓")
 
     if macd_bull_cross:
-        tb_context.append("S9: MACD Bull-Cross! 🚀")
+        tb_context.append(f"S9: MACD Bull-Cross (MACD {macd_v:.3f} / Signal {signal_v:.3f}) 🚀")
 
     if smart_money_default:
-        tb_context.append("S10: Smart Money sammelt ein ✓")
+        tb_context.append(f"S10: Smart Money sammelt ein (Akkumulation {accumulation_score:.0f} / Distribution {distribution_pressure_score:.0f}) ✓")
     else:
-        tb_context.append("S10: Smart Money verkauft ❌")
+        tb_context.append(f"S10: Smart Money schwach (Akkumulation {accumulation_score:.0f} / Distribution {distribution_pressure_score:.0f}) ❌")
 
     if adx > 25:
-        tb_context.append("S11: ADX>25 starker Trend ✓")
+        tb_context.append(f"S11: ADX>25 starker Trend (ADX {adx:.1f}) ✓")
     else:
-        tb_context.append("S11: ADX<25 Seitwärts ❌")
+        tb_context.append(f"S11: ADX<25 Seitwärts (ADX {adx:.1f}) ❌")
 
     if stoch_k_v < 20 and stoch_d_v < 20 and stoch_k_v > stoch_d_v:
-        tb_context.append("S12: Stoch Oversold Cross ✓")
+        tb_context.append(f"S12: Stoch Oversold Cross (K {stoch_k_v:.1f} / D {stoch_d_v:.1f}) ✓")
     elif stoch_k_v > 80:
-        tb_context.append("S12: Stoch überkauft ❌")
+        tb_context.append(f"S12: Stoch überkauft (K {stoch_k_v:.1f}) ❌")
     else:
-        tb_context.append("S12: Stoch neutral ❌")
+        tb_context.append(f"S12: Stoch neutral (K {stoch_k_v:.1f} / D {stoch_d_v:.1f}) ❌")
 
     if willr_v < -80:
-        tb_context.append("S13: Williams%R extrem Oversold ✓")
+        tb_context.append(f"S13: Williams%R extrem Oversold ({willr_v:.1f}) ✓")
     elif willr_v > -20:
-        tb_context.append("S13: Williams%R überkauft ❌")
+        tb_context.append(f"S13: Williams%R überkauft ({willr_v:.1f}) ❌")
     else:
-        tb_context.append("S13: Williams%R neutral ❌")
+        tb_context.append(f"S13: Williams%R neutral ({willr_v:.1f}) ❌")
 
     if obv_trend == "steigend" and vol_ratio >= 1.0:
-        tb_context.append("S14: OBV/Volumen bestätigt ✓")
+        tb_context.append(f"S14: OBV/Volumen bestätigt (Vol.-Ratio {vol_ratio:.2f}) ✓")
     else:
-        tb_context.append("S14: OBV/Volumen schwach ❌")
+        tb_context.append(f"S14: OBV/Volumen schwach (Vol.-Ratio {vol_ratio:.2f}) ❌")
 
     if pd.notna(prev20_high) and price > prev20_high:
-        tb_context.append("S15: 20D Breakout ✓")
+        tb_context.append(f"S15: 20D Breakout (Kurs {price:.2f} > Hoch {prev20_high:.2f}) ✓")
     elif pd.notna(prev20_low) and price < prev20_low:
-        tb_context.append("S15: 20D Breakdown ❌")
+        tb_context.append(f"S15: 20D Breakdown (Kurs {price:.2f} < Tief {prev20_low:.2f}) ❌")
     else:
-        tb_context.append("S15: Range intakt ❌")
+        tb_context.append(f"S15: Range intakt (20D {prev20_low:.2f}-{prev20_high:.2f}) ❌")
 
     if pd.notna(bb_upper) and price > bb_upper:
-        tb_context.append("S16: BB Breakout UP ✓")
+        tb_context.append(f"S16: BB Breakout UP (Kurs {price:.2f} > BB oben {bb_upper:.2f}) ✓")
     elif bb_squeeze:
         tb_context.append("S16: BB Squeeze Achtung ✓")
     elif pd.notna(bb_lower) and price < bb_lower:
-        tb_context.append("S16: BB Breakout DOWN ❌")
+        tb_context.append(f"S16: BB Breakout DOWN (Kurs {price:.2f} < BB unten {bb_lower:.2f}) ❌")
     else:
-        tb_context.append("S16: BB neutral ❌")
+        tb_context.append(f"S16: BB neutral (BB {bb_lower:.2f}-{bb_upper:.2f}) ❌")
 
     if pd.notna(target) and target > 0 and price > 0:
         tb_potenzial = ((target - price) / price) * 100
@@ -9506,7 +9506,7 @@ def _legacy_analyze_stock(
     if short_squeeze:
         tb_context.append("S20: 🚀 SHORT SQUEEZE POTENZIAL ✓")
     else:
-        tb_context.append("S20: kein Short-Squeeze-Signal ❌")
+        tb_context.append(f"S20: kein Short-Squeeze-Signal (Short {fmt_num(short_pct*100 if pd.notna(short_pct) else np.nan,1,'%')}) ❌")
 
     if pd.notna(pe) and 0 < pe < 15:
         tb_context.append(f"S21: 🟢 VALUE KGV ({pe:.1f}) ✓")
@@ -9789,6 +9789,15 @@ def _legacy_analyze_stock(
         else:
             rows.append({"Punkt": "Info", "Detail": line})
     tb_df = pd.DataFrame(rows)
+
+    context_rows = []
+    for line in tb_context:
+        if ": " in line:
+            k, v = line.split(": ", 1)
+            context_rows.append({"Punkt": k, "Detail": v})
+        else:
+            context_rows.append({"Punkt": "Info", "Detail": line})
+    tb_context_df = pd.DataFrame(context_rows)
 
     red_flags_df = pd.DataFrame(red_flag_items) if red_flag_items else pd.DataFrame(
         [{"Kategorie": "-", "Status": "🟢", "Detail": "Keine relevanten Red Flags erkannt", "Penalty": 0}]
@@ -10638,6 +10647,7 @@ def _legacy_analyze_stock(
         "tb_signal": tb_signal,
         "tb_empf": tb_empf,
         "tb_df": tb_df,
+        "tb_context_df": tb_context_df,
         "tb_details": tb_details,
         "tb_context": tb_context,
         "stb_score": stb_score,
@@ -14445,6 +14455,7 @@ if result is not None:
     tb_signal = result["tb_signal"]
     tb_empf = result["tb_empf"]
     tb_df = result["tb_df"]
+    tb_context_df = result.get("tb_context_df", pd.DataFrame())
     tb_details = result["tb_details"]
     tb_context = result["tb_context"]
     stb_score = result["stb_score"]
@@ -16709,13 +16720,15 @@ if result is not None:
             c3.metric("TradingBoard Stop-Loss", f"{price - (2.5 * atr):.2f} {ccy}")
             c4.metric("TradingBoard Kursziel 2", f"{tp2:.2f} {ccy}")
 
+            st.markdown("**Score-relevante Board-Punkte**")
             st.dataframe(tb_df, hide_index=True, use_container_width=True)
 
-            st.markdown("**Board-Details (Kurzfrist-Timing)**")
-            st.text("\n".join(tb_details))
-
             st.markdown("**Board-Kontext (nicht im Score)**")
-            st.text("\n".join(tb_context))
+            st.caption("Diese Hinweise dienen nur der Einordnung und verändern den TradingBoard-Score nicht direkt.")
+            if tb_context_df is not None and not tb_context_df.empty:
+                st.dataframe(tb_context_df, hide_index=True, use_container_width=True)
+            else:
+                st.info("Kein zusätzlicher Board-Kontext verfügbar.")
 
         with t4:
             st.subheader("Investment-Case")

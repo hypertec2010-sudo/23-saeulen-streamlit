@@ -255,7 +255,7 @@ def _v15194_parse_secret_candidate(raw):
     if cleaned.get("private_key"):
         cleaned["private_key"] = str(cleaned["private_key"]).replace("\\n", "\n")
 
-    # Mindestfelder fuer gspread.service_account_from_dict.
+    # Mindestfelder für gspread.service_account_from_dict.
     if cleaned.get("client_email") and cleaned.get("private_key"):
         cleaned.setdefault("type", "service_account")
         cleaned.setdefault("token_uri", "https://oauth2.googleapis.com/token")
@@ -264,7 +264,7 @@ def _v15194_parse_secret_candidate(raw):
 
 
 def _v15194_walk_secret_candidates(obj):
-    """Findet moegliche Credential-Kandidaten rekursiv, unabhaengig vom TOML-Ort."""
+    """Findet mögliche Credential-Kandidaten rekursiv, unabhaengig vom TOML-Ort."""
     obj = _v15194_plain_secret(obj)
     yield obj
     if isinstance(obj, dict):
@@ -428,7 +428,7 @@ def append_single_analysis_df_to_gsheet_complete(df, worksheet_name="Analysis_Lo
         return False, str(e)
 
 
-# ---------- v15.16: Export-/Sheets-Schutzschicht fuer neue Analysefelder ----------
+# ---------- v15.16: Export-/Sheets-Schutzschicht für neue Analysefelder ----------
 def _export_safe_value(value):
     """Macht komplexe Werte CSV-/Sheets-tauglich, ohne den eigentlichen Export zu brechen."""
     try:
@@ -445,7 +445,7 @@ def _export_safe_value(value):
 
 
 def _export_is_empty(value):
-    """True fuer Werte, die im Export als fachlich leer gelten."""
+    """True für Werte, die im Export als fachlich leer gelten."""
     try:
         if value is None:
             return True
@@ -594,7 +594,7 @@ def build_concrete_risk_package_v1520(result, regime_ctx=None, final_risk_label=
     return {"overall_label": overall_label, "overall_score": round(overall_score, 1), "summary": summary, "action_hint": action_hint, "top_driver": top.get("name", "-"), "top_driver_label": top.get("label", "-"), "factors": factors}
 
 
-# ---------- v15.25: FOMO-/Smart-Money-Risiko fuer Aktie und Gesamtmarkt ----------
+# ---------- v15.25: FOMO-/Smart-Money-Risiko für Aktie und Gesamtmarkt ----------
 def _fomo_v1525_num(*values, default=0.0):
     for value in values:
         try:
@@ -671,7 +671,7 @@ def _fomo_v1525_parse_float(value):
 
 @st.cache_data(ttl=6 * 60 * 60, show_spinner=False)
 def fetch_cboe_put_call_ratios_v1525():
-    """Liest Cboe Daily Market Statistics fuer Gesamtmarkt-Sentiment.
+    """Liest Cboe Daily Market Statistics für Gesamtmarkt-Sentiment.
 
     Optionaler Baustein: Wenn Cboe nicht erreichbar ist, faellt die App robust
     auf die bisherigen Markt-FOMO-Faktoren zurueck.
@@ -832,7 +832,7 @@ def build_stock_fomo_package_v1525(result):
     if confirmed_move:
         raw_score -= 5
 
-    # Mindeststufen fuer echte Beobachtungsfaelle: nicht alles auf "unauffällig" fallen lassen.
+    # Mindeststufen für echte Beobachtungsfaelle: nicht alles auf "unauffällig" fallen lassen.
     if price_heat >= 72 and momentum_heat >= 38:
         raw_score = max(raw_score, 28)
     if price_heat >= 72 and stretch_heat >= 45:
@@ -1001,7 +1001,7 @@ def combine_fomo_packages_v1525(stock_pkg, market_pkg):
     """Gesamt-FOMO aus Aktie und Markt.
 
     Wichtig: Ausgabe bleibt getrennt interpretierbar. Der Gesamtwert ist nur die
-    Handlungsbremse fuer die Entscheidungskachel.
+    Handlungsbremse für die Entscheidungskachel.
     """
     sp = stock_pkg or {}
     mp = market_pkg or {}
@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.26.3",
+        "Export_Version": "v15.30",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -4103,7 +4103,7 @@ def _entry_zone_position_text_v1524_12(entry_zone="-", current_price=None):
 
 
 def _fmt_zone_range_v1525_9(zone, ccy=""):
-    """Formatiert eine S/R-Zone lesbar fuer Triggertexte."""
+    """Formatiert eine S/R-Zone lesbar für Triggertexte."""
     try:
         low = float(zone.get("low", np.nan))
         high = float(zone.get("high", np.nan))
@@ -4119,7 +4119,7 @@ def _fmt_zone_range_v1525_9(zone, ccy=""):
 
 
 def support_zone_text_v1525_9(structures=None, current_price=None, ccy="", fallback="Bruch der nächsten relevanten Support-Zone"):
-    """Gibt fuer UI-Trigger die konkrete naechste Supportzone aus.
+    """Gibt für UI-Trigger die konkrete naechste Supportzone aus.
 
     Ziel: Texte wie 'Bruch der naechsten relevanten Support-Zone' sollen nicht
     abstrakt bleiben. Wenn Chart-S/R-Zonen verfuegbar sind, wird S1 inkl. Zone
@@ -7905,7 +7905,7 @@ def build_company_summary(info, ticker):
 @st.cache_data(ttl=300, show_spinner=False)
 def load_intraday_hourly_data(ticker):
     """
-    Echter 60m-Datenloader fuer den Candlestick-Stundenchart.
+    Echter 60m-Datenloader für den Candlestick-Stundenchart.
     Nutzt denselben yfinance-Ticker-Ansatz wie der bestehende Daily-Loader.
     """
     try:
@@ -8139,10 +8139,10 @@ def build_short_thesis(investment, tb_score, market_regime, top_red_flag, positi
 
 
 def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
-    """Robuste Firmenname-Anzeige fuer Radar/Ranking.
+    """Robuste Firmenname-Anzeige für Radar/Ranking.
 
     Zieht den echten Unternehmensnamen aus Analyse-Result, Snapshot-Zeile oder
-    notfalls aus der Yahoo-Suche. Wichtig fuer Radar-Snapshots: In gespeicherten
+    notfalls aus der Yahoo-Suche. Wichtig für Radar-Snapshots: In gespeicherten
     Abschnitts-Frames kann `Name` bereits auf den Ticker zurueckgefallen sein.
     Dann wird hier erneut aufgeloest, statt den Ticker als Namen stehen zu lassen.
     """
@@ -8182,8 +8182,8 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
         if val:
             return shorten_text(val, max_len)
 
-    # v15.23.13: Letzter Fallback fuer Radar-Snapshots/Abschnitte ohne Result-Objekt.
-    # Yahoo-Suche liefert fuer reine Ticker oft shortname/longname; das verhindert
+    # v15.23.13: Letzter Fallback für Radar-Snapshots/Abschnitte ohne Result-Objekt.
+    # Yahoo-Suche liefert für reine Ticker oft shortname/longname; das verhindert
     # insbesondere im Abschnitt "Jetzt spannend" die Anzeige Ticker = Name.
     if ticker:
         try:
@@ -8293,7 +8293,7 @@ def _legacy_analyze_stock(
     df, info = load_data(ticker)
 
     if df.empty or len(df) < 220:
-        raise ValueError("Nicht genug Kursdaten fuer belastbare Analyse. Prüfe den ausgewählten Ticker.")
+        raise ValueError("Nicht genug Kursdaten für belastbare Analyse. Prüfe den ausgewählten Ticker.")
 
     benchmark_symbol, benchmark_label = select_benchmark(ticker, info)
     benchmark_df = load_benchmark_data(benchmark_symbol)
@@ -12230,7 +12230,7 @@ if workspace_mode:
                 if "__style_sort" not in radar_df.columns or radar_df["__style_sort"].isna().all():
                     radar_df["__style_sort"] = radar_df.apply(compute_radar_style_sort, axis=1)
 
-                # v15.21: professionelle Radar-Spalten auch fuer gespeicherte Snapshots nachbefuellen.
+                # v15.21: professionelle Radar-Spalten auch für gespeicherte Snapshots nachbefuellen.
                 _radar_style_for_cols = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
                 for _col_name in ["Setup-Reife", "Radar-Priorität", "Nächster Schritt", "Was bremst"]:
                     if _col_name not in radar_df.columns:
@@ -12717,7 +12717,7 @@ if workspace_mode:
                     index=position_perspective_default,
                     horizontal=True,
                     key="position_perspective_widget_main",
-                    help="Pre-Entry bewertet einen moeglichen Neueinstieg. Post-Entry bewertet eine bereits gehaltene Position."
+                    help="Pre-Entry bewertet einen möglichen Neueinstieg. Post-Entry bewertet eine bereits gehaltene Position."
                 )
                 explicit_position_mode = position_perspective == "Post-Entry / Position"
                 buy_in_override = st.number_input(
@@ -12727,7 +12727,7 @@ if workspace_mode:
                     step=0.01,
                     format="%.2f",
                     key="buy_in_widget_main",
-                    help="Nur fuer Post-Entry noetig. Ohne Buy-in bleibt die Positionsbewertung nicht belastbar."
+                    help="Nur für Post-Entry noetig. Ohne Buy-in bleibt die Positionsbewertung nicht belastbar."
                 )
                 strict_mode = st.checkbox("Strenges Mapping", value=True, key="strict_mode_widget_main")
 
@@ -12744,7 +12744,7 @@ if workspace_mode:
         mode_label = "Post-Entry / Position" if position_mode else "Pre-Entry / Watchlist"
         st.caption(f"Aktueller Modus: {mode_label}")
         if explicit_position_mode and buy_in_override <= 0:
-            st.caption("Hinweis: Fuer eine belastbare Post-Entry-Bewertung bitte einen Buy-in / Einstandskurs groesser 0 eintragen.")
+            st.caption("Hinweis: Für eine belastbare Post-Entry-Bewertung bitte einen Buy-in / Einstandskurs größer 0 eintragen.")
         if st.session_state.get("selected_watchlist_name"):
             st.caption(f"Aktive Watchlist-Auswahl: {st.session_state.get('selected_watchlist_name')}")
 
@@ -12830,7 +12830,7 @@ if workspace_mode:
         if run_analysis:
             explicit_position_mode = st.session_state.get("position_perspective_widget_main", "Pre-Entry / Watchlist") == "Post-Entry / Position"
             if explicit_position_mode and analysis_mode == "Einzelanalyse" and buy_in_override <= 0:
-                st.warning("Post-Entry ist ausgewählt. Bitte trage zuerst einen Buy-in / Einstandskurs groesser 0 ein, damit Positionsmanagement, Gewinnschutz und Exit-Druck sinnvoll berechnet werden koennen.")
+                st.warning("Post-Entry ist ausgewählt. Bitte trage zuerst einen Buy-in / Einstandskurs größer 0 ein, damit Positionsmanagement, Gewinnschutz und Exit-Druck sinnvoll berechnet werden koennen.")
             else:
                 if analysis_mode == "Einzelanalyse":
                     st.session_state.analysis_ticker = ticker
@@ -13111,7 +13111,7 @@ def attach_intraday_hourly_to_result(result, ticker=None):
 
 def get_intraday_hourly_df_for_candles(result=None, chart_df=None):
     """
-    Versucht einen Stundenchart-Datenpfad fuer den Candlestick-Block zu finden.
+    Versucht einen Stundenchart-Datenpfad für den Candlestick-Block zu finden.
     Reihenfolge:
     1. result["intraday_hourly_df"]
     2. result["hourly_df"]
@@ -13206,7 +13206,7 @@ def _candle_body_metrics(df):
 
 def detect_candlestick_signal(df, context_hint=""):
     """
-    Liefert kompakten Candlestick-Bias fuer Kauf/Verkauf.
+    Liefert kompakten Candlestick-Bias für Kauf/Verkauf.
     """
     m = _candle_body_metrics(df)
     if not m:
@@ -13217,12 +13217,12 @@ def detect_candlestick_signal(df, context_hint=""):
             "strength": 0,
             "quality": "schwach",
             "confirmation": "fehlt",
-            "confirmation_detail": "Zu wenig Daten fuer Candle-Bestaetigung.",
+            "confirmation_detail": "Zu wenig Daten für Candle-Bestaetigung.",
             "next_trigger": "-",
             "invalid_if": "-",
             "entry_hint": "Kein verwertbares Candle-Kaufsignal.",
             "exit_hint": "Kein verwertbares Candle-Exit-Signal.",
-            "reading": "Zu wenig Daten fuer Candle-Analyse.",
+            "reading": "Zu wenig Daten für Candle-Analyse.",
             "volume_note": "Keine Volumenlesart verfuegbar.",
         }
 
@@ -13273,7 +13273,7 @@ def detect_candlestick_signal(df, context_hint=""):
         reading = "Bullische Reaktionskerze mit unterem Docht."
         next_trigger = "Bullisher bei Rueckkehr ueber das Kerzenhoch."
         invalid_if = "Unattraktiver bei Bruch des Kerzentiefs."
-        entry_hint = "Fruehe Kaufreaktion moeglich, aber Folgekerze sollte bestaetigen."
+        entry_hint = "Fruehe Kaufreaktion möglich, aber Folgekerze sollte bestaetigen."
         exit_hint = "Keine direkte Exit-Warnung, solange das Tief haelt."
     elif upper_pct >= 0.45 and body_pct <= 0.35 and m["c"] <= m["o"]:
         pattern = "Shooting Star"
@@ -13284,7 +13284,7 @@ def detect_candlestick_signal(df, context_hint=""):
         reading = "Baerische Rejection-Kerze mit oberem Docht."
         next_trigger = "Bearisher bei Unterschreiten des Kerzentiefs."
         invalid_if = "Warnung verliert Gewicht bei Rueckkehr ueber das Kerzenhoch."
-        entry_hint = "Fuer neue Kaeufe zunaechst vorsichtiger."
+        entry_hint = "Für neue Kaeufe zunaechst vorsichtiger."
         exit_hint = "Fruehe Exit-Warnung, Stop enger / Teilgewinn sinnvoll bei bestaetigender Folgekerze."
     elif m["c"] > m["o"] and m["pc"] < m["po"] and m["c"] >= m["po"] and m["o"] <= m["pc"]:
         pattern = "Bullish Engulfing"
@@ -13322,7 +13322,7 @@ def detect_candlestick_signal(df, context_hint=""):
         next_trigger = "Richtungsentscheidung ueber Hoch/Tief der Doji-Kerze abwarten."
         invalid_if = "Nicht anwendbar."
         entry_hint = "Kein Candle-Kaufsignal, erst Ausbruch der Spanne abwarten."
-        exit_hint = "Noch keine klare Exit-Warnung, aber Erschoepfung moeglich."
+        exit_hint = "Noch keine klare Exit-Warnung, aber Erschoepfung möglich."
     elif prev_h is not None and prev_l is not None and m["h"] <= prev_h and m["l"] >= prev_l:
         pattern = "Inside Bar"
         bias = "Neutral"
@@ -13332,7 +13332,7 @@ def detect_candlestick_signal(df, context_hint=""):
         reading = "Konsolidierung / Spannungsaufbau innerhalb der Vorkerze."
         next_trigger = "Bullisher ueber Vortageshoch, bearisher unter Vortagestief."
         invalid_if = "Nicht anwendbar."
-        entry_hint = "Noch kein Kaufsignal, aber Setup fuer Folgeausbruch entsteht."
+        entry_hint = "Noch kein Kaufsignal, aber Setup für Folgeausbruch entsteht."
         exit_hint = "Noch keine Exit-Warnung, aber Richtungsentscheidung steht an."
 
     # v15.20.5: Neutral-Falle entschaerfen.
@@ -13387,7 +13387,7 @@ def detect_candlestick_signal(df, context_hint=""):
             reading = "Der Markt hat tiefere Kurse intraday gekauft."
             next_trigger = "Bullisher bei Anschluss ueber das Kerzenhoch."
             invalid_if = "Warnung bei Bruch des Kerzentiefs."
-            entry_hint = "Moegliche fruehe Stabilisierung; Bestaetigung abwarten."
+            entry_hint = "Mögliche fruehe Stabilisierung; Bestaetigung abwarten."
             exit_hint = "Keine klare Exit-Warnung, solange das Tief haelt."
         elif upper_pct >= 0.35 and close_pos <= 0.45:
             pattern = "Oberer Docht / Verkaufsdruck"
@@ -13419,9 +13419,9 @@ def detect_candlestick_signal(df, context_hint=""):
             quality = "mittel"
             confirmation = "teilweise"
             confirmation_detail = "Support wird reagiert, aber ohne voll bestaetigte Folgebewegung."
-            reading += " Support-Kontext spricht fuer moegliche Drehung."
+            reading += " Support-Kontext spricht für mögliche Drehung."
             next_trigger = "Bullisher bei Halten von S1 und Rueckkehr ueber das Kurzfristhoch."
-            entry_hint = "Moegliche fruehe Kaufreaktion am Support, Bestaetigung fehlt noch."
+            entry_hint = "Mögliche fruehe Kaufreaktion am Support, Bestaetigung fehlt noch."
             exit_hint = "Keine direkte Exit-Warnung, solange Support haelt."
 
     if "widerstand" in ctx or "widerstandsnah" in ctx or "r1" in ctx or "oberer kanalbereich" in ctx or "oberer bereich" in ctx:
@@ -13439,10 +13439,10 @@ def detect_candlestick_signal(df, context_hint=""):
             quality = "mittel"
             confirmation = "teilweise"
             confirmation_detail = "Widerstand wird respektiert, aber der Bruch nach unten ist noch nicht bestaetigt."
-            reading += " Widerstands-Kontext spricht fuer moegliche Ablehnung."
+            reading += " Widerstands-Kontext spricht für mögliche Ablehnung."
             next_trigger = "Bearisher bei Rueckfall unter das kurzfristige Reaktionstief."
             entry_hint = "Neue Kaeufe lieber erst nach Rueckeroberung des Widerstands."
-            exit_hint = "Moegliche fruehe Exit-Warnung an Widerstand, Bestaetigung fehlt noch."
+            exit_hint = "Mögliche fruehe Exit-Warnung an Widerstand, Bestaetigung fehlt noch."
 
     strength = max(0, min(100, int(round(strength))))
     if strength >= 62:
@@ -13746,12 +13746,12 @@ def interpret_ultra_short_term_signal(ultra_signal):
             invalid_if = "Ungueltig bei schneller Rueckeroberung der Widerstandszone."
         elif "beobachtung" in ll:
             if "support" in rr or "unterer docht" in rr:
-                meaning = "Moegliche Drehung am Support beginnt, aber die Bestaetigung fehlt noch."
+                meaning = "Mögliche Drehung am Support beginnt, aber die Bestaetigung fehlt noch."
                 bullish_trigger = "Bullisher bei Halten von S1 und staerkerem Folgetag."
                 bearish_trigger = "Bearisher bei Bruch von S1 oder schwacher Folgekerze."
                 invalid_if = "Verliert an Aussagekraft, wenn der Support direkt wieder aufgegeben wird."
             elif "widerstand" in rr or "rejection" in rr or "oberer docht" in rr:
-                meaning = "Moegliche Ablehnung am Widerstand beginnt, aber die Bestaetigung fehlt noch."
+                meaning = "Mögliche Ablehnung am Widerstand beginnt, aber die Bestaetigung fehlt noch."
                 bullish_trigger = "Neutraler bis bullisher bei Rueckeroberung des Widerstands."
                 bearish_trigger = "Bearisher bei schwachem Folgetag unter dem Reaktionstief."
                 invalid_if = "Verliert an Aussagekraft, wenn der Widerstand klar zurueckerobert wird."
@@ -13837,7 +13837,7 @@ def _candle_entry_badge(entry_hint):
     s = str(entry_hint or "").lower()
     if "bestaetigt" in s and ("kauf" in s or "unterstuetzt" in s):
         return _candle_badge_html("Kaufsignal bestaetigt", "bull")
-    if "moegliche" in s or "fruehe" in s:
+    if "mögliche" in s or "fruehe" in s:
         return _candle_badge_html("Fruehe Kaufchance", "warn")
     if "bestaetigung fehlt" in s or "abwarten" in s or "noch kein" in s:
         return _candle_badge_html("Kauf nur mit Bestaetigung", "warn")
@@ -13854,7 +13854,7 @@ def _candle_exit_badge(exit_hint):
         return _candle_badge_html("Teilgewinn sinnvoll", "bear")
     if "stop enger" in s:
         return _candle_badge_html("Stop enger sinnvoll", "warn")
-    if "fruehe exit-warnung" in s or "moegliche fruehe exit-warnung" in s:
+    if "fruehe exit-warnung" in s or "mögliche fruehe exit-warnung" in s:
         return _candle_badge_html("Erste Exit-Warnung", "warn")
     if "keine direkte exit-warnung" in s or "noch keine" in s:
         return _candle_badge_html("Keine Exit-Warnung", "neutral")
@@ -14345,7 +14345,7 @@ st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
     st.subheader("Ranking mehrerer Aktien")
     st.caption(
-        "Ranking, Filter und Auswahl der Detailanalyse. Bei Einzelwerten meist nur bei Bedarf öffnen."
+        "Ranking, Filter und Auswahl der Detailanalyse. Standardansicht ist handlungsorientiert; Score-Werte bleiben in der Tabelle verfügbar."
     )
 
     ranking_focus = st.radio(
@@ -14450,7 +14450,7 @@ with st.expander("Ranking & Auswahl", expanded=ranking_expanded_default):
     )
 
     if ranking_view == "Kompakte Kartenansicht":
-        st.caption("Für Mobilgeräte optimierte Kartenansicht der Screener-Ergebnisse.")
+        st.caption("Handlungsorientierte Kartenansicht: Typ, Priorität, Reife, Trigger und nächster Schritt statt Score-Block.")
         render_mobile_ranking_cards(ranking_display_df)
     else:
         st.dataframe(
@@ -15859,7 +15859,7 @@ if result is not None:
     if position_mode:
         mode_headline = "Post-Entry / Positionsmanagement"
         mode_pill = "BESTAND"
-        mode_intro = "Diese Ansicht bewertet eine bestehende Position. Im Fokus stehen Halten, Ausbauen, Teilgewinn, Stop-Fuehrung und Exit-Druck."
+        mode_intro = "Diese Ansicht bewertet eine bestehende Position. Im Fokus stehen Halten, Ausbauen, Teilgewinn, Stop-Führung und Exit-Druck."
         mode_cards = [
             ("Fuehrungsaktion", main_action_label, shorten_text(pm_action_reason, 92), True),
             ("Stop / Absicherung", pm_stop_plan, "Konkrete Stop-Fuehrung statt nur allgemeines Risiko-Label.", False),
@@ -15869,7 +15869,7 @@ if result is not None:
     else:
         mode_headline = "Pre-Entry / Watchlist"
         mode_pill = "NEUE CHANCE"
-        mode_intro = "Diese Ansicht bewertet einen moeglichen Neueinstieg. Im Fokus stehen Trigger, Einstiegslage, Ungueltigkeitsniveau und Positionsrisiko."
+        mode_intro = "Diese Ansicht bewertet einen möglichen Neueinstieg. Im Fokus stehen Trigger, Einstiegslage, Ungueltigkeitsniveau und Positionsrisiko."
         if pd.notna(stop_used) and float(stop_used) > 0:
             invalid_if_text = f"Setup verliert Qualitaet unter ca. {float(stop_used):.2f} {ccy}"
         elif str(top_red_flag).strip() not in {"", "-", "None"}:
@@ -16012,11 +16012,11 @@ if result is not None:
 
 
 
-        _risk_section_title = "Risiko & Positionsfuehrung" if position_mode else "Risiko & Einstieg"
+        _risk_section_title = "Risiko & Positionsführung" if position_mode else "Risiko & Einstieg"
         _risk_section_meta = (
-            "Stop, Gewinnschutz und Exit-Druck fuer die bestehende Position."
+            "Stop, Gewinnschutz und Exit-Druck für die bestehende Position."
             if position_mode
-            else "Risiko fuer einen Neueinstieg: kein Positionsmanagement, sondern Einstiegsgroesse, Invalidierung und Exit-Druck."
+            else "Risiko für einen Neueinstieg: Startpositionsgröße, Invalidierung und möglicher Exit-Druck."
         )
         st.markdown(
             f"""
@@ -16033,10 +16033,10 @@ if result is not None:
             st.markdown(
                 f"""
                 <div class="decision-card action" title="Verdichteter Verkaufsdruck für die aktuelle Situation.">
-                    <div class="dc-label">Exit-Score</div>
+                    <div class="dc-label">{"Exit-Druck" if position_mode else "Risikodruck"}</div>
                     <div class="dc-value">{exit_score_display}/100</div>
                     <div class="dc-sub">{exit_score_text_display}</div>
-                    <div class="dc-note">Je höher, desto stärker der Verkaufsdruck.</div>
+                    <div class="dc-note">{"Je höher, desto stärker der Verkaufsdruck." if position_mode else "Je höher, desto vorsichtiger sollte ein Neueinstieg geplant werden."}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -16048,7 +16048,7 @@ if result is not None:
                     <div class="dc-label">{"Positions-Aktion" if position_mode else "Einstiegs-Risiko"}</div>
                     <div class="dc-value">{exit_action_display if position_mode else exit_score_text_display}</div>
                     <div class="dc-sub">{exit_action_sub_display}</div>
-                    <div class="dc-note">{"Fuehrt die bestehende Position." if position_mode else "Hilft, die Startposition und Invalidierung defensiv zu planen."}</div>
+                    <div class="dc-note">{"Führt die bestehende Position." if position_mode else "Hilft, Startposition und Invalidierung defensiv zu planen."}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -16057,10 +16057,10 @@ if result is not None:
             st.markdown(
                 f"""
                 <div class="decision-card invest" title="Der derzeit stärkste konkrete Exit-Grund.">
-                    <div class="dc-label">Hauptgrund</div>
+                    <div class="dc-label">{"Hauptgrund" if position_mode else "Risikofaktor"}</div>
                     <div class="dc-value" style="font-size:clamp(1.0rem, 1.15vw, 1.18rem); line-height:1.2; word-break:break-word; overflow-wrap:anywhere;">{exit_reason_top_display}</div>
                     <div class="dc-sub">{' - '.join(exit_reason_extra_display[:2]) if exit_reason_extra_display else 'keine weiteren Exit-Hinweise'}</div>
-                    <div class="dc-note">Hilft, normale Schwäche von echtem Exit-Druck zu trennen.</div>
+                    <div class="dc-note">{"Hilft, normale Schwäche von echtem Exit-Druck zu trennen." if position_mode else "Hilft, normale Schwäche von einem echten Einstiegsrisiko zu trennen."}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -16263,7 +16263,7 @@ if result is not None:
             except Exception:
                 single_export_df = pd.DataFrame()
 
-            # v15.17: Export-Werte fuer Candlestick und Ultra vor dem Export aktiv berechnen.
+            # v15.17: Export-Werte für Candlestick und Ultra vor dem Export aktiv berechnen.
             # Vorher wurden die Spalten zwar angelegt, aber die eigentlichen UI-Variablen
             # entstanden erst spaeter im Chart-/Candlestick-Block. Ergebnis: leere Exportfelder.
             export_daily_sig = daily_sig if "daily_sig" in locals() and isinstance(daily_sig, dict) else {}
@@ -17027,7 +17027,7 @@ if result is not None:
 
                     if acc_f >= 65 and acc_f >= dist_f + 15:
                         label = "konstruktiv"
-                        meaning = "Akkumulation dominiert; groesseres Kapital scheint eher zu stuetzen."
+                        meaning = "Akkumulation dominiert; größeres Kapital scheint eher zu stuetzen."
                     elif dist_f >= 65 and dist_f >= acc_f + 15:
                         label = "defensiv"
                         meaning = "Distribution dominiert; Abgabedruck ist klar hoeher als Kaufdruck."
@@ -17400,7 +17400,7 @@ if result is not None:
 
         with t7:
             st.subheader("Position & taktische Warnsignale")
-            st.markdown('<div class="panel-caption">Struktureller Exit fuer Positionen plus schneller Tactical-Exit-Layer fuer drohende Ruecksetzer. Die taktischen Signale werden auch ohne eingetragene Position angezeigt.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-caption">Struktureller Exit für Positionen plus schneller Tactical-Exit-Layer für drohende Ruecksetzer. Die taktischen Signale werden auch ohne eingetragene Position angezeigt.</div>', unsafe_allow_html=True)
 
             ui_tactical_risk = result.get("tactical_exit_risk", 0)
             ui_tactical_text = result.get("tactical_exit_text", "-")
@@ -17770,7 +17770,7 @@ if result is not None:
                     f"und jetzt zusaetzlich einen kurzfristigen Tactical-Exit-Layer ({result.get('tactical_exit_risk', 0)}/100)."
                 )
             else:
-                st.info("Ohne Buy-in ist dies eine taktische Warnsicht fuer den aktuellen Wert: fruehe Ruecksetzergefahr, Rejection, Fehlausbruch oder Dehnung werden trotzdem angezeigt.")
+                st.info("Ohne Buy-in ist dies eine taktische Warnsicht für den aktuellen Wert: fruehe Ruecksetzergefahr, Rejection, Fehlausbruch oder Dehnung werden trotzdem angezeigt.")
 
 
         with t8:

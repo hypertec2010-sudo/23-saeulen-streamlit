@@ -16726,7 +16726,7 @@ if result is not None:
             st.markdown("**Board-Kontext (nicht im Score)**")
             st.caption("Diese Hinweise dienen nur der Einordnung und verändern den TradingBoard-Score nicht direkt.")
 
-            # v15.26.4: Kontext robust anzeigen. In manchen Renderpfaden kam tb_context_df leer an,
+            # v15.26.5: Kontext robust anzeigen. In manchen Renderpfaden kam tb_context_df leer an,
             # obwohl die Kennzahlen vorhanden waren. Dann bauen wir die Kontextzeilen hier aus den
             # aktuellen Analysewerten neu auf. Die Punkte bleiben ausdrücklich nicht score-wirksam.
             tb_context_render_df = tb_context_df.copy() if tb_context_df is not None else pd.DataFrame()
@@ -16745,9 +16745,17 @@ if result is not None:
                     "Punkt": "RSI / Vola-Kontext",
                     "Detail": f"RSI {_ctx_value(rsi)} - {'neutral/konstruktiv' if pd.notna(rsi) and 20 < rsi < 80 else 'auffällig'}",
                 })
+                try:
+                    macd_bull_cross_ctx = (
+                        pd.notna(macd_v) and pd.notna(signal_v)
+                        and float(macd_v) > float(signal_v)
+                    )
+                except Exception:
+                    macd_bull_cross_ctx = False
+
                 fallback_context_rows.append({
                     "Punkt": "MACD",
-                    "Detail": f"MACD {_ctx_value(macd_v, '{:.3f}')} / Signal {_ctx_value(signal_v, '{:.3f}')} - {'Bull-Cross' if macd_bull_cross else 'kein Bull-Cross'}",
+                    "Detail": f"MACD {_ctx_value(macd_v, '{:.3f}')} / Signal {_ctx_value(signal_v, '{:.3f}')} - {'bullisch' if macd_bull_cross_ctx else 'kein bullisches MACD-Signal'}",
                 })
                 fallback_context_rows.append({
                     "Punkt": "Smart Money",

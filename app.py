@@ -4241,6 +4241,7 @@ def sanitize_operational_bearish_trigger_v1523_13(value="-", fallback="Bruch der
         return fallback
 
     low = txt.lower()
+    concrete_fallback = support_zone_text_v1525_9(structures, current_price, ccy, fallback=fallback)
     fundamental_tokens = (
         "gewinnwachstum", "ertrags", "earnings", "umsatzwachstum", "marge",
         "cashflow", "free cash flow", "operativer cashflow", "fundamental",
@@ -4275,6 +4276,57 @@ def action_trigger_note_v1523_13(action_label, next_trigger, negative_trigger="-
     if nt_display and str(nt_display).strip() not in {"", "-", "None", "nan"}:
         return f"Nächster Trigger: {nt_display}"
     return "Nächster Trigger: sauberer nächster Bestätigungsschritt"
+
+
+def executive_summary_concrete_fields_v1525_10(
+    verdict="-", why="-", improve="-", worsen="-", action_label="-",
+    trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-",
+    current_price=None, structures=None, ccy="",
+):
+    """Macht die Executive Summary konkret: Statuswerte werden in Bedingungen uebersetzt."""
+    action = str(action_label or "-").strip().lower()
+    zone_txt = str(entry_zone or "-").strip()
+    has_zone = zone_txt not in {"", "-", "None", "nan"}
+    zone_pos_txt, in_zone, below_zone, above_zone = _entry_zone_position_text_v1524_12(zone_txt, current_price)
+
+    v = str(verdict or "-").strip()
+    if v == "Ja":
+        focus = "Einstieg ist grundsätzlich freigegeben - aber nur, wenn Zone und Invalidierung respektiert werden."
+    elif v == "Fast":
+        focus = "Setup ist interessant, aber noch bestätigungsabhängig."
+    elif v == "Nein":
+        focus = "Kein Einstiegssignal: Risiko, Timing oder Umfeld sprechen dagegen."
+    else:
+        focus = "Noch kein aktiver Einstieg: erst Setup/Timing verbessern lassen."
+    base_why = str(why or "").strip()
+    if base_why and base_why not in {"-", "None", "nan"} and base_why not in focus:
+        focus = f"{focus} {base_why}"
+
+    bull = operational_trigger_text_v1523_12(
+        improve, trigger_status, trigger_reason, action_label, entry_quality,
+        entry_zone, current_price, structures, ccy
+    )
+    low_bull = str(bull or "").strip().lower()
+    if low_bull in {"", "-", "none", "nan", "sauberem trigger nach oben", "sauberer trigger nach oben"}:
+        bull = explain_clearer_setup_trigger_v1525_9(entry_zone, current_price, structures, ccy)
+
+    if has_zone:
+        if in_zone and action != "kaufen":
+            bull = f"Entry-Zone {zone_txt} ist erreicht. Bullisher wird es erst bei Bestätigung: Stabilisierung in der Zone, bullische Reaktion oder Bruch über ein kurzfristiges Hoch."
+        elif below_zone:
+            bull = f"Bullisher bei Rücklauf in die Entry-Zone {zone_txt} plus klarer Bestätigung."
+        elif above_zone:
+            bull = f"Kurs liegt über der Entry-Zone {zone_txt}. Bullisher erst bei Rücksetzer oder neuer Base - nicht hinterherlaufen."
+
+    bear = sanitize_operational_bearish_trigger_v1523_13(
+        worsen, structures=structures, current_price=current_price, ccy=ccy
+    )
+    low_bear = str(bear or "").strip().lower()
+    if low_bear in {"", "-", "none", "nan"} or "nächsten relevanten support" in low_bear or "naechsten relevanten support" in low_bear:
+        bear = support_zone_text_v1525_9(structures, current_price, ccy, fallback="Bruch der aktiven Entry-/Support-Zone")
+
+    return focus, bull, bear
+
 
 def action_trigger_note_v1520_2(action_label, next_trigger, negative_trigger="-", trigger_status="-", trigger_reason="-", entry_quality="-", entry_zone="-", current_price=None):
     action = str(action_label or "").strip().lower()
@@ -16272,10 +16324,24 @@ if result is not None:
     )
     exec_focus_label = "Ist jetzt ein guter Einstieg?"
     exec_focus_value = exec_verdict
-    exec_summary_text = exec_why
-    exec_redflag = exec_worsen
+    _exec_concrete_why, _exec_concrete_bull, _exec_concrete_bear = executive_summary_concrete_fields_v1525_10(
+        verdict=exec_verdict if "exec_verdict" in locals() else "-",
+        why=exec_why if "exec_why" in locals() else "-",
+        improve=exec_improve if "exec_improve" in locals() else "-",
+        worsen=exec_worsen if "exec_worsen" in locals() else "-",
+        action_label=final_action_label if "final_action_label" in locals() else "-",
+        trigger_status=trigger_status if "trigger_status" in locals() else "-",
+        trigger_reason=trigger_reason if "trigger_reason" in locals() else "-",
+        entry_quality=entry_quality if "entry_quality" in locals() else "-",
+        entry_zone=suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+        current_price=price if "price" in locals() else None,
+        structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+        ccy=ccy if "ccy" in locals() else "",
+    )
+    exec_summary_text = _exec_concrete_why
+    exec_redflag = _exec_concrete_bear
     exec_risk_context = final_risk_reason
-    exec_confirmation = exec_improve
+    exec_confirmation = _exec_concrete_bull
 
     st.markdown(
         f"""
@@ -16298,7 +16364,7 @@ if result is not None:
             </div>
             <div class="exec-v2-grid" style="grid-template-columns:1fr 1fr;">
                 <div class="exec-v2-panel">
-                    <div class="exec-v2-panel-title">Verbessert sich bei</div>
+                    <div class="exec-v2-panel-title">Bullisher wird es bei</div>
                     <div class="exec-v2-list">
                         <div class="exec-v2-list-item">
                             <div class="exec-v2-list-value">{exec_confirmation if str(exec_confirmation).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"}</div>
@@ -16306,7 +16372,7 @@ if result is not None:
                     </div>
                 </div>
                 <div class="exec-v2-panel">
-                    <div class="exec-v2-panel-title">Kippt bei</div>
+                    <div class="exec-v2-panel-title">Ungültig / defensiver bei</div>
                     <div class="exec-v2-list">
                         <div class="exec-v2-list-item">
                             <div class="exec-v2-list-value">{exec_redflag if str(exec_redflag).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"}</div>

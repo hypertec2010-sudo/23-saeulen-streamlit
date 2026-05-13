@@ -1237,7 +1237,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.26.9"
+APP_VERSION = "v15.27"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -15403,6 +15403,73 @@ if result is not None:
             )
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # ---------- v15.27: zentrale Handlungsbox und klare Pre-/Post-Entry-Sprache ----------
+    try:
+        _trigger_txt = action_trigger_note_v1523_13(
+            final_action_label,
+            next_trigger if "next_trigger" in locals() else "-",
+            top_red_flag if "top_red_flag" in locals() else "-",
+            trigger_status if "trigger_status" in locals() else "-",
+            trigger_reason if "trigger_reason" in locals() else "-",
+            entry_quality if "entry_quality" in locals() else "-",
+            suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+            price if "price" in locals() else None,
+            chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+            ccy if "ccy" in locals() else "",
+        )
+    except Exception:
+        _trigger_txt = str(next_trigger if "next_trigger" in locals() else "-")
+
+    try:
+        _invalid_txt = concrete_bearish_trigger_text_v1523_13(
+            top_red_flag if "top_red_flag" in locals() else "-",
+            suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+            chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+            ccy if "ccy" in locals() else "",
+        )
+    except Exception:
+        _invalid_txt = "Bruch der relevanten Support-/Trigger-Zone."
+
+    _now_do_label = "Position fuehren" if position_mode else "Einstieg pruefen"
+    _now_do_value = str(final_action_label).capitalize()
+    _why_txt = str(final_action_reason if "final_action_reason" in locals() else compact_action_text_phase_ui(final_action_label))
+    if not position_mode:
+        _trigger_label = "Kaufen erst bei"
+        _invalid_label = "Ungueltig / defensiver bei"
+    else:
+        _trigger_label = "Fuehren ueber"
+        _invalid_label = "Reduzieren / Exit pruefen bei"
+        _trigger_txt = str(result.get("PM_Stop_Plan") or result.get("pm_stop_plan") or _trigger_txt)
+        _invalid_txt = str(result.get("PM_Nicht_Nachkaufen_Wenn") or result.get("pm_no_add_if") or _invalid_txt)
+
+    st.markdown(
+        f"""
+        <style>
+        .action-bridge-box{{
+            margin:0.75rem 0 0.95rem 0; padding:0.9rem 1rem; border-radius:18px;
+            border:1px solid rgba(96,165,250,0.28);
+            background:linear-gradient(135deg, rgba(37,99,235,0.13), rgba(15,23,42,0.34));
+        }}
+        .action-bridge-kicker{{font-size:0.70rem; letter-spacing:.13em; text-transform:uppercase; color:#93c5fd; font-weight:800; margin-bottom:.35rem;}}
+        .action-bridge-grid{{display:grid; grid-template-columns:1.05fr 1.45fr 1.45fr; gap:.7rem;}}
+        .action-bridge-item{{padding:.65rem .7rem; border-radius:13px; background:rgba(15,23,42,.34); border:1px solid rgba(148,163,184,.18);}}
+        .action-bridge-label{{font-size:.68rem; letter-spacing:.09em; text-transform:uppercase; color:#9ca3af; font-weight:800; margin-bottom:.24rem;}}
+        .action-bridge-value{{font-size:.88rem; line-height:1.35; color:#e5e7eb; overflow-wrap:anywhere;}}
+        .action-bridge-main{{font-size:1.02rem; font-weight:800; color:#fff;}}
+        @media(max-width:900px){{.action-bridge-grid{{grid-template-columns:1fr;}}}}
+        </style>
+        <div class="action-bridge-box">
+            <div class="action-bridge-kicker">Naechste Handlung</div>
+            <div class="action-bridge-grid">
+                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_now_do_label)}</div><div class="action-bridge-value action-bridge-main">{html.escape(_now_do_value)}</div><div class="action-bridge-value">{html.escape(shorten_text(_why_txt, 120))}</div></div>
+                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_trigger_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_trigger_txt, 180))}</div></div>
+                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_invalid_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_invalid_txt, 180))}</div></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     with st.expander("FOMO / Smart Money", expanded=False):
         st.caption("Warnt, wenn Kursstärke eher nach Hinterherlaufen/FOMO aussieht oder der Gesamtmarkt überhitzt wirkt.")
 
@@ -15844,11 +15911,17 @@ if result is not None:
 
 
 
+        _risk_section_title = "Risiko & Positionsfuehrung" if position_mode else "Risiko & Einstieg"
+        _risk_section_meta = (
+            "Stop, Gewinnschutz und Exit-Druck fuer die bestehende Position."
+            if position_mode
+            else "Risiko fuer einen Neueinstieg: kein Positionsmanagement, sondern Einstiegsgroesse, Invalidierung und Exit-Druck."
+        )
         st.markdown(
             f"""
             <div class="section-head">
-                <div class="section-title">Risiko & Exit</div>
-                <div class="section-meta-line">Frühe Warnhinweise aus Trendbruch, Momentum, relativer Schwäche, Distributionsdruck und harten Exit-Triggern.</div>
+                <div class="section-title">{_risk_section_title}</div>
+                <div class="section-meta-line">{_risk_section_meta}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -15871,10 +15944,10 @@ if result is not None:
             st.markdown(
                 f"""
                 <div class="decision-card entry" title="Operative Exit-Aktion für die aktuelle Lage.">
-                    <div class="dc-label">Exit-Aktion</div>
-                    <div class="dc-value">{exit_action_display}</div>
+                    <div class="dc-label">{"Positions-Aktion" if position_mode else "Einstiegs-Risiko"}</div>
+                    <div class="dc-value">{exit_action_display if position_mode else exit_score_text_display}</div>
                     <div class="dc-sub">{exit_action_sub_display}</div>
-                    <div class="dc-note">Ergänzt die bestehende Kauf-/Aufbaulogik um ein eigenes Verkaufssystem.</div>
+                    <div class="dc-note">{"Fuehrt die bestehende Position." if position_mode else "Hilft, die Startposition und Invalidierung defensiv zu planen."}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -15895,8 +15968,8 @@ if result is not None:
         st.markdown(
             """
             <div class="section-head">
-                <div class="section-title">Die wichtigsten Begründungen</div>
-                <div class="section-meta-line">Stärken, Bremsen und das jetzt wichtigste Kriterium.</div>
+                <div class="section-title">Die wichtigsten Begleitfaktoren</div>
+                <div class="section-meta-line">Kurz: Was hilft, was bremst und was jetzt entscheidend ist.</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -15904,22 +15977,22 @@ if result is not None:
 
         b1, b2, b3 = st.columns(3)
         with b1:
-            strengths_html = "".join([f"<li>{s}</li>" for s in top_strengths]) if top_strengths else "<li>Keine klaren Stärken identifiziert.</li>"
+            strengths_html = "".join([f"<li>{s}</li>" for s in top_strengths[:2]]) if top_strengths else "<li>Keine klaren Stärken identifiziert.</li>"
             st.markdown(
                 f"""
                 <div class="bullet-card">
-                    <h4>Pro</h4>
+                    <h4>Spricht dafuer</h4>
                     <ul>{strengths_html}</ul>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
         with b2:
-            weaknesses_html = "".join([f"<li>{w}</li>" for w in top_weaknesses]) if top_weaknesses else "<li>Keine wesentlichen Schwächen identifiziert.</li>"
+            weaknesses_html = "".join([f"<li>{w}</li>" for w in top_weaknesses[:2]]) if top_weaknesses else "<li>Keine wesentlichen Schwächen identifiziert.</li>"
             st.markdown(
                 f"""
                 <div class="bullet-card">
-                    <h4>Contra</h4>
+                    <h4>Bremst</h4>
                     <ul>{weaknesses_html}</ul>
                 </div>
                 """,
@@ -15929,7 +16002,7 @@ if result is not None:
             st.markdown(
                 f"""
                 <div class="bullet-card">
-                    <h4>Kurzfazit</h4>
+                    <h4>Jetzt entscheidend</h4>
                     <ul>
                         <li>{shorten_text(decision_summary, 170)}</li>
                         <li>Setup-Typ: {setup_type}</li>
@@ -16757,7 +16830,7 @@ if result is not None:
             c4.metric("TradingBoard Kursziel 2", f"{tp2:.2f} {ccy}")
 
             st.markdown("**Score-relevante Board-Punkte**")
-            # v15.26.9: RSI-Wert direkt in der S5/S6-Zeile erzwingen.
+            # v15.27: RSI-Wert direkt in der S5/S6-Zeile erzwingen.
             # Einige gespeicherte/ältere Ergebnisobjekte enthalten noch "RSI hoch/niedrig ❌"
             # ohne Messwert. Deshalb wird die Tabelle direkt vor dem Rendern erneut repariert.
             try:

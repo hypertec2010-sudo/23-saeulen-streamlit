@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.25.4",
+        "Export_Version": "v15.26",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1103,6 +1103,10 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Buy_In_Override": context.get("buy_in_override"),
         "Kandidatentyp": candidate_type_export,
         "Radar_Risiko": radar_risk_export,
+        "MA10": (result or {}).get("ma10"),
+        "MA10_Abstand_%": (result or {}).get("ma10_dist_pct"),
+        "MA10_Timing": (result or {}).get("ma10_timing_label"),
+        "MA10_Timing_Text": (result or {}).get("ma10_timing_text"),
         "FOMO_Smart_Money_Label": ((result or {}).get("fomo_smart_money_pkg") or {}).get("label"),
         "FOMO_Smart_Money_Score": ((result or {}).get("fomo_smart_money_pkg") or {}).get("score"),
         "FOMO_Smart_Money_Summary": ((result or {}).get("fomo_smart_money_pkg") or {}).get("summary"),
@@ -7527,6 +7531,12 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
         col=1
     )
 
+    if "MA10" in chart_df.columns:
+        fig.add_trace(
+            go.Scatter(x=chart_df.index, y=chart_df["MA10"], mode="lines", name="MA10"),
+            row=1,
+            col=1
+        )
     if "MA20" in chart_df.columns:
         fig.add_trace(
             go.Scatter(x=chart_df.index, y=chart_df["MA20"], mode="lines", name="MA20"),
@@ -8227,6 +8237,7 @@ def compute_chart_df(df, chart_range):
         chart_df = df.tail(252).copy()
     else:
         chart_df = df.copy()
+    chart_df["MA10"] = chart_df["Close"].rolling(10).mean()
     chart_df["MA20"] = chart_df["Close"].rolling(20).mean()
     chart_df["MA50"] = chart_df["Close"].rolling(50).mean()
     chart_df["MA200"] = chart_df["Close"].rolling(200).mean()
@@ -8275,11 +8286,13 @@ def _legacy_analyze_stock(
     confidence_info = infer_data_source_flags(info)
 
     # ---------- Technicals ----------
+    ma10_series = close.rolling(10).mean()
     ma20_series = close.rolling(20).mean()
     ma50_series = close.rolling(50).mean()
     ma150_series = close.rolling(150).mean()
     ma200_series = close.rolling(200).mean()
 
+    ma10 = safe_last(ma10_series)
     ma20 = safe_last(ma20_series)
     ma50 = safe_last(ma50_series)
     ma150 = safe_last(ma150_series)
@@ -8307,6 +8320,28 @@ def _legacy_analyze_stock(
     roc60 = safe_last(close.pct_change(60) * 100)
     ret5 = safe_last(close.pct_change(5) * 100, 0)
     ret20 = safe_last(close.pct_change(20) * 100, 0)
+
+    # v15.26: 10-Tage-Linie als kurzfristiger Timing-/Pullback-Kontext
+    ma10_dist_pct = ((price / ma10 - 1) * 100) if pd.notna(price) and pd.notna(ma10) and ma10 else np.nan
+    ma10_slope = calc_slope_pct(ma10_series, lookback=5)
+    if pd.isna(ma10_dist_pct):
+        ma10_timing_label = "n/a"
+        ma10_timing_text = "10-Tage-Linie noch nicht belastbar."
+    elif price >= ma10 and abs(ma10_dist_pct) <= 2.0 and pd.notna(ma10_slope) and ma10_slope >= 0:
+        ma10_timing_label = "konstruktiv"
+        ma10_timing_text = "Kurs hält die 10-Tage-Linie; kurzfristiges Timing wirkt konstruktiv."
+    elif price >= ma10 and ma10_dist_pct > 5.0:
+        ma10_timing_label = "gedehnt"
+        ma10_timing_text = "Kurs liegt deutlich über der 10-Tage-Linie; nicht hinterherlaufen, Rücksetzer/Bestätigung bevorzugen."
+    elif price < ma10 and ma10_dist_pct >= -2.5:
+        ma10_timing_label = "prüfen"
+        ma10_timing_text = "Kurs testet die 10-Tage-Linie; Reaktion daran entscheidet über kurzfristige Stärke."
+    elif price < ma10:
+        ma10_timing_label = "angeschlagen"
+        ma10_timing_text = "Kurs liegt unter der 10-Tage-Linie; kurzfristiges Momentum ist angeschlagen."
+    else:
+        ma10_timing_label = "neutral"
+        ma10_timing_text = "10-Tage-Linie liefert aktuell kein klares Zusatzsignal."
 
     vol20 = safe_last(vol.rolling(20).mean(), 1)
     vol5 = safe_last(vol.rolling(5).mean(), 1)
@@ -10647,6 +10682,10 @@ def _legacy_analyze_stock(
         "rs_vs_benchmark_21": rs_vs_benchmark_21,
         "rs_vs_benchmark_63": rs_vs_benchmark_63,
         "rs_vs_benchmark_126": rs_vs_benchmark_126,
+        "ma10": ma10,
+        "ma10_dist_pct": ma10_dist_pct,
+        "ma10_timing_label": ma10_timing_label,
+        "ma10_timing_text": ma10_timing_text,
         "ma20": ma20,
         "ma50": ma50,
         "ma150": ma150,
@@ -14448,6 +14487,10 @@ if result is not None:
     rs_vs_benchmark_21 = result["rs_vs_benchmark_21"]
     rs_vs_benchmark_63 = result["rs_vs_benchmark_63"]
     rs_vs_benchmark_126 = result["rs_vs_benchmark_126"]
+    ma10 = result.get("ma10", np.nan)
+    ma10_dist_pct = result.get("ma10_dist_pct", np.nan)
+    ma10_timing_label = result.get("ma10_timing_label", "-")
+    ma10_timing_text = result.get("ma10_timing_text", "")
     ma20 = result["ma20"]
     ma50 = result["ma50"]
     ma150 = result["ma150"]
@@ -16561,7 +16604,7 @@ if result is not None:
 
             tech_df = pd.DataFrame({
                 "Indikator": [
-                    "Kurs", "MA20", "MA50", "MA150", "MA200",
+                    "Kurs", "MA10", "MA20", "MA50", "MA150", "MA200",
                     "RSI(14)", "MACD", "Signal", "MACD-Hist", "ADX", "ATR", "ATR in %",
                     "Stoch %K", "Stoch %D", "Williams %R", "ROC20", "ROC60",
                     "52W-Hoch", "52W-Tief", "Abstand zum 52W-Hoch",

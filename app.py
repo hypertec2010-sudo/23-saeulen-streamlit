@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.26",
+        "Export_Version": "v15.26.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -4071,7 +4071,13 @@ def _parse_entry_zone_bounds_v1524_12(entry_zone):
 
 
 def _entry_zone_position_text_v1524_12(entry_zone="-", current_price=None):
-    """Return a short explanation of where the current price sits vs. the entry zone."""
+    """Return a short explanation of where the current price sits vs. the entry zone.
+
+    v15.26.2.2: Mit Toleranzband. Ein Kurs knapp unter/über der Zone soll
+    nicht mehr wie ein weit entfernter Rücklauf wirken. Bei ca. 1.5% Abstand
+    zur Zonenkante gilt die Zone als praktisch erreicht und die UI fragt nach
+    Bestätigung/Reclaim statt nach einem generischen Rücklauf.
+    """
     low, high = _parse_entry_zone_bounds_v1524_12(entry_zone)
     try:
         price = float(current_price)
@@ -4079,11 +4085,19 @@ def _entry_zone_position_text_v1524_12(entry_zone="-", current_price=None):
         price = float("nan")
     if low is None or high is None or pd.isna(price):
         return "", False, False, False
+    base = max(abs(price), abs(low), abs(high), 1e-9)
+    below_dist_pct = ((low - price) / base) * 100.0 if price < low else 0.0
+    above_dist_pct = ((price - high) / base) * 100.0 if price > high else 0.0
+    near_tol_pct = 1.5
     if low <= price <= high:
         return "Kurs liegt bereits in der Entry-Zone", True, False, False
     if price < low:
-        return "Kurs liegt noch unter der Entry-Zone", False, True, False
-    return "Kurs liegt oberhalb der Entry-Zone", False, False, True
+        if below_dist_pct <= near_tol_pct:
+            return f"Kurs liegt knapp unter der Entry-Zone ({below_dist_pct:.1f}% unter Unterkante)", False, True, False
+        return f"Kurs liegt noch unter der Entry-Zone ({below_dist_pct:.1f}% unter Unterkante)", False, True, False
+    if above_dist_pct <= near_tol_pct:
+        return f"Kurs liegt knapp über der Entry-Zone ({above_dist_pct:.1f}% über Oberkante)", False, False, True
+    return f"Kurs liegt oberhalb der Entry-Zone ({above_dist_pct:.1f}% über Oberkante)", False, False, True
 
 
 
@@ -4149,8 +4163,12 @@ def explain_clearer_setup_trigger_v1525_9(entry_zone="-", current_price=None, st
         if in_zone:
             return f"Noch kein bullisher Trigger: Entry-Zone {zone_txt} ist erreicht, aber es fehlt Bestätigung. Nötig ist Stabilisierung in der Zone, bullische Reaktion oder Bruch über ein kurzfristiges Hoch."
         if below_zone:
-            return f"Noch kein bullisher Trigger: Rücklauf in die Entry-Zone {zone_txt} plus Bestätigung abwarten."
+            if "knapp unter" in str(pos_txt).lower():
+                return f"Noch kein bullisher Trigger: Entry-Zone {zone_txt} ist praktisch erreicht ({pos_txt}). Jetzt zählt Reclaim/Stabilisierung in der Zone oder eine bullische Reaktion - nicht bloß auf den Preisbereich warten."
+            return f"Noch kein bullisher Trigger: Kurs liegt noch unter der Entry-Zone {zone_txt}. Erst Annäherung/Reclaim der Zone plus Bestätigung abwarten."
         if above_zone:
+            if "knapp über" in str(pos_txt).lower():
+                return f"Noch kein bullisher Trigger: Kurs liegt knapp über der Entry-Zone {zone_txt}. Nicht hinterherlaufen; Pullback in die Zone oder neue Bestätigung abwarten."
             return f"Noch kein bullisher Trigger: Kurs liegt über der Entry-Zone {zone_txt}; nicht hinterherlaufen, sondern Rücksetzer oder neue Base abwarten."
         return f"Noch kein bullisher Trigger: Entry-Zone {zone_txt} beobachten und erst bei klarer Bestätigung handeln."
     support_txt = support_zone_text_v1525_9(structures, current_price, ccy, fallback="")
@@ -4187,8 +4205,12 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
                 if in_zone:
                     return f"Einstieg ist jetzt prüfbar; Entry-Zone: {zone_txt}. {zone_pos_txt}. Negativ wird es bei Bruch der Zone/Support-Bestätigung."
                 if below_zone:
-                    return f"Einstieg erst bei Annäherung an die Entry-Zone prüfen: {zone_txt}. {zone_pos_txt}."
+                    if "knapp unter" in str(zone_pos_txt).lower():
+                        return f"Einstieg ist nah an der Entry-Zone prüfbar: {zone_txt}. {zone_pos_txt}. Positiv erst bei Reclaim/Stabilisierung in der Zone."
+                    return f"Einstieg erst bei Annäherung/Reclaim der Entry-Zone prüfen: {zone_txt}. {zone_pos_txt}."
                 if above_zone:
+                    if "knapp über" in str(zone_pos_txt).lower():
+                        return f"Einstieg nicht blind hinterherlaufen; Entry-Zone: {zone_txt}. {zone_pos_txt}. Pullback oder Bestätigung abwarten."
                     return f"Einstieg nicht hinterherlaufen; Entry-Zone: {zone_txt}. {zone_pos_txt}."
                 return f"Einstieg ist jetzt prüfbar; Entry-Zone: {zone_txt}. Nur gültig, solange Kurs und Trigger-/Support-Zone halten."
             return "Einstieg ist jetzt prüfbar; nur gültig, solange Kurs und Trigger-/Support-Zone halten."
@@ -4196,8 +4218,12 @@ def operational_trigger_text_v1523_12(next_trigger="-", trigger_status="-", trig
             if in_zone:
                 return f"Entry-Zone {zone_txt} ist erreicht. Vorbereitung heißt jetzt: Bestätigung abwarten, z. B. Stabilisierung in der Zone, bullische Reaktion oder Bruch über ein kurzfristiges Hoch. Ungültig bei Bruch unter die Zone."
             if below_zone:
-                return f"Entry-Zone {zone_txt} noch nicht erreicht. Rücklauf/Annäherung plus Bestätigung abwarten."
+                if "knapp unter" in str(zone_pos_txt).lower():
+                    return f"Entry-Zone {zone_txt} ist fast erreicht. {zone_pos_txt}. Jetzt nicht auf einen weiteren Rücklauf warten, sondern Reclaim/Stabilisierung in der Zone oder bullische Reaktion prüfen."
+                return f"Entry-Zone {zone_txt} noch nicht erreicht. Annäherung/Reclaim plus Bestätigung abwarten."
             if above_zone:
+                if "knapp über" in str(zone_pos_txt).lower():
+                    return f"Kurs liegt knapp über der Entry-Zone {zone_txt}. Kein blinder Einstieg; Pullback in die Zone oder neue Bestätigung abwarten."
                 return f"Kurs liegt über der Entry-Zone {zone_txt}. Kein Hinterherlaufen; Rücksetzer oder neuen Trigger abwarten."
             return f"Entry-Zone {zone_txt}: Einstieg erst bei klarer Bestätigung, nicht nur wegen Erreichen der Zone."
         return "Einstieg erst bei klarer Bestätigung; Zone/Support und Invalidierung prüfen."
@@ -4318,9 +4344,15 @@ def executive_summary_concrete_fields_v1525_10(
         if in_zone and action != "kaufen":
             bull = f"Entry-Zone {zone_txt} ist erreicht. Bullisher wird es erst bei Bestätigung: Stabilisierung in der Zone, bullische Reaktion oder Bruch über ein kurzfristiges Hoch."
         elif below_zone:
-            bull = f"Bullisher bei Rücklauf in die Entry-Zone {zone_txt} plus klarer Bestätigung."
+            if "knapp unter" in str(zone_pos_txt).lower():
+                bull = f"Entry-Zone {zone_txt} ist fast erreicht. Bullisher wird es bei Reclaim/Stabilisierung in der Zone oder bullischer Reaktion - nicht erst durch weiteres Warten auf den Preisbereich."
+            else:
+                bull = f"Bullisher bei Annäherung/Reclaim der Entry-Zone {zone_txt} plus klarer Bestätigung."
         elif above_zone:
-            bull = f"Kurs liegt über der Entry-Zone {zone_txt}. Bullisher erst bei Rücksetzer oder neuer Base - nicht hinterherlaufen."
+            if "knapp über" in str(zone_pos_txt).lower():
+                bull = f"Kurs liegt knapp über der Entry-Zone {zone_txt}. Bullisher erst bei Pullback in die Zone oder neuer Bestätigung - nicht blind hinterherlaufen."
+            else:
+                bull = f"Kurs liegt über der Entry-Zone {zone_txt}. Bullisher erst bei Rücksetzer oder neuer Base - nicht hinterherlaufen."
 
     bear = sanitize_operational_bearish_trigger_v1523_13(
         worsen, structures=structures, current_price=current_price, ccy=ccy
@@ -8321,7 +8353,7 @@ def _legacy_analyze_stock(
     ret5 = safe_last(close.pct_change(5) * 100, 0)
     ret20 = safe_last(close.pct_change(20) * 100, 0)
 
-    # v15.26: 10-Tage-Linie als kurzfristiger Timing-/Pullback-Kontext
+    # v15.26.2: 10-Tage-Linie als kurzfristiger Timing-/Pullback-Kontext
     ma10_dist_pct = ((price / ma10 - 1) * 100) if pd.notna(price) and pd.notna(ma10) and ma10 else np.nan
     ma10_slope = calc_slope_pct(ma10_series, lookback=5)
     if pd.isna(ma10_dist_pct):

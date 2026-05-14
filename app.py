@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.32",
+        "Export_Version": "v15.32.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1242,7 +1242,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.32"
+APP_VERSION = "v15.32.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4067,7 +4067,9 @@ def build_wave_structure_context_v1532(chart_df=None, result=None):
         low20 = float(low.tail(20).min())
         high60 = float(high.tail(min(60, len(high))).max())
         low60 = float(low.tail(min(60, len(low))).min())
-        high52 = _fomo_v1525_parse_float(result.get("high52"), default=np.nan)
+        high52 = _fomo_v1525_parse_float(result.get("high52"))
+        if high52 is None:
+            high52 = np.nan
         roc20 = ((price / float(close.iloc[-21])) - 1.0) * 100.0 if len(close) > 21 and float(close.iloc[-21]) else np.nan
         roc60 = ((price / float(close.iloc[-61])) - 1.0) * 100.0 if len(close) > 61 and float(close.iloc[-61]) else np.nan
         dist_ma10 = ((price / ma10) - 1.0) * 100.0 if pd.notna(ma10) and ma10 else np.nan

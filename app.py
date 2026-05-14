@@ -15680,6 +15680,34 @@ if result is not None:
                 for _item in chart_text_items[:3]:
                     st.markdown(f"- {_item}")
 
+            def _render_wrapped_detail_table_v1533(rows, columns, table_class="wrapped-tech-table"):
+                """Kompakte HTML-Tabelle mit Zeilenumbruch fuer laengere Lesart-/Bedeutungstexte."""
+                if not rows:
+                    return
+                safe_cols = [str(c) for c in columns]
+                html_rows = []
+                for row in rows:
+                    cells = []
+                    for col in safe_cols:
+                        val = row.get(col, "") if isinstance(row, dict) else ""
+                        cells.append(f"<td>{html.escape(str(val if val is not None else ''))}</td>")
+                    html_rows.append("<tr>" + "".join(cells) + "</tr>")
+                head = "".join([f"<th>{html.escape(c)}</th>" for c in safe_cols])
+                st.markdown(f"""
+                <style>
+                .{table_class}{{width:100%;border-collapse:separate;border-spacing:0;margin:.55rem 0 .35rem 0;font-size:.84rem;table-layout:fixed;}}
+                .{table_class} th{{text-align:left;color:#cbd5e1;font-weight:800;font-size:.74rem;letter-spacing:.03em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.32);white-space:normal;}}
+                .{table_class} td{{vertical-align:top;color:#e5e7eb;padding:9px 10px;border-bottom:1px solid rgba(148,163,184,.12);background:rgba(15,23,42,.18);white-space:normal !important;word-break:normal;overflow-wrap:anywhere;line-height:1.34;}}
+                .{table_class} th:nth-child(1), .{table_class} td:nth-child(1){{width:18%;}}
+                .{table_class} th:nth-child(2), .{table_class} td:nth-child(2){{width:17%;}}
+                .{table_class} th:nth-child(3), .{table_class} td:nth-child(3){{width:14%;}}
+                .{table_class} th:nth-child(4), .{table_class} td:nth-child(4){{width:16%;}}
+                .{table_class} th:nth-child(5), .{table_class} td:nth-child(5){{width:35%;}}
+                @media(max-width:760px){{.{table_class}{{font-size:.78rem;}} .{table_class} th,.{table_class} td{{padding:7px 8px;}}}}
+                </style>
+                <table class="{table_class}"><thead><tr>{head}</tr></thead><tbody>{''.join(html_rows)}</tbody></table>
+                """, unsafe_allow_html=True)
+
             # v15.32: Weicher Wellen-/Strukturkontext, bewusst nicht score-wirksam.
             wave_structure_pkg = build_wave_structure_context_v1532(chart_df, result if "result" in locals() else {})
             if isinstance(result, dict):
@@ -15706,7 +15734,8 @@ if result is not None:
             )
             _wave_zones = wave_structure_pkg.get("zones", []) if isinstance(wave_structure_pkg, dict) else []
             if _wave_zones:
-                st.dataframe(pd.DataFrame(_wave_zones), use_container_width=True, hide_index=True)
+                _wave_cols = list(pd.DataFrame(_wave_zones).columns)
+                _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
                 st.caption("Wellen-/Strukturkontext ist keine Elliott-Zaehllogik. Er beschreibt nur, ob der letzte Move eher frueh, konstruktiv, fortgeschritten oder korrektiv wirkt.")
 
             # v15.33.2: Fibonacci-Kontext als weicher Chartbaustein, nicht score-wirksam.
@@ -15741,7 +15770,7 @@ if result is not None:
                         "Lage": lvl.get("Lage", "-"),
                         "Lesart": lvl.get("Lesart", "Fibonacci-Zone nur mit Kursreaktion interpretieren."),
                     })
-                st.dataframe(pd.DataFrame(fib_rows), use_container_width=True, hide_index=True)
+                _render_wrapped_detail_table_v1533(fib_rows, ["Level", "Zone", "Abstand", "Lage", "Lesart"], table_class="wrapped-fib-table")
             st.caption("Fibonacci-Level sind Orientierungspunkte aus dem letzten relevanten Swing. Sie sind keine eigenständigen Kauf-/Verkaufssignale; wichtig ist die Reaktion des Kurses an der Zone.")
 
             ultra_signal = compute_ultra_short_term_zone_signal(chart_df, chart_structures)

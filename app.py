@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.33",
+        "Export_Version": "v15.33.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -4035,6 +4035,50 @@ def render_chart_period_performance_block(chart_period_label, perf_pct, perf_abs
 
 
 
+
+def _v1533_1_fmt_price(value, suffix=""):
+    try:
+        if value is None:
+            return "n/a"
+        v = float(value)
+        if not np.isfinite(v):
+            return "n/a"
+        return f"{v:.2f}{suffix}"
+    except Exception:
+        return "n/a"
+
+
+def _v1533_1_fmt_pct(value):
+    try:
+        if value is None:
+            return "n/a"
+        v = float(value)
+        if not np.isfinite(v):
+            return "n/a"
+        return f"{v:.1f}%"
+    except Exception:
+        return "n/a"
+
+
+def _v1533_1_support_zone_text(result=None, fallback=None):
+    """Best-effort Support-/Invalidierungszone fuer erklaerende Chartkontexte."""
+    result = result or {}
+    candidates = []
+    for key in ["stop_used", "stop", "technical_stop", "support_s1", "s1", "nearest_support"]:
+        try:
+            val = result.get(key)
+        except Exception:
+            val = None
+        if val not in (None, "", "-", "n/a"):
+            candidates.append(val)
+    if fallback not in (None, "", "-", "n/a"):
+        candidates.append(fallback)
+    for val in candidates:
+        txt = _v1533_1_fmt_price(val)
+        if txt != "n/a":
+            return txt
+    return "n/a"
+
 def build_wave_structure_context_v1532(chart_df=None, result=None):
     """Weicher Wellen-/Strukturkontext ohne harte Elliott-Wellen-Signale.
 
@@ -4050,6 +4094,8 @@ def build_wave_structure_context_v1532(chart_df=None, result=None):
         "action_hint": "Nicht als eigenständiges Signal verwenden.",
         "score": 0,
         "drivers": [],
+        "zones": [],
+        "plain_hint": "Dieser Kontext beschreibt nur die Struktur des letzten Moves. Er ist kein eigenständiges Kauf-/Verkaufssignal.",
         "is_score_relevant": False,
     }
     try:
@@ -4166,6 +4212,26 @@ def build_wave_structure_context_v1532(chart_df=None, result=None):
             summary = "Die Struktur liefert keinen belastbaren Zusatzvorteil. Klassische Trigger und Supportzonen bleiben wichtiger."
             action = "Nicht aus der Struktur ableiten; Entry-/Support-Bestätigung abwarten."
 
+        # Konkrete Orientierungspunkte fuer die Anzeige. Keine harte Wellenzaehlung.
+        support_txt = _v1533_1_support_zone_text(result, ma20 if pd.notna(ma20) else ma50)
+        zones = [
+            {"Punkt": "Aktueller Kurs", "Zone/Wert": _v1533_1_fmt_price(price), "Lesart": "Ausgangspunkt fuer die Strukturlesart."},
+            {"Punkt": "MA10", "Zone/Wert": _v1533_1_fmt_price(ma10), "Lesart": "Kurzfristiger Trendtakt. Deutlich darueber = moeglich spaet/ueberdehnt; Reclaim/Halten = konstruktiv."},
+            {"Punkt": "MA20", "Zone/Wert": _v1533_1_fmt_price(ma20), "Lesart": "Erste Pullback-/Stabilisierungszone im Trend."},
+            {"Punkt": "MA50", "Zone/Wert": _v1533_1_fmt_price(ma50), "Lesart": "Mittelfristige Strukturzone. Bruch/Reclaim veraendert die Lage deutlich."},
+            {"Punkt": "Naechste Invalidierung", "Zone/Wert": support_txt, "Lesart": "Darunter wird die Struktur defensiver; nicht als exakter Stop missverstehen."},
+        ]
+        if label == "fortgeschritten":
+            plain_hint = f"Starker Move, aber der Kurs liegt weit ueber kurzfristigen Taktgebern. Konkreter: Kurs {_v1533_1_fmt_price(price)}, MA10 {_v1533_1_fmt_price(ma10)} ({_v1533_1_fmt_pct(dist_ma10)} Abstand). Nicht hinterherlaufen; Pullback in Richtung MA10/MA20 oder neue Base abwarten."
+        elif label == "impulsiv":
+            plain_hint = f"Trendstruktur ist konstruktiv, solange Kurs {_v1533_1_fmt_price(price)} die kurzfristigen Taktgeber/Trigger haelt. Relevante Orientierung: MA10 {_v1533_1_fmt_price(ma10)}, MA20 {_v1533_1_fmt_price(ma20)}."
+        elif label == "korrektiv":
+            plain_hint = f"Der Ruecklauf wirkt bisher geordnet. Bullisher erst bei Stabilisierung/Reclaim im Bereich MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}); defensiver unter {support_txt}."
+        elif label == "angeschlagen":
+            plain_hint = f"Kurs liegt unter wichtiger Struktur. Erst Reclaim von MA50 ({_v1533_1_fmt_price(ma50)}) oder klare Bodenbildung wuerde die Lage verbessern."
+        else:
+            plain_hint = "Keine belastbare Strukturlesart. Nutze Entry-Zone, Support/Resistance und Bestaetigung als primaere Orientierung."
+
         out.update({
             "label": label,
             "phase": phase,
@@ -4173,7 +4239,15 @@ def build_wave_structure_context_v1532(chart_df=None, result=None):
             "action_hint": action,
             "score": int(max(0, min(100, round(score + 35)))),
             "drivers": drivers[:5],
+            "zones": zones,
+            "plain_hint": plain_hint,
             "metrics": {
+                "Aktueller_Kurs": round(float(price), 2),
+                "MA10": round(float(ma10), 2) if pd.notna(ma10) else "n/a",
+                "MA20": round(float(ma20), 2) if pd.notna(ma20) else "n/a",
+                "MA50": round(float(ma50), 2) if pd.notna(ma50) else "n/a",
+                "20T_Hoch": round(float(high20), 2) if pd.notna(high20) else "n/a",
+                "20T_Tief": round(float(low20), 2) if pd.notna(low20) else "n/a",
                 "20T_Performance_%": round(float(roc20), 1) if pd.notna(roc20) else "n/a",
                 "60T_Performance_%": round(float(roc60), 1) if pd.notna(roc60) else "n/a",
                 "Abstand_MA10_%": round(float(dist_ma10), 1) if pd.notna(dist_ma10) else "n/a",
@@ -4207,6 +4281,8 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         "levels": [],
         "extensions": [],
         "drivers": [],
+        "zones": [],
+        "plain_hint": "Dieser Kontext beschreibt nur die Struktur des letzten Moves. Er ist kein eigenständiges Kauf-/Verkaufssignal.",
         "is_score_relevant": False,
     }
     try:
@@ -4264,31 +4340,62 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
             phase = "Über dem letzten Swing-Hoch"
             active_zone = f"oberhalb Swing-Hoch {swing_high:.2f}; mögliche Extensions: {extensions[0]['Kurszone']} / {extensions[1]['Kurszone']}"
             summary = "Kurs liegt über dem letzten relevanten Swing-Hoch. Fibonacci dient hier eher als Ziel-/Überdehnungszone, nicht als Entry-Signal."
-            action = "Nicht blind hinterherlaufen; Rücksetzer, neue Base oder bestätigten Re-Test bevorzugen."
+            action = f"Nicht blind hinterherlaufen. Re-Test des alten Swing-Hochs {swing_high:.2f} oder neue Base abwarten; Extensions {extensions[0]['Kurszone']} / {extensions[1]['Kurszone']} eher als Ziel-/Ueberdehnungszonen lesen."
         elif position_in_swing >= 85:
             label = "hoch im Swing"
             phase = "Nahe Swing-Hoch / eher spät im Move"
             active_zone = f"Swing-Hoch {swing_high:.2f}; nächster Pullback-Kontext: {levels[0]['Level']} bei {levels[0]['Kurszone']}"
             summary = "Kurs befindet sich weit oben im letzten Swing. Das ist bei starken Leadern nicht automatisch negativ, erhöht aber das Risiko eines späten Einstiegs."
-            action = "Entry nur mit sauberer Bestätigung; bei fehlendem Trigger eher Pullback/Base abwarten."
+            action = f"Entry nur mit sauberer Bestaetigung. Naechster sinnvoller Pullback-Kontext: 23,6% bei {levels[0]['Kurszone']} und 38,2% bei {levels[1]['Kurszone']}; bei fehlendem Trigger eher Pullback/Base abwarten."
         elif 70 <= position_in_swing < 85:
             label = "konstruktiv"
             phase = "Oberer Swing-Bereich"
             active_zone = f"nächstes relevantes Retracement: {nearest_level} bei {nearest_price}"
             summary = "Kurs hält sich im oberen Bereich des Swings. Fibonacci liefert eher Pullback-Orientierung als ein eigenständiges Kaufsignal."
-            action = "Bei Entry-Nähe Bestätigung prüfen; Rücklauf in 23,6–38,2%-Zone kann konstruktiv sein."
+            action = f"Bei Entry-Naehe Bestaetigung pruefen. Konstruktiver Pullback waere vor allem im Bereich 23,6-38,2% ({levels[0]['Kurszone']} bis {levels[1]['Kurszone']}); darunter auf 50/61,8% achten."
         elif 45 <= position_in_swing < 70:
             label = "Pullback-Zone"
             phase = "Mittlerer Retracement-Bereich"
             active_zone = f"aktive Pullback-Zone um {nearest_level}: ca. {nearest_price}"
             summary = "Kurs liegt im typischen Pullback-/Retracement-Bereich. Das kann eine gesunde Korrektur sein, braucht aber Stabilisierung."
-            action = "Bullisher erst bei Reaktion/Stabilisierung in der Zone; defensiver bei Bruch der 61,8%-Zone."
+            action = f"Bullisher erst bei Reaktion/Stabilisierung in der aktiven Zone um {nearest_level} ({nearest_price}). Defensiver bei Bruch der 61,8%-Zone bei {levels[3]['Kurszone']}."
         else:
             label = "tief"
             phase = "Tiefe Korrektur / Struktur prüfen"
             active_zone = f"tiefer Bereich; 61,8% bei {levels[3]['Kurszone']} / 78,6% bei {levels[4]['Kurszone']}"
             summary = "Kurs liegt tief im letzten Swing. Das kann Chance oder Strukturbruch sein; Fibonacci allein reicht hier nicht."
-            action = "Erst Bodenbildung/Reclaim abwarten; unter 78,6% wirkt der vorherige Swing zunehmend beschädigt."
+            action = f"Erst Bodenbildung/Reclaim abwarten. Unter 78,6% bei {levels[4]['Kurszone']} wirkt der vorherige Swing zunehmend beschaedigt; Reclaim ueber 61,8% bei {levels[3]['Kurszone']} waere konstruktiver."
+
+        # Konkrete Orientierungspunkte fuer die Anzeige. Keine harte Wellenzaehlung.
+        support_txt = _v1533_1_support_zone_text(result, ma20 if pd.notna(ma20) else ma50)
+        zones = [
+            {"Punkt": "Aktueller Kurs", "Zone/Wert": _v1533_1_fmt_price(price), "Lesart": "Ausgangspunkt fuer die Strukturlesart."},
+            {"Punkt": "MA10", "Zone/Wert": _v1533_1_fmt_price(ma10), "Lesart": "Kurzfristiger Trendtakt. Deutlich darueber = moeglich spaet/ueberdehnt; Reclaim/Halten = konstruktiv."},
+            {"Punkt": "MA20", "Zone/Wert": _v1533_1_fmt_price(ma20), "Lesart": "Erste Pullback-/Stabilisierungszone im Trend."},
+            {"Punkt": "MA50", "Zone/Wert": _v1533_1_fmt_price(ma50), "Lesart": "Mittelfristige Strukturzone. Bruch/Reclaim veraendert die Lage deutlich."},
+            {"Punkt": "Naechste Invalidierung", "Zone/Wert": support_txt, "Lesart": "Darunter wird die Struktur defensiver; nicht als exakter Stop missverstehen."},
+        ]
+        if label == "fortgeschritten":
+            plain_hint = f"Starker Move, aber der Kurs liegt weit ueber kurzfristigen Taktgebern. Konkreter: Kurs {_v1533_1_fmt_price(price)}, MA10 {_v1533_1_fmt_price(ma10)} ({_v1533_1_fmt_pct(dist_ma10)} Abstand). Nicht hinterherlaufen; Pullback in Richtung MA10/MA20 oder neue Base abwarten."
+        elif label == "impulsiv":
+            plain_hint = f"Trendstruktur ist konstruktiv, solange Kurs {_v1533_1_fmt_price(price)} die kurzfristigen Taktgeber/Trigger haelt. Relevante Orientierung: MA10 {_v1533_1_fmt_price(ma10)}, MA20 {_v1533_1_fmt_price(ma20)}."
+        elif label == "korrektiv":
+            plain_hint = f"Der Ruecklauf wirkt bisher geordnet. Bullisher erst bei Stabilisierung/Reclaim im Bereich MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}); defensiver unter {support_txt}."
+        elif label == "angeschlagen":
+            plain_hint = f"Kurs liegt unter wichtiger Struktur. Erst Reclaim von MA50 ({_v1533_1_fmt_price(ma50)}) oder klare Bodenbildung wuerde die Lage verbessern."
+        else:
+            plain_hint = "Keine belastbare Strukturlesart. Nutze Entry-Zone, Support/Resistance und Bestaetigung als primaere Orientierung."
+
+        if label == "Extension":
+            fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} liegt ueber dem letzten Swing-Hoch {_v1533_1_fmt_price(swing_high)}. Das ist Staerke, aber kein guenstiger Pullback. Naechste Orientierung: Extension {_v1533_1_fmt_price(extensions[0]['Kurszone'])} / {_v1533_1_fmt_price(extensions[1]['Kurszone'])}."
+        elif label == "hoch im Swing":
+            fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} liegt hoch im Swing zwischen {_v1533_1_fmt_price(swing_low)} und {_v1533_1_fmt_price(swing_high)}. Pullback-Zonen zur Orientierung: 23,6% {_v1533_1_fmt_price(levels[0]['Kurszone'])}, 38,2% {_v1533_1_fmt_price(levels[1]['Kurszone'])}."
+        elif label == "konstruktiv":
+            fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} haelt den oberen Swing-Bereich. Fibonacci hilft hier vor allem als Pullback-Landkarte: 23,6% {_v1533_1_fmt_price(levels[0]['Kurszone'])}, 38,2% {_v1533_1_fmt_price(levels[1]['Kurszone'])}."
+        elif label == "Pullback-Zone":
+            fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} liegt in/nahe einer typischen Pullback-Zone. Aktives Level: {nearest_level} bei {_v1533_1_fmt_price(nearest_price)}; wichtig ist jetzt Stabilisierung/Reaktion dort, nicht das Level allein."
+        else:
+            fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} liegt tief im Swing. Kritische Orientierung: 61,8% {_v1533_1_fmt_price(levels[3]['Kurszone'])}, 78,6% {_v1533_1_fmt_price(levels[4]['Kurszone'])}."
 
         out.update({
             "label": label,
@@ -4301,6 +4408,8 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
             "levels": levels,
             "extensions": extensions,
             "drivers": drivers[:5],
+            "zones": zones,
+            "plain_hint": plain_hint,
             "metrics": {
                 "Swing_Low": round(swing_low, 2),
                 "Swing_High": round(swing_high, 2),
@@ -15547,14 +15656,19 @@ if result is not None:
                     <div class="premium-title">{html.escape(str(wave_structure_pkg.get('phase', 'Nicht belastbar')))}</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(wave_structure_pkg.get('label', 'unklar')).capitalize())}</div>
                     <div class="premium-sub">{html.escape(str(wave_structure_pkg.get('summary', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;">Handlung: {html.escape(str(wave_structure_pkg.get('action_hint', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;">Treiber: {html.escape(_wave_driver_text)}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Konkrete Lesart:</b> {html.escape(str(wave_structure_pkg.get('plain_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Handlung:</b> {html.escape(str(wave_structure_pkg.get('action_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Treiber:</b> {html.escape(_wave_driver_text)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+            _wave_zones = wave_structure_pkg.get("zones", []) if isinstance(wave_structure_pkg, dict) else []
+            if _wave_zones:
+                st.dataframe(pd.DataFrame(_wave_zones), use_container_width=True, hide_index=True)
+                st.caption("Wellen-/Strukturkontext ist keine Elliott-Zaehllogik. Er beschreibt nur, ob der letzte Move eher frueh, konstruktiv, fortgeschritten oder korrektiv wirkt.")
 
-            # v15.33: Fibonacci-Kontext als weicher Chartbaustein, nicht score-wirksam.
+            # v15.33.1: Fibonacci-Kontext als weicher Chartbaustein, nicht score-wirksam.
             fib_pkg = fibonacci_context_pkg if "fibonacci_context_pkg" in locals() else build_fibonacci_context_v1533(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})
             if isinstance(result, dict):
                 result["fibonacci_context_pkg"] = fib_pkg
@@ -15567,9 +15681,10 @@ if result is not None:
                     <div class="premium-title">{html.escape(str(fib_pkg.get('phase', 'Nicht belastbar')))}</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(fib_pkg.get('label', 'n/a')).capitalize())}</div>
                     <div class="premium-sub">{html.escape(str(fib_pkg.get('summary', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;">Aktive Zone: {html.escape(str(fib_pkg.get('active_zone_text', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;">Handlung: {html.escape(str(fib_pkg.get('action_hint', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;">Treiber: {html.escape(_fib_driver_text)}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Aktive Zone:</b> {html.escape(str(fib_pkg.get('active_zone_text', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Konkrete Lesart:</b> {html.escape(str(fib_pkg.get('plain_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Handlung:</b> {html.escape(str(fib_pkg.get('action_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Treiber:</b> {html.escape(_fib_driver_text)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -15582,7 +15697,13 @@ if result is not None:
                         "Level": lvl.get("Level", "-"),
                         "Zone": lvl.get("Kurszone", "-"),
                         "Abstand": f"{lvl.get('Abstand_%')}%" if lvl.get("Abstand_%") != "n/a" else "n/a",
-                        "Lesart": "mögliche Pullback-/Reaktionszone, nur mit Preisbestätigung relevant",
+                        "Lesart": (
+                            "flacher Pullback / Trend bleibt stark" if str(lvl.get("Level", "")).startswith("23.6") else
+                            "typische erste Pullback-Zone" if str(lvl.get("Level", "")).startswith("38.2") else
+                            "mittlere Korrekturzone" if str(lvl.get("Level", "")).startswith("50.0") else
+                            "wichtige tiefere Pullback-Zone; Bruch macht defensiver" if str(lvl.get("Level", "")).startswith("61.8") else
+                            "tiefe Korrektur; darunter ist der Swing stark angeschlagen"
+                        ),
                     })
                 st.dataframe(pd.DataFrame(fib_rows), use_container_width=True, hide_index=True)
             st.caption("Fibonacci-Level sind Orientierungspunkte aus dem letzten relevanten Swing. Sie sind keine eigenständigen Kauf-/Verkaufssignale; wichtig ist die Reaktion des Kurses an der Zone.")

@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.32.1",
+        "Export_Version": "v15.33",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1112,6 +1112,13 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Strukturkontext_Zusammenfassung": ((result or {}).get("wave_structure_pkg") or {}).get("summary") or (result or {}).get("wave_structure_summary"),
         "Strukturkontext_Handlung": ((result or {}).get("wave_structure_pkg") or {}).get("action_hint") or (result or {}).get("wave_structure_action"),
         "Strukturkontext_Treiber": ((result or {}).get("wave_structure_pkg") or {}).get("drivers"),
+        "Fibonacci_Label": ((result or {}).get("fibonacci_context_pkg") or {}).get("label"),
+        "Fibonacci_Phase": ((result or {}).get("fibonacci_context_pkg") or {}).get("phase"),
+        "Fibonacci_Zusammenfassung": ((result or {}).get("fibonacci_context_pkg") or {}).get("summary"),
+        "Fibonacci_Handlung": ((result or {}).get("fibonacci_context_pkg") or {}).get("action_hint"),
+        "Fibonacci_Zone": ((result or {}).get("fibonacci_context_pkg") or {}).get("active_zone_text"),
+        "Fibonacci_Swing_Low": ((result or {}).get("fibonacci_context_pkg") or {}).get("swing_low"),
+        "Fibonacci_Swing_High": ((result or {}).get("fibonacci_context_pkg") or {}).get("swing_high"),
         "FOMO_Smart_Money_Label": ((result or {}).get("fomo_smart_money_pkg") or {}).get("label"),
         "FOMO_Smart_Money_Score": ((result or {}).get("fomo_smart_money_pkg") or {}).get("score"),
         "FOMO_Smart_Money_Summary": ((result or {}).get("fomo_smart_money_pkg") or {}).get("summary"),
@@ -4179,6 +4186,155 @@ def build_wave_structure_context_v1532(chart_df=None, result=None):
         out["summary"] = f"Strukturkontext nicht belastbar: {exc}"
         return out
 
+
+
+def build_fibonacci_context_v1533(chart_df=None, result=None):
+    """Weicher Fibonacci-Kontext fuer Pullback-/Zielzonen.
+
+    Keine harte Kauf-/Verkaufslogik: Fibonacci-Level sind moegliche Zonen, an
+    denen Marktteilnehmer reagieren koennen. Sie bestaetigen nur dann etwas,
+    wenn Preisreaktion, Volumen, Trend und Support/Resistance dazu passen.
+    """
+    result = result or {}
+    out = {
+        "label": "n/a",
+        "phase": "Nicht belastbar",
+        "summary": "Keine belastbare Fibonacci-Zone ableitbar.",
+        "action_hint": "Nicht als eigenständiges Signal verwenden.",
+        "active_zone_text": "n/a",
+        "swing_low": "n/a",
+        "swing_high": "n/a",
+        "levels": [],
+        "extensions": [],
+        "drivers": [],
+        "is_score_relevant": False,
+    }
+    try:
+        if chart_df is None or getattr(chart_df, "empty", True):
+            return out
+        dff = chart_df.copy()
+        close_col = "Close" if "Close" in dff.columns else "Adj Close" if "Adj Close" in dff.columns else None
+        high_col = "High" if "High" in dff.columns else close_col
+        low_col = "Low" if "Low" in dff.columns else close_col
+        if close_col is None or high_col is None or low_col is None:
+            return out
+        close = pd.to_numeric(dff[close_col], errors="coerce").dropna()
+        highs = pd.to_numeric(dff[high_col], errors="coerce").dropna()
+        lows = pd.to_numeric(dff[low_col], errors="coerce").dropna()
+        if len(close) < 50 or len(highs) < 50 or len(lows) < 50:
+            return out
+        lookback = min(160, len(close))
+        hh_window = highs.tail(lookback)
+        ll_window = lows.tail(lookback)
+        swing_high = float(hh_window.max())
+        swing_low = float(ll_window.min())
+        price = float(close.iloc[-1])
+        if not np.isfinite(swing_high) or not np.isfinite(swing_low) or swing_high <= swing_low or price <= 0:
+            return out
+        swing_range = swing_high - swing_low
+        # Retracements in einem Aufwaerts-Swing: Level unterhalb des Swing-Hochs.
+        fib_defs = [(23.6, 0.236), (38.2, 0.382), (50.0, 0.500), (61.8, 0.618), (78.6, 0.786)]
+        levels = []
+        for pct, ratio in fib_defs:
+            lvl = swing_high - swing_range * ratio
+            dist_pct = ((price / lvl) - 1.0) * 100.0 if lvl else np.nan
+            levels.append({"Level": f"{pct:.1f}%", "Kurszone": round(lvl, 2), "Abstand_%": round(float(dist_pct), 1) if pd.notna(dist_pct) else "n/a"})
+        ext_defs = [(127.2, 1.272), (161.8, 1.618)]
+        extensions = []
+        for pct, ratio in ext_defs:
+            lvl = swing_low + swing_range * ratio
+            dist_pct = ((price / lvl) - 1.0) * 100.0 if lvl else np.nan
+            extensions.append({"Extension": f"{pct:.1f}%", "Kurszone": round(lvl, 2), "Abstand_%": round(float(dist_pct), 1) if pd.notna(dist_pct) else "n/a"})
+
+        nearest = min(levels, key=lambda x: abs(float(x.get("Abstand_%", 999) if x.get("Abstand_%") != "n/a" else 999)))
+        nearest_level = nearest.get("Level", "n/a")
+        nearest_price = nearest.get("Kurszone", "n/a")
+        nearest_dist = nearest.get("Abstand_%", "n/a")
+        pullback_from_high = ((swing_high - price) / swing_high) * 100.0 if swing_high else np.nan
+        position_in_swing = ((price - swing_low) / max(swing_range, 1e-9)) * 100.0
+        drivers = []
+        if pd.notna(pullback_from_high):
+            drivers.append(f"Rücklauf vom Swing-Hoch {pullback_from_high:.1f}%")
+        drivers.append(f"Position im Swing {position_in_swing:.0f}%")
+        drivers.append(f"nächstes Fib-Level {nearest_level} bei {nearest_price}")
+
+        # Aktive Zone grob bestimmen.
+        if price > swing_high:
+            label = "Extension"
+            phase = "Über dem letzten Swing-Hoch"
+            active_zone = f"oberhalb Swing-Hoch {swing_high:.2f}; mögliche Extensions: {extensions[0]['Kurszone']} / {extensions[1]['Kurszone']}"
+            summary = "Kurs liegt über dem letzten relevanten Swing-Hoch. Fibonacci dient hier eher als Ziel-/Überdehnungszone, nicht als Entry-Signal."
+            action = "Nicht blind hinterherlaufen; Rücksetzer, neue Base oder bestätigten Re-Test bevorzugen."
+        elif position_in_swing >= 85:
+            label = "hoch im Swing"
+            phase = "Nahe Swing-Hoch / eher spät im Move"
+            active_zone = f"Swing-Hoch {swing_high:.2f}; nächster Pullback-Kontext: {levels[0]['Level']} bei {levels[0]['Kurszone']}"
+            summary = "Kurs befindet sich weit oben im letzten Swing. Das ist bei starken Leadern nicht automatisch negativ, erhöht aber das Risiko eines späten Einstiegs."
+            action = "Entry nur mit sauberer Bestätigung; bei fehlendem Trigger eher Pullback/Base abwarten."
+        elif 70 <= position_in_swing < 85:
+            label = "konstruktiv"
+            phase = "Oberer Swing-Bereich"
+            active_zone = f"nächstes relevantes Retracement: {nearest_level} bei {nearest_price}"
+            summary = "Kurs hält sich im oberen Bereich des Swings. Fibonacci liefert eher Pullback-Orientierung als ein eigenständiges Kaufsignal."
+            action = "Bei Entry-Nähe Bestätigung prüfen; Rücklauf in 23,6–38,2%-Zone kann konstruktiv sein."
+        elif 45 <= position_in_swing < 70:
+            label = "Pullback-Zone"
+            phase = "Mittlerer Retracement-Bereich"
+            active_zone = f"aktive Pullback-Zone um {nearest_level}: ca. {nearest_price}"
+            summary = "Kurs liegt im typischen Pullback-/Retracement-Bereich. Das kann eine gesunde Korrektur sein, braucht aber Stabilisierung."
+            action = "Bullisher erst bei Reaktion/Stabilisierung in der Zone; defensiver bei Bruch der 61,8%-Zone."
+        else:
+            label = "tief"
+            phase = "Tiefe Korrektur / Struktur prüfen"
+            active_zone = f"tiefer Bereich; 61,8% bei {levels[3]['Kurszone']} / 78,6% bei {levels[4]['Kurszone']}"
+            summary = "Kurs liegt tief im letzten Swing. Das kann Chance oder Strukturbruch sein; Fibonacci allein reicht hier nicht."
+            action = "Erst Bodenbildung/Reclaim abwarten; unter 78,6% wirkt der vorherige Swing zunehmend beschädigt."
+
+        out.update({
+            "label": label,
+            "phase": phase,
+            "summary": summary,
+            "action_hint": action,
+            "active_zone_text": active_zone,
+            "swing_low": round(swing_low, 2),
+            "swing_high": round(swing_high, 2),
+            "levels": levels,
+            "extensions": extensions,
+            "drivers": drivers[:5],
+            "metrics": {
+                "Swing_Low": round(swing_low, 2),
+                "Swing_High": round(swing_high, 2),
+                "Pullback_vom_Swing_Hoch_%": round(float(pullback_from_high), 1) if pd.notna(pullback_from_high) else "n/a",
+                "Position_im_Swing_%": round(float(position_in_swing), 1),
+                "Naechstes_Level": nearest_level,
+                "Naechste_Zone": nearest_price,
+                "Abstand_zur_naechsten_Zone_%": nearest_dist,
+            },
+        })
+        return out
+    except Exception as exc:
+        out["summary"] = f"Fibonacci-Kontext nicht belastbar: {exc}"
+        return out
+
+
+def add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg):
+    """Optionale Fibonacci-Linien im Chart. Bewusst dezent, damit S/R nicht ueberladen wird."""
+    try:
+        if not isinstance(fib_pkg, dict):
+            return fig
+        levels = fib_pkg.get("levels") or []
+        if not levels:
+            return fig
+        for item in levels:
+            y = item.get("Kurszone")
+            name = item.get("Level")
+            if y is None or str(y) in {"", "n/a", "nan"}:
+                continue
+            fig.add_hline(y=float(y), line_width=1, line_dash="dot", opacity=0.45,
+                          annotation_text=f"Fib {name}", annotation_position="right", row=1, col=1)
+        return fig
+    except Exception:
+        return fig
 
 def align_action_with_trigger_v1520_2(action_label, action_reason, next_trigger, trigger_status, entry_quality, position_mode=False):
     """Keep the action label consistent with the operative trigger text.
@@ -7700,7 +7856,7 @@ def evaluate_chart_structure_bias(df, structures):
     return result
 
 
-def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None):
+def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None, show_fib=False, fib_pkg=None):
     fig = make_subplots(
         rows=2,
         cols=1,
@@ -7764,6 +7920,12 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
                 add_sr_zones_to_plotly(fig, chart_df, structures.get("supports", []), structures.get("resistances", []), structures.get("active_zones", []))
             if show_channel:
                 add_trend_channel_to_plotly(fig, chart_df, structures.get("channel"))
+        except Exception:
+            pass
+
+    if show_fib:
+        try:
+            add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg)
         except Exception:
             pass
 
@@ -15327,21 +15489,29 @@ if result is not None:
         key=f"chart_range_{ticker}"
     )
 
-    chart_overlay_col1, chart_overlay_col2 = st.columns(2)
+    chart_overlay_col1, chart_overlay_col2, chart_overlay_col3 = st.columns(3)
     with chart_overlay_col1:
         show_sr_zones = st.checkbox("Unterstützung / Widerstand anzeigen", value=True, key=f"show_sr_{ticker}")
     with chart_overlay_col2:
         show_trend_channel = st.checkbox("Trendkanal anzeigen", value=False, key=f"show_channel_{ticker}")
+    with chart_overlay_col3:
+        show_fib_levels = st.checkbox("Fibonacci-Level anzeigen", value=False, key=f"show_fib_{ticker}")
 
     chart_df = compute_chart_df(df, chart_range)
     chart_sr_basis_df = compute_chart_df(df, "1 Jahr")
+    fibonacci_context_pkg = build_fibonacci_context_v1533(chart_sr_basis_df, result if "result" in locals() else {})
+    if isinstance(result, dict):
+        result["fibonacci_context_pkg"] = fibonacci_context_pkg
+        result["fibonacci_label"] = fibonacci_context_pkg.get("label")
+        result["fibonacci_summary"] = fibonacci_context_pkg.get("summary")
+        result["fibonacci_action"] = fibonacci_context_pkg.get("action_hint")
     chart_structures = None
     if show_sr_zones or show_trend_channel:
         try:
             chart_structures = build_chart_structures(chart_df, sr_basis_df=chart_sr_basis_df)
         except Exception:
             chart_structures = None
-    fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures)
+    fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures, show_fib=show_fib_levels, fib_pkg=fibonacci_context_pkg)
     st.plotly_chart(fig, use_container_width=True)
     _chart_perf_pct, _chart_perf_abs = compute_chart_period_performance(chart_df)
     render_chart_period_performance_block(
@@ -15383,6 +15553,39 @@ if result is not None:
                 """,
                 unsafe_allow_html=True,
             )
+
+            # v15.33: Fibonacci-Kontext als weicher Chartbaustein, nicht score-wirksam.
+            fib_pkg = fibonacci_context_pkg if "fibonacci_context_pkg" in locals() else build_fibonacci_context_v1533(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})
+            if isinstance(result, dict):
+                result["fibonacci_context_pkg"] = fib_pkg
+            st.markdown("**Fibonacci-Kontext / Pullback-Zonen (weich, nicht im Score)**")
+            _fib_drivers = fib_pkg.get("drivers", []) if isinstance(fib_pkg, dict) else []
+            _fib_driver_text = " · ".join([str(x) for x in _fib_drivers[:3]]) if _fib_drivers else "keine dominanten Fibonacci-Treiber"
+            st.markdown(
+                f"""
+                <div class="section-card" style="padding:0.85rem 0.95rem;margin:0.55rem 0 0.85rem 0;">
+                    <div class="premium-title">{html.escape(str(fib_pkg.get('phase', 'Nicht belastbar')))}</div>
+                    <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(fib_pkg.get('label', 'n/a')).capitalize())}</div>
+                    <div class="premium-sub">{html.escape(str(fib_pkg.get('summary', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;">Aktive Zone: {html.escape(str(fib_pkg.get('active_zone_text', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;">Handlung: {html.escape(str(fib_pkg.get('action_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;">Treiber: {html.escape(_fib_driver_text)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            fib_levels = fib_pkg.get("levels", []) if isinstance(fib_pkg, dict) else []
+            if fib_levels:
+                fib_rows = []
+                for lvl in fib_levels:
+                    fib_rows.append({
+                        "Level": lvl.get("Level", "-"),
+                        "Zone": lvl.get("Kurszone", "-"),
+                        "Abstand": f"{lvl.get('Abstand_%')}%" if lvl.get("Abstand_%") != "n/a" else "n/a",
+                        "Lesart": "mögliche Pullback-/Reaktionszone, nur mit Preisbestätigung relevant",
+                    })
+                st.dataframe(pd.DataFrame(fib_rows), use_container_width=True, hide_index=True)
+            st.caption("Fibonacci-Level sind Orientierungspunkte aus dem letzten relevanten Swing. Sie sind keine eigenständigen Kauf-/Verkaufssignale; wichtig ist die Reaktion des Kurses an der Zone.")
 
             ultra_signal = compute_ultra_short_term_zone_signal(chart_df, chart_structures)
             ultra_tone = ultra_signal.get("tone", "green")

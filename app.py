@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.30",
+        "Export_Version": "v15.31",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -15855,6 +15855,69 @@ if result is not None:
         else:
             st.info("Für diese Analyse konnten keine konkreten Risikotreiber berechnet werden.")
 
+    # ---------- v15.31: Positionsmanagement-Karten konkretisieren ----------
+    def _pm_is_generic_value(_v):
+        _txt = str(_v or "").strip()
+        return _txt in {"", "-", "None", "nan", "n/a", "Nicht anwendbar", "Beibehalten", "Nein", "Ja"}
+
+    def _pm_money(_v):
+        try:
+            return float(_v)
+        except Exception:
+            return float("nan")
+
+    _pm_price_val = _pm_money(price if "price" in locals() else result.get("price"))
+    _pm_stop_val = _pm_money(stop_used if "stop_used" in locals() else result.get("stop_used"))
+    _pm_buyin_val = _pm_money(result.get("buy_in_override", result.get("buy_in", 0)))
+    _pm_ccy = str(ccy if "ccy" in locals() else result.get("ccy", "")).strip() or "USD"
+    _pm_exit_score_val = _pm_money(result.get("exit_score", 0))
+    _pm_tactical_exit_val = _pm_money(result.get("tactical_exit_risk", 0))
+    _pm_exit_pressure_val = max(
+        _pm_exit_score_val if pd.notna(_pm_exit_score_val) else 0.0,
+        _pm_tactical_exit_val if pd.notna(_pm_tactical_exit_val) else 0.0,
+    )
+
+    _pm_stop_display = str(pm_stop_plan or "").strip()
+    if _pm_is_generic_value(_pm_stop_display):
+        if pd.notna(_pm_stop_val) and _pm_stop_val > 0:
+            _pm_gap = ((_pm_price_val / _pm_stop_val) - 1.0) * 100.0 if pd.notna(_pm_price_val) and _pm_price_val > 0 else float("nan")
+            _pm_gap_txt = f" · Abstand {abs(_pm_gap):.1f}%" if pd.notna(_pm_gap) else ""
+            if "enger" in str(pm_action).lower() or _pm_exit_pressure_val >= 35:
+                _pm_stop_display = f"Stop enger kontrollieren: ca. {_pm_stop_val:.2f} {_pm_ccy}{_pm_gap_txt}"
+            else:
+                _pm_stop_display = f"Stop beibehalten: ca. {_pm_stop_val:.2f} {_pm_ccy}{_pm_gap_txt}"
+        else:
+            _pm_stop_display = "Kein belastbares Stopniveau ableitbar"
+
+    _pm_stop_detail = "Konkretes Niveau für Absicherung/Invalidierung. Nicht nur Risiko-Label."
+    if pd.notna(_pm_stop_val) and _pm_stop_val > 0:
+        _pm_stop_detail = "Defensiver werden, wenn diese Stop-/Invalidierungszone klar verletzt wird."
+
+    _pm_profit_display = str(pm_profit_plan or "").strip()
+    if _pm_is_generic_value(_pm_profit_display):
+        _pm_pnl_pct = _pm_money(result.get("position_pnl_pct", result.get("pnl_pct", float("nan"))))
+        if pd.isna(_pm_pnl_pct) and pd.notna(_pm_price_val) and _pm_price_val > 0 and pd.notna(_pm_buyin_val) and _pm_buyin_val > 0:
+            _pm_pnl_pct = ((_pm_price_val / _pm_buyin_val) - 1.0) * 100.0
+        if pd.notna(_pm_pnl_pct) and _pm_pnl_pct >= 12 and _pm_exit_pressure_val >= 35:
+            _pm_profit_display = f"Teilgewinn prüfen · Position ca. +{_pm_pnl_pct:.1f}%"
+        elif pd.notna(_pm_pnl_pct) and _pm_pnl_pct >= 5:
+            _pm_profit_display = f"Gewinne laufen lassen · Stop nachziehen prüfen · ca. +{_pm_pnl_pct:.1f}%"
+        elif pd.notna(_pm_pnl_pct) and _pm_pnl_pct <= -5:
+            _pm_profit_display = f"Kein Gewinnschutz · Verlustbegrenzung im Fokus · ca. {_pm_pnl_pct:.1f}%"
+        else:
+            _pm_profit_display = "Kein akuter Gewinnschutz nötig · Entwicklung weiterführen"
+
+    _pm_profit_detail = "Zeigt, ob Gewinne laufen gelassen, abgesichert oder teilweise realisiert werden sollten."
+
+    _pm_add_display = str(pm_add_plan or "").strip()
+    if _pm_is_generic_value(_pm_add_display):
+        if _pm_exit_pressure_val >= 35:
+            _pm_add_display = "Nein · erst Exit-Druck/Trigger klären"
+        elif str(pm_action).lower().startswith("aufstocken"):
+            _pm_add_display = "Aufstocken prüfen · nur mit frischem Add-on-Trigger"
+        else:
+            _pm_add_display = "Nur bei frischem Trigger · kein blindes Nachkaufen"
+
     # ---------- v15.13: klare Trennung Pre-Entry vs. Post-Entry ----------
     if position_mode:
         mode_headline = "Post-Entry / Positionsmanagement"
@@ -15862,9 +15925,9 @@ if result is not None:
         mode_intro = "Diese Ansicht bewertet eine bestehende Position. Im Fokus stehen Halten, Ausbauen, Teilgewinn, Stop-Führung und Exit-Druck."
         mode_cards = [
             ("Fuehrungsaktion", main_action_label, shorten_text(pm_action_reason, 92), True),
-            ("Stop / Absicherung", pm_stop_plan, "Konkrete Stop-Fuehrung statt nur allgemeines Risiko-Label.", False),
-            ("Gewinnschutz", pm_profit_plan, "Unterscheidet Gewinne laufen lassen, Teilgewinn und Verlustbegrenzung.", False),
-            ("Aufstocken / No-Add", pm_add_plan, shorten_text(pm_no_add_if, 92), False),
+            ("Stop / Absicherung", _pm_stop_display, _pm_stop_detail, False),
+            ("Gewinnschutz", _pm_profit_display, _pm_profit_detail, False),
+            ("Aufstocken / No-Add", _pm_add_display, shorten_text(pm_no_add_if, 92), False),
         ]
     else:
         mode_headline = "Pre-Entry / Watchlist"

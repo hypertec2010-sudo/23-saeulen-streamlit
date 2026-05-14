@@ -13329,11 +13329,18 @@ if workspace_mode:
             if asset_mode == "Commodity / Rohstoff":
                 st.caption("Rohstoffmodus: nutze z. B. GC=F für Gold, SI=F für Silber, HG=F für Kupfer, CL=F für WTI Öl. Fundamentale Aktienkennzahlen werden nicht als Unternehmensqualität interpretiert.")
 
+            # ---------- v15.34.1: Legacy-Entwicklerschalter aus der UI entfernt ----------
+            # Diese beiden Einstellungen stammen aus fruehen Kalibrierungsphasen.
+            # Smart-Money wird inzwischen automatisch ueber Volumen/Akkumulation/Distribution,
+            # FOMO/Smart-Money und weitere Proxies bewertet. Strenges Mapping bleibt als
+            # stabiler interner Default aktiv, wird aber nicht mehr als Nutzeroption angezeigt.
+            smart_money_default = True
+            strict_mode = True
+
             adv1, adv2 = st.columns(2)
             with adv1:
                 depot = st.number_input("Depotwert EUR", min_value=1000, value=10000, step=1000, key="depot_widget_main")
                 override = st.number_input("Kurs-Override (0 = auto)", min_value=0.0, value=0.0, step=0.01, format="%.2f", key="override_widget_main")
-                smart_money_default = st.checkbox("TradingBoard: Smart Money = True", value=True, key="smart_money_widget_main")
             with adv2:
                 risk_pct = st.slider("Risiko pro Trade (%)", min_value=0.5, max_value=5.0, value=1.0, step=0.5, key="risk_pct_widget_main")
 
@@ -13357,7 +13364,6 @@ if workspace_mode:
                     key="buy_in_widget_main",
                     help="Nur für Post-Entry noetig. Ohne Buy-in bleibt die Positionsbewertung nicht belastbar."
                 )
-                strict_mode = st.checkbox("Strenges Mapping", value=True, key="strict_mode_widget_main")
 
             action_col1, action_col2 = st.columns(2)
             with action_col1:

@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.31",
+        "Export_Version": "v15.32",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1107,6 +1107,11 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "MA10_Abstand_%": (result or {}).get("ma10_dist_pct"),
         "MA10_Timing": (result or {}).get("ma10_timing_label"),
         "MA10_Timing_Text": (result or {}).get("ma10_timing_text"),
+        "Strukturkontext_Label": ((result or {}).get("wave_structure_pkg") or {}).get("label") or (result or {}).get("wave_structure_label"),
+        "Strukturkontext_Phase": ((result or {}).get("wave_structure_pkg") or {}).get("phase"),
+        "Strukturkontext_Zusammenfassung": ((result or {}).get("wave_structure_pkg") or {}).get("summary") or (result or {}).get("wave_structure_summary"),
+        "Strukturkontext_Handlung": ((result or {}).get("wave_structure_pkg") or {}).get("action_hint") or (result or {}).get("wave_structure_action"),
+        "Strukturkontext_Treiber": ((result or {}).get("wave_structure_pkg") or {}).get("drivers"),
         "FOMO_Smart_Money_Label": ((result or {}).get("fomo_smart_money_pkg") or {}).get("label"),
         "FOMO_Smart_Money_Score": ((result or {}).get("fomo_smart_money_pkg") or {}).get("score"),
         "FOMO_Smart_Money_Summary": ((result or {}).get("fomo_smart_money_pkg") or {}).get("summary"),
@@ -1237,7 +1242,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.29"
+APP_VERSION = "v15.32"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4019,6 +4024,158 @@ def render_chart_period_performance_block(chart_period_label, perf_pct, perf_abs
 
 
 
+
+
+
+
+def build_wave_structure_context_v1532(chart_df=None, result=None):
+    """Weicher Wellen-/Strukturkontext ohne harte Elliott-Wellen-Signale.
+
+    Ziel: Keine Scheingenauigkeit. Die Funktion beschreibt nur, ob die aktuelle
+    Kursstruktur eher impulsiv, korrektiv, fortgeschritten/ueberdehnt oder unklar
+    wirkt. Der Baustein ist bewusst Kontext und nicht score-wirksam.
+    """
+    result = result or {}
+    out = {
+        "label": "unklar",
+        "phase": "Nicht belastbar",
+        "summary": "Keine belastbare Struktur ableitbar.",
+        "action_hint": "Nicht als eigenständiges Signal verwenden.",
+        "score": 0,
+        "drivers": [],
+        "is_score_relevant": False,
+    }
+    try:
+        dfw = chart_df.copy() if chart_df is not None else None
+        if dfw is None or dfw.empty:
+            return out
+        close_col = "Close" if "Close" in dfw.columns else "Adj Close" if "Adj Close" in dfw.columns else None
+        high_col = "High" if "High" in dfw.columns else close_col
+        low_col = "Low" if "Low" in dfw.columns else close_col
+        if close_col is None:
+            return out
+        close = pd.to_numeric(dfw[close_col], errors="coerce").dropna()
+        high = pd.to_numeric(dfw[high_col], errors="coerce").dropna() if high_col else close
+        low = pd.to_numeric(dfw[low_col], errors="coerce").dropna() if low_col else close
+        if len(close) < 40:
+            return out
+        price = float(close.iloc[-1])
+        ma10 = float(close.rolling(10).mean().iloc[-1]) if len(close) >= 10 else np.nan
+        ma20 = float(close.rolling(20).mean().iloc[-1]) if len(close) >= 20 else np.nan
+        ma50 = float(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else np.nan
+        high20 = float(high.tail(20).max())
+        low20 = float(low.tail(20).min())
+        high60 = float(high.tail(min(60, len(high))).max())
+        low60 = float(low.tail(min(60, len(low))).min())
+        high52 = _fomo_v1525_parse_float(result.get("high52"), default=np.nan)
+        roc20 = ((price / float(close.iloc[-21])) - 1.0) * 100.0 if len(close) > 21 and float(close.iloc[-21]) else np.nan
+        roc60 = ((price / float(close.iloc[-61])) - 1.0) * 100.0 if len(close) > 61 and float(close.iloc[-61]) else np.nan
+        dist_ma10 = ((price / ma10) - 1.0) * 100.0 if pd.notna(ma10) and ma10 else np.nan
+        dist_ma20 = ((price / ma20) - 1.0) * 100.0 if pd.notna(ma20) and ma20 else np.nan
+        dist_ma50 = ((price / ma50) - 1.0) * 100.0 if pd.notna(ma50) and ma50 else np.nan
+        pullback20 = ((high20 - price) / high20) * 100.0 if high20 else np.nan
+        rebound20 = ((price - low20) / low20) * 100.0 if low20 else np.nan
+        range_pos20 = ((price - low20) / max(high20 - low20, 1e-9)) * 100.0
+        near_52w_high = pd.notna(high52) and high52 > 0 and ((high52 - price) / high52) * 100.0 <= 5.0
+
+        drivers = []
+        score = 0.0
+        if pd.notna(roc20):
+            if roc20 >= 12:
+                drivers.append(f"starker 20T-Lauf ({roc20:.1f}%)")
+                score += 24
+            elif roc20 >= 5:
+                drivers.append(f"konstruktiver 20T-Lauf ({roc20:.1f}%)")
+                score += 14
+            elif roc20 <= -8:
+                drivers.append(f"20T-Korrektur ({roc20:.1f}%)")
+                score -= 14
+        if pd.notna(roc60):
+            if roc60 >= 25:
+                drivers.append(f"starker 60T-Impuls ({roc60:.1f}%)")
+                score += 22
+            elif roc60 >= 10:
+                drivers.append(f"positiver 60T-Trend ({roc60:.1f}%)")
+                score += 12
+            elif roc60 <= -15:
+                drivers.append(f"60T-Schwäche ({roc60:.1f}%)")
+                score -= 16
+        if near_52w_high:
+            drivers.append("nahe Jahreshoch")
+            score += 12
+        if pd.notna(dist_ma10):
+            if dist_ma10 > 8:
+                drivers.append(f"deutlich über MA10 ({dist_ma10:.1f}%)")
+                score += 16
+            elif dist_ma10 < -3:
+                drivers.append(f"unter MA10 ({dist_ma10:.1f}%)")
+                score -= 12
+            elif abs(dist_ma10) <= 2:
+                drivers.append(f"MA10-Test/nahe MA10 ({dist_ma10:.1f}%)")
+        if pd.notna(dist_ma50):
+            if dist_ma50 > 18:
+                drivers.append(f"deutlich über MA50 ({dist_ma50:.1f}%)")
+                score += 16
+            elif dist_ma50 < -5:
+                drivers.append(f"unter MA50 ({dist_ma50:.1f}%)")
+                score -= 18
+        if pd.notna(pullback20):
+            if pullback20 <= 2 and range_pos20 >= 78:
+                drivers.append("nahe 20T-Hoch")
+                score += 10
+            elif 3 <= pullback20 <= 10 and pd.notna(dist_ma20) and dist_ma20 >= -2:
+                drivers.append(f"geordneter Pullback vom 20T-Hoch ({pullback20:.1f}%)")
+                score -= 2
+            elif pullback20 > 14:
+                drivers.append(f"tiefer Pullback vom 20T-Hoch ({pullback20:.1f}%)")
+                score -= 14
+
+        # Phase ableiten: bewusst weich, keine harte Elliott-Zaehllogik.
+        if pd.notna(roc60) and roc60 >= 20 and pd.notna(dist_ma10) and dist_ma10 > 6 and pd.notna(dist_ma50) and dist_ma50 > 15:
+            label = "fortgeschritten"
+            phase = "Späte/fortgeschrittene Impulsstruktur"
+            summary = "Trend wirkt stark, aber bereits fortgeschritten. Nicht hinterherlaufen; Pullback/Base bevorzugen."
+            action = "Einstieg nur bei Rücksetzer, neuer Base oder klarer Bestätigung; FOMO-Risiko beachten."
+        elif pd.notna(roc20) and roc20 >= 5 and pd.notna(dist_ma10) and dist_ma10 >= -1 and pd.notna(dist_ma50) and dist_ma50 >= 0:
+            label = "impulsiv"
+            phase = "Konstruktive Impulsstruktur"
+            summary = "Kursstruktur wirkt trendfolgend/impulsiv, solange MA10/MA20 und Triggerzone halten."
+            action = "Bei Entry-Nähe Bestätigung prüfen; unter MA10/Triggerzone wird die Struktur anfälliger."
+        elif pd.notna(pullback20) and 3 <= pullback20 <= 12 and pd.notna(dist_ma20) and dist_ma20 >= -3 and pd.notna(dist_ma50) and dist_ma50 >= -2:
+            label = "korrektiv"
+            phase = "Geordnete Korrektur / mögliche Base"
+            summary = "Rücklauf wirkt bisher eher geordnet als wie ein Trendbruch. Entscheidend ist die Reaktion an Support/MA10/MA20."
+            action = "Bullisher erst bei Stabilisierung/Reclaim; defensiver bei Bruch der Support-/Triggerzone."
+        elif pd.notna(dist_ma50) and dist_ma50 < -5:
+            label = "angeschlagen"
+            phase = "Korrektur-/Schwächestruktur"
+            summary = "Struktur ist angeschlagen; ein Einstieg braucht erst Reclaim und neue Stabilisierung."
+            action = "Keine aggressive Entry-Logik; erst Bodenbildung oder klare Reversal-Struktur abwarten."
+        else:
+            label = "unklar"
+            phase = "Keine klare Wellen-/Strukturlesart"
+            summary = "Die Struktur liefert keinen belastbaren Zusatzvorteil. Klassische Trigger und Supportzonen bleiben wichtiger."
+            action = "Nicht aus der Struktur ableiten; Entry-/Support-Bestätigung abwarten."
+
+        out.update({
+            "label": label,
+            "phase": phase,
+            "summary": summary,
+            "action_hint": action,
+            "score": int(max(0, min(100, round(score + 35)))),
+            "drivers": drivers[:5],
+            "metrics": {
+                "20T_Performance_%": round(float(roc20), 1) if pd.notna(roc20) else "n/a",
+                "60T_Performance_%": round(float(roc60), 1) if pd.notna(roc60) else "n/a",
+                "Abstand_MA10_%": round(float(dist_ma10), 1) if pd.notna(dist_ma10) else "n/a",
+                "Abstand_MA50_%": round(float(dist_ma50), 1) if pd.notna(dist_ma50) else "n/a",
+                "Pullback_vom_20T_Hoch_%": round(float(pullback20), 1) if pd.notna(pullback20) else "n/a",
+            },
+        })
+        return out
+    except Exception as exc:
+        out["summary"] = f"Strukturkontext nicht belastbar: {exc}"
+        return out
 
 
 def align_action_with_trigger_v1520_2(action_label, action_reason, next_trigger, trigger_status, entry_quality, position_mode=False):
@@ -15200,6 +15357,30 @@ if result is not None:
                 st.markdown("**Technische Einordnung aus dem Chart**")
                 for _item in chart_text_items[:3]:
                     st.markdown(f"- {_item}")
+
+            # v15.32: Weicher Wellen-/Strukturkontext, bewusst nicht score-wirksam.
+            wave_structure_pkg = build_wave_structure_context_v1532(chart_df, result if "result" in locals() else {})
+            if isinstance(result, dict):
+                result["wave_structure_pkg"] = wave_structure_pkg
+                result["wave_structure_label"] = wave_structure_pkg.get("label")
+                result["wave_structure_summary"] = wave_structure_pkg.get("summary")
+                result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
+            st.markdown("**Wellen-/Strukturkontext (weich, nicht im Score)**")
+            _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
+            _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
+            _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
+            st.markdown(
+                f"""
+                <div class="section-card" style="padding:0.85rem 0.95rem;margin:0.55rem 0 0.85rem 0;">
+                    <div class="premium-title">{html.escape(str(wave_structure_pkg.get('phase', 'Nicht belastbar')))}</div>
+                    <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(wave_structure_pkg.get('label', 'unklar')).capitalize())}</div>
+                    <div class="premium-sub">{html.escape(str(wave_structure_pkg.get('summary', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;">Handlung: {html.escape(str(wave_structure_pkg.get('action_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;">Treiber: {html.escape(_wave_driver_text)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
             ultra_signal = compute_ultra_short_term_zone_signal(chart_df, chart_structures)
             ultra_tone = ultra_signal.get("tone", "green")

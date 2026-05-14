@@ -1092,7 +1092,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.33.1",
+        "Export_Version": "v15.33.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -4314,7 +4314,26 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         for pct, ratio in fib_defs:
             lvl = swing_high - swing_range * ratio
             dist_pct = ((price / lvl) - 1.0) * 100.0 if lvl else np.nan
-            levels.append({"Level": f"{pct:.1f}%", "Kurszone": round(lvl, 2), "Abstand_%": round(float(dist_pct), 1) if pd.notna(dist_pct) else "n/a"})
+            if pd.notna(dist_pct):
+                if abs(float(dist_pct)) <= 1.0:
+                    lage = "am Kurs"
+                    lesart = "Kurs liegt direkt an dieser Fibonacci-Zone; relevant ist die Reaktion/Stabilisierung, nicht das Level allein."
+                elif float(dist_pct) > 0:
+                    lage = "unter Kurs"
+                    lesart = "Liegt unter dem aktuellen Kurs: mögliche Pullback-/Unterstützungszone, falls der Kurs dorthin zurücksetzt."
+                else:
+                    lage = "über Kurs"
+                    lesart = "Liegt über dem aktuellen Kurs: eher Reclaim-/Widerstandszone; erst ein Rücklauf über dieses Level wäre konstruktiver."
+            else:
+                lage = "n/a"
+                lesart = "Nicht belastbar interpretierbar."
+            levels.append({
+                "Level": f"{pct:.1f}%",
+                "Kurszone": round(lvl, 2),
+                "Abstand_%": round(float(dist_pct), 1) if pd.notna(dist_pct) else "n/a",
+                "Lage": lage,
+                "Lesart": lesart,
+            })
         ext_defs = [(127.2, 1.272), (161.8, 1.618)]
         extensions = []
         for pct, ratio in ext_defs:
@@ -4326,6 +4345,16 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         nearest_level = nearest.get("Level", "n/a")
         nearest_price = nearest.get("Kurszone", "n/a")
         nearest_dist = nearest.get("Abstand_%", "n/a")
+        nearest_lage = nearest.get("Lage", "n/a")
+
+        def _fib_zone_phrase(level_name, level_price, lage):
+            if lage == "über Kurs":
+                return f"naechste Reclaim-/Widerstandszone: {level_name} bei {level_price}"
+            if lage == "unter Kurs":
+                return f"naechste Pullback-/Unterstuetzungszone: {level_name} bei {level_price}"
+            if lage == "am Kurs":
+                return f"Kurs direkt an Fibonacci-Zone: {level_name} bei {level_price}"
+            return f"naechstes Fibonacci-Level: {level_name} bei {level_price}"
         pullback_from_high = ((swing_high - price) / swing_high) * 100.0 if swing_high else np.nan
         position_in_swing = ((price - swing_low) / max(swing_range, 1e-9)) * 100.0
         drivers = []
@@ -4356,9 +4385,16 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         elif 45 <= position_in_swing < 70:
             label = "Pullback-Zone"
             phase = "Mittlerer Retracement-Bereich"
-            active_zone = f"aktive Pullback-Zone um {nearest_level}: ca. {nearest_price}"
-            summary = "Kurs liegt im typischen Pullback-/Retracement-Bereich. Das kann eine gesunde Korrektur sein, braucht aber Stabilisierung."
-            action = f"Bullisher erst bei Reaktion/Stabilisierung in der aktiven Zone um {nearest_level} ({nearest_price}). Defensiver bei Bruch der 61,8%-Zone bei {levels[3]['Kurszone']}."
+            active_zone = _fib_zone_phrase(nearest_level, nearest_price, nearest_lage)
+            if nearest_lage == "über Kurs":
+                summary = "Kurs liegt unter dem naechsten Fibonacci-Level. Dieses Level ist aktuell keine Unterstuetzung, sondern eine Reclaim-/Widerstandszone."
+                action = f"Bullisher erst bei Reclaim/Stabilisierung ueber {nearest_level} bei {nearest_price}. Defensiver bei weiterem Bruch Richtung 61,8%-Zone bei {levels[3]['Kurszone']}."
+            elif nearest_lage == "unter Kurs":
+                summary = "Kurs liegt im mittleren Swing-Bereich; die naechste Fibonacci-Zone darunter kann bei einem Ruecksetzer als moegliche Unterstuetzung relevant werden."
+                action = f"Nicht automatisch kaufen. Bullisher erst bei Stabilisierung/Reaktion; naechste Pullback-Unterstuetzung: {nearest_level} bei {nearest_price}. Defensiver bei Bruch der 61,8%-Zone bei {levels[3]['Kurszone']}."
+            else:
+                summary = "Kurs liegt direkt an einer Fibonacci-Zone. Das kann eine gesunde Korrektur sein, braucht aber sichtbare Stabilisierung."
+                action = f"Bullisher erst bei Reaktion/Stabilisierung an {nearest_level} bei {nearest_price}. Defensiver bei Bruch der 61,8%-Zone bei {levels[3]['Kurszone']}."
         else:
             label = "tief"
             phase = "Tiefe Korrektur / Struktur prüfen"
@@ -4393,7 +4429,12 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         elif label == "konstruktiv":
             fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} haelt den oberen Swing-Bereich. Fibonacci hilft hier vor allem als Pullback-Landkarte: 23,6% {_v1533_1_fmt_price(levels[0]['Kurszone'])}, 38,2% {_v1533_1_fmt_price(levels[1]['Kurszone'])}."
         elif label == "Pullback-Zone":
-            fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} liegt in/nahe einer typischen Pullback-Zone. Aktives Level: {nearest_level} bei {_v1533_1_fmt_price(nearest_price)}; wichtig ist jetzt Stabilisierung/Reaktion dort, nicht das Level allein."
+            if nearest_lage == "über Kurs":
+                fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} liegt unter dem naechsten Fibonacci-Level {nearest_level} bei {_v1533_1_fmt_price(nearest_price)}. Dieses Level ist aktuell keine Unterstuetzung, sondern eine Reclaim-/Widerstandszone; bullisher wird es erst bei Rueckeroberung/Stabilisierung darueber."
+            elif nearest_lage == "unter Kurs":
+                fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} liegt oberhalb des naechsten Fibonacci-Levels {nearest_level} bei {_v1533_1_fmt_price(nearest_price)}. Das Level waere bei einem Ruecksetzer eine moegliche Pullback-Unterstuetzung; wichtig waere dort eine sichtbare Reaktion."
+            else:
+                fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} liegt direkt an der Fibonacci-Zone {nearest_level} bei {_v1533_1_fmt_price(nearest_price)}. Wichtig ist jetzt Stabilisierung/Reaktion dort, nicht das Level allein."
         else:
             fib_plain_hint = f"Kurs {_v1533_1_fmt_price(price)} liegt tief im Swing. Kritische Orientierung: 61,8% {_v1533_1_fmt_price(levels[3]['Kurszone'])}, 78,6% {_v1533_1_fmt_price(levels[4]['Kurszone'])}."
 
@@ -15668,7 +15709,7 @@ if result is not None:
                 st.dataframe(pd.DataFrame(_wave_zones), use_container_width=True, hide_index=True)
                 st.caption("Wellen-/Strukturkontext ist keine Elliott-Zaehllogik. Er beschreibt nur, ob der letzte Move eher frueh, konstruktiv, fortgeschritten oder korrektiv wirkt.")
 
-            # v15.33.1: Fibonacci-Kontext als weicher Chartbaustein, nicht score-wirksam.
+            # v15.33.2: Fibonacci-Kontext als weicher Chartbaustein, nicht score-wirksam.
             fib_pkg = fibonacci_context_pkg if "fibonacci_context_pkg" in locals() else build_fibonacci_context_v1533(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})
             if isinstance(result, dict):
                 result["fibonacci_context_pkg"] = fib_pkg
@@ -15697,13 +15738,8 @@ if result is not None:
                         "Level": lvl.get("Level", "-"),
                         "Zone": lvl.get("Kurszone", "-"),
                         "Abstand": f"{lvl.get('Abstand_%')}%" if lvl.get("Abstand_%") != "n/a" else "n/a",
-                        "Lesart": (
-                            "flacher Pullback / Trend bleibt stark" if str(lvl.get("Level", "")).startswith("23.6") else
-                            "typische erste Pullback-Zone" if str(lvl.get("Level", "")).startswith("38.2") else
-                            "mittlere Korrekturzone" if str(lvl.get("Level", "")).startswith("50.0") else
-                            "wichtige tiefere Pullback-Zone; Bruch macht defensiver" if str(lvl.get("Level", "")).startswith("61.8") else
-                            "tiefe Korrektur; darunter ist der Swing stark angeschlagen"
-                        ),
+                        "Lage": lvl.get("Lage", "-"),
+                        "Lesart": lvl.get("Lesart", "Fibonacci-Zone nur mit Kursreaktion interpretieren."),
                     })
                 st.dataframe(pd.DataFrame(fib_rows), use_container_width=True, hide_index=True)
             st.caption("Fibonacci-Level sind Orientierungspunkte aus dem letzten relevanten Swing. Sie sind keine eigenständigen Kauf-/Verkaufssignale; wichtig ist die Reaktion des Kurses an der Zone.")

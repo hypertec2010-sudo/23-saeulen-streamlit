@@ -170,7 +170,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
-from analysis_core import analyze_stock
+from analysis_core import analyze_stock as _core_analyze_stock
 import yfinance as yf
 from plotly.subplots import make_subplots
 import logging_utils as _logging_utils
@@ -194,6 +194,150 @@ from logging_utils import (
     update_watchlist_alert_mode,
     update_watchlist_check_frequency,
 )
+
+
+# ---------- v15.34: Asset-Modus (Aktie / ETF / Commodity / Index) ----------
+_COMMODITY_TICKER_MAP_V1534 = {
+    "GC=F": ("Gold Future", "Gold"),
+    "SI=F": ("Silber Future", "Silber"),
+    "HG=F": ("Kupfer Future", "Kupfer"),
+    "CL=F": ("WTI Öl Future", "Öl / Energie"),
+    "BZ=F": ("Brent Öl Future", "Öl / Energie"),
+    "NG=F": ("Erdgas Future", "Energie"),
+    "PL=F": ("Platin Future", "Platin"),
+    "PA=F": ("Palladium Future", "Palladium"),
+    "ZC=F": ("Mais Future", "Agrar"),
+    "ZW=F": ("Weizen Future", "Agrar"),
+    "ZS=F": ("Sojabohnen Future", "Agrar"),
+}
+_COMMODITY_PROXY_MAP_V1534 = {
+    "GLD": ("SPDR Gold Shares", "Gold-ETF"),
+    "IAU": ("iShares Gold Trust", "Gold-ETF"),
+    "SLV": ("iShares Silver Trust", "Silber-ETF"),
+    "SIVR": ("abrdn Physical Silver Shares", "Silber-ETF"),
+    "GDX": ("VanEck Gold Miners ETF", "Goldminen-ETF"),
+    "GDXJ": ("VanEck Junior Gold Miners ETF", "Goldminen-ETF"),
+    "SIL": ("Global X Silver Miners ETF", "Silberminen-ETF"),
+    "DBC": ("Invesco DB Commodity Index Tracking Fund", "Rohstoffkorb-ETF"),
+    "USO": ("United States Oil Fund", "Öl-ETF"),
+}
+_INDEX_TICKER_SET_V1534 = {"^GSPC", "^NDX", "^IXIC", "^DJI", "^RUT", "^GDAXI", "^STOXX50E", "SPY", "QQQ", "DIA", "IWM"}
+
+def _asset_mode_setting_v1534():
+    try:
+        return str(st.session_state.get("asset_mode_widget_main", "Auto"))
+    except Exception:
+        return "Auto"
+
+def infer_asset_type_v1534(ticker, info=None, requested="Auto"):
+    t = str(ticker or "").strip().upper()
+    requested = str(requested or "Auto")
+    if requested and requested != "Auto":
+        if "Commodity" in requested or "Rohstoff" in requested:
+            return "Commodity"
+        if "ETF" in requested:
+            return "ETF"
+        if "Index" in requested:
+            return "Index"
+        return "Aktie"
+    quote_type = str((info or {}).get("quoteType", "")).upper() if isinstance(info, dict) else ""
+    if t.endswith("=F") or t in _COMMODITY_TICKER_MAP_V1534:
+        return "Commodity"
+    if t in _COMMODITY_PROXY_MAP_V1534:
+        return "ETF / Commodity-Proxy"
+    if t.startswith("^") or t in _INDEX_TICKER_SET_V1534 or quote_type == "INDEX":
+        return "Index"
+    if quote_type in {"ETF", "MUTUALFUND"}:
+        return "ETF"
+    return "Aktie"
+
+def _asset_display_name_v1534(ticker, info=None, asset_type="Aktie"):
+    t = str(ticker or "").strip().upper()
+    if t in _COMMODITY_TICKER_MAP_V1534:
+        return _COMMODITY_TICKER_MAP_V1534[t][0]
+    if t in _COMMODITY_PROXY_MAP_V1534:
+        return _COMMODITY_PROXY_MAP_V1534[t][0]
+    if isinstance(info, dict):
+        return info.get("longName") or info.get("shortName") or info.get("displayName") or info.get("quoteSourceName") or t
+    return t
+
+def postprocess_asset_mode_v1534(result, ticker=None, requested="Auto"):
+    """Passt Aktien-spezifische Sprache für ETFs/Commodities/Indizes an, ohne die Kernanalyse zu zerlegen."""
+    if not isinstance(result, dict):
+        return result
+    t = str(ticker or result.get("ticker") or result.get("Ticker") or "").strip().upper()
+    info = result.get("info", {}) if isinstance(result.get("info", {}), dict) else {}
+    asset_type = infer_asset_type_v1534(t, info, requested=requested)
+    result["asset_type_label"] = asset_type
+    result["Asset_Typ"] = asset_type
+
+    if asset_type in {"Commodity", "ETF / Commodity-Proxy", "ETF", "Index"}:
+        display_name = _asset_display_name_v1534(t, info, asset_type)
+        result["name"] = display_name
+        result["Name"] = display_name
+        if asset_type == "Commodity":
+            commodity_group = _COMMODITY_TICKER_MAP_V1534.get(t, (display_name, "Commodity"))[1]
+            result["sector_label"] = "Rohstoffe"
+            result["industry_label"] = commodity_group
+            result["sector"] = "Rohstoffe"
+            result["industry"] = commodity_group
+            result["company_summary"] = (
+                "Commodity-Modus: Fundamentale Unternehmenskennzahlen wie Margen, Cashflow, Gewinnwachstum "
+                "oder Earnings werden nicht als Aktien-Qualität interpretiert. Fokus liegt auf Trend, Struktur, "
+                "Support/Resistance, Fibonacci, Volatilität, Momentum und Markt-/FOMO-Kontext."
+            )
+        elif asset_type == "ETF / Commodity-Proxy":
+            proxy_group = _COMMODITY_PROXY_MAP_V1534.get(t, (display_name, "Commodity-Proxy"))[1]
+            result["sector_label"] = "ETF / Rohstoff-Proxy"
+            result["industry_label"] = proxy_group
+            result["company_summary"] = (
+                "ETF-/Proxy-Modus: Die Analyse behandelt diesen Wert nicht wie ein einzelnes Unternehmen, "
+                "sondern primär als handelbares Instrument. Unternehmens-Fundamentals sind nur eingeschränkt relevant."
+            )
+        elif asset_type == "Index":
+            result["sector_label"] = "Index"
+            result["industry_label"] = "Gesamtmarkt"
+            result["company_summary"] = "Index-Modus: Fokus auf Markttrend, Breite, Momentum, technische Struktur und Risikoüberhitzung."
+        else:
+            result["sector_label"] = result.get("sector_label") or "ETF"
+            result["industry_label"] = result.get("industry_label") or "Fonds/ETF"
+            result["company_summary"] = result.get("company_summary") or "ETF-Modus: Fokus auf Trend, Risiko, Relative Stärke und technische Struktur."
+
+        # Aktien-spezifische Fundamental-Red-Flags entschärfen, damit Rohstoffe/ETFs nicht wegen fehlender Unternehmensdaten falsch belastet werden.
+        raw_flags = result.get("red_flag_items", []) or []
+        filtered = []
+        suppressed = []
+        fundamental_terms = ("gewinn", "ertrag", "umsatz", "marge", "cashflow", "free cash", "roe", "roa", "earnings")
+        for item in raw_flags:
+            txt = str(item).lower()
+            if any(term in txt for term in fundamental_terms):
+                suppressed.append(str(item))
+            else:
+                filtered.append(item)
+        if suppressed:
+            result["red_flag_items"] = filtered
+            result["asset_mode_suppressed_flags"] = suppressed
+            result["top_red_flag"] = filtered[0] if filtered else "-"
+
+        result["Asset_Modellhinweis"] = (
+            f"{asset_type}: Aktien-spezifische Fundamentaldaten werden nur eingeschränkt bewertet; "
+            "technische Struktur, Volatilität, Trend, S/R, Fibonacci und FOMO/Markt-Kontext haben mehr Gewicht."
+        )
+    return result
+
+def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, smart_money_default, strict_mode):
+    result = _core_analyze_stock(
+        ticker=ticker,
+        horizon=horizon,
+        depot=depot,
+        risk_pct=risk_pct,
+        override=override,
+        buy_in_override=buy_in_override,
+        smart_money_default=smart_money_default,
+        strict_mode=strict_mode,
+    )
+    return postprocess_asset_mode_v1534(result, ticker=ticker, requested=_asset_mode_setting_v1534())
+
 try:
     import telegram_utils as _telegram_utils
 except Exception:
@@ -1249,7 +1393,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.32.1"
+APP_VERSION = "v15.34"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1284,6 +1428,8 @@ if "batch_input" not in st.session_state:
 
 if "analysis_mode" not in st.session_state:
     st.session_state.analysis_mode = "Einzelanalyse"
+if "asset_mode" not in st.session_state:
+    st.session_state.asset_mode = "Auto"
 
 if "analysis_mode_run" not in st.session_state:
     st.session_state.analysis_mode_run = "Einzelanalyse"
@@ -13108,6 +13254,7 @@ if workspace_mode:
         _compact_depot = st.session_state.get("depot_widget_main", 10000)
         _compact_risk = st.session_state.get("risk_pct_widget_main", 1.0)
         _compact_buyin = st.session_state.get("buy_in_widget_main", 0.0)
+        _compact_asset_mode = st.session_state.get("asset_mode_widget_main", "Auto")
         _compact_buyin_text = f" · Buy-in {float(_compact_buyin):,.2f}" if float(_compact_buyin or 0) > 0 else ""
         _compact_depot_text = f"{float(_compact_depot):,.0f}".replace(",", ".")
 
@@ -13116,7 +13263,7 @@ if workspace_mode:
             <div class="compact-parameter-strip">
                 <div class="compact-parameter-title">Aktuelle Analyse</div>
                 <div class="compact-parameter-main">{_compact_mode} · {_compact_ticker_text}</div>
-                <div class="compact-parameter-sub">{_compact_horizon} · {_compact_perspective} · Depot {_compact_depot_text} EUR · Risiko {_compact_risk}%{_compact_buyin_text}</div>
+                <div class="compact-parameter-sub">{_compact_horizon} · Asset {_compact_asset_mode} · {_compact_perspective} · Depot {_compact_depot_text} EUR · Risiko {_compact_risk}%{_compact_buyin_text}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -13143,11 +13290,11 @@ if workspace_mode:
             single_input = st.text_input(
                 "Aktie oder Firmenname",
                 value=st.session_state.search_input,
-                placeholder="z. B. AAPL, Apple, Siemens, BASF",
+                placeholder="z. B. AAPL, Apple, Siemens, BASF, GC=F, SI=F",
                 key="search_input_widget_main"
             ).strip()
             st.session_state.search_input = single_input
-            st.caption("Du kannst einen Ticker oder einfach einen Firmennamen eingeben.")
+            st.caption("Du kannst einen Ticker, Firmennamen oder Rohstoff-Future eingeben, z. B. GC=F für Gold oder SI=F für Silber.")
         else:
             batch_input = st.text_area(
                 "Mehrere Ticker oder Firmennamen",
@@ -13171,6 +13318,16 @@ if workspace_mode:
                 ],
                 key="horizon_widget_main"
             )
+            asset_mode = st.selectbox(
+                "Asset-Typ",
+                ["Auto", "Aktie", "ETF", "Commodity / Rohstoff", "Index"],
+                index=["Auto", "Aktie", "ETF", "Commodity / Rohstoff", "Index"].index(st.session_state.get("asset_mode", "Auto") if st.session_state.get("asset_mode", "Auto") in ["Auto", "Aktie", "ETF", "Commodity / Rohstoff", "Index"] else "Auto"),
+                key="asset_mode_widget_main",
+                help="Auto erkennt Futures wie GC=F/SI=F automatisch. Commodity/Rohstoff blendet Aktien-Fundamentals sprachlich zurück und fokussiert technische/marktbezogene Analyse."
+            )
+            st.session_state.asset_mode = asset_mode
+            if asset_mode == "Commodity / Rohstoff":
+                st.caption("Rohstoffmodus: nutze z. B. GC=F für Gold, SI=F für Silber, HG=F für Kupfer, CL=F für WTI Öl. Fundamentale Aktienkennzahlen werden nicht als Unternehmensqualität interpretiert.")
 
             adv1, adv2 = st.columns(2)
             with adv1:

@@ -8928,7 +8928,13 @@ def build_ranking_table(results):
     return df
 
 def compute_chart_df(df, chart_range):
-    if chart_range == "3 Monate":
+    if chart_range == "1 Tag":
+        chart_df = df.tail(1).copy()
+    elif chart_range == "1 Woche":
+        chart_df = df.tail(5).copy()
+    elif chart_range == "1 Monat":
+        chart_df = df.tail(21).copy()
+    elif chart_range == "3 Monate":
         chart_df = df.tail(63).copy()
     elif chart_range == "6 Monate":
         chart_df = df.tail(126).copy()
@@ -8941,6 +8947,50 @@ def compute_chart_df(df, chart_range):
     chart_df["MA50"] = chart_df["Close"].rolling(50).mean()
     chart_df["MA200"] = chart_df["Close"].rolling(200).mean()
     return chart_df
+
+
+def compute_display_chart_df_v1535(df, chart_range, ticker_symbol=None):
+    """
+    Liefert den Chart-DataFrame fuer die sichtbare Chart-Auswahl.
+    Fuer 1 Tag / 1 Woche werden nach Moeglichkeit echte Intraday-Kerzen geladen.
+    Die Kernanalyse bleibt weiterhin auf dem bestehenden Tagesdatenpfad.
+    """
+    intraday_ranges = {
+        "1 Tag": ("1d", "5m"),
+        "1 Woche": ("5d", "30m"),
+    }
+    if chart_range in intraday_ranges and ticker_symbol:
+        try:
+            _period, _interval = intraday_ranges[chart_range]
+            _hist = yf.Ticker(str(ticker_symbol)).history(
+                period=_period,
+                interval=_interval,
+                auto_adjust=True,
+                prepost=False,
+            )
+            if _hist is not None and not _hist.empty and "Close" in _hist.columns:
+                _hist = _hist.copy()
+                # Bei Intraday-Daten kann Volume teilweise fehlen; fuer den Plot robust auffuellen.
+                if "Volume" not in _hist.columns:
+                    _hist["Volume"] = 0
+                for _col in ["Open", "High", "Low", "Close"]:
+                    if _col not in _hist.columns:
+                        _hist[_col] = _hist["Close"]
+                _hist = _hist.dropna(subset=["Close"])
+                if len(_hist) >= 2:
+                    _hist["MA10"] = _hist["Close"].rolling(10).mean()
+                    _hist["MA20"] = _hist["Close"].rolling(20).mean()
+                    _hist["MA50"] = _hist["Close"].rolling(50).mean()
+                    _hist["MA200"] = _hist["Close"].rolling(200).mean()
+                    _hist.attrs["chart_data_note"] = f"Intraday-Chart ({_interval}); Analyse-Score bleibt auf Tagesdaten basiert."
+                    return _hist
+        except Exception:
+            pass
+    # Fallback: Tagesdaten verwenden. Bei 1 Tag/1 Woche dann Tageskerzen.
+    _fallback = compute_chart_df(df, chart_range)
+    if chart_range in intraday_ranges:
+        _fallback.attrs["chart_data_note"] = "Intraday-Daten nicht verfuegbar; Chart zeigt Tagesdaten-Fallback."
+    return _fallback
 
 
 # ---------- Export / Logging Helpers ----------
@@ -15847,8 +15897,8 @@ if result is not None:
     st.markdown("### Chart & Zeitraum")
     chart_range = st.selectbox(
         "Zeitraum",
-        ["3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
-        index=2,
+        ["1 Tag", "1 Woche", "1 Monat", "3 Monate", "6 Monate", "1 Jahr", "3 Jahre"],
+        index=5,
         key=f"chart_range_{ticker}"
     )
 
@@ -15860,7 +15910,7 @@ if result is not None:
     with chart_overlay_col3:
         show_fib_levels = st.checkbox("Fibonacci-Level anzeigen", value=False, key=f"show_fib_{ticker}")
 
-    chart_df = compute_chart_df(df, chart_range)
+    chart_df = compute_display_chart_df_v1535(df, chart_range, ticker)
     chart_sr_basis_df = compute_chart_df(df, "1 Jahr")
     fibonacci_context_pkg = build_fibonacci_context_v1533(chart_sr_basis_df, result if "result" in locals() else {})
     if isinstance(result, dict):
@@ -15876,6 +15926,9 @@ if result is not None:
             chart_structures = None
     fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures, show_fib=show_fib_levels, fib_pkg=fibonacci_context_pkg)
     st.plotly_chart(fig, use_container_width=True)
+    _chart_data_note = getattr(chart_df, "attrs", {}).get("chart_data_note", "") if chart_df is not None else ""
+    if _chart_data_note:
+        st.caption(_chart_data_note)
     _chart_perf_pct, _chart_perf_abs = compute_chart_period_performance(chart_df)
     render_chart_period_performance_block(
         chart_period_label if "chart_period_label" in locals() else (chart_period if "chart_period" in locals() else "Zeitraum"),

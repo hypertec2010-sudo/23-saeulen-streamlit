@@ -4521,7 +4521,7 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
             phase = "Nahe Swing-Hoch / eher spät im Move"
             active_zone = f"Swing-Hoch {swing_high:.2f}; nächster Pullback-Kontext: {levels[0]['Level']} bei {levels[0]['Kurszone']}"
             summary = "Kurs befindet sich weit oben im letzten Swing. Das ist bei starken Leadern nicht automatisch negativ, erhöht aber das Risiko eines späten Einstiegs."
-            action = f"Entry nur mit sauberer Bestaetigung. Naechster sinnvoller Pullback-Kontext: 23,6% bei {levels[0]['Kurszone']} und 38,2% bei {levels[1]['Kurszone']}; bei fehlendem Trigger eher Pullback/Base abwarten."
+            action = f"Ruecklaufbereiche bei {levels[0]['Kurszone']} und {levels[1]['Kurszone']} sind Beobachtungszonen, keine automatischen Kaufmarken. Bei Annaeherung erneut analysieren: Einstieg nur pruefen, wenn Kursreaktion, Candlestick, Volumen und kurzfristiges Timing bestaetigen."
         elif 70 <= position_in_swing < 85:
             label = "konstruktiv"
             phase = "Oberer Swing-Bereich"
@@ -13329,7 +13329,7 @@ if workspace_mode:
             if asset_mode == "Commodity / Rohstoff":
                 st.caption("Rohstoffmodus: nutze z. B. GC=F für Gold, SI=F für Silber, HG=F für Kupfer, CL=F für WTI Öl. Fundamentale Aktienkennzahlen werden nicht als Unternehmensqualität interpretiert.")
 
-            # ---------- v15.34.1: Legacy-Entwicklerschalter aus der UI entfernt ----------
+            # ---------- v15.34.2: Legacy-Entwicklerschalter aus der UI entfernt ----------
             # Diese beiden Einstellungen stammen aus fruehen Kalibrierungsphasen.
             # Smart-Money wird inzwischen automatisch ueber Volumen/Akkumulation/Distribution,
             # FOMO/Smart-Money und weitere Proxies bewertet. Strenges Mapping bleibt als

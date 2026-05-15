@@ -4653,20 +4653,47 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
 
 
 def add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg):
-    """Optionale Fibonacci-Linien im Chart. Bewusst dezent, damit S/R nicht ueberladen wird."""
+    """Optionale Fibonacci-Linien im Chart. Bewusst dezent, aber mit Level UND Kurswert beschriftet."""
     try:
         if not isinstance(fib_pkg, dict):
             return fig
         levels = fib_pkg.get("levels") or []
         if not levels:
             return fig
+
+        def _fmt_fib_price_v1535_1(value):
+            try:
+                v = float(value)
+                if not pd.notna(v):
+                    return "n/a"
+                if abs(v) >= 100:
+                    return f"{v:,.2f}"
+                if abs(v) >= 10:
+                    return f"{v:,.2f}"
+                if abs(v) >= 1:
+                    return f"{v:,.2f}"
+                return f"{v:,.4f}"
+            except Exception:
+                return str(value or "n/a")
+
         for item in levels:
             y = item.get("Kurszone")
             name = item.get("Level")
-            if y is None or str(y) in {"", "n/a", "nan"}:
+            if y is None or str(y).strip().lower() in {"", "n/a", "nan", "none"}:
                 continue
-            fig.add_hline(y=float(y), line_width=1, line_dash="dot", opacity=0.45,
-                          annotation_text=f"Fib {name}", annotation_position="right", row=1, col=1)
+            y_float = float(y)
+            price_txt = _fmt_fib_price_v1535_1(y_float)
+            label = f"Fib {name} · {price_txt}"
+            fig.add_hline(
+                y=y_float,
+                line_width=1,
+                line_dash="dot",
+                opacity=0.45,
+                annotation_text=label,
+                annotation_position="right",
+                row=1,
+                col=1,
+            )
         return fig
     except Exception:
         return fig

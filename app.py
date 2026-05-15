@@ -4676,24 +4676,64 @@ def add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg):
             except Exception:
                 return str(value or "n/a")
 
+        # Plotlys add_hline annotation can truncate labels in some Streamlit/browser
+        # combinations. Therefore we draw the line and the label separately.
+        try:
+            x0 = chart_df.index[0]
+            x1 = chart_df.index[-1]
+        except Exception:
+            x0 = None
+            x1 = None
+
         for item in levels:
             y = item.get("Kurszone")
-            name = item.get("Level")
+            name = str(item.get("Level") or "").strip()
             if y is None or str(y).strip().lower() in {"", "n/a", "nan", "none"}:
                 continue
             y_float = float(y)
             price_txt = _fmt_fib_price_v1535_1(y_float)
-            label = f"Fib {name} · {price_txt}"
-            fig.add_hline(
-                y=y_float,
-                line_width=1,
-                line_dash="dot",
-                opacity=0.45,
-                annotation_text=label,
-                annotation_position="right",
-                row=1,
-                col=1,
-            )
+            label = f"Fib {name} · {price_txt}" if name else f"Fib · {price_txt}"
+
+            if x0 is not None and x1 is not None:
+                fig.add_shape(
+                    type="line",
+                    x0=x0,
+                    x1=x1,
+                    y0=y_float,
+                    y1=y_float,
+                    xref="x",
+                    yref="y",
+                    line=dict(width=1, dash="dot", color="rgba(220,220,220,0.55)"),
+                    row=1,
+                    col=1,
+                )
+                fig.add_annotation(
+                    x=x1,
+                    y=y_float,
+                    xref="x",
+                    yref="y",
+                    text=label,
+                    showarrow=False,
+                    xanchor="right",
+                    yanchor="bottom",
+                    align="right",
+                    font=dict(size=10, color="rgba(245,245,245,0.95)"),
+                    bgcolor="rgba(0,0,0,0.55)",
+                    bordercolor="rgba(255,255,255,0.18)",
+                    borderwidth=1,
+                    borderpad=2,
+                    row=1,
+                    col=1,
+                )
+            else:
+                fig.add_hline(
+                    y=y_float,
+                    line_width=1,
+                    line_dash="dot",
+                    opacity=0.45,
+                    row=1,
+                    col=1,
+                )
         return fig
     except Exception:
         return fig

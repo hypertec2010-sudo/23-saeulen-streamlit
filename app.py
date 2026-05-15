@@ -223,6 +223,45 @@ _COMMODITY_PROXY_MAP_V1534 = {
 }
 _INDEX_TICKER_SET_V1534 = {"^GSPC", "^NDX", "^IXIC", "^DJI", "^RUT", "^GDAXI", "^STOXX50E", "SPY", "QQQ", "DIA", "IWM"}
 
+_COMMODITY_ALIAS_MAP_V1534_3 = {
+    # Edelmetalle / Rohstoffe: freie Texteingaben auf Yahoo-Futures mappen.
+    "gold": "GC=F",
+    "gold future": "GC=F",
+    "gold futures": "GC=F",
+    "goldpreis": "GC=F",
+    "silber": "SI=F",
+    "silver": "SI=F",
+    "silver future": "SI=F",
+    "silver futures": "SI=F",
+    "silberpreis": "SI=F",
+    "kupfer": "HG=F",
+    "copper": "HG=F",
+    "copper future": "HG=F",
+    "copper futures": "HG=F",
+    "platin": "PL=F",
+    "platinum": "PL=F",
+    "palladium": "PA=F",
+    "wti": "CL=F",
+    "wti oil": "CL=F",
+    "crude oil": "CL=F",
+    "oil": "CL=F",
+    "oel": "CL=F",
+    "öl": "CL=F",
+    "brent": "BZ=F",
+    "brent oil": "BZ=F",
+    "natural gas": "NG=F",
+    "erdgas": "NG=F",
+    "gas": "NG=F",
+}
+
+def resolve_commodity_alias_v1534_3(user_input):
+    raw = str(user_input or "").strip()
+    if not raw:
+        return None
+    key = raw.lower().replace("-", " ").replace("_", " ")
+    key = " ".join(key.split())
+    return _COMMODITY_ALIAS_MAP_V1534_3.get(key)
+
 def _asset_mode_setting_v1534():
     try:
         return str(st.session_state.get("asset_mode_widget_main", "Auto"))
@@ -8715,6 +8754,17 @@ def resolve_input_to_ticker(user_input, fallback=None):
 
     raw = user_input.strip()
     upper = raw.upper()
+
+    # v15.34.3: Rohstoffnamen wie "gold", "silver", "copper" nicht über Yahoo-Suche
+    # als falsche Aktien/ETFs auflösen, sondern direkt auf die passenden Futures mappen.
+    commodity_alias = resolve_commodity_alias_v1534_3(raw)
+    if commodity_alias:
+        try:
+            st.session_state["asset_mode_widget_main"] = "Commodity / Rohstoff"
+            st.session_state["asset_mode"] = "Commodity / Rohstoff"
+        except Exception:
+            pass
+        return commodity_alias
 
     if looks_like_real_ticker(raw):
         return upper

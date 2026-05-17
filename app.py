@@ -1415,6 +1415,20 @@ def build_trigger_confluence_v1537(
         )
         components.append(_v1537_component("Marktregime", regime_dir, regime_ctx.get("summary") or f"Regime: {regime_label}.", 0.8))
 
+    # Valides Trade-Setup als eigenes Gate: Konfluenz darf nicht "stark bullisch" wirken,
+    # wenn die eigentliche Trade-Setup-Logik keinen validen Trade freigibt.
+    try:
+        _valid_trade_setup = bool(result.get("valid_trade_setup", True))
+    except Exception:
+        _valid_trade_setup = True
+    if not _valid_trade_setup:
+        components.append(_v1537_component(
+            "Trade-Setup-Gate",
+            "bearish",
+            "Kein valides Trade-Setup: Konfluenz kann konstruktiv sein, aber Entry ist noch nicht freigegeben.",
+            1.55,
+        ))
+
     # Optional volume/smart-money proxy
     try:
         acc = float(result.get("accumulation_score", 0) or 0)
@@ -1468,6 +1482,19 @@ def build_trigger_confluence_v1537(
         label = "bearisch / fragil"
         summary = "Die Trigger-Konfluenz ist klar schwach oder gegenläufig."
         action_hint = "Kein neuer Einstieg; Risiko/Invalidierung priorisieren."
+
+    # Wenn das Trade-Setup-Gate nicht valide ist, darf die Konfluenz nicht als
+    # "stark bullisch" missverstanden werden. Sie beschreibt dann nur, dass
+    # einige Bausteine konstruktiv sind, aber der konkrete Trade noch fehlt.
+    try:
+        _valid_trade_setup = bool(result.get("valid_trade_setup", True))
+    except Exception:
+        _valid_trade_setup = True
+    if not _valid_trade_setup and score >= 58:
+        score = min(score, 57.0)
+        label = "konstruktiv, aber kein valides Trade-Setup"
+        summary = "Mehrere Bausteine sind konstruktiv, aber die Trade-Setup-Prüfung gibt noch keinen Einstieg frei."
+        action_hint = "Nicht als Kaufsignal werten; erst Entry-Zone, Trigger und Invalidierung sauber bestätigen lassen."
 
     top_bull = [c for c in components if c["Richtung"] == "bullish"][:3]
     top_bear = [c for c in components if c["Richtung"] == "bearish"][:3]
@@ -1549,7 +1576,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.0.1",
+        "Export_Version": "v16.0.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1719,7 +1746,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.0.1"
+APP_VERSION = "v16.0.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7722,7 +7749,7 @@ def build_red_flags(
     total_penalty = sum(x["Penalty"] for x in items if x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
     return items, total_penalty
 
-# ---------- v16.0.1: Qualitäts-Red-Flags robust nachsanieren ----------
+# ---------- v16.0.2: Qualitäts-Red-Flags robust nachsanieren ----------
 def sanitize_quality_red_flags_v1601(items):
     """
     Verhindert, dass einzelne kurzzyklische yfinance-Wachstumswerte bei Qualitätswerten

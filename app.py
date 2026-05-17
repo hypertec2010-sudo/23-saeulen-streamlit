@@ -1576,7 +1576,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.0.2",
+        "Export_Version": "v16.0.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1746,7 +1746,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.0.2"
+APP_VERSION = "v16.0.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7698,21 +7698,23 @@ def build_red_flags(
     quality_buffer = (pd.notna(profit_margin) and profit_margin >= 0.12 and cashflow_positive)
 
     if earnings_growth_weak:
-        # Hart nur, wenn das schwache Gewinnwachstum durch echte operative Probleme bestaetigt wird.
-        if margin_negative or cashflow_negative or (earnings_growth_very_weak and revenue_growth_very_weak and not quality_buffer):
-            add_item("Ertrags-Risiko", "Gewinnwachstum stark negativ und operativ bestaetigt", 7)
+        # v16.0.3: Kurzfristiges Gewinnwachstum allein ist KEINE harte Red Flag.
+        # Hart nur bei klarer operativer Bestätigung durch negative Marge oder negativen Cashflow.
+        if margin_negative or cashflow_negative:
+            add_item("Ertrags-Risiko", "Gewinnwachstum stark negativ und durch Marge/Cashflow operativ bestaetigt", 7)
         elif earnings_growth_very_weak:
-            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum sehr schwach; bei Qualitätswerten als Bremse werten", 0)
+            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum sehr schwach; als Bremse beobachten, nicht als harte Red Flag", 0)
         else:
-            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum negativ; als Bremse, nicht als harte Red Flag", 0)
+            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum negativ; als Bremse beobachten, nicht als harte Red Flag", 0)
 
     if margin_negative:
         add_item("Ertrags-Risiko", "Gewinnmarge negativ", 8)
 
     if revenue_growth_very_weak:
-        # Umsatzrueckgang allein ist bei grossen Qualitaetswerten noch kein Problemfall.
-        if margin_thin or cashflow_negative or (earnings_growth_very_weak and not quality_buffer):
-            add_item("Umsatz-/Geschäfts-Risiko", "Umsatzwachstum negativ und operativ bestaetigt", 6)
+        # v16.0.3: Umsatzrückgang allein ist bei Qualitätswerten kein harter Problemfall.
+        # Hart nur bei klarer operativer Bestätigung durch negative Marge oder negativen Cashflow.
+        if margin_negative or cashflow_negative:
+            add_item("Umsatz-/Geschäfts-Risiko", "Umsatzwachstum negativ und durch Marge/Cashflow operativ bestaetigt", 6)
         else:
             add_item("Umsatzdynamik", "Umsatzwachstum negativ; als Bremse beobachten, nicht als harte Red Flag", 0)
     elif revenue_growth_weak:
@@ -7765,9 +7767,11 @@ def sanitize_quality_red_flags_v1601(items):
         category = str(new.get("Kategorie", ""))
         detail = str(new.get("Detail", ""))
         txt = (category + " " + detail).lower()
+        # v16.0.3: "operativ bestaetigt" alleine reicht nicht mehr, weil ältere
+        # Ergebnisobjekte diesen Text pauschal enthielten. Hart bleibt nur, wenn
+        # negative Marge oder negativer Cashflow explizit im Text steht.
         operative_confirmed = any(x in txt for x in [
-            "operativ bestaetigt", "operativ bestätigt", "marge negativ",
-            "cashflow negativ", "freier cashflow negativ", "operativer cashflow negativ"
+            "marge negativ", "cashflow negativ", "freier cashflow negativ", "operativer cashflow negativ"
         ])
 
         if ("gewinnwachstum stark negativ" in txt or "gewinnwachstum negativ" in txt) and not operative_confirmed:

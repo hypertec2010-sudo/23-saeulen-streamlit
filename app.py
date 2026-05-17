@@ -1746,7 +1746,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.0.6"
+APP_VERSION = "v16.0.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -13388,11 +13388,15 @@ if workspace_mode:
             )
             st.session_state.radar_screening_style = radar_screening_style
         with rc3:
+            # v16.0.7: neuer Widget-Key, damit alte Streamlit-Session-Werte (z. B. 15)
+            # nicht weiter als scheinbarer Standard erhalten bleiben. Der sichtbare Default ist 10.
+            radar_max_options = [5, 10, 15, 20]
             radar_max_candidates = st.selectbox(
                 "Max. Kandidaten",
-                options=[10, 15, 20],
-                index=[10, 15, 20].index(st.session_state.radar_max_candidates if st.session_state.radar_max_candidates in [10, 15, 20] else 10),
-                key="radar_max_candidates_widget"
+                options=radar_max_options,
+                index=radar_max_options.index(10),
+                key="radar_max_candidates_widget_v1607",
+                help="Standard: 10. Du kannst die Anzahl bei Bedarf manuell erhöhen oder reduzieren."
             )
             st.session_state.radar_max_candidates = radar_max_candidates
         with rc4:
@@ -13406,10 +13410,10 @@ if workspace_mode:
             "Turnaround": "Bevorzugt frühe Drehkandidaten, Rebounds und technische Erholungsfenster.",
             "Ausgewogen": "Mittelweg zwischen bestätigter Stärke und früheren Chancen.",
         }
-        st.caption(
-            f"Aktiver Screening-Stil: {st.session_state.radar_screening_style} - "
-            f"veraendert nur die Radar-Priorisierung und Reihenfolge, nicht die Einzelanalyse. "
-            f"{style_note_map.get(st.session_state.radar_screening_style, '')}"
+        st.info(
+            f"Screening-Stil: {st.session_state.radar_screening_style}. "
+            f"Der Stil veraendert nur die Radar-Priorisierung und Reihenfolge der Kandidaten, "
+            f"nicht die Einzelanalyse einer Aktie. {style_note_map.get(st.session_state.radar_screening_style, '')}"
         )
 
 

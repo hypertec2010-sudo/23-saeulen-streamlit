@@ -1576,7 +1576,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.0.5",
+        "Export_Version": "v16.0.6",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1746,7 +1746,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.0.5"
+APP_VERSION = "v16.0.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -1845,7 +1845,7 @@ if "radar_universe" not in st.session_state:
     st.session_state.radar_universe = "US Basisliste"
 
 if "radar_max_candidates" not in st.session_state:
-    st.session_state.radar_max_candidates = 15
+    st.session_state.radar_max_candidates = 10
 
 if "radar_custom_input" not in st.session_state:
     st.session_state.radar_custom_input = ""
@@ -13391,7 +13391,7 @@ if workspace_mode:
             radar_max_candidates = st.selectbox(
                 "Max. Kandidaten",
                 options=[10, 15, 20],
-                index=[10, 15, 20].index(st.session_state.radar_max_candidates if st.session_state.radar_max_candidates in [10, 15, 20] else 15),
+                index=[10, 15, 20].index(st.session_state.radar_max_candidates if st.session_state.radar_max_candidates in [10, 15, 20] else 10),
                 key="radar_max_candidates_widget"
             )
             st.session_state.radar_max_candidates = radar_max_candidates
@@ -13406,7 +13406,11 @@ if workspace_mode:
             "Turnaround": "Bevorzugt frühe Drehkandidaten, Rebounds und technische Erholungsfenster.",
             "Ausgewogen": "Mittelweg zwischen bestätigter Stärke und früheren Chancen.",
         }
-        st.caption(f"Aktiver Screening-Stil: {st.session_state.radar_screening_style} - {style_note_map.get(st.session_state.radar_screening_style, '')}")
+        st.caption(
+            f"Aktiver Screening-Stil: {st.session_state.radar_screening_style} - "
+            f"veraendert nur die Radar-Priorisierung und Reihenfolge, nicht die Einzelanalyse. "
+            f"{style_note_map.get(st.session_state.radar_screening_style, '')}"
+        )
 
 
         def radar_score_badge(value):

@@ -1576,7 +1576,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.0.3",
+        "Export_Version": "v16.0.4",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1746,7 +1746,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.0.3"
+APP_VERSION = "v16.0.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7802,6 +7802,74 @@ def sanitize_quality_red_flags_v1601(items):
     return cleaned, total_penalty
 
 
+# ---------- v16.0.4: harte Red Flags final klassifizieren ----------
+def is_hard_red_flag_v1604(item):
+    """Nur operative, score-wirksame Problemfälle als harte Red Flag anzeigen.
+
+    Kurzfristig negatives Gewinn-/Umsatzwachstum aus yfinance darf selbst dann
+    nicht als harte Red Flag durchrutschen, wenn ältere Ergebnisobjekte noch
+    Score_Wirksam=True oder Penalty>=6 enthalten.
+    """
+    if not isinstance(item, dict):
+        return False
+    category = str(item.get("Kategorie", "") or "")
+    detail = str(item.get("Detail", "") or "")
+    txt = (category + " " + detail).lower()
+
+    growth_only_patterns = [
+        "gewinnwachstum stark negativ",
+        "gewinnwachstum negativ",
+        "umsatzwachstum negativ",
+        "umsatzwachstum kurzfristig schwach",
+        "kurzfristiges gewinnwachstum",
+        "ertragsdynamik",
+        "umsatzdynamik",
+    ]
+    operative_patterns = [
+        "gewinnmarge negativ",
+        "marge negativ",
+        "freier cashflow negativ",
+        "operativer cashflow negativ",
+        "cashflow negativ",
+        "verschuldung sehr hoch",
+        "liquiditaet kritisch",
+        "liquidität kritisch",
+    ]
+
+    # Wachstum allein ist nur Hinweis. Hart nur, wenn im selben Text ein echter
+    # operativer Bestätiger steht.
+    if any(p in txt for p in growth_only_patterns) and not any(p in txt for p in operative_patterns):
+        return False
+
+    return bool(item.get("Score_Wirksam", item.get("Penalty", 0) >= 6))
+
+
+def soften_growth_red_flag_item_v1604(item):
+    if not isinstance(item, dict):
+        return item
+    new = dict(item)
+    txt = (str(new.get("Kategorie", "")) + " " + str(new.get("Detail", ""))).lower()
+    if "gewinnwachstum" in txt or "ertrags-risiko" in txt and "gewinn" in txt:
+        new.update({
+            "Kategorie": "Ertragsdynamik",
+            "Status": "🟡",
+            "Schwere": "Hinweis",
+            "Detail": "Kurzfristiges Gewinnwachstum schwach; als Bremse beobachten, nicht als harte Red Flag",
+            "Penalty": 0,
+            "Score_Wirksam": False,
+        })
+    elif "umsatzwachstum" in txt or "umsatz-/geschäfts-risiko" in txt or "umsatz-/geschaefts-risiko" in txt:
+        new.update({
+            "Kategorie": "Umsatzdynamik",
+            "Status": "🟡",
+            "Schwere": "Hinweis",
+            "Detail": "Umsatzwachstum kurzfristig schwach; als Bremse beobachten, nicht als harte Red Flag",
+            "Penalty": 0,
+            "Score_Wirksam": False,
+        })
+    return new
+
+
 def build_decision_explanation(
     setup,
     company,
@@ -10117,8 +10185,15 @@ def _legacy_analyze_stock(
         days_earn=days_earn
     )
     red_flag_items, red_flag_penalty_total = sanitize_quality_red_flags_v1601(red_flag_items)
-    hard_red_flag_items = [x for x in red_flag_items if x.get("Score_Wirksam", x.get("Penalty", 0) >= 6)]
-    soft_red_flag_items = [x for x in red_flag_items if not x.get("Score_Wirksam", x.get("Penalty", 0) >= 6)]
+    # v16.0.4: finale Klassifizierung, damit Growth-only-Hinweise nie als harte Red Flags durchrutschen.
+    red_flag_items = [soften_growth_red_flag_item_v1604(x) for x in (red_flag_items or [])]
+    red_flag_penalty_total = sum(
+        float(x.get("Penalty", 0) or 0)
+        for x in red_flag_items
+        if is_hard_red_flag_v1604(x)
+    )
+    hard_red_flag_items = [x for x in red_flag_items if is_hard_red_flag_v1604(x)]
+    soft_red_flag_items = [x for x in red_flag_items if not is_hard_red_flag_v1604(x)]
     red_flag_notes = [f"{x['Kategorie']}: {x['Detail']}" for x in hard_red_flag_items]
     red_flag_hint_notes = [f"{x['Kategorie']}: {x['Detail']}" for x in soft_red_flag_items]
 

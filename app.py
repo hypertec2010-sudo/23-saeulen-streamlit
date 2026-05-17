@@ -1228,6 +1228,280 @@ def combine_fomo_packages_v1525(stock_pkg, market_pkg):
     }
 
 
+
+
+# ---------- v15.37: Trigger-Konfluenz across all analysis layers ----------
+def _v1537_norm_text(value):
+    return str(value or "").strip().lower()
+
+
+def _v1537_component(name, direction, text, weight=1.0):
+    direction = str(direction or "neutral").lower()
+    if direction not in {"bullish", "neutral", "bearish"}:
+        direction = "neutral"
+    try:
+        weight = float(weight)
+    except Exception:
+        weight = 1.0
+    return {"Baustein": name, "Richtung": direction, "Lesart": str(text or "-"), "Gewicht": round(weight, 2)}
+
+
+def _v1537_direction_label(direction):
+    d = str(direction or "neutral").lower()
+    if d == "bullish":
+        return "bullisch"
+    if d == "bearish":
+        return "bremsend"
+    return "neutral"
+
+
+def _v1537_eval_label_text(label, bullish_terms=None, bearish_terms=None, neutral_terms=None):
+    t = _v1537_norm_text(label)
+    bullish_terms = bullish_terms or []
+    bearish_terms = bearish_terms or []
+    neutral_terms = neutral_terms or []
+    if any(term in t for term in bearish_terms):
+        return "bearish"
+    if any(term in t for term in bullish_terms):
+        return "bullish"
+    if any(term in t for term in neutral_terms):
+        return "neutral"
+    return "neutral"
+
+
+def build_trigger_confluence_v1537(
+    *,
+    final_action_label="-",
+    final_timing_label="-",
+    final_risk_label="-",
+    conflict_pkg=None,
+    daily_sig=None,
+    hourly_sig=None,
+    ultra_signal=None,
+    final_ultra_label="-",
+    regime_ctx=None,
+    fomo_pkg=None,
+    stock_fomo_pkg=None,
+    market_fomo_pkg=None,
+    fibonacci_pkg=None,
+    wave_pkg=None,
+    result=None,
+):
+    """Soft confluence layer: checks whether the most important triggers point in one direction.
+    It does not replace the existing model. It makes the combined signal direction explicit.
+    """
+    result = result or {}
+    conflict_pkg = conflict_pkg or {}
+    regime_ctx = regime_ctx or {}
+    fomo_pkg = fomo_pkg or {}
+    stock_fomo_pkg = stock_fomo_pkg or {}
+    market_fomo_pkg = market_fomo_pkg or {}
+    fibonacci_pkg = fibonacci_pkg or {}
+    wave_pkg = wave_pkg or {}
+    components = []
+
+    # 1) Operative Aktion / Timing
+    action_t = _v1537_norm_text(final_action_label)
+    if any(x in action_t for x in ["kaufen", "aufstocken"]):
+        components.append(_v1537_component("Aktion", "bullish", f"Aktion steht auf {final_action_label}.", 1.2))
+    elif any(x in action_t for x in ["vorbereiten", "prüfen", "pruefen"]):
+        components.append(_v1537_component("Aktion", "neutral", f"Aktion ist {final_action_label}: Setup beobachten, Trigger abwarten.", 1.0))
+    elif any(x in action_t for x in ["reduz", "exit", "verkauf", "absichern"]):
+        components.append(_v1537_component("Aktion", "bearish", f"Aktion ist defensiv: {final_action_label}.", 1.2))
+    else:
+        components.append(_v1537_component("Aktion", "neutral", f"Aktion: {final_action_label}.", 0.8))
+
+    timing_dir = _v1537_eval_label_text(
+        final_timing_label,
+        bullish_terms=["reif", "bestätigt", "bestaetigt", "aktiv", "stimmig"],
+        bearish_terms=["schwach", "zu früh", "zu frueh", "nicht", "warten"],
+    )
+    components.append(_v1537_component("Timing", timing_dir, f"Timing: {final_timing_label}.", 1.0))
+
+    risk_dir = _v1537_eval_label_text(
+        final_risk_label,
+        bullish_terms=["stabil", "niedrig", "ruhig"],
+        bearish_terms=["hoch", "erhöht", "erhoeht", "riskant", "kritisch"],
+    )
+    components.append(_v1537_component("Risiko", risk_dir, f"Risiko: {final_risk_label}.", 1.0))
+
+    # 2) Konflikt / Candles / Ultra
+    conflict_label = str(conflict_pkg.get("label", "-") or "-")
+    conflict_dir = _v1537_eval_label_text(
+        conflict_label,
+        bullish_terms=["konsistent"],
+        bearish_terms=["widersprüch", "widerspruech"],
+        neutral_terms=["gemischt"],
+    )
+    components.append(_v1537_component("Signal-Konflikt", conflict_dir, conflict_pkg.get("summary") or f"Signal-Konflikt: {conflict_label}.", 1.15))
+
+    for nm, sig, wt in [("Tageskerze", daily_sig, 0.8), ("Stundenkerze", hourly_sig, 0.55)]:
+        if isinstance(sig, dict):
+            tone = _v1537_norm_text(sig.get("tone") or sig.get("bias"))
+            if "bull" in tone or "grün" in tone or "green" in tone:
+                d = "bullish"
+            elif "bear" in tone or "rot" in tone or "red" in tone:
+                d = "bearish"
+            else:
+                d = "neutral"
+            txt = f"{sig.get('bias', sig.get('pattern', '-'))} · Bestätigung: {sig.get('confirmation', '-')}"
+            components.append(_v1537_component(nm, d, txt, wt))
+
+    ultra_label = str(final_ultra_label or "") if str(final_ultra_label or "").strip() not in {"", "-"} else str((ultra_signal or {}).get("label", "-"))
+    ultra_dir = _v1537_eval_label_text(
+        ultra_label,
+        bullish_terms=["bull", "positiv", "kauf", "reaktion"],
+        bearish_terms=["bear", "negativ", "verkauf", "bruch"],
+        neutral_terms=["kein", "neutral", "beobachtung"],
+    )
+    components.append(_v1537_component("Ultra/SR", ultra_dir, f"Ultra-Kurzfrist: {ultra_label}.", 0.9))
+
+    # 3) New layers: Fib / wave structure / MA10 / FOMO / regime
+    fib_conf_label = str(fibonacci_pkg.get("confirmation_label") or fibonacci_pkg.get("Fib-Bestaetigung") or "")
+    fib_phase = str(fibonacci_pkg.get("phase") or fibonacci_pkg.get("label") or "-")
+    if fib_conf_label:
+        fib_dir = _v1537_eval_label_text(
+            fib_conf_label,
+            bullish_terms=["bestätigt", "bestaetigt", "erste", "reaktion"],
+            bearish_terms=["bruch", "negativ", "keine"],
+            neutral_terms=["keine aktive", "nicht", "beobachten"],
+        )
+        if "keine aktive" in _v1537_norm_text(fib_conf_label):
+            fib_dir = "neutral"
+        components.append(_v1537_component("Fibonacci", fib_dir, f"{fib_phase} · {fib_conf_label}.", 0.85))
+    elif fibonacci_pkg:
+        components.append(_v1537_component("Fibonacci", "neutral", f"{fib_phase}: Orientierung, aber keine aktive Bestätigung.", 0.55))
+
+    wave_conf_label = str(wave_pkg.get("confirmation_label") or wave_pkg.get("Struktur_Trigger_Label") or "")
+    wave_label = str(wave_pkg.get("label") or wave_pkg.get("phase") or "-")
+    if wave_conf_label:
+        wave_dir = _v1537_eval_label_text(
+            wave_conf_label,
+            bullish_terms=["bestätigt", "bestaetigt", "erste", "reclaim", "reaktion"],
+            bearish_terms=["bruch", "angeschlagen", "bear", "negativ"],
+            neutral_terms=["kein", "unter beobachtung", "noch nicht"],
+        )
+        components.append(_v1537_component("Struktur", wave_dir, f"{wave_label} · {wave_conf_label}.", 0.85))
+    elif wave_pkg:
+        components.append(_v1537_component("Struktur", "neutral", f"{wave_label}: Strukturkontext ohne aktiven Trigger.", 0.55))
+
+    ma10_label = str(result.get("ma10_timing_label") or result.get("MA10_Timing") or "")
+    if ma10_label:
+        ma10_dir = _v1537_eval_label_text(
+            ma10_label,
+            bullish_terms=["konstruktiv", "hält", "haelt", "reclaim"],
+            bearish_terms=["angeschlagen", "unter", "bruch"],
+            neutral_terms=["gedehnt", "prüfen", "pruefen", "neutral"],
+        )
+        components.append(_v1537_component("MA10", ma10_dir, result.get("ma10_timing_text") or f"MA10: {ma10_label}.", 0.75))
+
+    fomo_label = str(fomo_pkg.get("label") or "")
+    if fomo_label:
+        fomo_dir = _v1537_eval_label_text(
+            fomo_label,
+            bullish_terms=["unauffällig", "unauffaellig"],
+            bearish_terms=["kritisch", "erhöht", "erhoeht"],
+            neutral_terms=["beobachten"],
+        )
+        components.append(_v1537_component("FOMO/Smart Money", fomo_dir, f"Gesamt-FOMO: {fomo_label}; Aktie: {stock_fomo_pkg.get('label','-')}, Markt: {market_fomo_pkg.get('label','-')}.", 1.05))
+
+    regime_label = str(regime_ctx.get("label") or result.get("market_regime_label") or result.get("regime_label") or "")
+    if regime_label:
+        regime_dir = _v1537_eval_label_text(
+            regime_label,
+            bullish_terms=["positiv"],
+            bearish_terms=["risk-off", "negativ", "schwach"],
+            neutral_terms=["neutral"],
+        )
+        components.append(_v1537_component("Marktregime", regime_dir, regime_ctx.get("summary") or f"Regime: {regime_label}.", 0.8))
+
+    # Optional volume/smart-money proxy
+    try:
+        acc = float(result.get("accumulation_score", 0) or 0)
+        dist = float(result.get("distribution_pressure_score", result.get("distribution_score", 0)) or 0)
+        if max(acc, dist) > 0:
+            if acc >= dist + 15:
+                d = "bullish"
+                txt = f"Akkumulation liegt klar über Distribution ({acc:.0f} vs. {dist:.0f})."
+            elif dist >= acc + 15:
+                d = "bearish"
+                txt = f"Distribution liegt klar über Akkumulation ({dist:.0f} vs. {acc:.0f})."
+            else:
+                d = "neutral"
+                txt = f"Volumenbild gemischt ({acc:.0f} Akkumulation / {dist:.0f} Distribution)."
+            components.append(_v1537_component("Volumen/Smart Money", d, txt, 0.75))
+    except Exception:
+        pass
+
+    total_weight = sum(float(c.get("Gewicht", 1) or 1) for c in components) or 1.0
+    raw = 0.0
+    bull = bear = neutral = 0
+    for c in components:
+        w = float(c.get("Gewicht", 1) or 1)
+        if c["Richtung"] == "bullish":
+            raw += w
+            bull += 1
+        elif c["Richtung"] == "bearish":
+            raw -= w
+            bear += 1
+        else:
+            neutral += 1
+    score = round(max(0, min(100, (raw + total_weight) / (2 * total_weight) * 100)), 1)
+
+    if score >= 72 and bear <= 1:
+        label = "stark bullisch"
+        summary = "Viele Trigger bestätigen dieselbe bullische Richtung. Trotzdem Entry-Zone und Invalidierung beachten."
+        action_hint = "Aktiv prüfen; bei sauberem Trigger kann offensiver gehandelt werden."
+    elif score >= 58:
+        label = "bullisch, aber unvollständig"
+        summary = "Die Mehrheit der Bausteine ist konstruktiv, aber nicht alles bestätigt."
+        action_hint = "Vorbereiten oder selektiv handeln; fehlende Bestätigung nicht ignorieren."
+    elif score >= 43:
+        label = "gemischt"
+        summary = "Die Signale ziehen nicht eindeutig in eine Richtung."
+        action_hint = "Nicht erzwingen; Trigger und Support-/Entry-Zone abwarten."
+    elif score >= 28:
+        label = "defensiv"
+        summary = "Mehrere Bausteine bremsen oder bestätigen den Einstieg nicht."
+        action_hint = "Defensiver bleiben; erst bei neuer Bestätigung wieder prüfen."
+    else:
+        label = "bearisch / fragil"
+        summary = "Die Trigger-Konfluenz ist klar schwach oder gegenläufig."
+        action_hint = "Kein neuer Einstieg; Risiko/Invalidierung priorisieren."
+
+    top_bull = [c for c in components if c["Richtung"] == "bullish"][:3]
+    top_bear = [c for c in components if c["Richtung"] == "bearish"][:3]
+    counts_text = f"{bull} bullisch · {neutral} neutral · {bear} bremsend"
+    return {
+        "label": label,
+        "score": score,
+        "summary": summary,
+        "action_hint": action_hint,
+        "counts_text": counts_text,
+        "bullish_count": bull,
+        "neutral_count": neutral,
+        "bearish_count": bear,
+        "components": components,
+        "top_bullish": top_bull,
+        "top_bearish": top_bear,
+    }
+
+
+def _v1537_confluence_class(label):
+    t = _v1537_norm_text(label)
+    if "stark" in t:
+        return "confluence-strong"
+    if "bullisch" in t:
+        return "confluence-bullish"
+    if "gemischt" in t:
+        return "confluence-mixed"
+    if "defensiv" in t:
+        return "confluence-defensive"
+    if "bear" in t or "fragil" in t:
+        return "confluence-bearish"
+    return "confluence-mixed"
+
+
 def enrich_single_export_df_v1516(export_df, result, context=None):
     """
     Erweitert den bestehenden logging_utils.build_export_df um Felder,
@@ -1275,7 +1549,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.33.2",
+        "Export_Version": "v15.37",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1318,6 +1592,11 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "FOMO_Aktie_Grund": ((result or {}).get("stock_fomo_pkg") or {}).get("summary"),
         "FOMO_Markt_Label": ((result or {}).get("market_fomo_pkg") or {}).get("label"),
         "FOMO_Markt_Grund": ((result or {}).get("market_fomo_pkg") or {}).get("summary"),
+        "Trigger_Konfluenz_Label": ((result or {}).get("trigger_confluence_pkg") or {}).get("label"),
+        "Trigger_Konfluenz_Score": ((result or {}).get("trigger_confluence_pkg") or {}).get("score"),
+        "Trigger_Konfluenz_Summary": ((result or {}).get("trigger_confluence_pkg") or {}).get("summary"),
+        "Trigger_Konfluenz_Handlung": ((result or {}).get("trigger_confluence_pkg") or {}).get("action_hint"),
+        "Trigger_Konfluenz_Counts": ((result or {}).get("trigger_confluence_pkg") or {}).get("counts_text"),
         "Setup_Typ": (result or {}).get("setup_type"),
         "Watchlist_Prioritaet": (result or {}).get("watchlist_priority"),
         "Watchlist_Prioritaet_Score": (result or {}).get("watchlist_priority_score"),
@@ -16612,6 +16891,25 @@ if result is not None:
     market_fomo_pkg_ui = result.get("market_fomo_pkg") or build_market_fomo_package_v1525(market_info if "market_info" in locals() else {})
     fomo_pkg_ui = result.get("fomo_smart_money_pkg") or combine_fomo_packages_v1525(stock_fomo_pkg_ui, market_fomo_pkg_ui)
 
+    trigger_confluence_pkg = build_trigger_confluence_v1537(
+        final_action_label=final_action_label if "final_action_label" in locals() else "-",
+        final_timing_label=final_timing_label if "final_timing_label" in locals() else "-",
+        final_risk_label=final_risk_label if "final_risk_label" in locals() else "-",
+        conflict_pkg=conflict_pkg if "conflict_pkg" in locals() else {},
+        daily_sig=daily_sig if "daily_sig" in locals() and isinstance(daily_sig, dict) else None,
+        hourly_sig=hourly_sig if "hourly_sig" in locals() and isinstance(hourly_sig, dict) else None,
+        ultra_signal=ultra_signal if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else None,
+        final_ultra_label=final_ultra_label if "final_ultra_label" in locals() else "-",
+        regime_ctx=regime_ctx if "regime_ctx" in locals() else {},
+        fomo_pkg=fomo_pkg_ui,
+        stock_fomo_pkg=stock_fomo_pkg_ui,
+        market_fomo_pkg=market_fomo_pkg_ui,
+        fibonacci_pkg=result.get("fibonacci_context_pkg") or {},
+        wave_pkg=result.get("wave_structure_pkg") or {},
+        result=result,
+    )
+    result["trigger_confluence_pkg"] = trigger_confluence_pkg
+
     # FOMO/Smart-Money-Warnungen sollen nicht nur dekorativ sein: Bei kritischer
     # Lage wird ein Sofortkauf in der Anzeige defensiver auf "vorbereiten" gesetzt.
     if not position_mode and str(final_action_label).strip().lower() in {"kaufen", "buy"}:
@@ -16666,6 +16964,51 @@ if result is not None:
                 unsafe_allow_html=True,
             )
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------- v15.37: Trigger-Konfluenz als zentraler Richtungscheck ----------
+    _tc = trigger_confluence_pkg if "trigger_confluence_pkg" in locals() and isinstance(trigger_confluence_pkg, dict) else {}
+    _tc_cls = _v1537_confluence_class(_tc.get("label", "gemischt"))
+    _tc_label = str(_tc.get("label", "gemischt")).capitalize()
+    _tc_score = _tc.get("score", "-")
+    _tc_counts = _tc.get("counts_text", "-")
+    _tc_summary = str(_tc.get("summary", "-"))
+    _tc_action = str(_tc.get("action_hint", "-"))
+    st.markdown(
+        f"""
+        <style>
+        .trigger-confluence-box{{margin:.7rem 0 .95rem 0; padding:.9rem 1rem; border-radius:18px; border:1px solid rgba(148,163,184,.22); background:rgba(15,23,42,.26);}}
+        .trigger-confluence-box.confluence-strong{{border-color:rgba(34,197,94,.42); background:linear-gradient(135deg,rgba(34,197,94,.16),rgba(15,23,42,.30));}}
+        .trigger-confluence-box.confluence-bullish{{border-color:rgba(59,130,246,.40); background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(15,23,42,.30));}}
+        .trigger-confluence-box.confluence-mixed{{border-color:rgba(234,179,8,.36); background:linear-gradient(135deg,rgba(234,179,8,.12),rgba(15,23,42,.30));}}
+        .trigger-confluence-box.confluence-defensive{{border-color:rgba(249,115,22,.40); background:linear-gradient(135deg,rgba(249,115,22,.14),rgba(15,23,42,.30));}}
+        .trigger-confluence-box.confluence-bearish{{border-color:rgba(239,68,68,.44); background:linear-gradient(135deg,rgba(239,68,68,.16),rgba(15,23,42,.30));}}
+        .trigger-confluence-kicker{{font-size:.70rem; letter-spacing:.13em; text-transform:uppercase; color:#9ca3af; font-weight:800;}}
+        .trigger-confluence-main{{display:flex; gap:.75rem; align-items:baseline; flex-wrap:wrap; margin-top:.25rem;}}
+        .trigger-confluence-label{{font-size:1.05rem; font-weight:850; color:#fff;}}
+        .trigger-confluence-score{{font-size:.86rem; color:#d1d5db;}}
+        .trigger-confluence-text{{font-size:.86rem; line-height:1.4; color:#d1d5db; margin-top:.35rem;}}
+        </style>
+        <div class="trigger-confluence-box {_tc_cls}">
+            <div class="trigger-confluence-kicker">Trigger-Konfluenz</div>
+            <div class="trigger-confluence-main"><div class="trigger-confluence-label">{html.escape(_tc_label)}</div><div class="trigger-confluence-score">{html.escape(str(_tc_score))}/100 · {html.escape(_tc_counts)}</div></div>
+            <div class="trigger-confluence-text">{html.escape(_tc_summary)} {html.escape(_tc_action)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.expander("Trigger-Konfluenz im Detail", expanded=False):
+        st.caption("Prüft, ob Aktion, Timing, Candles, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime in dieselbe Richtung zeigen. Nicht als eigener Score-Ersatz, sondern als Richtungscheck.")
+        _rows = []
+        for _c in (_tc.get("components") or []):
+            _rows.append({
+                "Baustein": _c.get("Baustein", "-"),
+                "Richtung": _v1537_direction_label(_c.get("Richtung", "neutral")),
+                "Lesart": _c.get("Lesart", "-"),
+            })
+        if _rows:
+            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info("Keine Trigger-Konfluenz-Daten verfügbar.")
 
     # ---------- v15.27: zentrale Handlungsbox und klare Pre-/Post-Entry-Sprache ----------
     try:

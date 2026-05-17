@@ -4574,7 +4574,7 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         nearest_dist = nearest.get("Abstand_%", "n/a")
         nearest_lage = nearest.get("Lage", "n/a")
 
-        # v15.36: automatische Fib-Bestaetigungspruefung.
+        # v15.36.1: automatische Fib-Bestaetigungspruefung.
         # Fibonacci bleibt weicher Kontext, aber die App bewertet, ob an der Zone
         # bereits eine sichtbare Reaktion entsteht oder ob nur Beobachten sinnvoll ist.
         confirm_score = 0.0
@@ -4761,7 +4761,13 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
             "extensions": extensions,
             "drivers": drivers[:5],
             "zones": zones,
-            "plain_hint": plain_hint,
+            "plain_hint": fib_plain_hint,
+            "confirmation_label": confirmation_label,
+            "confirmation_score": confirm_score,
+            "confirmation_text": confirmation_text,
+            "confirmation_action": confirmation_action,
+            "confirmation_drivers": confirm_drivers[:8],
+            "confirmation_near_zone": bool(near_zone or slightly_near_zone),
             "metrics": {
                 "Swing_Low": round(swing_low, 2),
                 "Swing_High": round(swing_high, 2),
@@ -16207,25 +16213,33 @@ if result is not None:
             st.markdown("**Fibonacci-Kontext / Pullback-Zonen (weich, nicht im Score)**")
             _fib_drivers = fib_pkg.get("drivers", []) if isinstance(fib_pkg, dict) else []
             _fib_driver_text = " · ".join([str(x) for x in _fib_drivers[:3]]) if _fib_drivers else "keine dominanten Fibonacci-Treiber"
+            _fib_near = bool(fib_pkg.get("confirmation_near_zone")) if isinstance(fib_pkg, dict) else False
+            _fib_conf_label = str(fib_pkg.get("confirmation_label", "nur beobachten") if isinstance(fib_pkg, dict) else "nur beobachten").strip()
+            _fib_conf_score = fib_pkg.get("confirmation_score", 0) if isinstance(fib_pkg, dict) else 0
+            if _fib_near:
+                _fib_conf_line = f"{_fib_conf_label.capitalize()} ({_fib_conf_score}/100)"
+                _fib_action_line = str(fib_pkg.get("confirmation_action", fib_pkg.get("action_hint", "-")))
+                _fib_status_line = str(fib_pkg.get("confirmation_text", "-"))
+            else:
+                _fib_conf_line = "Aktuell keine aktive Fib-Reaktionszone"
+                _fib_status_line = str(fib_pkg.get("plain_hint", fib_pkg.get("summary", "-")))
+                _fib_action_line = str(fib_pkg.get("action_hint", "Nicht aus Fibonacci allein handeln."))
             st.markdown(
                 f"""
                 <div class="section-card" style="padding:0.85rem 0.95rem;margin:0.55rem 0 0.85rem 0;">
                     <div class="premium-title">{html.escape(str(fib_pkg.get('phase', 'Nicht belastbar')))}</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(fib_pkg.get('label', 'n/a')).capitalize())}</div>
-                    <div class="premium-sub">{html.escape(str(fib_pkg.get('summary', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Aktive Zone:</b> {html.escape(str(fib_pkg.get('active_zone_text', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;"><b>Konkrete Lesart:</b> {html.escape(str(fib_pkg.get('plain_hint', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;"><b>Handlung:</b> {html.escape(str(fib_pkg.get('action_hint', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;"><b>Fib-Bestaetigung:</b> {html.escape(str(fib_pkg.get('confirmation_label', 'nicht geprueft')).capitalize())} ({html.escape(str(fib_pkg.get('confirmation_score', 0)))}/100)</div>
-                    <div class="premium-sub" style="margin-top:4px;">{html.escape(str(fib_pkg.get('confirmation_text', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:4px;"><b>Jetzt tun:</b> {html.escape(str(fib_pkg.get('confirmation_action', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Lesart:</b> {html.escape(_fib_status_line)}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Bestätigung:</b> {html.escape(_fib_conf_line)}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Jetzt tun:</b> {html.escape(_fib_action_line)}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Treiber:</b> {html.escape(_fib_driver_text)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
             _fib_confirm_drivers = fib_pkg.get("confirmation_drivers", []) if isinstance(fib_pkg, dict) else []
-            if _fib_confirm_drivers:
+            if _fib_near and _fib_confirm_drivers:
                 _fib_confirm_rows = [{"Pruefung": str(x)} for x in _fib_confirm_drivers[:6]]
                 _render_wrapped_detail_table_v1533(_fib_confirm_rows, ["Pruefung"], table_class="wrapped-fib-table")
             fib_levels = fib_pkg.get("levels", []) if isinstance(fib_pkg, dict) else []

@@ -1549,7 +1549,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v15.37",
+        "Export_Version": "v16.0",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -7657,30 +7657,40 @@ def build_red_flags(
             "Score_Wirksam": is_hard_red_flag
         })
 
-    # v15.23.2: Earnings-Growth nicht mehr als harte Einzel-Red-Flag werten.
-    # yfinance `earningsGrowth` ist oft ein kurzfristiger Quartals-/YoY-Wert und kann
-    # bei Qualitätsunternehmen durch Basiseffekte/Sondereffekte temporär negativ sein.
-    # Deshalb: alleine nur gelbe Bremse; rot erst zusammen mit schwachem Umsatz,
-    # negativer Marge oder negativem Cashflow.
+    # v16.0: Qualitätsunternehmen nicht durch einzelne kurzfristige yfinance-Wachstumswerte hart bestrafen.
+    # earningsGrowth/revenueGrowth sind oft kurzzyklische YoY-/Quartalswerte. Bei profitablen Unternehmen
+    # mit positiven Cashflows sollen sie als Bremse/Hinweis erscheinen, aber nicht als harte Red Flag.
     earnings_growth_weak = pd.notna(earnings_growth) and earnings_growth < -0.15
     earnings_growth_very_weak = pd.notna(earnings_growth) and earnings_growth < -0.35
-    revenue_growth_weak_for_earnings = pd.notna(revenue_growth) and revenue_growth < -0.03
-    margin_weak_for_earnings = pd.notna(profit_margin) and profit_margin < 0
-    cashflow_weak_for_earnings = (pd.notna(fcf) and fcf < 0) or (pd.notna(op_cf) and op_cf < 0)
+    revenue_growth_weak = pd.notna(revenue_growth) and revenue_growth < -0.03
+    revenue_growth_very_weak = pd.notna(revenue_growth) and revenue_growth < -0.10
+    margin_negative = pd.notna(profit_margin) and profit_margin < 0
+    margin_thin = pd.notna(profit_margin) and profit_margin < 0.05
+    cashflow_negative = (pd.notna(fcf) and fcf < 0) or (pd.notna(op_cf) and op_cf < 0)
+    cashflow_positive = (pd.notna(fcf) and fcf > 0) or (pd.notna(op_cf) and op_cf > 0)
+    quality_buffer = (pd.notna(profit_margin) and profit_margin >= 0.12 and cashflow_positive)
 
     if earnings_growth_weak:
-        if revenue_growth_weak_for_earnings or margin_weak_for_earnings or cashflow_weak_for_earnings:
-            add_item("Ertrags-Risiko", "Gewinnwachstum stark negativ mit operativer Bestaetigung", 7)
+        # Hart nur, wenn das schwache Gewinnwachstum durch echte operative Probleme bestaetigt wird.
+        if margin_negative or cashflow_negative or (earnings_growth_very_weak and revenue_growth_very_weak and not quality_buffer):
+            add_item("Ertrags-Risiko", "Gewinnwachstum stark negativ und operativ bestaetigt", 7)
         elif earnings_growth_very_weak:
-            # Nur Hinweis, keine harte Red Flag und kein starker Score-Abzug.
-            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum sehr schwach", 0)
+            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum sehr schwach; bei Qualitätswerten als Bremse werten", 0)
         else:
-            # Nur Hinweis, keine harte Red Flag und kein Score-Abzug.
-            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum negativ", 0)
-    if pd.notna(profit_margin) and profit_margin < 0:
+            add_item("Ertragsdynamik", "Kurzfristiges Gewinnwachstum negativ; als Bremse, nicht als harte Red Flag", 0)
+
+    if margin_negative:
         add_item("Ertrags-Risiko", "Gewinnmarge negativ", 8)
-    if pd.notna(revenue_growth) and revenue_growth < -0.10:
-        add_item("Umsatz-/Geschäfts-Risiko", "Umsatzwachstum negativ", 6)
+
+    if revenue_growth_very_weak:
+        # Umsatzrueckgang allein ist bei grossen Qualitaetswerten noch kein Problemfall.
+        if margin_thin or cashflow_negative or (earnings_growth_very_weak and not quality_buffer):
+            add_item("Umsatz-/Geschäfts-Risiko", "Umsatzwachstum negativ und operativ bestaetigt", 6)
+        else:
+            add_item("Umsatzdynamik", "Umsatzwachstum negativ; als Bremse beobachten, nicht als harte Red Flag", 0)
+    elif revenue_growth_weak:
+        add_item("Umsatzdynamik", "Umsatzwachstum kurzfristig schwach", 0)
+
     if pd.notna(fcf) and fcf < 0:
         add_item("Cashflow-Risiko", "Freier Cashflow negativ", 6)
     if pd.notna(op_cf) and op_cf < 0:

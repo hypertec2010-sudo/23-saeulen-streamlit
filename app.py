@@ -1302,6 +1302,10 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Fibonacci_Zone": ((result or {}).get("fibonacci_context_pkg") or {}).get("active_zone_text"),
         "Fibonacci_Swing_Low": ((result or {}).get("fibonacci_context_pkg") or {}).get("swing_low"),
         "Fibonacci_Swing_High": ((result or {}).get("fibonacci_context_pkg") or {}).get("swing_high"),
+        "Fibonacci_Bestaetigung": ((result or {}).get("fibonacci_context_pkg") or {}).get("confirmation_label"),
+        "Fibonacci_Bestaetigung_Score": ((result or {}).get("fibonacci_context_pkg") or {}).get("confirmation_score"),
+        "Fibonacci_Bestaetigung_Text": ((result or {}).get("fibonacci_context_pkg") or {}).get("confirmation_text"),
+        "Fibonacci_Bestaetigung_Handlung": ((result or {}).get("fibonacci_context_pkg") or {}).get("confirmation_action"),
         "FOMO_Smart_Money_Label": ((result or {}).get("fomo_smart_money_pkg") or {}).get("label"),
         "FOMO_Smart_Money_Score": ((result or {}).get("fomo_smart_money_pkg") or {}).get("score"),
         "FOMO_Smart_Money_Summary": ((result or {}).get("fomo_smart_money_pkg") or {}).get("summary"),
@@ -4281,6 +4285,11 @@ def build_wave_structure_context_v1532(chart_df=None, result=None):
         "drivers": [],
         "zones": [],
         "plain_hint": "Dieser Kontext beschreibt nur die Struktur des letzten Moves. Er ist kein eigenständiges Kauf-/Verkaufssignal.",
+        "confirmation_label": "nicht geprüft",
+        "confirmation_score": 0,
+        "confirmation_text": "Noch keine automatische Bestätigungsprüfung verfügbar.",
+        "confirmation_action": "Bei Annäherung an ein Fibonacci-Level erneut auf Kursreaktion, Kerze, Volumen und kurzfristiges Timing prüfen.",
+        "confirmation_drivers": [],
         "is_score_relevant": False,
     }
     try:
@@ -4468,6 +4477,11 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         "drivers": [],
         "zones": [],
         "plain_hint": "Dieser Kontext beschreibt nur die Struktur des letzten Moves. Er ist kein eigenständiges Kauf-/Verkaufssignal.",
+        "confirmation_label": "nicht geprüft",
+        "confirmation_score": 0,
+        "confirmation_text": "Noch keine automatische Bestätigungsprüfung verfügbar.",
+        "confirmation_action": "Bei Annäherung an ein Fibonacci-Level erneut auf Kursreaktion, Kerze, Volumen und kurzfristiges Timing prüfen.",
+        "confirmation_drivers": [],
         "is_score_relevant": False,
     }
     try:
@@ -4490,6 +4504,34 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         swing_high = float(hh_window.max())
         swing_low = float(ll_window.min())
         price = float(close.iloc[-1])
+        ma10 = float(close.rolling(10).mean().iloc[-1]) if len(close) >= 10 else np.nan
+        ma20 = float(close.rolling(20).mean().iloc[-1]) if len(close) >= 20 else np.nan
+        ma50 = float(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else np.nan
+        dist_ma10 = ((price / ma10) - 1.0) * 100.0 if pd.notna(ma10) and ma10 else np.nan
+        dist_ma20 = ((price / ma20) - 1.0) * 100.0 if pd.notna(ma20) and ma20 else np.nan
+        vol_ratio = np.nan
+        try:
+            if "Volume" in dff.columns:
+                vol_s = pd.to_numeric(dff["Volume"], errors="coerce").dropna()
+                if len(vol_s) >= 21 and float(vol_s.tail(20).mean()) > 0:
+                    vol_ratio = float(vol_s.iloc[-1]) / float(vol_s.tail(20).mean())
+        except Exception:
+            vol_ratio = np.nan
+        last_open = np.nan
+        last_high = np.nan
+        last_low = np.nan
+        prev_high = np.nan
+        prev_close = np.nan
+        try:
+            open_col = "Open" if "Open" in dff.columns else close_col
+            open_s = pd.to_numeric(dff[open_col], errors="coerce").dropna()
+            last_open = float(open_s.iloc[-1]) if len(open_s) else np.nan
+            last_high = float(highs.iloc[-1]) if len(highs) else np.nan
+            last_low = float(lows.iloc[-1]) if len(lows) else np.nan
+            prev_high = float(highs.iloc[-2]) if len(highs) >= 2 else np.nan
+            prev_close = float(close.iloc[-2]) if len(close) >= 2 else np.nan
+        except Exception:
+            pass
         if not np.isfinite(swing_high) or not np.isfinite(swing_low) or swing_high <= swing_low or price <= 0:
             return out
         swing_range = swing_high - swing_low
@@ -4531,6 +4573,90 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         nearest_price = nearest.get("Kurszone", "n/a")
         nearest_dist = nearest.get("Abstand_%", "n/a")
         nearest_lage = nearest.get("Lage", "n/a")
+
+        # v15.36: automatische Fib-Bestaetigungspruefung.
+        # Fibonacci bleibt weicher Kontext, aber die App bewertet, ob an der Zone
+        # bereits eine sichtbare Reaktion entsteht oder ob nur Beobachten sinnvoll ist.
+        confirm_score = 0.0
+        confirm_drivers = []
+        try:
+            nd = float(nearest_dist) if nearest_dist != "n/a" else np.nan
+        except Exception:
+            nd = np.nan
+        near_zone = pd.notna(nd) and abs(nd) <= 1.25
+        slightly_near_zone = pd.notna(nd) and abs(nd) <= 2.5
+        bullish_candle = pd.notna(last_open) and pd.notna(price) and price > last_open
+        bearish_candle = pd.notna(last_open) and pd.notna(price) and price < last_open
+        closes_above_prev = pd.notna(prev_high) and price > prev_high
+        recovered_prev_close = pd.notna(prev_close) and price > prev_close
+        long_lower_wick = False
+        try:
+            rng = max(float(last_high) - float(last_low), 1e-9)
+            lower_wick = min(float(price), float(last_open)) - float(last_low)
+            long_lower_wick = (lower_wick / rng) >= 0.35
+        except Exception:
+            long_lower_wick = False
+        above_ma10 = pd.notna(ma10) and price >= ma10
+        above_ma20 = pd.notna(ma20) and price >= ma20
+        vol_confirm = pd.notna(vol_ratio) and vol_ratio >= 1.05
+        vol_strong = pd.notna(vol_ratio) and vol_ratio >= 1.25
+        if near_zone:
+            confirm_score += 24
+            confirm_drivers.append(f"Kurs direkt an Fib-Zone {nearest_level} ({_v1533_1_fmt_price(nearest_price)})")
+        elif slightly_near_zone:
+            confirm_score += 12
+            confirm_drivers.append(f"Kurs nahe Fib-Zone {nearest_level} ({_v1533_1_fmt_price(nearest_price)})")
+        if bullish_candle:
+            confirm_score += 14
+            confirm_drivers.append("bullische Tageskerze/Reaktion")
+        if long_lower_wick:
+            confirm_score += 12
+            confirm_drivers.append("unterer Docht zeigt Kaufreaktion")
+        if closes_above_prev:
+            confirm_score += 18
+            confirm_drivers.append("Bruch ueber Vortageshoch")
+        elif recovered_prev_close:
+            confirm_score += 8
+            confirm_drivers.append("Schluss ueber Vortag")
+        if above_ma10:
+            confirm_score += 10
+            confirm_drivers.append(f"Kurs ueber/auf MA10 ({_v1533_1_fmt_price(ma10)})")
+        elif pd.notna(ma10):
+            confirm_drivers.append(f"noch unter MA10 ({_v1533_1_fmt_price(ma10)})")
+        if above_ma20:
+            confirm_score += 6
+        if vol_strong:
+            confirm_score += 14
+            confirm_drivers.append(f"Volumen bestaetigt deutlich ({vol_ratio:.2f}x 20T)")
+        elif vol_confirm:
+            confirm_score += 7
+            confirm_drivers.append(f"Volumen bestaetigt leicht ({vol_ratio:.2f}x 20T)")
+        elif pd.notna(vol_ratio):
+            confirm_drivers.append(f"Volumen noch ohne klare Bestaetigung ({vol_ratio:.2f}x 20T)")
+        if bearish_candle and near_zone:
+            confirm_score -= 12
+            confirm_drivers.append("bearische Kerze an der Zone bremst")
+        confirm_score = int(max(0, min(100, round(confirm_score))))
+        if not near_zone and not slightly_near_zone:
+            confirmation_label = "nur beobachten"
+            confirmation_text = f"Kurs ist nicht direkt an der naechsten Fibonacci-Zone {nearest_level} bei {_v1533_1_fmt_price(nearest_price)}. Keine automatische Fib-Bestaetigung."
+            confirmation_action = "Nicht aus Fibonacci handeln. Erst bei Annaeherung an die Zone erneut analysieren oder auf andere aktive Trigger achten."
+        elif confirm_score >= 70:
+            confirmation_label = "bestaetigt"
+            confirmation_text = f"Fib-Zone {nearest_level} bei {_v1533_1_fmt_price(nearest_price)} wird aktuell durch Kursreaktion und Zusatzsignale bestaetigt."
+            confirmation_action = "Einstieg kann aktiv geprueft werden, sofern Aktion/Signal-Konflikt/Risiko nicht dagegen sprechen. Invalidierung bleibt der Bruch der Zone bzw. naechsten Supportzone."
+        elif confirm_score >= 45:
+            confirmation_label = "erste Bestaetigung"
+            confirmation_text = f"Fib-Zone {nearest_level} bei {_v1533_1_fmt_price(nearest_price)} zeigt erste Reaktion, aber noch keine starke Bestaetigung."
+            confirmation_action = "Vorbereiten: weitere Bestaetigung abwarten, z. B. Stabilisierung, Bruch ueber kurzfristiges Hoch oder Volumenbestaetigung."
+        elif confirm_score >= 25:
+            confirmation_label = "Reaktion unvollstaendig"
+            confirmation_text = f"Kurs ist an/nahe Fib-Zone {nearest_level} bei {_v1533_1_fmt_price(nearest_price)}, aber die Bestaetigung ist noch schwach."
+            confirmation_action = "Noch nicht blind handeln. Erneut pruefen, wenn Kerze, MA10/MA20 oder Volumen klarer werden."
+        else:
+            confirmation_label = "keine Bestaetigung"
+            confirmation_text = f"Kurs ist zwar an/nahe Fib-Zone {nearest_level} bei {_v1533_1_fmt_price(nearest_price)}, aber es fehlt eine belastbare positive Reaktion."
+            confirmation_action = "Abwarten. Bei Bruch der Zone eher tiefere Fib-/Supportzone beobachten."
 
         def _fib_zone_phrase(level_name, level_price, lage):
             if lage == "über Kurs":
@@ -15985,6 +16111,9 @@ if result is not None:
         result["fibonacci_label"] = fibonacci_context_pkg.get("label")
         result["fibonacci_summary"] = fibonacci_context_pkg.get("summary")
         result["fibonacci_action"] = fibonacci_context_pkg.get("action_hint")
+        result["fibonacci_confirmation"] = fibonacci_context_pkg.get("confirmation_label")
+        result["fibonacci_confirmation_score"] = fibonacci_context_pkg.get("confirmation_score")
+        result["fibonacci_confirmation_text"] = fibonacci_context_pkg.get("confirmation_text")
     chart_structures = None
     if show_sr_zones or show_trend_channel:
         try:
@@ -16087,11 +16216,18 @@ if result is not None:
                     <div class="premium-sub" style="margin-top:6px;"><b>Aktive Zone:</b> {html.escape(str(fib_pkg.get('active_zone_text', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Konkrete Lesart:</b> {html.escape(str(fib_pkg.get('plain_hint', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Handlung:</b> {html.escape(str(fib_pkg.get('action_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Fib-Bestaetigung:</b> {html.escape(str(fib_pkg.get('confirmation_label', 'nicht geprueft')).capitalize())} ({html.escape(str(fib_pkg.get('confirmation_score', 0)))}/100)</div>
+                    <div class="premium-sub" style="margin-top:4px;">{html.escape(str(fib_pkg.get('confirmation_text', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:4px;"><b>Jetzt tun:</b> {html.escape(str(fib_pkg.get('confirmation_action', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Treiber:</b> {html.escape(_fib_driver_text)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+            _fib_confirm_drivers = fib_pkg.get("confirmation_drivers", []) if isinstance(fib_pkg, dict) else []
+            if _fib_confirm_drivers:
+                _fib_confirm_rows = [{"Pruefung": str(x)} for x in _fib_confirm_drivers[:6]]
+                _render_wrapped_detail_table_v1533(_fib_confirm_rows, ["Pruefung"], table_class="wrapped-fib-table")
             fib_levels = fib_pkg.get("levels", []) if isinstance(fib_pkg, dict) else []
             if fib_levels:
                 fib_rows = []

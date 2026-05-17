@@ -1576,7 +1576,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.0.4",
+        "Export_Version": "v16.0.5",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1746,7 +1746,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.0.4"
+APP_VERSION = "v16.0.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -16016,26 +16016,35 @@ if result is not None:
     fund_cov = result["fund_cov"]
     fund_fields_loaded = result["fund_fields_loaded"]
     fund_data_warning = result["fund_data_warning"]
-    red_flag_items = result["red_flag_items"]
-    red_flags_df = result["red_flags_df"]
-    # v15.23.7: Red-Flag-Anzeige robust pro Ergebnis neu ableiten.
-    # In manchen Renderpfaden existierten hard_red_flag_items/red_flag_hint_notes
-    # nur lokal in analyze_stock() und nicht im UI-Scope.
+    # v16.0.5: finale UI-Schutzschicht.
+    # Einige Render-/Snapshot-Pfade koennen alte Growth-only Flags noch als
+    # Score_Wirksam=True enthalten. Direkt vor der Anzeige wird deshalb immer
+    # erneut anhand der finalen Klassifikation getrennt.
+    red_flag_items = [
+        soften_growth_red_flag_item_v1604(x)
+        for x in (result.get("red_flag_items", []) or [])
+    ]
     hard_red_flag_items = [
         x for x in (red_flag_items or [])
-        if bool(x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
+        if is_hard_red_flag_v1604(x)
     ]
     soft_red_flag_items = [
         x for x in (red_flag_items or [])
-        if not bool(x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
+        if not is_hard_red_flag_v1604(x)
     ]
+    red_flags_df = pd.DataFrame(red_flag_items) if red_flag_items else pd.DataFrame(
+        [{"Kategorie": "-", "Status": "🟢", "Detail": "Keine relevanten Red Flags erkannt", "Penalty": 0}]
+    )
     red_flag_notes = [
         f"{x.get('Kategorie', '-')}: {x.get('Detail', '-')}" for x in hard_red_flag_items
     ]
     red_flag_hint_notes = [
         f"{x.get('Kategorie', '-')}: {x.get('Detail', '-')}" for x in soft_red_flag_items
     ]
-    red_flag_penalty_total = result["red_flag_penalty_total"]
+    red_flag_penalty_total = sum(
+        float(x.get("Penalty", 0) or 0)
+        for x in hard_red_flag_items
+    )
     quality_score = result["quality_score"]
     growth_score = result["growth_score"]
     growth_quality = result["growth_quality"]
@@ -16186,7 +16195,7 @@ if result is not None:
     short_pct = result["short_pct"]
     market_cap = result["market_cap"]
     short_thesis = result["short_thesis"]
-    top_red_flag = result["top_red_flag"]
+    top_red_flag = (hard_red_flag_items[0].get("Detail", "-") if hard_red_flag_items else "-")
 
     # ---------- Header ----------
     st.markdown(f"## {name} `{ticker}` — {exch} ({ccy})")

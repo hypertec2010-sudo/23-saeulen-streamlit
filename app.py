@@ -1549,7 +1549,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.0",
+        "Export_Version": "v16.0.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1719,7 +1719,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v15.34"
+APP_VERSION = "v16.0.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7722,6 +7722,54 @@ def build_red_flags(
     total_penalty = sum(x["Penalty"] for x in items if x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
     return items, total_penalty
 
+# ---------- v16.0.1: Qualitäts-Red-Flags robust nachsanieren ----------
+def sanitize_quality_red_flags_v1601(items):
+    """
+    Verhindert, dass einzelne kurzzyklische yfinance-Wachstumswerte bei Qualitätswerten
+    als harte Red Flags angezeigt oder score-wirksam werden.
+    Harte Red Flags bleiben nur erhalten, wenn operative Bestätigung vorliegt.
+    """
+    cleaned = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            cleaned.append(item)
+            continue
+        new = dict(item)
+        category = str(new.get("Kategorie", ""))
+        detail = str(new.get("Detail", ""))
+        txt = (category + " " + detail).lower()
+        operative_confirmed = any(x in txt for x in [
+            "operativ bestaetigt", "operativ bestätigt", "marge negativ",
+            "cashflow negativ", "freier cashflow negativ", "operativer cashflow negativ"
+        ])
+
+        if ("gewinnwachstum stark negativ" in txt or "gewinnwachstum negativ" in txt) and not operative_confirmed:
+            new.update({
+                "Kategorie": "Ertragsdynamik",
+                "Status": "🟡",
+                "Schwere": "Hinweis",
+                "Detail": "Kurzfristiges Gewinnwachstum negativ; als Bremse beobachten, nicht als harte Red Flag",
+                "Penalty": 0,
+                "Score_Wirksam": False,
+            })
+        elif "umsatzwachstum negativ" in txt and not operative_confirmed:
+            new.update({
+                "Kategorie": "Umsatzdynamik",
+                "Status": "🟡",
+                "Schwere": "Hinweis",
+                "Detail": "Umsatzwachstum kurzfristig schwach; als Bremse beobachten, nicht als harte Red Flag",
+                "Penalty": 0,
+                "Score_Wirksam": False,
+            })
+        cleaned.append(new)
+
+    total_penalty = sum(
+        float(x.get("Penalty", 0) or 0)
+        for x in cleaned
+        if isinstance(x, dict) and bool(x.get("Score_Wirksam", x.get("Penalty", 0) >= 6))
+    )
+    return cleaned, total_penalty
+
 
 def build_decision_explanation(
     setup,
@@ -10037,6 +10085,7 @@ def _legacy_analyze_stock(
         has_upcoming_earnings=has_upcoming_earnings,
         days_earn=days_earn
     )
+    red_flag_items, red_flag_penalty_total = sanitize_quality_red_flags_v1601(red_flag_items)
     hard_red_flag_items = [x for x in red_flag_items if x.get("Score_Wirksam", x.get("Penalty", 0) >= 6)]
     soft_red_flag_items = [x for x in red_flag_items if not x.get("Score_Wirksam", x.get("Penalty", 0) >= 6)]
     red_flag_notes = [f"{x['Kategorie']}: {x['Detail']}" for x in hard_red_flag_items]
@@ -11170,7 +11219,7 @@ def _legacy_analyze_stock(
         [{"Kategorie": "-", "Status": "🟢", "Detail": "Keine relevanten Red Flags erkannt", "Penalty": 0}]
     )
 
-    top_red_flag = red_flag_items[0]["Detail"] if red_flag_items else "-"
+    top_red_flag = hard_red_flag_items[0]["Detail"] if hard_red_flag_items else "-"
     short_thesis = build_short_thesis(investment, tb_score, market_info["regime"], top_red_flag, position_mode)
 
 

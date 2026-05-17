@@ -1295,6 +1295,10 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Strukturkontext_Zusammenfassung": ((result or {}).get("wave_structure_pkg") or {}).get("summary") or (result or {}).get("wave_structure_summary"),
         "Strukturkontext_Handlung": ((result or {}).get("wave_structure_pkg") or {}).get("action_hint") or (result or {}).get("wave_structure_action"),
         "Strukturkontext_Treiber": ((result or {}).get("wave_structure_pkg") or {}).get("drivers"),
+        "Struktur_Trigger_Label": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_label"),
+        "Struktur_Trigger_Score": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_score"),
+        "Struktur_Trigger_Text": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_text"),
+        "Struktur_Trigger_Handlung": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_action"),
         "Fibonacci_Label": ((result or {}).get("fibonacci_context_pkg") or {}).get("label"),
         "Fibonacci_Phase": ((result or {}).get("fibonacci_context_pkg") or {}).get("phase"),
         "Fibonacci_Zusammenfassung": ((result or {}).get("fibonacci_context_pkg") or {}).get("summary"),
@@ -4416,15 +4420,111 @@ def build_wave_structure_context_v1532(chart_df=None, result=None):
             {"Punkt": "Naechste Invalidierung", "Zone/Wert": support_txt, "Lesart": "Darunter wird die Struktur defensiver; nicht als exakter Stop missverstehen."},
         ]
         if label == "fortgeschritten":
-            plain_hint = f"Starker Move, aber der Kurs liegt weit ueber kurzfristigen Taktgebern. Konkreter: Kurs {_v1533_1_fmt_price(price)}, MA10 {_v1533_1_fmt_price(ma10)} ({_v1533_1_fmt_pct(dist_ma10)} Abstand). Nicht hinterherlaufen; Pullback in Richtung MA10/MA20 oder neue Base abwarten."
+            plain_hint = f"Starker Move, aber der Kurs liegt deutlich ueber dem kurzfristigen Taktgeber. Kurs {_v1533_1_fmt_price(price)}, MA10 {_v1533_1_fmt_price(ma10)} ({_v1533_1_fmt_pct(dist_ma10)} Abstand)."
         elif label == "impulsiv":
-            plain_hint = f"Trendstruktur ist konstruktiv, solange Kurs {_v1533_1_fmt_price(price)} die kurzfristigen Taktgeber/Trigger haelt. Relevante Orientierung: MA10 {_v1533_1_fmt_price(ma10)}, MA20 {_v1533_1_fmt_price(ma20)}."
+            plain_hint = f"Trendstruktur ist konstruktiv, solange Kurs {_v1533_1_fmt_price(price)} MA10/MA20 und Triggerzone haelt."
         elif label == "korrektiv":
-            plain_hint = f"Der Ruecklauf wirkt bisher geordnet. Bullisher erst bei Stabilisierung/Reclaim im Bereich MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}); defensiver unter {support_txt}."
+            plain_hint = f"Ruecklauf wirkt bisher geordnet. Relevant ist jetzt Reaktion/Reclaim im Bereich MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)})."
         elif label == "angeschlagen":
-            plain_hint = f"Kurs liegt unter wichtiger Struktur. Erst Reclaim von MA50 ({_v1533_1_fmt_price(ma50)}) oder klare Bodenbildung wuerde die Lage verbessern."
+            plain_hint = f"Struktur ist angeschlagen. Erst Reclaim von MA50 ({_v1533_1_fmt_price(ma50)}) oder klare Bodenbildung verbessert die Lage."
         else:
-            plain_hint = "Keine belastbare Strukturlesart. Nutze Entry-Zone, Support/Resistance und Bestaetigung als primaere Orientierung."
+            plain_hint = "Keine belastbare Zusatzlesart. Entry-Zone, Support/Resistance und Bestaetigung bleiben primaer."
+
+        # v15.36.2: Struktur-Trigger automatisch pruefen.
+        # Der Wellen-/Strukturkontext bleibt weich/nicht score-wirksam, sagt aber jetzt,
+        # ob ein sinnvoller Pullback-/Reclaim-/Trendhalte-Trigger bereits erreicht wurde.
+        try:
+            open_col = "Open" if "Open" in dfw.columns else close_col
+            volume_col = "Volume" if "Volume" in dfw.columns else None
+            open_s = pd.to_numeric(dfw[open_col], errors="coerce").dropna() if open_col else close
+            vol_s = pd.to_numeric(dfw[volume_col], errors="coerce").dropna() if volume_col else pd.Series(dtype=float)
+            last_open = float(open_s.iloc[-1]) if len(open_s) else np.nan
+            last_high = float(high.iloc[-1]) if len(high) else np.nan
+            last_low = float(low.iloc[-1]) if len(low) else np.nan
+            prev_close = float(close.iloc[-2]) if len(close) >= 2 else np.nan
+            prev_high = float(high.iloc[-2]) if len(high) >= 2 else np.nan
+            vol_last = float(vol_s.iloc[-1]) if len(vol_s) else np.nan
+            vol20 = float(vol_s.tail(20).mean()) if len(vol_s) >= 20 else np.nan
+            bullish_candle = pd.notna(last_open) and price > last_open
+            close_up = pd.notna(prev_close) and price > prev_close
+            breakout_prev_high = pd.notna(prev_high) and price > prev_high
+            lower_wick_reaction = pd.notna(last_low) and pd.notna(last_open) and (min(price, last_open) - last_low) > max(abs(price - last_open) * 0.7, price * 0.003)
+            vol_confirm = pd.notna(vol_last) and pd.notna(vol20) and vol20 > 0 and vol_last >= vol20 * 1.05
+            near_ma10 = pd.notna(ma10) and ma10 > 0 and abs(price / ma10 - 1.0) <= 0.018
+            near_ma20 = pd.notna(ma20) and ma20 > 0 and abs(price / ma20 - 1.0) <= 0.022
+            above_ma10 = pd.notna(ma10) and price >= ma10
+            above_ma20 = pd.notna(ma20) and price >= ma20
+            reclaim_ma10 = above_ma10 and pd.notna(prev_close) and pd.notna(ma10) and prev_close < ma10
+            reclaim_ma20 = above_ma20 and pd.notna(prev_close) and pd.notna(ma20) and prev_close < ma20
+
+            conf_score = 0
+            conf_drivers = []
+            if bullish_candle:
+                conf_score += 16; conf_drivers.append("bullische Tageskerze")
+            if close_up:
+                conf_score += 14; conf_drivers.append("Schluss ueber Vortag")
+            if breakout_prev_high:
+                conf_score += 20; conf_drivers.append("Bruch ueber Vortageshoch")
+            if lower_wick_reaction:
+                conf_score += 14; conf_drivers.append("Kaufreaktion/unterer Docht")
+            if vol_confirm:
+                conf_score += 16; conf_drivers.append("Volumen bestaetigt")
+            if above_ma10:
+                conf_score += 10; conf_drivers.append("ueber MA10")
+            if above_ma20:
+                conf_score += 8; conf_drivers.append("ueber MA20")
+            if reclaim_ma10 or reclaim_ma20:
+                conf_score += 14; conf_drivers.append("Reclaim kurzfristiger Linie")
+
+            if label == "fortgeschritten":
+                if near_ma10 or near_ma20:
+                    trigger_base = f"Pullback hat den Bereich MA10/MA20 erreicht ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)})."
+                else:
+                    trigger_base = f"Pullback-Trigger noch nicht erreicht. Sinnvolle Pruefzone waere eher MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) oder neue Base."
+                    conf_score = min(conf_score, 45)
+            elif label == "korrektiv":
+                trigger_base = f"Korrektur-/Base-Trigger pruefen: Reaktion/Reclaim bei MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)})."
+            elif label == "impulsiv":
+                trigger_base = f"Trendhalte-Trigger: Kurs sollte MA10/MA20 halten ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)})."
+            elif label == "angeschlagen":
+                trigger_base = f"Reclaim-Trigger fehlt. Bullisher erst bei Rueckeroberung von MA50 ({_v1533_1_fmt_price(ma50)}) oder klarer Bodenbildung."
+                conf_score = min(conf_score, 45)
+            else:
+                trigger_base = "Kein belastbarer Struktur-Trigger. Klassische Entry-/Support-Bestaetigung nutzen."
+                conf_score = min(conf_score, 35)
+
+            if label in {"fortgeschritten", "korrektiv"} and not (near_ma10 or near_ma20 or reclaim_ma10 or reclaim_ma20):
+                conf_label = "noch nicht erreicht"
+                conf_text = trigger_base
+                conf_action = "Nicht aus der Struktur handeln; Pullback/Base oder klaren Reclaim abwarten."
+            elif conf_score >= 72:
+                conf_label = "bestaetigt"
+                conf_text = trigger_base + " Reaktion ist bereits deutlich bestaetigt."
+                conf_action = "Aktiv pruefen; trotzdem Entry-/Risikolimit und Supportbruch beachten."
+            elif conf_score >= 52:
+                conf_label = "erste Bestaetigung"
+                conf_text = trigger_base + " Erste Reaktion sichtbar, aber noch nicht voll bestaetigt."
+                conf_action = "Vorbereiten; Einstieg erst mit weiterer Bestaetigung/sauberem Trigger."
+            elif conf_score >= 32:
+                conf_label = "unter Beobachtung"
+                conf_text = trigger_base + " Reaktion ist noch unvollstaendig."
+                conf_action = "Beobachten; ohne Kerzen-/Volumenbestaetigung nicht handeln."
+            else:
+                conf_label = "kein Trigger"
+                conf_text = trigger_base
+                conf_action = "Abwarten; Struktur liefert aktuell keinen eigenstaendigen Trigger."
+
+            out["confirmation_label"] = conf_label
+            out["confirmation_score"] = int(max(0, min(100, round(conf_score))))
+            out["confirmation_text"] = conf_text
+            out["confirmation_action"] = conf_action
+            out["confirmation_drivers"] = conf_drivers[:5]
+        except Exception:
+            out["confirmation_label"] = "nicht belastbar"
+            out["confirmation_score"] = 0
+            out["confirmation_text"] = "Struktur-Trigger konnte nicht automatisch geprueft werden."
+            out["confirmation_action"] = "Nicht als eigenstaendiges Signal verwenden."
+            out["confirmation_drivers"] = []
 
         out.update({
             "label": label,
@@ -16187,15 +16287,23 @@ if result is not None:
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
+            _wave_conf_label = str(wave_structure_pkg.get("confirmation_label", "nicht geprüft"))
+            _wave_conf_score = wave_structure_pkg.get("confirmation_score", "")
+            _wave_conf_text = str(wave_structure_pkg.get("confirmation_text", "-"))
+            _wave_conf_action = str(wave_structure_pkg.get("confirmation_action", "-"))
+            _wave_conf_drivers = wave_structure_pkg.get("confirmation_drivers", []) or []
+            _wave_conf_driver_text = " · ".join([str(x) for x in _wave_conf_drivers[:3]]) if _wave_conf_drivers else "keine automatische Bestätigung"
             st.markdown(
                 f"""
                 <div class="section-card" style="padding:0.85rem 0.95rem;margin:0.55rem 0 0.85rem 0;">
                     <div class="premium-title">{html.escape(str(wave_structure_pkg.get('phase', 'Nicht belastbar')))}</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(wave_structure_pkg.get('label', 'unklar')).capitalize())}</div>
-                    <div class="premium-sub">{html.escape(str(wave_structure_pkg.get('summary', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;"><b>Konkrete Lesart:</b> {html.escape(str(wave_structure_pkg.get('plain_hint', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;"><b>Handlung:</b> {html.escape(str(wave_structure_pkg.get('action_hint', '-')))}</div>
-                    <div class="premium-sub" style="margin-top:6px;"><b>Treiber:</b> {html.escape(_wave_driver_text)}</div>
+                    <div class="premium-sub" style="margin-top:4px;"><b>Lesart:</b> {html.escape(str(wave_structure_pkg.get('plain_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Triggerprüfung:</b> {html.escape(_wave_conf_label.capitalize())}{' · ' + html.escape(str(_wave_conf_score)) + '/100' if str(_wave_conf_score).strip() not in {'', '0'} and _wave_conf_label not in {'noch nicht erreicht', 'kein Trigger', 'nicht belastbar'} else ''}</div>
+                    <div class="premium-sub">{html.escape(_wave_conf_text)}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Jetzt tun:</b> {html.escape(_wave_conf_action)}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Bestätigung:</b> {html.escape(_wave_conf_driver_text)}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Strukturtreiber:</b> {html.escape(_wave_driver_text)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,

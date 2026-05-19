@@ -1576,7 +1576,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.1.2",
+        "Export_Version": "v16.1.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1751,7 +1751,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.1.2"
+APP_VERSION = "v16.1.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -16180,6 +16180,22 @@ if result is not None:
     live_price_source = result.get("live_price_source", "Schlusskurs")
     live_price_diff_pct = result.get("live_price_diff_pct", np.nan)
     live_price_note = result.get("live_price_note", "")
+
+    # v16.1.3: finaler UI-Fallback direkt im Renderpfad.
+    # In einigen Ergebnisobjekten ist live_price trotz Engine-Fallback noch leer.
+    # Dann darf die Kursbasis-Karte nicht "Aktuell: n/a" zeigen, sondern die
+    # reguläre Analysebasis als aktuellen Vergleichswert ausweisen.
+    try:
+        if not pd.notna(live_price):
+            live_price = float(price) if pd.notna(price) else np.nan
+            live_price_source = "Schlusskurs / Analysebasis"
+            live_price_diff_pct = 0.0 if pd.notna(live_price) else np.nan
+            live_price_note = "Kein separater Live-/Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
+    except Exception:
+        live_price = price
+        live_price_source = "Schlusskurs / Analysebasis"
+        live_price_diff_pct = 0.0
+        live_price_note = "Kein separater Live-/Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
     target = result["target"]
     upside = result["upside"]
     regime = result["regime"]

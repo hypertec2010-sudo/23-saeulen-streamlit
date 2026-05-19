@@ -1576,7 +1576,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.1.1",
+        "Export_Version": "v16.1.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1751,7 +1751,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.1.1"
+APP_VERSION = "v16.1.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -9377,7 +9377,7 @@ def load_data(ticker):
 def load_extended_market_quote(ticker):
     """Lädt einen zusätzlichen aktuellen Kurs inkl. Pre-/After-Market, ohne die Analysebasis zu ersetzen.
 
-    v16.1.1: robuster Fallback über Intraday-Historie mit prepost=True.
+    v16.1.2: robuster Fallback über Intraday-Historie mit prepost=True.
     Grund: yfinance liefert preMarketPrice/postMarketPrice je nach Ticker/Handelsplatz nicht immer in info/fast_info.
     Dann soll die Anzeige nicht "Aktuell: n/a" zeigen, sondern den letzten belastbaren Intraday-/Schlusskurs.
     """
@@ -9905,6 +9905,16 @@ def _legacy_analyze_stock(
     live_price_source = live_quote.get("source", "Schlusskurs") if isinstance(live_quote, dict) else "Schlusskurs"
     live_price_diff_pct = live_quote.get("diff_pct", np.nan) if isinstance(live_quote, dict) else np.nan
     live_price_note = live_quote.get("note", "") if isinstance(live_quote, dict) else ""
+
+    # v16.1.2: In der Kursbasis-Karte niemals "Aktuell: n/a" anzeigen.
+    # Wenn Yahoo/yfinance keinen belastbaren Live-/Pre-/After-Hours-Kurs liefert,
+    # ist der aktuelle Vergleichswert schlicht die reguläre Analysebasis.
+    if not pd.notna(live_price):
+        live_price = float(price) if pd.notna(price) else np.nan
+        live_price_source = "Schlusskurs / Analysebasis"
+        live_price_diff_pct = 0.0 if pd.notna(live_price) else np.nan
+        live_price_note = "Kein separater Live-/Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
+
     name = info.get("longName") or info.get("shortName") or info.get("displayName") or info.get("quoteSourceName") or ticker
     raw_ccy = info.get("currency", "USD")
     ccy = infer_display_currency(ticker, info, raw_ccy)

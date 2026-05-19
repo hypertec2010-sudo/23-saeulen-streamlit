@@ -1576,10 +1576,15 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.0.6",
+        "Export_Version": "v16.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
+        "Analyse_Kursbasis": (result or {}).get("analysis_price", (result or {}).get("price")),
+        "Aktueller_Kurs": (result or {}).get("live_price"),
+        "Aktueller_Kurs_Quelle": (result or {}).get("live_price_source"),
+        "Aktueller_Kurs_Abw_%": (result or {}).get("live_price_diff_pct"),
+        "Aktueller_Kurs_Hinweis": (result or {}).get("live_price_note"),
         "Sektor": (result or {}).get("sector"),
         "Industrie": (result or {}).get("industry"),
         "Analyse_Perspektive": context.get("mode_label") or (result or {}).get("mode_label"),
@@ -1746,7 +1751,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.0.7"
+APP_VERSION = "v16.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -9368,6 +9373,91 @@ def load_data(ticker):
     return hist, info
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def load_extended_market_quote(ticker):
+    """Lädt einen zusätzlichen aktuellen Kurs inkl. Pre-/After-Market, ohne die Analysebasis zu ersetzen."""
+    out = {
+        "regular_price": np.nan,
+        "extended_price": np.nan,
+        "display_price": np.nan,
+        "source": "Schlusskurs",
+        "market_state": "",
+        "diff_abs": np.nan,
+        "diff_pct": np.nan,
+        "note": "",
+    }
+    try:
+        if not ticker:
+            return out
+        t = yf.Ticker(str(ticker).strip())
+        info = {}
+        try:
+            info = merge_info(info, getattr(t, "fast_info", {}) or {})
+        except Exception:
+            pass
+        try:
+            info = merge_info(info, t.get_info() or {})
+        except Exception:
+            pass
+        try:
+            info = merge_info(info, t.info or {})
+        except Exception:
+            pass
+
+        def _num(v):
+            try:
+                if v is None:
+                    return np.nan
+                x = float(v)
+                return x if np.isfinite(x) and x > 0 else np.nan
+            except Exception:
+                return np.nan
+
+        regular = _num(info.get("regularMarketPrice"))
+        if not pd.notna(regular):
+            regular = _num(info.get("currentPrice"))
+        pre = _num(info.get("preMarketPrice"))
+        post = _num(info.get("postMarketPrice"))
+        current = _num(info.get("lastPrice"))
+        state = str(info.get("marketState") or "").upper()
+
+        display = regular if pd.notna(regular) else current
+        source = "Regulärer Handel" if pd.notna(display) else "Schlusskurs"
+
+        if state.startswith("PRE") and pd.notna(pre):
+            display, source = pre, "Vorbörse"
+        elif state.startswith("POST") and pd.notna(post):
+            display, source = post, "Nachbörse"
+        elif state in {"CLOSED", "POSTPOST", "PREPRE"}:
+            if pd.notna(post) and pd.notna(regular) and abs(post / regular - 1) > 0.001:
+                display, source = post, "Nachbörse"
+            elif pd.notna(pre) and pd.notna(regular) and abs(pre / regular - 1) > 0.001:
+                display, source = pre, "Vorbörse"
+        elif state == "REGULAR" and pd.notna(regular):
+            display, source = regular, "Regulärer Handel"
+
+        if pd.notna(display):
+            out["display_price"] = float(display)
+            out["extended_price"] = float(display)
+        if pd.notna(regular):
+            out["regular_price"] = float(regular)
+        out["source"] = source
+        out["market_state"] = state
+        if pd.notna(display) and pd.notna(regular) and regular > 0:
+            out["diff_abs"] = float(display - regular)
+            out["diff_pct"] = float((display / regular - 1.0) * 100.0)
+        if source in {"Vorbörse", "Nachbörse"}:
+            out["note"] = "Außerbörslicher Kurs: für Entry-Zonen und Gap-Risiko relevant, aber technische Tages-Signale erst im regulären Handel bestätigen."
+        elif source == "Regulärer Handel":
+            out["note"] = "Aktueller regulärer Kurs."
+        else:
+            out["note"] = "Analyse nutzt den letzten verfügbaren Schlusskurs."
+        return out
+    except Exception as exc:
+        out["note"] = f"Aktueller Kurs nicht belastbar abrufbar: {exc}"
+        return out
+
+
 @st.cache_data(ttl=120, show_spinner=False)
 def load_benchmark_data(symbol):
     try:
@@ -9757,6 +9847,11 @@ def _legacy_analyze_stock(
     vol = df["Volume"]
 
     price = float(override) if override > 0 else float(close.iloc[-1])
+    live_quote = load_extended_market_quote(ticker)
+    live_price = live_quote.get("display_price", np.nan) if isinstance(live_quote, dict) else np.nan
+    live_price_source = live_quote.get("source", "Schlusskurs") if isinstance(live_quote, dict) else "Schlusskurs"
+    live_price_diff_pct = live_quote.get("diff_pct", np.nan) if isinstance(live_quote, dict) else np.nan
+    live_price_note = live_quote.get("note", "") if isinstance(live_quote, dict) else ""
     name = info.get("longName") or info.get("shortName") or info.get("displayName") or info.get("quoteSourceName") or ticker
     raw_ccy = info.get("currency", "USD")
     ccy = infer_display_currency(ticker, info, raw_ccy)
@@ -12040,6 +12135,12 @@ def _legacy_analyze_stock(
         "benchmark_symbol": benchmark_symbol,
         "benchmark_label": benchmark_label,
         "price": price,
+        "analysis_price": price,
+        "live_quote": live_quote,
+        "live_price": live_price,
+        "live_price_source": live_price_source,
+        "live_price_diff_pct": live_price_diff_pct,
+        "live_price_note": live_price_note,
         "target": target,
         "upside": upside,
         "regime": regime,
@@ -16012,6 +16113,10 @@ if result is not None:
     benchmark_symbol = result["benchmark_symbol"]
     market_info = result["market_info"]
     price = result["price"]
+    live_price = result.get("live_price", np.nan)
+    live_price_source = result.get("live_price_source", "Schlusskurs")
+    live_price_diff_pct = result.get("live_price_diff_pct", np.nan)
+    live_price_note = result.get("live_price_note", "")
     target = result["target"]
     upside = result["upside"]
     regime = result["regime"]
@@ -16219,9 +16324,10 @@ if result is not None:
         st.markdown(
             f"""
             <div class="premium-card">
-                <div class="premium-title">Kurs (Adj. Close)</div>
+                <div class="premium-title">Kursbasis</div>
                 <div class="premium-value">{price:.2f} {ccy}</div>
-                <div class="premium-sub">{ts}</div>
+                <div class="premium-sub">Reguläre Analysebasis · {ts}</div>
+                <div class="premium-sub">Aktuell: {(fmt_num(live_price, 2, " " + ccy) if pd.notna(live_price) else "n/a")} · {live_price_source}{(" · " + fmt_num(live_price_diff_pct, 1, "%")) if pd.notna(live_price_diff_pct) else ""}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -16652,6 +16758,12 @@ if result is not None:
     else:
         exit_action_sub_display = "Exit-Einordnung der aktuellen Lage"
 
+
+    if pd.notna(live_price_diff_pct) and abs(float(live_price_diff_pct)) >= 1.5 and str(live_price_source) in {"Vorbörse", "Nachbörse"}:
+        st.info(
+            f"Aktueller {live_price_source}-Kurs weicht um {fmt_num(live_price_diff_pct, 1, '%')} von der regulären Kursbasis ab. "
+            "Entry-Zonen, Gap-Risiko und FOMO beachten; harte technische Tages-Signale erst im regulären Handel bestätigen."
+        )
 
     # ---------- v15.24.5: Chart zuerst, Details einklappbar ----------
     st.markdown("### Chart & Zeitraum")

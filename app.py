@@ -1544,6 +1544,361 @@ def _v1537_confluence_class(label):
     return "confluence-mixed"
 
 
+# ---------- v16.3: Timing-/Handlungs-Konfidenz ----------
+def _v163_text(value):
+    return str(value or "").strip()
+
+
+def _v163_low(value):
+    return _v163_text(value).lower()
+
+
+def _v163_num(value, default=0.0):
+    try:
+        if value is None or pd.isna(value):
+            return float(default)
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _v163_clip(value, lo=0.0, hi=100.0):
+    return max(lo, min(hi, float(value)))
+
+
+def _v163_truthy_label(value, positive_terms=None, negative_terms=None):
+    txt = _v163_low(value)
+    positive_terms = positive_terms or []
+    negative_terms = negative_terms or []
+    if any(x in txt for x in negative_terms):
+        return "negative"
+    if any(x in txt for x in positive_terms):
+        return "positive"
+    return "neutral"
+
+
+def _v163_label(score, valid_trade_setup=True):
+    score = _v163_num(score)
+    if not valid_trade_setup and score >= 55:
+        return "Mittel - Setup noch nicht freigegeben"
+    if score >= 82:
+        return "Sehr hoch"
+    if score >= 70:
+        return "Hoch"
+    if score >= 55:
+        return "Mittel"
+    if score >= 40:
+        return "Niedrig"
+    return "Sehr niedrig"
+
+
+def _v163_class(label):
+    txt = _v163_low(label)
+    if "sehr hoch" in txt:
+        return "timing-confidence-very-high"
+    if txt.startswith("hoch"):
+        return "timing-confidence-high"
+    if "mittel" in txt:
+        return "timing-confidence-medium"
+    if "niedrig" in txt and "sehr" not in txt:
+        return "timing-confidence-low"
+    return "timing-confidence-very-low"
+
+
+def _v163_short_list(items, limit=4):
+    cleaned = []
+    seen = set()
+    for item in items or []:
+        txt = _v163_text(item)
+        if not txt or txt in {"-", "None", "nan"}:
+            continue
+        key = txt.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(txt)
+        if len(cleaned) >= limit:
+            break
+    return cleaned
+
+
+def build_timing_action_confidence_v163(
+    *,
+    trigger_confluence_pkg=None,
+    final_action_label="-",
+    final_timing_label="-",
+    final_risk_label="-",
+    valid_trade_setup=False,
+    conflict_pkg=None,
+    fomo_pkg=None,
+    fibonacci_pkg=None,
+    wave_pkg=None,
+    setup_pattern_pkg=None,
+    regime_ctx=None,
+    daily_sig=None,
+    ultra_signal=None,
+    final_ultra_label="-",
+    result=None,
+    entry_zone="-",
+    current_price=None,
+    structures=None,
+    ccy="",
+):
+    """Handlungsnahe Timing-Konfidenz.
+
+    Ziel: nicht nur Risiken aufzählen, sondern zeigen, ob jetzt genug
+    Trigger gleichzeitig passen - und falls nicht, was konkret fehlt.
+    """
+    result = result or {}
+    trigger_confluence_pkg = trigger_confluence_pkg or {}
+    conflict_pkg = conflict_pkg or {}
+    fomo_pkg = fomo_pkg or {}
+    fibonacci_pkg = fibonacci_pkg or {}
+    wave_pkg = wave_pkg or {}
+    setup_pattern_pkg = setup_pattern_pkg or {}
+    regime_ctx = regime_ctx or {}
+    structures = structures or {}
+
+    score = 36.0
+    fits = []
+    missing = []
+    defensive = []
+
+    confluence_score = _v163_num(trigger_confluence_pkg.get("score"), 50.0)
+    score += (confluence_score - 50.0) * 0.38
+    confluence_label = _v163_text(trigger_confluence_pkg.get("label"))
+    if confluence_score >= 70:
+        fits.append(f"Trigger-Konfluenz konstruktiv ({confluence_score:.0f}/100)")
+    elif confluence_score < 45:
+        missing.append(f"Trigger-Konfluenz noch schwach/gemischt ({confluence_score:.0f}/100)")
+
+    action_low = _v163_low(final_action_label)
+    if any(x in action_low for x in ["kaufen", "aufstocken"]):
+        score += 10
+        fits.append(f"Aktion ist bereits offensiv: {final_action_label}")
+    elif any(x in action_low for x in ["vorbereiten", "prüfen", "pruefen"]):
+        score += 2
+        missing.append("Aktion ist noch vorbereitend: letzter Einstiegstrigger muss sauber bestätigt werden")
+    elif any(x in action_low for x in ["abwarten", "warten", "reduz", "exit", "verkauf"]):
+        score -= 12
+        missing.append(f"Aktion ist noch defensiv: {final_action_label}")
+
+    if bool(valid_trade_setup):
+        score += 12
+        fits.append("Trade-Setup ist valide")
+    else:
+        score -= 10
+        missing.append("Valides Trade-Setup fehlt: Entry-Zone, Trigger und Invalidierung müssen zusammenpassen")
+
+    timing_state = _v163_truthy_label(final_timing_label,
+        positive_terms=["reif", "bestätigt", "bestaetigt", "stimmig", "aktiv"],
+        negative_terms=["schwach", "warten", "zu früh", "zu frueh", "nicht"])
+    if timing_state == "positive":
+        score += 8
+        fits.append(f"Timing wirkt {final_timing_label}")
+    elif timing_state == "negative":
+        score -= 8
+        missing.append(f"Timing noch nicht sauber: {final_timing_label}")
+
+    risk_state = _v163_truthy_label(final_risk_label,
+        positive_terms=["stabil", "niedrig", "ruhig"],
+        negative_terms=["hoch", "kritisch", "erhöht", "erhoeht", "riskant"])
+    if risk_state == "positive":
+        score += 4
+        fits.append(f"Risiko wirkt {final_risk_label}")
+    elif risk_state == "negative":
+        score -= 8
+        defensive.append(f"Risiko ist {final_risk_label}")
+
+    conflict_label = _v163_text(conflict_pkg.get("label"))
+    conflict_low = conflict_label.lower()
+    if "konsistent" in conflict_low:
+        score += 7
+        fits.append("Signalbild ist konsistent")
+    elif "widers" in conflict_low:
+        score -= 13
+        missing.append("Signalbild ist widersprüchlich")
+    elif "gemischt" in conflict_low:
+        score -= 4
+        missing.append("Signalbild ist gemischt")
+
+    fomo_label = _v163_text(fomo_pkg.get("label"))
+    fomo_low = fomo_label.lower()
+    if "kritisch" in fomo_low:
+        score -= 18
+        defensive.append("FOMO/Smart-Money-Risiko kritisch: kein Hinterherlaufen")
+    elif "erhöht" in fomo_low or "erhoeht" in fomo_low:
+        score -= 10
+        defensive.append("FOMO/Smart-Money-Risiko erhöht: nur selektiv handeln")
+    elif "beobachten" in fomo_low:
+        score -= 4
+    elif "unauff" in fomo_low:
+        score += 3
+        fits.append("FOMO/Smart-Money nicht auffällig")
+
+    fib_label = _v163_text(fibonacci_pkg.get("confirmation_label") or fibonacci_pkg.get("Fibonacci_Bestaetigung"))
+    fib_zone = _v163_text(fibonacci_pkg.get("active_zone_text") or fibonacci_pkg.get("Fibonacci_Zone"))
+    fib_low = fib_label.lower()
+    if any(x in fib_low for x in ["bestätigt", "bestaetigt"]):
+        score += 9
+        fits.append(f"Fibonacci-Reaktion bestätigt{(': ' + fib_zone) if fib_zone else ''}")
+    elif any(x in fib_low for x in ["erste", "reaktion"]):
+        score += 5
+        fits.append(f"Erste Fibonacci-Reaktion sichtbar{(': ' + fib_zone) if fib_zone else ''}")
+    elif "keine aktive" in fib_low or "nicht" in fib_low or "keine" in fib_low:
+        if fib_zone:
+            missing.append(f"Fibonacci-Zone {fib_zone}: erst bei sichtbarer Reaktion/Stabilisierung relevant")
+
+    wave_label = _v163_text(wave_pkg.get("confirmation_label") or wave_pkg.get("Struktur_Trigger_Label"))
+    wave_low = wave_label.lower()
+    if any(x in wave_low for x in ["bestätigt", "bestaetigt"]):
+        score += 8
+        fits.append("Struktur-/Wellen-Trigger bestätigt")
+    elif any(x in wave_low for x in ["erste", "reclaim", "reaktion"]):
+        score += 4
+        fits.append("Erste Strukturreaktion sichtbar")
+    elif any(x in wave_low for x in ["noch nicht", "kein", "unter beobachtung"]):
+        missing.append("Struktur-Trigger noch nicht aktiv: Pullback, Reclaim oder neue Base abwarten")
+
+    pattern_label = _v163_text(setup_pattern_pkg.get("trigger_label"))
+    pattern_low = pattern_label.lower()
+    if any(x in pattern_low for x in ["bestätigt", "bestaetigt", "aktiv"]):
+        score += 6
+        fits.append("Spezialmuster-Trigger ist aktiv")
+    elif "noch nicht" in pattern_low or "kein" in pattern_low:
+        missing.append("Spezialmuster ist nur Kandidat: Pivot/Trigger noch nicht aktiv")
+
+    ma10_label = _v163_text(result.get("ma10_timing_label") or result.get("MA10_Timing"))
+    ma10_low = ma10_label.lower()
+    ma10_val = result.get("ma10") or result.get("MA10")
+    ma20_val = result.get("ma20") or result.get("MA20")
+    ma_txt = []
+    if ma10_val not in [None, "", "-"]:
+        ma_txt.append(f"MA10 {fmt_num(ma10_val, 2)}")
+    if ma20_val not in [None, "", "-"]:
+        ma_txt.append(f"MA20 {fmt_num(ma20_val, 2)}")
+    ma_suffix = " / ".join(ma_txt)
+    if any(x in ma10_low for x in ["konstruktiv", "hält", "haelt", "reclaim"]):
+        score += 5
+        fits.append(f"Kurzfristtrend hält{(': ' + ma_suffix) if ma_suffix else ''}")
+    elif any(x in ma10_low for x in ["angeschlagen", "unter", "bruch"]):
+        score -= 8
+        missing.append(f"MA10/MA20 zurückerobern oder stabilisieren{(' (' + ma_suffix + ')') if ma_suffix else ''}")
+    elif "gedehnt" in ma10_low:
+        score -= 3
+        defensive.append("Kurs wirkt kurzfristig gedehnt; kein Hinterherlaufen")
+
+    # Candlestick / Ultra knapp einbeziehen
+    if isinstance(daily_sig, dict):
+        tone = _v163_low(daily_sig.get("tone") or daily_sig.get("bias"))
+        if "bull" in tone or "grün" in tone:
+            score += 5
+            fits.append("Tageskerze bestätigt bullisch")
+        elif "bear" in tone or "rot" in tone:
+            score -= 5
+            missing.append("Tageskerze bremst noch")
+
+    ultra_txt = _v163_text(final_ultra_label or (ultra_signal or {}).get("label"))
+    ultra_low = ultra_txt.lower()
+    if any(x in ultra_low for x in ["bull", "positiv", "kauf", "reaktion"]):
+        score += 5
+        fits.append(f"Ultra/SR reagiert positiv: {ultra_txt}")
+    elif any(x in ultra_low for x in ["bear", "negativ", "verkauf", "bruch"]):
+        score -= 6
+        missing.append(f"Ultra/SR bremst: {ultra_txt}")
+
+    # Volumen / Smart Money Proxy
+    vol_quality = _v163_num(result.get("volume_quality_score"), 50)
+    acc = _v163_num(result.get("accumulation_score"), 50)
+    dist = _v163_num(result.get("distribution_pressure_score"), 50)
+    if vol_quality >= 60 and acc >= dist:
+        score += 5
+        fits.append("Volumen/Smart-Money bestätigt eher konstruktiv")
+    elif vol_quality < 45 or dist > acc + 12:
+        score -= 6
+        missing.append("Volumen/Smart-Money bestätigt noch nicht sauber")
+
+    regime_label = _v163_text(regime_ctx.get("label") or result.get("market_regime_label") or result.get("regime_label"))
+    if "positiv" in regime_label.lower():
+        score += 4
+        fits.append("Marktregime unterstützt")
+    elif any(x in regime_label.lower() for x in ["risk", "negativ"]):
+        score -= 7
+        defensive.append("Marktregime bremst")
+
+    # Konkrete Bedingungen ableiten
+    entry_txt = _v163_text(entry_zone)
+    if entry_txt and entry_txt not in {"-", "None", "nan"}:
+        pos_txt, in_zone, below_zone, above_zone = _entry_zone_position_text_v1524_12(entry_txt, current_price)
+        if in_zone:
+            if not any("Entry-Zone" in x for x in fits + missing):
+                fits.append(f"Kurs liegt in der Entry-Zone {entry_txt}")
+            missing.append("In der Entry-Zone: Bestätigung durch Stabilisierung, bullische Kerze oder Bruch über kurzfristiges Hoch abwarten")
+        elif below_zone:
+            missing.append(f"Entry-Zone {entry_txt}: Reclaim/Stabilisierung nötig ({pos_txt})")
+        elif above_zone:
+            defensive.append(f"Kurs über Entry-Zone {entry_txt}: nicht hinterherlaufen, Pullback oder neue Base bevorzugen")
+
+    invalidation = support_zone_text_v1525_9(structures, current_price, ccy, fallback="Bruch der relevanten Support-/Trigger-Zone")
+    if invalidation:
+        defensive.append(invalidation)
+
+    # Gating: nicht zu offensiv, wenn Setup/FOMO nicht passt.
+    score = _v163_clip(score)
+    if not bool(valid_trade_setup):
+        score = min(score, 64.0)
+    if "kritisch" in fomo_low:
+        score = min(score, 58.0)
+    if "widers" in conflict_low:
+        score = min(score, 55.0)
+
+    label = _v163_label(score, valid_trade_setup=bool(valid_trade_setup))
+
+    if score >= 82:
+        summary = "Mehrere Trigger bestätigen sich gleichzeitig. Das Timing wirkt breit abgestützt."
+        action = "Einstieg kann aktiv geprüft werden; nicht auf Perfektion warten, aber Invalidierung strikt beachten."
+    elif score >= 70:
+        summary = "Das Timing ist konstruktiv. Mehrere Bausteine passen, auch wenn nicht alles perfekt ist."
+        action = "Einstieg eher aktiv prüfen; Positionsgröße und Stop an Risiko/FOMO anpassen."
+    elif score >= 55:
+        summary = "Das Setup ist interessant, aber noch nicht breit genug bestätigt."
+        action = "Vorbereiten und genau auf die fehlenden Trigger achten; kein Blindkauf."
+    elif score >= 40:
+        summary = "Timing-Kontext noch schwach oder gemischt."
+        action = "Watchlist/Beobachtung; erst bei den genannten Bedingungen neu prüfen."
+    else:
+        summary = "Aktuell kein attraktiver Timing-Kontext."
+        action = "Nicht erzwingen; neue Base, Reclaim oder klarere Reaktion abwarten."
+
+    if not bool(valid_trade_setup) and score >= 55:
+        action = "Noch nicht als Kaufsignal werten: erst valides Trade-Setup und konkrete Bestätigung abwarten."
+
+    fits = _v163_short_list(fits, 4)
+    missing = _v163_short_list(missing, 5)
+    defensive = _v163_short_list(defensive, 4)
+
+    if not missing:
+        missing = ["Keine dominante Lücke sichtbar; trotzdem Stop/Invalidierung beachten."]
+    if not fits:
+        fits = ["Noch keine starke positive Bestätigungsgruppe sichtbar."]
+    if not defensive:
+        defensive = ["Defensiver bei Bruch der relevanten Support-/Trigger-Zone."]
+
+    return {
+        "label": label,
+        "score": round(score, 1),
+        "class": _v163_class(label),
+        "summary": summary,
+        "action": action,
+        "fits": fits,
+        "missing": missing,
+        "defensive": defensive,
+        "fits_text": " · ".join(fits),
+        "missing_text": " · ".join(missing),
+        "defensive_text": " · ".join(defensive),
+    }
+
+
 def enrich_single_export_df_v1516(export_df, result, context=None):
     """
     Erweitert den bestehenden logging_utils.build_export_df um Felder,
@@ -1591,7 +1946,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.2.1",
+        "Export_Version": "v16.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1652,6 +2007,13 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Trigger_Konfluenz_Summary": ((result or {}).get("trigger_confluence_pkg") or {}).get("summary"),
         "Trigger_Konfluenz_Handlung": ((result or {}).get("trigger_confluence_pkg") or {}).get("action_hint"),
         "Trigger_Konfluenz_Counts": ((result or {}).get("trigger_confluence_pkg") or {}).get("counts_text"),
+        "Timing_Handlungs_Konfidenz_Label": ((result or {}).get("timing_action_confidence_pkg") or {}).get("label"),
+        "Timing_Handlungs_Konfidenz_Score": ((result or {}).get("timing_action_confidence_pkg") or {}).get("score"),
+        "Timing_Handlungs_Konfidenz_Summary": ((result or {}).get("timing_action_confidence_pkg") or {}).get("summary"),
+        "Timing_Handlungs_Konfidenz_Aktion": ((result or {}).get("timing_action_confidence_pkg") or {}).get("action"),
+        "Timing_Handlungs_Konfidenz_Passt": ((result or {}).get("timing_action_confidence_pkg") or {}).get("fits_text"),
+        "Timing_Handlungs_Konfidenz_Fehlend": ((result or {}).get("timing_action_confidence_pkg") or {}).get("missing_text"),
+        "Timing_Handlungs_Konfidenz_Defensiv": ((result or {}).get("timing_action_confidence_pkg") or {}).get("defensive_text"),
         "Setup_Typ": (result or {}).get("setup_type"),
         "Watchlist_Prioritaet": (result or {}).get("watchlist_priority"),
         "Watchlist_Prioritaet_Score": (result or {}).get("watchlist_priority_score"),
@@ -1774,7 +2136,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.2.1"
+APP_VERSION = "v16.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -17571,6 +17933,29 @@ if result is not None:
     )
     result["trigger_confluence_pkg"] = trigger_confluence_pkg
 
+    timing_action_confidence_pkg = build_timing_action_confidence_v163(
+        trigger_confluence_pkg=trigger_confluence_pkg,
+        final_action_label=final_action_label if "final_action_label" in locals() else "-",
+        final_timing_label=final_timing_label if "final_timing_label" in locals() else "-",
+        final_risk_label=final_risk_label if "final_risk_label" in locals() else "-",
+        valid_trade_setup=bool(result.get("valid_trade_setup", False)),
+        conflict_pkg=conflict_pkg if "conflict_pkg" in locals() else {},
+        fomo_pkg=fomo_pkg_ui,
+        fibonacci_pkg=result.get("fibonacci_context_pkg") or {},
+        wave_pkg=result.get("wave_structure_pkg") or {},
+        setup_pattern_pkg=result.get("setup_pattern_pkg") or {},
+        regime_ctx=regime_ctx if "regime_ctx" in locals() else {},
+        daily_sig=daily_sig if "daily_sig" in locals() and isinstance(daily_sig, dict) else None,
+        ultra_signal=ultra_signal if "ultra_signal" in locals() and isinstance(ultra_signal, dict) else None,
+        final_ultra_label=final_ultra_label if "final_ultra_label" in locals() else "-",
+        result=result,
+        entry_zone=suggested_entry_zone if "suggested_entry_zone" in locals() else result.get("suggested_entry_zone", "-"),
+        current_price=price if "price" in locals() else result.get("price"),
+        structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+        ccy=ccy if "ccy" in locals() else "",
+    )
+    result["timing_action_confidence_pkg"] = timing_action_confidence_pkg
+
     # FOMO/Smart-Money-Warnungen sollen nicht nur dekorativ sein: Bei kritischer
     # Lage wird ein Sofortkauf in der Anzeige defensiver auf "vorbereiten" gesetzt.
     if not position_mode and str(final_action_label).strip().lower() in {"kaufen", "buy"}:
@@ -17670,6 +18055,60 @@ if result is not None:
             st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
         else:
             st.info("Keine Trigger-Konfluenz-Daten verfügbar.")
+
+    # ---------- v16.3: Timing-/Handlungs-Konfidenz ----------
+    _tcfg = timing_action_confidence_pkg if "timing_action_confidence_pkg" in locals() and isinstance(timing_action_confidence_pkg, dict) else {}
+    _tcfg_cls = str(_tcfg.get("class", "timing-confidence-medium"))
+    _tcfg_label = str(_tcfg.get("label", "Mittel"))
+    _tcfg_score = _tcfg.get("score", "-")
+    _tcfg_summary = str(_tcfg.get("summary", "-"))
+    _tcfg_action = str(_tcfg.get("action", "-"))
+    _tcfg_fits = _tcfg.get("fits") or []
+    _tcfg_missing = _tcfg.get("missing") or []
+    _tcfg_defensive = _tcfg.get("defensive") or []
+
+    def _v163_items_html(items):
+        clean = [html.escape(str(x)) for x in (items or []) if str(x).strip()]
+        if not clean:
+            return "<div class='timing-confidence-empty'>-</div>"
+        return "".join(f"<div class='timing-confidence-li'>• {x}</div>" for x in clean[:5])
+
+    st.markdown(
+        f"""
+        <style>
+        .timing-confidence-box{{margin:.75rem 0 1rem 0; padding:1rem; border-radius:20px; border:1px solid rgba(148,163,184,.24); background:rgba(15,23,42,.28);}}
+        .timing-confidence-box.timing-confidence-very-high{{border-color:rgba(34,197,94,.55); background:linear-gradient(135deg,rgba(34,197,94,.20),rgba(15,23,42,.34)); box-shadow:0 0 0 1px rgba(34,197,94,.12) inset;}}
+        .timing-confidence-box.timing-confidence-high{{border-color:rgba(59,130,246,.50); background:linear-gradient(135deg,rgba(59,130,246,.18),rgba(15,23,42,.34));}}
+        .timing-confidence-box.timing-confidence-medium{{border-color:rgba(234,179,8,.42); background:linear-gradient(135deg,rgba(234,179,8,.14),rgba(15,23,42,.34));}}
+        .timing-confidence-box.timing-confidence-low{{border-color:rgba(249,115,22,.45); background:linear-gradient(135deg,rgba(249,115,22,.15),rgba(15,23,42,.34));}}
+        .timing-confidence-box.timing-confidence-very-low{{border-color:rgba(239,68,68,.48); background:linear-gradient(135deg,rgba(239,68,68,.17),rgba(15,23,42,.34));}}
+        .timing-confidence-kicker{{font-size:.70rem; letter-spacing:.13em; text-transform:uppercase; color:#cbd5e1; font-weight:850;}}
+        .timing-confidence-head{{display:flex; align-items:baseline; gap:.8rem; flex-wrap:wrap; margin:.25rem 0 .35rem 0;}}
+        .timing-confidence-label{{font-size:1.18rem; font-weight:900; color:#fff;}}
+        .timing-confidence-score{{font-size:.90rem; color:#d1d5db;}}
+        .timing-confidence-summary{{font-size:.88rem; color:#e5e7eb; line-height:1.38; margin:.25rem 0 .65rem 0;}}
+        .timing-confidence-grid{{display:grid; grid-template-columns:1fr 1fr 1fr; gap:.7rem;}}
+        .timing-confidence-card{{background:rgba(15,23,42,.33); border:1px solid rgba(148,163,184,.18); border-radius:14px; padding:.65rem .75rem;}}
+        .timing-confidence-card-title{{font-size:.68rem; letter-spacing:.09em; text-transform:uppercase; color:#9ca3af; font-weight:850; margin-bottom:.35rem;}}
+        .timing-confidence-li{{font-size:.82rem; color:#e5e7eb; line-height:1.35; margin:.16rem 0; overflow-wrap:anywhere;}}
+        .timing-confidence-empty{{font-size:.82rem; color:#9ca3af;}}
+        .timing-confidence-action{{margin-top:.7rem; padding:.65rem .75rem; border-radius:13px; background:rgba(2,6,23,.28); border:1px solid rgba(148,163,184,.16); font-size:.88rem; color:#f9fafb; line-height:1.38;}}
+        @media(max-width:950px){{.timing-confidence-grid{{grid-template-columns:1fr;}}}}
+        </style>
+        <div class="timing-confidence-box {_tcfg_cls}">
+            <div class="timing-confidence-kicker">Timing-/Handlungs-Konfidenz</div>
+            <div class="timing-confidence-head"><div class="timing-confidence-label">{html.escape(_tcfg_label)}</div><div class="timing-confidence-score">{html.escape(str(_tcfg_score))}/100</div></div>
+            <div class="timing-confidence-summary">{html.escape(_tcfg_summary)}</div>
+            <div class="timing-confidence-grid">
+                <div class="timing-confidence-card"><div class="timing-confidence-card-title">Was aktuell passt</div>{_v163_items_html(_tcfg_fits)}</div>
+                <div class="timing-confidence-card"><div class="timing-confidence-card-title">Was noch fehlt</div>{_v163_items_html(_tcfg_missing)}</div>
+                <div class="timing-confidence-card"><div class="timing-confidence-card-title">Defensiver bei</div>{_v163_items_html(_tcfg_defensive)}</div>
+            </div>
+            <div class="timing-confidence-action"><strong>Jetzt tun:</strong> {html.escape(_tcfg_action)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # ---------- v15.27: zentrale Handlungsbox und klare Pre-/Post-Entry-Sprache ----------
     try:

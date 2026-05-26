@@ -1591,7 +1591,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.2",
+        "Export_Version": "v16.2.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -1638,6 +1638,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Setup_Pattern_Score": ((result or {}).get("setup_pattern_pkg") or {}).get("trigger_score"),
         "Setup_Pattern_Text": ((result or {}).get("setup_pattern_pkg") or {}).get("summary"),
         "Setup_Pattern_Handlung": ((result or {}).get("setup_pattern_pkg") or {}).get("action_hint"),
+        "Setup_Pattern_Damit_Es_Passt": ((result or {}).get("setup_pattern_pkg") or {}).get("confirmation_needed"),
         "FOMO_Smart_Money_Label": ((result or {}).get("fomo_smart_money_pkg") or {}).get("label"),
         "FOMO_Smart_Money_Score": ((result or {}).get("fomo_smart_money_pkg") or {}).get("score"),
         "FOMO_Smart_Money_Summary": ((result or {}).get("fomo_smart_money_pkg") or {}).get("summary"),
@@ -1773,7 +1774,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.2"
+APP_VERSION = "v16.2.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4627,6 +4628,7 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
         "trigger_score": 0,
         "trigger_text": "Kein aktiver Spezialmuster-Trigger.",
         "trigger_action": "Nur beobachten; andere Analysebausteine bleiben führend.",
+        "confirmation_needed": "Kein Spezialmuster aktiv; normale Entry-, S/R- und Konfluenzsignale bleiben wichtiger.",
         "drivers": [],
         "rows": [],
         "is_score_relevant": False,
@@ -4785,10 +4787,31 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
             trig_text = "Musterkontext möglich, aber der operative Trigger fehlt."
             trig_action = "Auf Pivot-Ausbruch, Reclaim oder enge Konsolidierung warten."
 
+        if best_type == "High Tight Pivot":
+            confirmation_needed = (
+                f"Passt wahrscheinlicher, wenn der Kurs den Pivotbereich um {_v1533_1_fmt_price(pivot_zone)} "
+                "zurückerobert oder darüber schließt, die Kerzen eng bleiben und MA10/MA20 halten. "
+                "Idealer Zusatz: Volumen zieht beim Ausbruch an. Schwächer wird es bei Bruch von MA10/MA20."
+            )
+        elif best_type == "Power Play":
+            confirmation_needed = (
+                f"Passt wahrscheinlicher, wenn der starke Lauf nicht sofort abverkauft wird, der Kurs eng oberhalb/nahe MA10/MA20 "
+                f"({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) konsolidiert und anschließend mit Volumen wieder nach oben dreht. "
+                "Kein Hinterherlaufen bei weiterem Abstand ohne Konsolidierung."
+            )
+        elif best_type == "High Tight Flag":
+            confirmation_needed = (
+                f"Passt wahrscheinlicher, wenn die Flagge eng bleibt, MA10/MA20 halten und der Kurs den Flag-/Pivotbereich um "
+                f"{_v1533_1_fmt_price(pivot_zone)} mit Schlusskurs und idealerweise Volumenbestätigung überschreitet. "
+                "Schwächer wird es bei Bruch der Flagge oder MA20."
+            )
+        else:
+            confirmation_needed = "Kein Spezialmuster aktiv; normale Entry-, S/R- und Konfluenzsignale bleiben wichtiger."
+
         rows = [
-            {"Muster": "High Tight Pivot", "Score": int(round(min(scores["High Tight Pivot"],100))), "Lesart": "Enger Pivot nahe Hoch; interessant erst bei Ausbruch/Stabilisierung über dem Pivot."},
-            {"Muster": "Power Play", "Score": int(round(min(scores["Power Play"],100))), "Lesart": "Starker kurzer Impuls; Risiko ist Hinterherlaufen, wenn keine enge Konsolidierung entsteht."},
-            {"Muster": "High Tight Flag", "Score": int(round(min(scores["High Tight Flag"],100))), "Lesart": "Starker Move plus enge Flagge; selten, nur mit Ausbruchsbestätigung belastbar."},
+            {"Muster": "High Tight Pivot", "Score": int(round(min(scores["High Tight Pivot"],100))), "Lesart": "Enger Pivot nahe Hoch.", "Damit es passt": f"Ausbruch/Stabilisierung über Pivot um {_v1533_1_fmt_price(pivot_zone)}, MA10/MA20 halten, ideal mit Volumen."},
+            {"Muster": "Power Play", "Score": int(round(min(scores["Power Play"],100))), "Lesart": "Starker kurzer Impuls.", "Damit es passt": f"Enge Konsolidierung statt Abverkauf; Reclaim/Halten von MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) und neue Stärke."},
+            {"Muster": "High Tight Flag", "Score": int(round(min(scores["High Tight Flag"],100))), "Lesart": "Starker Move plus enge Flagge.", "Damit es passt": f"Flagge bleibt eng; Ausbruch über Pivot/Flagge um {_v1533_1_fmt_price(pivot_zone)} mit Schlusskurs/Volumen."},
         ]
         out.update({
             "label": label,
@@ -4801,6 +4824,7 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
             "trigger_score": trigger_score,
             "trigger_text": trig_text,
             "trigger_action": trig_action,
+            "confirmation_needed": confirmation_needed,
             "drivers": (tdrivers + drivers)[:8],
             "rows": rows,
             "metrics": {
@@ -17217,6 +17241,7 @@ if result is not None:
                     <div class="premium-sub" style="margin-top:6px;"><b>Lesart:</b> {html.escape(str(setup_pattern_pkg.get('summary', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Trigger:</b> {html.escape(str(setup_pattern_pkg.get('trigger_label', '-')).capitalize())} {html.escape('(' + str(setup_pattern_pkg.get('trigger_score', 0)) + '/100)' if str(setup_pattern_pkg.get('trigger_label', '')).lower() not in {'kein trigger', 'kein'} else '')}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Jetzt tun:</b> {html.escape(str(setup_pattern_pkg.get('trigger_action') or setup_pattern_pkg.get('action_hint') or '-'))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Damit es wahrscheinlich passt:</b> {html.escape(str(setup_pattern_pkg.get('confirmation_needed', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Orientierung:</b> {html.escape(str(setup_pattern_pkg.get('active_zone_text', 'n/a')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Treiber:</b> {html.escape(_sp_driver_text)}</div>
                 </div>
@@ -17225,7 +17250,7 @@ if result is not None:
             )
             _sp_rows = setup_pattern_pkg.get("rows", []) if isinstance(setup_pattern_pkg, dict) else []
             if _sp_rows:
-                _render_wrapped_detail_table_v1533(_sp_rows, ["Muster", "Score", "Lesart"], table_class="wrapped-pattern-table")
+                _render_wrapped_detail_table_v1533(_sp_rows, ["Muster", "Score", "Lesart", "Damit es passt"], table_class="wrapped-pattern-table")
             st.caption("High Tight Pivot, Power Play und High Tight Flag sind seltene, weiche Strukturhinweise. Sie sind keine automatischen Kaufsignale und werden nicht direkt in den Score gerechnet.")
 
             # v15.33.2: Fibonacci-Kontext als weicher Chartbaustein, nicht score-wirksam.

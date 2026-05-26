@@ -1845,32 +1845,60 @@ def build_timing_action_confidence_v163(
 
     # Gating: nicht zu offensiv, wenn Setup/FOMO nicht passt.
     score = _v163_clip(score)
-    if not bool(valid_trade_setup):
+    setup_is_valid = bool(valid_trade_setup)
+    action_is_offensive = any(x in action_low for x in ["kaufen", "aufstocken"])
+    action_is_preparing = any(x in action_low for x in ["vorbereiten", "prüfen", "pruefen"])
+    needs_entry_confirmation = any(
+        any(term in _v163_low(item) for term in [
+            "reclaim", "stabilisierung", "bestätigung", "bestaetigung",
+            "entry-zone", "struktur-trigger noch nicht", "pivot/trigger noch nicht"
+        ])
+        for item in (missing or [])
+    )
+    fomo_is_elevated = ("erhöht" in fomo_low or "erhoeht" in fomo_low or "kritisch" in fomo_low)
+
+    if not setup_is_valid:
         score = min(score, 64.0)
     if "kritisch" in fomo_low:
         score = min(score, 58.0)
     if "widers" in conflict_low:
         score = min(score, 55.0)
 
-    label = _v163_label(score, valid_trade_setup=bool(valid_trade_setup))
+    # v16.3.1: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
+    # wenn der Einstieg wirklich freigegeben/aktiv ist. Bei "vorbereiten" plus fehlendem
+    # Entry-/Strukturtrigger wird die Anzeige auf "nahe am Trigger" gedeckelt.
+    if action_is_preparing and needs_entry_confirmation:
+        score = min(score, 66.0 if not fomo_is_elevated else 62.0)
+    elif action_is_preparing and not action_is_offensive:
+        score = min(score, 69.0)
 
-    if score >= 82:
-        summary = "Mehrere Trigger bestätigen sich gleichzeitig. Das Timing wirkt breit abgestützt."
-        action = "Einstieg kann aktiv geprüft werden; nicht auf Perfektion warten, aber Invalidierung strikt beachten."
-    elif score >= 70:
-        summary = "Das Timing ist konstruktiv. Mehrere Bausteine passen, auch wenn nicht alles perfekt ist."
-        action = "Einstieg eher aktiv prüfen; Positionsgröße und Stop an Risiko/FOMO anpassen."
-    elif score >= 55:
-        summary = "Das Setup ist interessant, aber noch nicht breit genug bestätigt."
-        action = "Vorbereiten und genau auf die fehlenden Trigger achten; kein Blindkauf."
-    elif score >= 40:
-        summary = "Timing-Kontext noch schwach oder gemischt."
-        action = "Watchlist/Beobachtung; erst bei den genannten Bedingungen neu prüfen."
+    if setup_is_valid and action_is_preparing and needs_entry_confirmation:
+        label = "Mittel - nahe am Trigger"
+        summary = "Das Setup ist konstruktiv, aber noch nicht aktiv genug für ein klares Kaufsignal."
+        action = "Nicht blind kaufen. Erst bei Reclaim/Stabilisierung in der genannten Zone oder klarem bullischem Trigger aktiv werden."
     else:
-        summary = "Aktuell kein attraktiver Timing-Kontext."
-        action = "Nicht erzwingen; neue Base, Reclaim oder klarere Reaktion abwarten."
+        label = _v163_label(score, valid_trade_setup=setup_is_valid)
 
-    if not bool(valid_trade_setup) and score >= 55:
+        if score >= 82 and action_is_offensive:
+            summary = "Mehrere Trigger bestätigen sich gleichzeitig. Das Timing wirkt breit abgestützt."
+            action = "Einstieg kann aktiv geprüft werden; nicht auf Perfektion warten, aber Invalidierung strikt beachten."
+        elif score >= 70 and action_is_offensive:
+            summary = "Das Timing ist konstruktiv. Mehrere Bausteine passen, auch wenn nicht alles perfekt ist."
+            action = "Einstieg eher aktiv prüfen; Positionsgröße und Stop an Risiko/FOMO anpassen."
+        elif score >= 70:
+            summary = "Viele Bausteine sind konstruktiv, aber der konkrete Einstiegstrigger ist noch nicht sauber aktiv."
+            action = "Noch vorbereiten: konkrete Triggerzone beobachten und erst bei Bestätigung handeln."
+        elif score >= 55:
+            summary = "Das Setup ist interessant, aber noch nicht breit genug bestätigt."
+            action = "Vorbereiten und genau auf die fehlenden Trigger achten; kein Blindkauf."
+        elif score >= 40:
+            summary = "Timing-Kontext noch schwach oder gemischt."
+            action = "Watchlist/Beobachtung; erst bei den genannten Bedingungen neu prüfen."
+        else:
+            summary = "Aktuell kein attraktiver Timing-Kontext."
+            action = "Nicht erzwingen; neue Base, Reclaim oder klarere Reaktion abwarten."
+
+    if not setup_is_valid and score >= 55:
         action = "Noch nicht als Kaufsignal werten: erst valides Trade-Setup und konkrete Bestätigung abwarten."
 
     fits = _v163_short_list(fits, 4)
@@ -1946,7 +1974,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.3",
+        "Export_Version": "v16.3.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2136,7 +2164,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.3"
+APP_VERSION = "v16.3.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",

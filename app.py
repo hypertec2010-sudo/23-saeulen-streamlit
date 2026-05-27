@@ -1544,7 +1544,7 @@ def _v1537_confluence_class(label):
     return "confluence-mixed"
 
 
-# ---------- v16.3: Timing-/Handlungs-Konfidenz ----------
+# ---------- v16.3.2: Timing-/Handlungs-Konfidenz kompakt/entdoppelt ----------
 def _v163_text(value):
     return str(value or "").strip()
 
@@ -1678,7 +1678,7 @@ def build_timing_action_confidence_v163(
         fits.append(f"Aktion ist bereits offensiv: {final_action_label}")
     elif any(x in action_low for x in ["vorbereiten", "prüfen", "pruefen"]):
         score += 2
-        missing.append("Aktion ist noch vorbereitend: letzter Einstiegstrigger muss sauber bestätigt werden")
+        missing.append("Einstiegstrigger noch nicht aktiv")
     elif any(x in action_low for x in ["abwarten", "warten", "reduz", "exit", "verkauf"]):
         score -= 12
         missing.append(f"Aktion ist noch defensiv: {final_action_label}")
@@ -1688,7 +1688,7 @@ def build_timing_action_confidence_v163(
         fits.append("Trade-Setup ist valide")
     else:
         score -= 10
-        missing.append("Valides Trade-Setup fehlt: Entry-Zone, Trigger und Invalidierung müssen zusammenpassen")
+        missing.append("Valides Trade-Setup fehlt")
 
     timing_state = _v163_truthy_label(final_timing_label,
         positive_terms=["reif", "bestätigt", "bestaetigt", "stimmig", "aktiv"],
@@ -1717,10 +1717,10 @@ def build_timing_action_confidence_v163(
         fits.append("Signalbild ist konsistent")
     elif "widers" in conflict_low:
         score -= 13
-        missing.append("Signalbild ist widersprüchlich")
+        missing.append("Signalbild widersprüchlich")
     elif "gemischt" in conflict_low:
         score -= 4
-        missing.append("Signalbild ist gemischt")
+        missing.append("Signalbild gemischt")
 
     fomo_label = _v163_text(fomo_pkg.get("label"))
     fomo_low = fomo_label.lower()
@@ -1747,7 +1747,7 @@ def build_timing_action_confidence_v163(
         fits.append(f"Erste Fibonacci-Reaktion sichtbar{(': ' + fib_zone) if fib_zone else ''}")
     elif "keine aktive" in fib_low or "nicht" in fib_low or "keine" in fib_low:
         if fib_zone:
-            missing.append(f"Fibonacci-Zone {fib_zone}: erst bei sichtbarer Reaktion/Stabilisierung relevant")
+            missing.append(f"Fibonacci-Reaktion fehlt")
 
     wave_label = _v163_text(wave_pkg.get("confirmation_label") or wave_pkg.get("Struktur_Trigger_Label"))
     wave_low = wave_label.lower()
@@ -1758,7 +1758,7 @@ def build_timing_action_confidence_v163(
         score += 4
         fits.append("Erste Strukturreaktion sichtbar")
     elif any(x in wave_low for x in ["noch nicht", "kein", "unter beobachtung"]):
-        missing.append("Struktur-Trigger noch nicht aktiv: Pullback, Reclaim oder neue Base abwarten")
+        missing.append("Strukturtrigger noch nicht aktiv")
 
     pattern_label = _v163_text(setup_pattern_pkg.get("trigger_label"))
     pattern_low = pattern_label.lower()
@@ -1766,7 +1766,7 @@ def build_timing_action_confidence_v163(
         score += 6
         fits.append("Spezialmuster-Trigger ist aktiv")
     elif "noch nicht" in pattern_low or "kein" in pattern_low:
-        missing.append("Spezialmuster ist nur Kandidat: Pivot/Trigger noch nicht aktiv")
+        missing.append("Spezialmuster noch nicht aktiv")
 
     ma10_label = _v163_text(result.get("ma10_timing_label") or result.get("MA10_Timing"))
     ma10_low = ma10_label.lower()
@@ -1783,7 +1783,7 @@ def build_timing_action_confidence_v163(
         fits.append(f"Kurzfristtrend hält{(': ' + ma_suffix) if ma_suffix else ''}")
     elif any(x in ma10_low for x in ["angeschlagen", "unter", "bruch"]):
         score -= 8
-        missing.append(f"MA10/MA20 zurückerobern oder stabilisieren{(' (' + ma_suffix + ')') if ma_suffix else ''}")
+        missing.append(f"MA10/MA20 noch nicht sauber{(' (' + ma_suffix + ')') if ma_suffix else ''}")
     elif "gedehnt" in ma10_low:
         score -= 3
         defensive.append("Kurs wirkt kurzfristig gedehnt; kein Hinterherlaufen")
@@ -1816,7 +1816,7 @@ def build_timing_action_confidence_v163(
         fits.append("Volumen/Smart-Money bestätigt eher konstruktiv")
     elif vol_quality < 45 or dist > acc + 12:
         score -= 6
-        missing.append("Volumen/Smart-Money bestätigt noch nicht sauber")
+        missing.append("Volumen/Smart-Money noch nicht bestätigt")
 
     regime_label = _v163_text(regime_ctx.get("label") or result.get("market_regime_label") or result.get("regime_label"))
     if "positiv" in regime_label.lower():
@@ -1833,11 +1833,11 @@ def build_timing_action_confidence_v163(
         if in_zone:
             if not any("Entry-Zone" in x for x in fits + missing):
                 fits.append(f"Kurs liegt in der Entry-Zone {entry_txt}")
-            missing.append("In der Entry-Zone: Bestätigung durch Stabilisierung, bullische Kerze oder Bruch über kurzfristiges Hoch abwarten")
+            missing.append("Bestätigung in der Entry-Zone fehlt")
         elif below_zone:
-            missing.append(f"Entry-Zone {entry_txt}: Reclaim/Stabilisierung nötig ({pos_txt})")
+            missing.append(f"Entry-Zone knapp verfehlt / Reclaim nötig")
         elif above_zone:
-            defensive.append(f"Kurs über Entry-Zone {entry_txt}: nicht hinterherlaufen, Pullback oder neue Base bevorzugen")
+            defensive.append(f"Kurs über Entry-Zone: Pullback/neue Base bevorzugen")
 
     invalidation = support_zone_text_v1525_9(structures, current_price, ccy, fallback="Bruch der relevanten Support-/Trigger-Zone")
     if invalidation:
@@ -1864,7 +1864,7 @@ def build_timing_action_confidence_v163(
     if "widers" in conflict_low:
         score = min(score, 55.0)
 
-    # v16.3.1: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
+    # v16.3.2: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
     # wenn der Einstieg wirklich freigegeben/aktiv ist. Bei "vorbereiten" plus fehlendem
     # Entry-/Strukturtrigger wird die Anzeige auf "nahe am Trigger" gedeckelt.
     if action_is_preparing and needs_entry_confirmation:
@@ -1874,32 +1874,32 @@ def build_timing_action_confidence_v163(
 
     if setup_is_valid and action_is_preparing and needs_entry_confirmation:
         label = "Mittel - nahe am Trigger"
-        summary = "Das Setup ist konstruktiv, aber noch nicht aktiv genug für ein klares Kaufsignal."
-        action = "Nicht blind kaufen. Erst bei Reclaim/Stabilisierung in der genannten Zone oder klarem bullischem Trigger aktiv werden."
+        summary = "Konstruktiv, aber der operative Einstieg ist noch nicht aktiviert."
+        action = "Noch kein klares Kaufsignal; operative Bedingungen stehen in „Nächste Handlung“."
     else:
         label = _v163_label(score, valid_trade_setup=setup_is_valid)
 
         if score >= 82 and action_is_offensive:
-            summary = "Mehrere Trigger bestätigen sich gleichzeitig. Das Timing wirkt breit abgestützt."
-            action = "Einstieg kann aktiv geprüft werden; nicht auf Perfektion warten, aber Invalidierung strikt beachten."
+            summary = "Mehrere Bausteine bestätigen das Timing gleichzeitig."
+            action = "Timing wirkt stark; konkrete Umsetzung über „Nächste Handlung“ prüfen."
         elif score >= 70 and action_is_offensive:
-            summary = "Das Timing ist konstruktiv. Mehrere Bausteine passen, auch wenn nicht alles perfekt ist."
-            action = "Einstieg eher aktiv prüfen; Positionsgröße und Stop an Risiko/FOMO anpassen."
+            summary = "Das Timing ist konstruktiv; mehrere Bausteine passen."
+            action = "Timing spricht eher für aktives Prüfen; Umsetzung siehe „Nächste Handlung“."
         elif score >= 70:
-            summary = "Viele Bausteine sind konstruktiv, aber der konkrete Einstiegstrigger ist noch nicht sauber aktiv."
-            action = "Noch vorbereiten: konkrete Triggerzone beobachten und erst bei Bestätigung handeln."
+            summary = "Viele Bausteine sind konstruktiv, der konkrete Einstiegstrigger ist aber noch nicht sauber aktiv."
+            action = "Noch vorbereitend; operative Trigger stehen in „Nächste Handlung“."
         elif score >= 55:
-            summary = "Das Setup ist interessant, aber noch nicht breit genug bestätigt."
-            action = "Vorbereiten und genau auf die fehlenden Trigger achten; kein Blindkauf."
+            summary = "Interessant, aber noch nicht breit genug bestätigt."
+            action = "Vorbereitend; es fehlen noch einzelne Bestätigungen."
         elif score >= 40:
             summary = "Timing-Kontext noch schwach oder gemischt."
-            action = "Watchlist/Beobachtung; erst bei den genannten Bedingungen neu prüfen."
+            action = "Watchlist/Beobachtung; operative Bedingungen separat prüfen."
         else:
             summary = "Aktuell kein attraktiver Timing-Kontext."
-            action = "Nicht erzwingen; neue Base, Reclaim oder klarere Reaktion abwarten."
+            action = "Nicht erzwingen; Timing-Kontext ist aktuell schwach."
 
     if not setup_is_valid and score >= 55:
-        action = "Noch nicht als Kaufsignal werten: erst valides Trade-Setup und konkrete Bestätigung abwarten."
+        action = "Noch nicht als Kaufsignal werten; Trade-Setup ist nicht ausreichend freigegeben."
 
     fits = _v163_short_list(fits, 4)
     missing = _v163_short_list(missing, 5)
@@ -1974,7 +1974,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.3.1",
+        "Export_Version": "v16.3.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2164,7 +2164,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.3.1"
+APP_VERSION = "v16.3.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6459,10 +6459,10 @@ def compute_overall_setup_quality_phase_ui(
         reasons_up.append("Signale sind konsistent")
     elif conflict_label == "gemischt":
         score -= 1
-        reasons_down.append("Signalbild ist gemischt")
+        reasons_down.append("Signalbild gemischt")
     elif conflict_label == "widersprüchlich":
         score -= 3
-        reasons_down.append("Signalbild ist widersprüchlich")
+        reasons_down.append("Signalbild widersprüchlich")
 
     if tactical in {"erhöht"}:
         score -= 1
@@ -18084,7 +18084,7 @@ if result is not None:
         else:
             st.info("Keine Trigger-Konfluenz-Daten verfügbar.")
 
-    # ---------- v16.3: Timing-/Handlungs-Konfidenz ----------
+    # ---------- v16.3.2: Timing-/Handlungs-Konfidenz kompakt/entdoppelt ----------
     _tcfg = timing_action_confidence_pkg if "timing_action_confidence_pkg" in locals() and isinstance(timing_action_confidence_pkg, dict) else {}
     _tcfg_cls = str(_tcfg.get("class", "timing-confidence-medium"))
     _tcfg_label = str(_tcfg.get("label", "Mittel"))
@@ -18132,7 +18132,7 @@ if result is not None:
                 <div class="timing-confidence-card"><div class="timing-confidence-card-title">Was noch fehlt</div>{_v163_items_html(_tcfg_missing)}</div>
                 <div class="timing-confidence-card"><div class="timing-confidence-card-title">Defensiver bei</div>{_v163_items_html(_tcfg_defensive)}</div>
             </div>
-            <div class="timing-confidence-action"><strong>Jetzt tun:</strong> {html.escape(_tcfg_action)}</div>
+            <div class="timing-confidence-action"><strong>Einordnung:</strong> {html.escape(_tcfg_action)}</div>
         </div>
         """,
         unsafe_allow_html=True,

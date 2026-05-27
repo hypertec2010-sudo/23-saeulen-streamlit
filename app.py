@@ -1921,7 +1921,7 @@ def build_timing_action_confidence_v163(
     if not setup_is_valid and score >= 55:
         action = "Noch nicht als Kaufsignal werten; Trade-Setup ist nicht ausreichend freigegeben."
 
-    # v17.2.2: Wenn die Kernaktion bereits "kaufen" ist, darf ein offener
+    # v17.2.3: Wenn die Kernaktion bereits "kaufen" ist, darf ein offener
     # Strukturtrigger nicht mehr wie eine harte Einstiegssperre wirken. In diesem
     # Zustand ist der Einstieg grundsätzlich freigegeben; die Struktur ist nur
     # noch eine Zusatzbestätigung/Qualitätsverbesserung.
@@ -2011,7 +2011,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.2.2",
+        "Export_Version": "v17.2.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2201,7 +2201,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.2.2"
+APP_VERSION = "v17.2.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -18427,7 +18427,7 @@ if result is not None:
             if below_zone:
                 return f"Einstieg ist grundsätzlich freigegeben, aber Kurs liegt noch knapp unter der Entry-Zone {ez}; Reclaim/Stabilisierung bevorzugen."
             if above_zone:
-                return f"Einstiegssignal ist konstruktiv, aber Kurs liegt über der Entry-Zone {ez}; nicht hinterherlaufen, nur selektiv oder bei Pullback umsetzen."
+                return f"Zwei Wege: Sauberer Einstieg erst bei Pullback in/nahe Entry-Zone {ez}. Aggressiv nur kleine/selektive Position jetzt prüfen, wenn Stärke anhält; nicht hinterherlaufen."
             return f"Einstieg ist grundsätzlich freigegeben. Umsetzung in/nahe Entry-Zone {ez} prüfen; Stop/Invalidierung beachten."
         concrete = support_zone_text_v1525_9(structures, current_px, ccy, fallback="")
         if concrete:
@@ -18461,7 +18461,7 @@ if result is not None:
     except Exception:
         _invalid_txt = "Bruch der relevanten Support-/Trigger-Zone."
 
-    # v17.2.2: _trigger_label is assigned below depending on action/position mode.
+    # v17.2.3: _trigger_label is assigned below depending on action/position mode.
     # Initialize it before optional text cleanup so this render path cannot raise NameError.
     _trigger_label = "Kaufen erst bei"
 
@@ -18503,6 +18503,17 @@ if result is not None:
         _action_low_bridge = str(final_action_label or "").lower()
         if "kaufen" in _action_low_bridge:
             _trigger_label = "Jetzt umsetzen / prüfen"
+            try:
+                _ez_for_label = suggested_entry_zone if "suggested_entry_zone" in locals() else "-"
+                _pos_txt_lbl, _in_zone_lbl, _below_zone_lbl, _above_zone_lbl = _entry_zone_position_text_v1524_12(_ez_for_label, price if "price" in locals() else None)
+                if _above_zone_lbl:
+                    _trigger_label = "Selektiv jetzt / sauberer Pullback"
+                elif _below_zone_lbl:
+                    _trigger_label = "Reclaim abwarten"
+                elif _in_zone_lbl:
+                    _trigger_label = "Jetzt in Zone prüfen"
+            except Exception:
+                pass
             _trigger_txt = _v1721_buy_execution_text(
                 suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
                 price if "price" in locals() else None,

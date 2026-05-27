@@ -1477,10 +1477,14 @@ def build_trigger_confluence_v1537(
             neutral += 1
     score = round(max(0, min(100, (raw + total_weight) / (2 * total_weight) * 100)), 1)
 
-    if score >= 72 and bear <= 1:
+    if score >= 78 and bear <= 1 and bull >= max(7, neutral + 2):
         label = "stark bullisch"
-        summary = "Viele Trigger bestätigen dieselbe bullische Richtung. Trotzdem Entry-Zone und Invalidierung beachten."
+        summary = "Viele Bausteine bestätigen aktiv dieselbe bullische Richtung. Trotzdem Entry-Zone und Invalidierung beachten."
         action_hint = "Aktiv prüfen; bei sauberem Trigger kann offensiver gehandelt werden."
+    elif score >= 68 and bear == 0 and bull >= 4:
+        label = "bullisch-konstruktiv"
+        summary = "Mehrere Bausteine sprechen konstruktiv und bremsende Signale fehlen. Für stark bullisch müssten mehr Trigger aktiv bestätigen."
+        action_hint = "Einstieg vorbereiten; konkreten Trigger und Invalidierung beachten."
     elif score >= 58:
         label = "bullisch, aber unvollständig"
         summary = "Die Mehrheit der Bausteine ist konstruktiv, aber nicht alles bestätigt."
@@ -1544,7 +1548,7 @@ def _v1537_confluence_class(label):
     return "confluence-mixed"
 
 
-# ---------- v17.0: Timing-/Handlungs-Konfidenz kalibriert und operative Texte gekuerzt ----------
+# ---------- v17.0.1: Timing-/Handlungs-Konfidenz kalibriert und operative Texte gekuerzt ----------
 def _v163_text(value):
     return str(value or "").strip()
 
@@ -1682,7 +1686,10 @@ def build_timing_action_confidence_v163(
         missing.append("Einstiegstrigger noch nicht aktiv")
     elif any(x in action_low for x in ["abwarten", "warten", "reduz", "exit", "verkauf"]):
         score -= 12
-        missing.append(f"Aktion ist noch defensiv: {final_action_label}")
+        if bool(valid_trade_setup):
+            missing.append("Einstieg noch nicht aktiviert")
+        else:
+            missing.append("Einstieg noch nicht freigegeben")
 
     if bool(valid_trade_setup):
         score += 12
@@ -1867,7 +1874,7 @@ def build_timing_action_confidence_v163(
     if "widers" in conflict_low:
         score = min(score, 55.0)
 
-    # v17.0: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
+    # v17.0.1: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
     # wenn der Einstieg wirklich freigegeben/aktiv ist. Bei "vorbereiten" plus fehlendem
     # Entry-/Strukturtrigger wird die Anzeige auf "nahe am Trigger" gedeckelt.
     if action_is_preparing and needs_entry_confirmation:
@@ -1875,7 +1882,7 @@ def build_timing_action_confidence_v163(
     elif action_is_preparing and not action_is_offensive:
         score = min(score, 69.0)
 
-    # v17.0: Erste Fib-/Strukturreaktionen sollen nicht wie ein komplett
+    # v17.0.1: Erste Fib-/Strukturreaktionen sollen nicht wie ein komplett
     # unattraktiver Timing-Kontext wirken. Sie reichen nicht fuer ein Kaufsignal,
     # heben aber "sehr niedrig" auf "niedrig" an.
     if early_reaction_visible and score < 40:
@@ -1987,7 +1994,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.0",
+        "Export_Version": "v17.0.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2177,7 +2184,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.0"
+APP_VERSION = "v17.0.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -18097,7 +18104,7 @@ if result is not None:
         else:
             st.info("Keine Trigger-Konfluenz-Daten verfügbar.")
 
-    # ---------- v17.0: Timing-/Handlungs-Konfidenz kalibriert und operative Texte gekuerzt ----------
+    # ---------- v17.0.1: Timing-/Handlungs-Konfidenz kalibriert und operative Texte gekuerzt ----------
     _tcfg = timing_action_confidence_pkg if "timing_action_confidence_pkg" in locals() and isinstance(timing_action_confidence_pkg, dict) else {}
     _tcfg_cls = str(_tcfg.get("class", "timing-confidence-medium"))
     _tcfg_label = str(_tcfg.get("label", "Mittel"))
@@ -18232,6 +18239,22 @@ if result is not None:
     _now_do_label = "Position fuehren" if position_mode else "Einstieg pruefen"
     _now_do_value = str(final_action_label).capitalize()
     _why_txt = str(final_action_reason if "final_action_reason" in locals() else compact_action_text_phase_ui(final_action_label))
+
+    # v17.0.1: In Pre-Entry soll ein valides, reifes Setup nicht wie passives
+    # "Abwarten" wirken. Die Kernlogik bleibt unverändert; die Handlungsbox
+    # formuliert die nächste Aktion als Vorbereitung bis zum konkreten Trigger.
+    try:
+        _action_low_for_ui = str(final_action_label or "").lower()
+        _timing_low_for_ui = str(final_timing_label or "").lower() if "final_timing_label" in locals() else ""
+        _risk_low_for_ui = str(final_risk_label or "").lower() if "final_risk_label" in locals() else ""
+        _valid_for_ui = bool(valid_trade_setup if "valid_trade_setup" in locals() else result.get("valid_trade_setup", False))
+        if (not position_mode) and _valid_for_ui and any(x in _action_low_for_ui for x in ["abwarten", "warten"]):
+            if any(x in _timing_low_for_ui for x in ["reif", "stimmig", "aktiv"]) and any(x in _risk_low_for_ui for x in ["stabil", "niedrig", "ruhig"]):
+                _now_do_value = "Einstieg vorbereiten"
+                _why_txt = "Setup valide; Einstieg erst bei bestätigter Entry-Zone oder klarem kurzfristigem Trigger."
+    except Exception:
+        pass
+
     if not position_mode:
         _trigger_label = "Kaufen erst bei"
         _invalid_label = "Ungueltig / defensiver bei"

@@ -1994,7 +1994,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.1",
+        "Export_Version": "v17.1.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2184,7 +2184,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.1"
+APP_VERSION = "v17.1.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -19529,29 +19529,11 @@ if result is not None:
                 unsafe_allow_html=True,
             )
 
-            render_signal_conflict_block(conflict_pkg)
-            render_overall_setup_quality_block(overall_setup_pkg)
-            trigger_display_v1523_12 = operational_trigger_text_v1523_12(
-                next_trigger if "next_trigger" in locals() else "-",
-                trigger_status if "trigger_status" in locals() else "-",
-                trigger_reason if "trigger_reason" in locals() else "-",
-                final_action_label if "final_action_label" in locals() else "-",
-                entry_quality if "entry_quality" in locals() else "-",
-                suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
-                price if "price" in locals() else None,
-                chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
-                ccy if "ccy" in locals() else "",
-            )
-            st.markdown(
-                f"""
-                    <div class="section-card">
-                        <div class="premium-title">Nächster Trigger</div>
-                        <div class="premium-value">Bullisher bei: {trigger_display_v1523_12 if str(trigger_display_v1523_12).strip() not in {"", "-", "None"} else "sauberem Trigger nach oben"}</div>
-                        <div class="premium-sub">Bearisher bei: {sanitize_operational_bearish_trigger_v1523_13(top_red_flag if "top_red_flag" in locals() else "-", structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"), current_price=price if "price" in locals() else None, ccy=ccy if "ccy" in locals() else "")}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            # v17.1.1: Dieser alte Überblicksblock wurde aus der Standardansicht entfernt.
+            # Signal-Konflikt, Setup-Qualität und nächster Trigger werden inzwischen klarer und konkreter
+            # über Trigger-Konfluenz, Timing-/Handlungs-Konfidenz und die Box "Nächste Handlung" abgedeckt.
+            # Die alten Render-Funktionen bleiben im Code verfügbar, aber werden hier nicht mehr angezeigt,
+            # damit die Seite keine doppelten Aussagen enthält.
 
             with st.expander("Diagnose-Details zwischen Einordnung und Kurzfazit anzeigen", expanded=False):
                     st.markdown(

@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.3",
+        "Export_Version": "v17.4",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2087,6 +2087,14 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Setup_Pattern_Text": ((result or {}).get("setup_pattern_pkg") or {}).get("summary"),
         "Setup_Pattern_Handlung": ((result or {}).get("setup_pattern_pkg") or {}).get("action_hint"),
         "Setup_Pattern_Damit_Es_Passt": ((result or {}).get("setup_pattern_pkg") or {}).get("confirmation_needed"),
+        "Turnaround_Label": ((result or {}).get("turnaround_context_pkg") or {}).get("label"),
+        "Turnaround_Phase": ((result or {}).get("turnaround_context_pkg") or {}).get("phase"),
+        "Turnaround_Score": ((result or {}).get("turnaround_context_pkg") or {}).get("score"),
+        "Turnaround_Text": ((result or {}).get("turnaround_context_pkg") or {}).get("summary"),
+        "Turnaround_Handlung": ((result or {}).get("turnaround_context_pkg") or {}).get("action_hint"),
+        "Turnaround_Was_Passt": ((result or {}).get("turnaround_context_pkg") or {}).get("fits_text"),
+        "Turnaround_Was_Fehlt": ((result or {}).get("turnaround_context_pkg") or {}).get("missing_text"),
+        "Turnaround_Level": ((result or {}).get("turnaround_context_pkg") or {}).get("key_level_text"),
         "FOMO_Smart_Money_Label": ((result or {}).get("fomo_smart_money_pkg") or {}).get("label"),
         "FOMO_Smart_Money_Score": ((result or {}).get("fomo_smart_money_pkg") or {}).get("score"),
         "FOMO_Smart_Money_Summary": ((result or {}).get("fomo_smart_money_pkg") or {}).get("summary"),
@@ -2229,7 +2237,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.3"
+APP_VERSION = "v17.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5738,6 +5746,245 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
         return out
     except Exception as exc:
         out["summary"] = f"Setup-Muster-Kontext nicht belastbar: {exc}"
+        return out
+
+
+def _turnaround_v174_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            value = value.replace('%', '').replace(',', '.').strip()
+            if value.lower() in {'', '-', 'nan', 'none', 'n/a'}:
+                return default
+        out = float(value)
+        if not np.isfinite(out):
+            return default
+        return out
+    except Exception:
+        return default
+
+
+def _turnaround_v174_fmt(value, suffix=""):
+    v = _turnaround_v174_float(value)
+    if v is None:
+        return "n/a"
+    try:
+        return f"{v:.2f}{suffix}"
+    except Exception:
+        return str(value)
+
+
+def _turnaround_v174_pct(value):
+    v = _turnaround_v174_float(value)
+    return "n/a" if v is None else f"{v:.1f}%"
+
+
+def _turnaround_v174_get(result, *keys, default=None):
+    result = result or {}
+    for key in keys:
+        try:
+            val = result.get(key)
+        except Exception:
+            val = None
+        if val not in [None, "", "-", "n/a"]:
+            return val
+    return default
+
+
+def build_turnaround_context_v174(chart_df=None, result=None):
+    """Weicher charttechnischer Turnaround-Kontext.
+
+    Der Baustein erkennt fruehe Stabilisierung, Reclaim-/Turnaround-Aufbau,
+    bestaetigte Drehung oder gescheiterte Turnaround-Versuche. Er ist bewusst
+    Kontext, kein automatisches Kaufsignal.
+    """
+    result = result or {}
+    out = {
+        "label": "kein klarer Turnaround",
+        "phase": "Nicht aktiv",
+        "score": 0,
+        "summary": "Kein belastbarer charttechnischer Turnaround-Kontext erkennbar.",
+        "action_hint": "Normale Trend-, Entry- und S/R-Logik nutzen.",
+        "fits": [],
+        "missing": [],
+        "drivers": [],
+        "key_level_text": "n/a",
+        "invalid_text": "n/a",
+        "fits_text": "",
+        "missing_text": "",
+        "is_score_relevant": False,
+    }
+    try:
+        # Preis- und Trendwerte bevorzugt aus Chartdaten, sonst aus result.
+        price = _turnaround_v174_float(_turnaround_v174_get(result, "price", "analysis_price", "Kurs"))
+        ma10 = _turnaround_v174_float(_turnaround_v174_get(result, "ma10", "MA10"))
+        ma20 = _turnaround_v174_float(_turnaround_v174_get(result, "ma20", "MA20"))
+        ma50 = _turnaround_v174_float(_turnaround_v174_get(result, "ma50", "MA50"))
+        ma200 = _turnaround_v174_float(_turnaround_v174_get(result, "ma200", "MA200"))
+        prev_high20 = None; prev_low20 = None; high20 = None; low20 = None
+        perf20 = _turnaround_v174_float(_turnaround_v174_get(result, "perf_20d", "return_20d", "performance_20d"))
+        perf60 = _turnaround_v174_float(_turnaround_v174_get(result, "perf_60d", "return_60d", "performance_60d"))
+        vol_ratio = _turnaround_v174_float(_turnaround_v174_get(result, "breakout_day_volume_ratio", "volume_ratio", "relative_volume", "Volumen_Ratio"))
+        rs_acc = _turnaround_v174_float(_turnaround_v174_get(result, "rs_acceleration_score", "RS-Beschleunigung"))
+        acc = _turnaround_v174_float(_turnaround_v174_get(result, "accumulation_score", "Akkumulation"))
+        dist = _turnaround_v174_float(_turnaround_v174_get(result, "distribution_pressure_score", "distribution_score", "Distribution"))
+        exit_score = _turnaround_v174_float(_turnaround_v174_get(result, "exit_score"), 0)
+        risk_text = str(_turnaround_v174_get(result, "risk_final", "risk_label", "risk", default="")).lower()
+
+        if chart_df is not None:
+            dfp = chart_df.copy()
+            close_col = "Close" if "Close" in dfp.columns else "Adj Close" if "Adj Close" in dfp.columns else None
+            high_col = "High" if "High" in dfp.columns else close_col
+            low_col = "Low" if "Low" in dfp.columns else close_col
+            vol_col = "Volume" if "Volume" in dfp.columns else None
+            if close_col:
+                close = pd.to_numeric(dfp[close_col], errors="coerce").dropna()
+                if len(close) >= 2:
+                    price = float(close.iloc[-1]) if price is None else price
+                    ma10 = float(close.rolling(10).mean().iloc[-1]) if len(close) >= 10 else ma10
+                    ma20 = float(close.rolling(20).mean().iloc[-1]) if len(close) >= 20 else ma20
+                    ma50 = float(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else ma50
+                    ma200 = float(close.rolling(200).mean().iloc[-1]) if len(close) >= 200 else ma200
+                    perf20 = ((float(close.iloc[-1]) / float(close.iloc[-21])) - 1) * 100 if len(close) > 21 and float(close.iloc[-21]) else perf20
+                    perf60 = ((float(close.iloc[-1]) / float(close.iloc[-61])) - 1) * 100 if len(close) > 61 and float(close.iloc[-61]) else perf60
+                if high_col and low_col and high_col in dfp.columns and low_col in dfp.columns:
+                    high = pd.to_numeric(dfp[high_col], errors="coerce").dropna()
+                    low = pd.to_numeric(dfp[low_col], errors="coerce").dropna()
+                    if len(high) >= 21 and len(low) >= 21:
+                        prev_high20 = float(high.iloc[:-1].tail(20).max())
+                        prev_low20 = float(low.iloc[:-1].tail(20).min())
+                        high20 = float(high.tail(20).max())
+                        low20 = float(low.tail(20).min())
+                if vol_col and vol_col in dfp.columns:
+                    vol = pd.to_numeric(dfp[vol_col], errors="coerce").dropna()
+                    if len(vol) >= 20 and float(vol.tail(20).mean() or 0) > 0:
+                        vol_ratio = float(vol.iloc[-1] / vol.tail(20).mean())
+
+        if price is None:
+            return out
+
+        fits=[]; missing=[]; drivers=[]
+        def add_fit(txt):
+            if txt and txt not in fits: fits.append(txt)
+        def add_missing(txt):
+            if txt and txt not in missing: missing.append(txt)
+        def add_driver(txt):
+            if txt and txt not in drivers: drivers.append(txt)
+
+        score = 0
+        # Turnaround braucht meist vorherige Schwaeche oder zumindest Reclaim-Kontext.
+        prior_weak = False
+        if perf60 is not None and perf60 <= -8:
+            prior_weak = True; score += 16; add_fit(f"vorherige Schwächephase ({_turnaround_v174_pct(perf60)} / 60T)")
+        elif ma50 and price < ma50:
+            prior_weak = True; score += 10; add_fit("Kurs kommt aus einer schwächeren Struktur unter MA50")
+        else:
+            add_driver("kein klassischer Turnaround-Kontext; eher Trendfolge/Continuation")
+
+        above_ma10 = bool(ma10 and price >= ma10)
+        above_ma20 = bool(ma20 and price >= ma20)
+        above_ma50 = bool(ma50 and price >= ma50)
+        above_ma200 = bool(ma200 and price >= ma200)
+        if above_ma10: score += 8; add_fit(f"MA10 zurückerobert/gehalten ({_turnaround_v174_fmt(ma10)})")
+        else: add_missing(f"MA10-Reclaim fehlt ({_turnaround_v174_fmt(ma10)})")
+        if above_ma20: score += 10; add_fit(f"MA20 zurückerobert/gehalten ({_turnaround_v174_fmt(ma20)})")
+        else: add_missing(f"MA20-Reclaim fehlt ({_turnaround_v174_fmt(ma20)})")
+        if above_ma50: score += 18; add_fit(f"MA50 zurückerobert/gehalten ({_turnaround_v174_fmt(ma50)})")
+        else: add_missing(f"MA50-Reclaim fehlt ({_turnaround_v174_fmt(ma50)})")
+        if above_ma200: score += 6
+
+        if prev_high20 and price >= prev_high20 * 1.002:
+            score += 18; add_fit(f"Bruch über kurzfristiges Hoch ({_turnaround_v174_fmt(prev_high20)})")
+        elif prev_high20:
+            add_missing(f"Bruch über kurzfristiges Hoch fehlt ({_turnaround_v174_fmt(prev_high20)})")
+
+        if prev_low20 and price > prev_low20 * 1.01:
+            score += 6; add_fit(f"Support/Reclaim über 20T-Tief ({_turnaround_v174_fmt(prev_low20)})")
+        elif prev_low20:
+            add_missing(f"Support über 20T-Tief muss halten ({_turnaround_v174_fmt(prev_low20)})")
+
+        if vol_ratio is not None and vol_ratio >= 1.15:
+            score += 10; add_fit(f"Volumen bestätigt Erholung ({vol_ratio:.2f}x)")
+        else:
+            add_missing("Volumenbestätigung fehlt")
+        if rs_acc is not None and rs_acc >= 55:
+            score += 8; add_fit(f"Relative Stärke verbessert sich ({rs_acc:.0f}/100)")
+        else:
+            add_missing("Relative-Stärke-Verbesserung fehlt")
+        if acc is not None and dist is not None and acc >= dist + 5:
+            score += 8; add_fit(f"Akkumulation über Distribution ({acc:.0f}/{dist:.0f})")
+        elif dist is not None and acc is not None and dist > acc + 10:
+            score -= 10; add_missing(f"Distribution noch höher als Akkumulation ({acc:.0f}/{dist:.0f})")
+        if exit_score is not None and exit_score >= 55:
+            score -= 14; add_missing(f"Exit-/Trenddruck erhöht ({exit_score:.0f}/100)")
+        if "hoch" in risk_text or "erhöht" in risk_text:
+            score -= 6
+
+        # First higher low proxy: price above recent 20d low but not necessarily over high.
+        if low20 and price > low20 * 1.05:
+            score += 6; add_fit(f"Abstand zum jüngsten Tief positiv ({_turnaround_v174_fmt(low20)})")
+        score = max(0, min(100, int(round(score))))
+
+        failed = False
+        if (ma20 and price < ma20 * 0.985 and dist is not None and acc is not None and dist > acc + 10) or (exit_score is not None and exit_score >= 70):
+            failed = True
+
+        if failed:
+            label = "gescheiterter Turnaround"
+            phase = "Defensiv"
+            summary = "Der Turnaround-Versuch wirkt angeschlagen. Rueckeroberung wichtiger Linien/Zonen fehlt oder Abgabedruck dominiert."
+            action = "Nicht erzwingen. Erst neue Stabilisierung, MA-Reclaim und nachlassenden Abgabedruck abwarten."
+        elif score >= 72:
+            label = "Turnaround bestätigt"
+            phase = "Bestätigend"
+            summary = "Mehrere Reclaim- und Bestätigungssignale sprechen für eine belastbarere Drehung."
+            action = "Aktiv prüfen, aber nur mit Stop/Invalidierung. Ruecksetzer/Reclaim nicht ueberdehnen."
+        elif score >= 52:
+            label = "Turnaround im Aufbau"
+            phase = "Aufbau"
+            summary = "Erste wichtige Reclaims/Bestätigungen sind sichtbar, aber der Turnaround ist noch nicht vollständig belastbar."
+            action = "Vorbereiten. Belastbarer wird es bei Bruch über kurzfristiges Hoch, MA50-Reclaim und Volumenbestätigung."
+        elif score >= 30:
+            label = "frühe Stabilisierung"
+            phase = "Früh"
+            summary = "Erste Stabilisierung ist möglich, aber noch ohne ausreichende Bestätigung."
+            action = "Beobachten. Erst bei MA10/MA20-Reclaim, höherem Tief und bullischer Reaktion aktiv werden."
+        else:
+            label = "kein belastbarer Turnaround"
+            phase = "Nicht aktiv"
+            summary = "Noch keine ausreichenden charttechnischen Hinweise auf eine tragfähige Drehung."
+            action = "Nicht aus Turnaround-Sicht handeln; normale Entry- und Trendlogik bleibt führend."
+
+        key_levels=[]
+        if ma20: key_levels.append(f"MA20 {_turnaround_v174_fmt(ma20)}")
+        if ma50: key_levels.append(f"MA50 {_turnaround_v174_fmt(ma50)}")
+        if prev_high20: key_levels.append(f"kurzfristiges Hoch {_turnaround_v174_fmt(prev_high20)}")
+        key_level_text = " · ".join(key_levels[:3]) if key_levels else "n/a"
+        invalid=[]
+        if ma20: invalid.append(f"Bruch unter MA20 {_turnaround_v174_fmt(ma20)}")
+        if prev_low20: invalid.append(f"Bruch unter 20T-Tief/Support {_turnaround_v174_fmt(prev_low20)}")
+        invalid_text = " · ".join(invalid[:2]) if invalid else "n/a"
+
+        out.update({
+            "label": label,
+            "phase": phase,
+            "score": score,
+            "summary": summary,
+            "action_hint": action,
+            "fits": fits[:5],
+            "missing": missing[:5],
+            "drivers": drivers[:4],
+            "key_level_text": key_level_text,
+            "invalid_text": invalid_text,
+            "fits_text": " · ".join(fits[:5]),
+            "missing_text": " · ".join(missing[:5]),
+            "is_score_relevant": False,
+        })
+        return out
+    except Exception as exc:
+        out["summary"] = f"Turnaround-Kontext nicht belastbar: {exc}"
+        out["action_hint"] = "Nicht als eigenständiges Signal verwenden."
         return out
 
 def build_wave_structure_context_v1532(chart_df=None, result=None):
@@ -18192,6 +18439,34 @@ if result is not None:
             if _sp_rows:
                 _render_wrapped_detail_table_v1533(_sp_rows, ["Muster", "Score", "Lesart", "Damit es passt"], table_class="wrapped-pattern-table")
             st.caption("Spezialmuster sind weiche charttechnische Hinweise. Sie sind keine automatischen Kaufsignale und werden nicht direkt in den Score gerechnet; sie helfen nur, Triggernaehe und Qualitaet der Struktur einzuordnen.")
+
+            # v17.4: expliziter charttechnischer Turnaround-Kontext.
+            turnaround_pkg = build_turnaround_context_v174(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})
+            if isinstance(result, dict):
+                result["turnaround_context_pkg"] = turnaround_pkg
+                result["turnaround_label"] = turnaround_pkg.get("label")
+                result["turnaround_score"] = turnaround_pkg.get("score")
+            st.markdown("**Charttechnischer Turnaround (weich, nicht im Score)**")
+            _ta_fits = turnaround_pkg.get("fits", []) if isinstance(turnaround_pkg, dict) else []
+            _ta_missing = turnaround_pkg.get("missing", []) if isinstance(turnaround_pkg, dict) else []
+            _ta_fit_text = " · ".join([str(x) for x in _ta_fits[:3]]) if _ta_fits else "noch keine belastbaren Turnaround-Bestaetigungen"
+            _ta_missing_text = " · ".join([str(x) for x in _ta_missing[:3]]) if _ta_missing else "keine dominante Luecke sichtbar"
+            st.markdown(
+                f"""
+                <div class="section-card" style="padding:0.85rem 0.95rem;margin:0.55rem 0 0.85rem 0;">
+                    <div class="premium-title">{html.escape(str(turnaround_pkg.get('phase', 'Nicht aktiv')))}</div>
+                    <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(turnaround_pkg.get('label', 'n/a')).capitalize())} · {html.escape(str(turnaround_pkg.get('score', 0)))}/100</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Lesart:</b> {html.escape(str(turnaround_pkg.get('summary', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Was passt:</b> {html.escape(_ta_fit_text)}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Was fehlt:</b> {html.escape(_ta_missing_text)}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Wichtige Level:</b> {html.escape(str(turnaround_pkg.get('key_level_text', 'n/a')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Jetzt tun:</b> {html.escape(str(turnaround_pkg.get('action_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Ungültig/defensiver:</b> {html.escape(str(turnaround_pkg.get('invalid_text', 'n/a')))}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.caption("Turnaround-Kontext ist ein weicher Chartbaustein. Er erkennt Stabilisierung/Reclaim nach Schwäche, ersetzt aber kein Entry-, Risiko- oder Volumensignal.")
 
             # v15.33.2: Fibonacci-Kontext als weicher Chartbaustein, nicht score-wirksam.
             fib_pkg = fibonacci_context_pkg if "fibonacci_context_pkg" in locals() else build_fibonacci_context_v1533(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

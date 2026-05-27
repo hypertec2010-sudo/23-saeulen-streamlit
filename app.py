@@ -1921,7 +1921,7 @@ def build_timing_action_confidence_v163(
     if not setup_is_valid and score >= 55:
         action = "Noch nicht als Kaufsignal werten; Trade-Setup ist nicht ausreichend freigegeben."
 
-    # v17.2.1: Wenn die Kernaktion bereits "kaufen" ist, darf ein offener
+    # v17.2.2: Wenn die Kernaktion bereits "kaufen" ist, darf ein offener
     # Strukturtrigger nicht mehr wie eine harte Einstiegssperre wirken. In diesem
     # Zustand ist der Einstieg grundsätzlich freigegeben; die Struktur ist nur
     # noch eine Zusatzbestätigung/Qualitätsverbesserung.
@@ -2011,7 +2011,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.2.1",
+        "Export_Version": "v17.2.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2201,7 +2201,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.2.1"
+APP_VERSION = "v17.2.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -18460,6 +18460,10 @@ if result is not None:
         )
     except Exception:
         _invalid_txt = "Bruch der relevanten Support-/Trigger-Zone."
+
+    # v17.2.2: _trigger_label is assigned below depending on action/position mode.
+    # Initialize it before optional text cleanup so this render path cannot raise NameError.
+    _trigger_label = "Kaufen erst bei"
 
     if not str(_trigger_label).lower().startswith("jetzt umsetzen"):
         _trigger_txt = _v17_clean_operational_trigger_text(

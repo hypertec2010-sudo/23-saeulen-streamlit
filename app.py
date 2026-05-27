@@ -2011,7 +2011,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.2.3",
+        "Export_Version": "v17.2.4",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2201,7 +2201,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.2.3"
+APP_VERSION = "v17.2.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2416,6 +2416,19 @@ def get_radar_universe_map():
         "LSCC", "FORM", "SITM", "POWI", "WOLF", "COHR", "IPGP", "CAMT", "MTSI", "NVMI",
         "INSM", "AXSM", "EXAS", "HALO", "SRPT", "ALKS", "MEDP", "RXRX", "TWST", "NTLA"
     ]
+    space_stocks_universe = [
+        "RKLB", "ASTS", "LUNR", "RDW", "SPIR", "PL", "BKSY", "SATL", "IRDM", "VSAT",
+        "GSAT", "MAXR", "BA", "LMT", "NOC", "RTX", "GD", "TDY", "HEI", "AJRD"
+    ]
+    quantum_computing_universe = [
+        "IONQ", "RGTI", "QBTS", "QUBT", "ARQQ", "IBM", "GOOGL", "MSFT", "AMZN", "HON",
+        "NVDA", "INTC", "FORM", "TER"
+    ]
+    emerging_markets_universe = [
+        "EEM", "IEMG", "VWO", "KWEB", "MCHI", "FXI", "INDA", "EWZ", "EWT", "EWY",
+        "EWW", "EIDO", "TUR", "EPOL", "ARGT", "NU", "MELI", "TSM", "BABA", "PDD",
+        "JD", "BIDU", "SE", "GRAB", "TCOM", "NIO", "LI", "XPEV", "VALE", "PBR"
+    ]
     return {
         "US Tech": (us_tech_universe, "US Tech Fokus", "Breites Tech- und Plattformuniversum mit rund 95 vordefinierten Werten."),
         "US Basisliste": (us_basis_universe, "US Basisliste", "Große US-Standardwerte als breiter Startscreen für neue Ideen."),
@@ -2423,6 +2436,9 @@ def get_radar_universe_map():
         "Halbleiter": (semiconductor_universe, "Halbleiter", "Breite Halbleiterliste mit Designern, Ausrüstern, Foundries und Spezialwerten."),
         "US Small & Mid Caps": (us_small_mid_caps_universe, "US Small & Mid Caps", "Breiteres US-Universum aus Small- und Mid-Caps mit Fokus auf Liquidität, Wachstum und frühere Radar-Chancen."),
         "Europa Small & Mid Caps Qualität": (europa_small_mid_quality_universe, "Europa Small & Mid Caps Qualität", "Breiteres Europa-Universum aus Small- und Mid-Caps mit Qualitäts- und Leader-Fokus."),
+        "Space Aktien": (space_stocks_universe, "Space Aktien", "Raumfahrt-, Satelliten- und Aerospace-nahe Titel; spekulativeres Themenuniversum mit hoher Volatilität."),
+        "Quantencomputer": (quantum_computing_universe, "Quantencomputer", "Quantum-Computing-Pure-Plays und große Technologieanbieter mit Quantum-Exposure; stark thematisch und teils volatil."),
+        "Emerging Markets": (emerging_markets_universe, "Emerging Markets", "EM-ETFs und große liquide Emerging-Markets-Werte als Makro-/Länder- und Wachstumsscreen."),
     }
 
 
@@ -2433,6 +2449,9 @@ def get_radar_snapshot_jobs():
         {"job_key": "europe_balanced", "label": "Europa Qualität & Leader - Ausgewogen - 15", "universe": "Europa Qualität & Leader", "style": "Ausgewogen", "max_candidates": 15},
         {"job_key": "us_sm_turnaround", "label": "US Small & Mid Caps - Turnaround - 15", "universe": "US Small & Mid Caps", "style": "Turnaround", "max_candidates": 15},
         {"job_key": "eu_sm_turnaround", "label": "Europa Small & Mid Caps Qualität - Turnaround - 15", "universe": "Europa Small & Mid Caps Qualität", "style": "Turnaround", "max_candidates": 15},
+        {"job_key": "space_chart", "label": "Space Aktien - Charttechnik - 10", "universe": "Space Aktien", "style": "Charttechnik", "max_candidates": 10},
+        {"job_key": "quantum_chart", "label": "Quantencomputer - Charttechnik - 10", "universe": "Quantencomputer", "style": "Charttechnik", "max_candidates": 10},
+        {"job_key": "em_balanced", "label": "Emerging Markets - Ausgewogen - 10", "universe": "Emerging Markets", "style": "Ausgewogen", "max_candidates": 10},
     ]
     slot_groups = [
         ("10:30", ["10:30", "10:40", "10:50", "11:00", "11:10"]),
@@ -14380,7 +14399,7 @@ if workspace_mode:
 
         rc1, rc2, rc3, rc4 = st.columns([1.3, 1.0, 0.7, 1.0])
         with rc1:
-            radar_universe_options = ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Europa Small & Mid Caps Qualität", "Halbleiter", "US Small & Mid Caps", "Eigene Liste"]
+            radar_universe_options = ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Europa Small & Mid Caps Qualität", "Halbleiter", "US Small & Mid Caps", "Space Aktien", "Quantencomputer", "Emerging Markets", "Eigene Liste"]
             radar_universe_current = st.session_state.radar_universe if st.session_state.radar_universe in radar_universe_options else ("Europa Qualität & Leader" if st.session_state.radar_universe == "Europa Qualität" else "US Tech")
             radar_universe = st.selectbox(
                 "Universum",

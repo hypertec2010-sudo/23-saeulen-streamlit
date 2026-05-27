@@ -1544,7 +1544,7 @@ def _v1537_confluence_class(label):
     return "confluence-mixed"
 
 
-# ---------- v16.3.3: Timing-/Handlungs-Konfidenz kompakt ohne doppelte Defensiv-Zeile ----------
+# ---------- v17.0: Timing-/Handlungs-Konfidenz kalibriert und operative Texte gekuerzt ----------
 def _v163_text(value):
     return str(value or "").strip()
 
@@ -1663,6 +1663,7 @@ def build_timing_action_confidence_v163(
     fits = []
     missing = []
     defensive = []
+    early_reaction_visible = False
 
     confluence_score = _v163_num(trigger_confluence_pkg.get("score"), 50.0)
     score += (confluence_score - 50.0) * 0.38
@@ -1744,6 +1745,7 @@ def build_timing_action_confidence_v163(
         fits.append(f"Fibonacci-Reaktion bestätigt{(': ' + fib_zone) if fib_zone else ''}")
     elif any(x in fib_low for x in ["erste", "reaktion"]):
         score += 5
+        early_reaction_visible = True
         fits.append(f"Erste Fibonacci-Reaktion sichtbar{(': ' + fib_zone) if fib_zone else ''}")
     elif "keine aktive" in fib_low or "nicht" in fib_low or "keine" in fib_low:
         if fib_zone:
@@ -1756,6 +1758,7 @@ def build_timing_action_confidence_v163(
         fits.append("Struktur-/Wellen-Trigger bestätigt")
     elif any(x in wave_low for x in ["erste", "reclaim", "reaktion"]):
         score += 4
+        early_reaction_visible = True
         fits.append("Erste Strukturreaktion sichtbar")
     elif any(x in wave_low for x in ["noch nicht", "kein", "unter beobachtung"]):
         missing.append("Strukturtrigger noch nicht aktiv")
@@ -1864,13 +1867,19 @@ def build_timing_action_confidence_v163(
     if "widers" in conflict_low:
         score = min(score, 55.0)
 
-    # v16.3.3: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
+    # v17.0: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
     # wenn der Einstieg wirklich freigegeben/aktiv ist. Bei "vorbereiten" plus fehlendem
     # Entry-/Strukturtrigger wird die Anzeige auf "nahe am Trigger" gedeckelt.
     if action_is_preparing and needs_entry_confirmation:
         score = min(score, 66.0 if not fomo_is_elevated else 62.0)
     elif action_is_preparing and not action_is_offensive:
         score = min(score, 69.0)
+
+    # v17.0: Erste Fib-/Strukturreaktionen sollen nicht wie ein komplett
+    # unattraktiver Timing-Kontext wirken. Sie reichen nicht fuer ein Kaufsignal,
+    # heben aber "sehr niedrig" auf "niedrig" an.
+    if early_reaction_visible and score < 40:
+        score = 40.0
 
     if setup_is_valid and action_is_preparing and needs_entry_confirmation:
         label = "Mittel - nahe am Trigger"
@@ -1892,8 +1901,12 @@ def build_timing_action_confidence_v163(
             summary = "Interessant, aber noch nicht breit genug bestätigt."
             action = "Vorbereitend; es fehlen noch einzelne Bestätigungen."
         elif score >= 40:
-            summary = "Timing-Kontext noch schwach oder gemischt."
-            action = "Watchlist/Beobachtung; operative Bedingungen separat prüfen."
+            if early_reaction_visible:
+                summary = "Erste Reaktion sichtbar, aber noch kein handelbarer Timing-Vorteil."
+                action = "Beobachten; Einstieg erst bei klarer Aktivierung in „Nächste Handlung“."
+            else:
+                summary = "Timing-Kontext noch schwach oder gemischt."
+                action = "Watchlist/Beobachtung; operative Bedingungen separat prüfen."
         else:
             summary = "Aktuell kein attraktiver Timing-Kontext."
             action = "Nicht erzwingen; Timing-Kontext ist aktuell schwach."
@@ -1974,7 +1987,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.3.3",
+        "Export_Version": "v17.0",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2164,7 +2177,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.3.3"
+APP_VERSION = "v17.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -18084,7 +18097,7 @@ if result is not None:
         else:
             st.info("Keine Trigger-Konfluenz-Daten verfügbar.")
 
-    # ---------- v16.3.3: Timing-/Handlungs-Konfidenz kompakt ohne doppelte Defensiv-Zeile ----------
+    # ---------- v17.0: Timing-/Handlungs-Konfidenz kalibriert und operative Texte gekuerzt ----------
     _tcfg = timing_action_confidence_pkg if "timing_action_confidence_pkg" in locals() and isinstance(timing_action_confidence_pkg, dict) else {}
     _tcfg_cls = str(_tcfg.get("class", "timing-confidence-medium"))
     _tcfg_label = str(_tcfg.get("label", "Mittel"))
@@ -18137,6 +18150,44 @@ if result is not None:
         unsafe_allow_html=True,
     )
 
+
+    def _v17_clean_operational_trigger_text(txt, entry_zone_text="", current_px=None, structures=None, ccy=""):
+        raw = str(txt or "").strip()
+        ez = str(entry_zone_text or "").strip()
+        if not raw or raw in {"-", "None", "nan"}:
+            return raw
+        # Remove repeated technical prefixes.
+        raw = re.sub(r"^Nächster Trigger:\s*", "", raw, flags=re.I)
+        raw = re.sub(r"^Noch kein bullisher Trigger:\s*", "", raw, flags=re.I)
+        low = raw.lower()
+        if ez and ez not in {"-", "None", "nan"}:
+            pos_txt, in_zone, below_zone, above_zone = _entry_zone_position_text_v1524_12(ez, current_px)
+            if in_zone or "entry-zone" in low:
+                return f"Stabilisierung oder bullische Reaktion in der Entry-Zone {ez}. Alternativ Bruch über ein kurzfristiges Hoch."
+            if below_zone:
+                return f"Reclaim/Stabilisierung der Entry-Zone {ez}. Alternativ Bruch über ein kurzfristiges Hoch."
+            if above_zone:
+                return f"Nicht hinterherlaufen; Rücksetzer in Richtung Entry-Zone {ez} oder neue Base abwarten."
+        # Support/trigger-zone text: keep concrete zone but shorten.
+        m = re.search(r"(\d+(?:[\.,]\d+)?)\s*-\s*(\d+(?:[\.,]\d+)?)\s*([A-Z]{3})?", raw)
+        if m and ("support" in low or "trigger" in low or "zone" in low):
+            cc = m.group(3) or ccy or ""
+            return f"Stabilisierung oder bullische Reaktion an der Support-/Triggerzone {m.group(1)} - {m.group(2)} {cc}. Alternativ Bruch über ein kurzfristiges Hoch.".strip()
+        return raw
+
+    def _v17_clean_invalid_text(txt, structures=None, current_px=None, ccy=""):
+        raw = str(txt or "").strip()
+        if not raw or raw in {"-", "None", "nan"}:
+            raw = "Bruch der relevanten Support-/Trigger-Zone."
+        low = raw.lower()
+        if "relevanten support-/trigger-zone" in low or raw == "Bruch der relevanten Support-/Trigger-Zone.":
+            concrete = support_zone_text_v1525_9(structures, current_px, ccy, fallback="")
+            if concrete:
+                return concrete
+        if not low.startswith("bruch") and "support" in low:
+            return "Bruch " + raw
+        return raw
+
     # ---------- v15.27: zentrale Handlungsbox und klare Pre-/Post-Entry-Sprache ----------
     try:
         _trigger_txt = action_trigger_note_v1523_13(
@@ -18164,6 +18215,20 @@ if result is not None:
     except Exception:
         _invalid_txt = "Bruch der relevanten Support-/Trigger-Zone."
 
+    _trigger_txt = _v17_clean_operational_trigger_text(
+        _trigger_txt,
+        suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+        price if "price" in locals() else None,
+        chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+        ccy if "ccy" in locals() else "",
+    )
+    _invalid_txt = _v17_clean_invalid_text(
+        _invalid_txt,
+        chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+        price if "price" in locals() else None,
+        ccy if "ccy" in locals() else "",
+    )
+
     _now_do_label = "Position fuehren" if position_mode else "Einstieg pruefen"
     _now_do_value = str(final_action_label).capitalize()
     _why_txt = str(final_action_reason if "final_action_reason" in locals() else compact_action_text_phase_ui(final_action_label))
@@ -18175,6 +18240,20 @@ if result is not None:
         _invalid_label = "Reduzieren / Exit pruefen bei"
         _trigger_txt = str(result.get("PM_Stop_Plan") or result.get("pm_stop_plan") or _trigger_txt)
         _invalid_txt = str(result.get("PM_Nicht_Nachkaufen_Wenn") or result.get("pm_no_add_if") or _invalid_txt)
+
+    _trigger_txt = _v17_clean_operational_trigger_text(
+        _trigger_txt,
+        suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+        price if "price" in locals() else None,
+        chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+        ccy if "ccy" in locals() else "",
+    )
+    _invalid_txt = _v17_clean_invalid_text(
+        _invalid_txt,
+        chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+        price if "price" in locals() else None,
+        ccy if "ccy" in locals() else "",
+    )
 
     st.markdown(
         f"""

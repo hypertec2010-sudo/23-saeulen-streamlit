@@ -2011,7 +2011,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.2.4",
+        "Export_Version": "v17.2.5",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2201,7 +2201,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.2.4"
+APP_VERSION = "v17.2.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2454,17 +2454,29 @@ def get_radar_snapshot_jobs():
         {"job_key": "em_balanced", "label": "Emerging Markets - Ausgewogen - 10", "universe": "Emerging Markets", "style": "Ausgewogen", "max_candidates": 10},
     ]
     slot_groups = [
-        ("10:30", ["10:30", "10:40", "10:50", "11:00", "11:10"]),
-        ("15:40", ["15:40", "15:50", "16:00", "16:10", "16:20"]),
-        ("18:30", ["18:30", "18:40", "18:50", "19:00", "19:10"]),
+        ("10:30", ["10:30", "10:40", "10:50", "11:00", "11:10", "11:20", "11:30", "11:40"]),
+        ("15:40", ["15:40", "15:50", "16:00", "16:10", "16:20", "16:30", "16:40", "16:50"]),
+        ("18:30", ["18:30", "18:40", "18:50", "19:00", "19:10", "19:20", "19:30", "19:40"]),
     ]
     jobs = []
     for slot_group, run_times in slot_groups:
+        # Robust: Wenn kuenftig mehr Snapshot-Jobs als Run-Zeiten existieren,
+        # erzeugen wir automatisch weitere 10-Minuten-Slots statt mit IndexError abzubrechen.
+        if len(run_times) < len(base_jobs):
+            try:
+                base_h, base_m = [int(x) for x in run_times[-1].split(":")] if run_times else [10, 30]
+                while len(run_times) < len(base_jobs):
+                    base_m += 10
+                    base_h += base_m // 60
+                    base_m = base_m % 60
+                    run_times.append(f"{base_h:02d}:{base_m:02d}")
+            except Exception:
+                run_times = list(run_times) + [slot_group] * max(0, len(base_jobs) - len(run_times))
         for idx, base_job in enumerate(base_jobs):
             job = dict(base_job)
             job["job_id"] = f"radar_{slot_group.replace(':', '')}_{job.pop('job_key')}"
             job["slot_group"] = slot_group
-            job["run_at"] = run_times[idx]
+            job["run_at"] = run_times[idx] if idx < len(run_times) else slot_group
             job["enabled"] = True
             jobs.append(job)
     return jobs

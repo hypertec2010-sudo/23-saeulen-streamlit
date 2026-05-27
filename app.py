@@ -1544,7 +1544,7 @@ def _v1537_confluence_class(label):
     return "confluence-mixed"
 
 
-# ---------- v16.3.2: Timing-/Handlungs-Konfidenz kompakt/entdoppelt ----------
+# ---------- v16.3.3: Timing-/Handlungs-Konfidenz kompakt ohne doppelte Defensiv-Zeile ----------
 def _v163_text(value):
     return str(value or "").strip()
 
@@ -1864,7 +1864,7 @@ def build_timing_action_confidence_v163(
     if "widers" in conflict_low:
         score = min(score, 55.0)
 
-    # v16.3.2: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
+    # v16.3.3: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
     # wenn der Einstieg wirklich freigegeben/aktiv ist. Bei "vorbereiten" plus fehlendem
     # Entry-/Strukturtrigger wird die Anzeige auf "nahe am Trigger" gedeckelt.
     if action_is_preparing and needs_entry_confirmation:
@@ -1974,7 +1974,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v16.3.2",
+        "Export_Version": "v16.3.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2164,7 +2164,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v16.3.2"
+APP_VERSION = "v16.3.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -18084,7 +18084,7 @@ if result is not None:
         else:
             st.info("Keine Trigger-Konfluenz-Daten verfügbar.")
 
-    # ---------- v16.3.2: Timing-/Handlungs-Konfidenz kompakt/entdoppelt ----------
+    # ---------- v16.3.3: Timing-/Handlungs-Konfidenz kompakt ohne doppelte Defensiv-Zeile ----------
     _tcfg = timing_action_confidence_pkg if "timing_action_confidence_pkg" in locals() and isinstance(timing_action_confidence_pkg, dict) else {}
     _tcfg_cls = str(_tcfg.get("class", "timing-confidence-medium"))
     _tcfg_label = str(_tcfg.get("label", "Mittel"))
@@ -18130,7 +18130,6 @@ if result is not None:
             <div class="timing-confidence-grid">
                 <div class="timing-confidence-card"><div class="timing-confidence-card-title">Was aktuell passt</div>{_v163_items_html(_tcfg_fits)}</div>
                 <div class="timing-confidence-card"><div class="timing-confidence-card-title">Was noch fehlt</div>{_v163_items_html(_tcfg_missing)}</div>
-                <div class="timing-confidence-card"><div class="timing-confidence-card-title">Defensiver bei</div>{_v163_items_html(_tcfg_defensive)}</div>
             </div>
             <div class="timing-confidence-action"><strong>Einordnung:</strong> {html.escape(_tcfg_action)}</div>
         </div>

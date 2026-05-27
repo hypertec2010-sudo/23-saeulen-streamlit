@@ -1994,7 +1994,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.0.1",
+        "Export_Version": "v17.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2184,7 +2184,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.0.1"
+APP_VERSION = "v17.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -18716,7 +18716,13 @@ if result is not None:
                     unsafe_allow_html=True,
                 )
     
-    if is_pro_mode or is_expert_mode:
+    # v17.1: Standardansicht entschlacken.
+    # Die folgenden operativen Detailkarten wiederholen Aktion, Timing, Risiko und
+    # Begleitfaktoren, die bereits in Primärkarten, Timing-Konfidenz und
+    # „Nächste Handlung“ enthalten sind. Deshalb werden sie aus der
+    # Standardansicht entfernt; Detailinformationen bleiben in den Detail-Expandern
+    # und im Export erhalten.
+    if False and (is_pro_mode or is_expert_mode):
         decision_meta = (
             f"Positionsmodus - Risiko: {shorten_text(risk_note, 42)}"
             if position_mode
@@ -18972,7 +18978,7 @@ if result is not None:
             st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
             st.markdown('<div class="soft-divider"></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="secondary-section-caption compact-caption">Treiber / Bremsen</div>', unsafe_allow_html=True)
+    st.markdown('<div class="secondary-section-caption compact-caption">Kurzbegründung: wichtigste Treiber / Bremsen</div>', unsafe_allow_html=True)
     why_col, risk_col = st.columns(2)
     with why_col:
         render_reason_box("Warum attraktiv", driver_summary.get("positives", []), empty_text="Keine klaren positiven Treiber erkannt.")
@@ -19225,6 +19231,11 @@ if result is not None:
 
 
 
+
+    # v17.1: Die alte Executive-Summary-Großbox wiederholt Trigger-Konfluenz,
+    # Timing-Konfidenz und Nächste Handlung. Sie bleibt technisch im Code, wird
+    # aber aus der Standardansicht ausgeblendet.
+    st.markdown("""<style>.exec-v2-shell{display:none !important;}</style>""", unsafe_allow_html=True)
 
     st.markdown(
         """

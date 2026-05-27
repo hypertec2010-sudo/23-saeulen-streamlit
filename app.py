@@ -1921,6 +1921,23 @@ def build_timing_action_confidence_v163(
     if not setup_is_valid and score >= 55:
         action = "Noch nicht als Kaufsignal werten; Trade-Setup ist nicht ausreichend freigegeben."
 
+    # v17.2.1: Wenn die Kernaktion bereits "kaufen" ist, darf ein offener
+    # Strukturtrigger nicht mehr wie eine harte Einstiegssperre wirken. In diesem
+    # Zustand ist der Einstieg grundsätzlich freigegeben; die Struktur ist nur
+    # noch eine Zusatzbestätigung/Qualitätsverbesserung.
+    if action_is_offensive and setup_is_valid:
+        missing = [
+            m for m in (missing or [])
+            if not any(term in _v163_low(m) for term in [
+                "strukturtrigger noch nicht aktiv",
+                "struktur-trigger noch nicht aktiv",
+                "struktur-/wellen",
+                "spezialmuster noch nicht aktiv",
+            ])
+        ]
+        if score >= 82:
+            action = "Einstieg grundsätzlich freigegeben; Ausführung, Positionsgröße und Stop über „Nächste Handlung“ prüfen."
+
     fits = _v163_short_list(fits, 4)
     missing = _v163_short_list(missing, 5)
     defensive = _v163_short_list(defensive, 4)
@@ -1994,7 +2011,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.2",
+        "Export_Version": "v17.2.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2184,7 +2201,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.2"
+APP_VERSION = "v17.2.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -18398,6 +18415,25 @@ if result is not None:
             return "Bruch " + raw
         return raw
 
+    def _v1721_buy_execution_text(entry_zone_text="", current_px=None, structures=None, ccy=""):
+        ez = str(entry_zone_text or "").strip()
+        if ez and ez not in {"-", "None", "nan"}:
+            try:
+                pos_txt, in_zone, below_zone, above_zone = _entry_zone_position_text_v1524_12(ez, current_px)
+            except Exception:
+                pos_txt, in_zone, below_zone, above_zone = "", False, False, False
+            if in_zone:
+                return f"Einstieg ist grundsätzlich freigegeben. Kurs liegt in der Entry-Zone {ez}; Ausführung aktiv prüfen, Stop/Invalidierung beachten."
+            if below_zone:
+                return f"Einstieg ist grundsätzlich freigegeben, aber Kurs liegt noch knapp unter der Entry-Zone {ez}; Reclaim/Stabilisierung bevorzugen."
+            if above_zone:
+                return f"Einstiegssignal ist konstruktiv, aber Kurs liegt über der Entry-Zone {ez}; nicht hinterherlaufen, nur selektiv oder bei Pullback umsetzen."
+            return f"Einstieg ist grundsätzlich freigegeben. Umsetzung in/nahe Entry-Zone {ez} prüfen; Stop/Invalidierung beachten."
+        concrete = support_zone_text_v1525_9(structures, current_px, ccy, fallback="")
+        if concrete:
+            return f"Einstieg ist grundsätzlich freigegeben. Umsetzung aktiv prüfen; defensiver bei {concrete}."
+        return "Einstieg ist grundsätzlich freigegeben. Ausführung, Positionsgröße und Stop aktiv prüfen."
+
     # ---------- v15.27: zentrale Handlungsbox und klare Pre-/Post-Entry-Sprache ----------
     try:
         _trigger_txt = action_trigger_note_v1523_13(
@@ -18425,13 +18461,14 @@ if result is not None:
     except Exception:
         _invalid_txt = "Bruch der relevanten Support-/Trigger-Zone."
 
-    _trigger_txt = _v17_clean_operational_trigger_text(
-        _trigger_txt,
-        suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
-        price if "price" in locals() else None,
-        chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
-        ccy if "ccy" in locals() else "",
-    )
+    if not str(_trigger_label).lower().startswith("jetzt umsetzen"):
+        _trigger_txt = _v17_clean_operational_trigger_text(
+            _trigger_txt,
+            suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+            price if "price" in locals() else None,
+            chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+            ccy if "ccy" in locals() else "",
+        )
     _invalid_txt = _v17_clean_invalid_text(
         _invalid_txt,
         chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
@@ -18459,7 +18496,17 @@ if result is not None:
         pass
 
     if not position_mode:
-        _trigger_label = "Kaufen erst bei"
+        _action_low_bridge = str(final_action_label or "").lower()
+        if "kaufen" in _action_low_bridge:
+            _trigger_label = "Jetzt umsetzen / prüfen"
+            _trigger_txt = _v1721_buy_execution_text(
+                suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+                price if "price" in locals() else None,
+                chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+                ccy if "ccy" in locals() else "",
+            )
+        else:
+            _trigger_label = "Kaufen erst bei"
         _invalid_label = "Ungueltig / defensiver bei"
     else:
         _trigger_label = "Fuehren ueber"
@@ -18467,13 +18514,14 @@ if result is not None:
         _trigger_txt = str(result.get("PM_Stop_Plan") or result.get("pm_stop_plan") or _trigger_txt)
         _invalid_txt = str(result.get("PM_Nicht_Nachkaufen_Wenn") or result.get("pm_no_add_if") or _invalid_txt)
 
-    _trigger_txt = _v17_clean_operational_trigger_text(
-        _trigger_txt,
-        suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
-        price if "price" in locals() else None,
-        chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
-        ccy if "ccy" in locals() else "",
-    )
+    if not str(_trigger_label).lower().startswith("jetzt umsetzen"):
+        _trigger_txt = _v17_clean_operational_trigger_text(
+            _trigger_txt,
+            suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+            price if "price" in locals() else None,
+            chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+            ccy if "ccy" in locals() else "",
+        )
     _invalid_txt = _v17_clean_invalid_text(
         _invalid_txt,
         chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),

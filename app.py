@@ -365,16 +365,44 @@ def postprocess_asset_mode_v1534(result, ticker=None, requested="Auto"):
     return result
 
 def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, smart_money_default, strict_mode):
-    result = _core_analyze_stock(
-        ticker=ticker,
-        horizon=horizon,
-        depot=depot,
-        risk_pct=risk_pct,
-        override=override,
-        buy_in_override=buy_in_override,
-        smart_money_default=smart_money_default,
-        strict_mode=strict_mode,
-    )
+    """Core-Analyse mit robustem Fallback fuer Ticker mit lueckenhaften/inkonsistenten Daten.
+
+    Einige Small-/Micro-Cap-Ticker liefern ueber Yahoo/yfinance Kennzahlen als Text
+    statt als Zahl. In der ausgelagerten Core-Engine kann daraus ein TypeError wie
+    "'>' not supported between instances of 'str' and 'int'" entstehen. Fuer solche
+    Faelle nutzen wir die lokale Legacy-Engine als robusteren Fallback, damit die App
+    nicht komplett abbricht.
+    """
+    try:
+        result = _core_analyze_stock(
+            ticker=ticker,
+            horizon=horizon,
+            depot=depot,
+            risk_pct=risk_pct,
+            override=override,
+            buy_in_override=buy_in_override,
+            smart_money_default=smart_money_default,
+            strict_mode=strict_mode,
+        )
+    except TypeError as e:
+        msg = str(e)
+        if "not supported between instances" not in msg:
+            raise
+        # v17.2.7: Fallback fuer z. B. POET / Small-Caps mit stringartigen Fundamentaldaten.
+        result = _legacy_analyze_stock(
+            ticker=ticker,
+            horizon=horizon,
+            depot=depot,
+            risk_pct=risk_pct,
+            override=override,
+            buy_in_override=buy_in_override,
+            smart_money_default=smart_money_default,
+            strict_mode=strict_mode,
+        )
+        result["Analyse_Hinweis"] = (
+            "Fallback-Analyse genutzt: Datenanbieter lieferte einzelne Kennzahlen in uneinheitlichem Format; "
+            "fundamentale Detailwerte vorsichtig interpretieren."
+        )
     return postprocess_asset_mode_v1534(result, ticker=ticker, requested=_asset_mode_setting_v1534())
 
 try:
@@ -2011,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.2.5",
+        "Export_Version": "v17.2.7",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2201,7 +2229,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.2.5"
+APP_VERSION = "v17.2.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2453,34 +2481,35 @@ def get_radar_snapshot_jobs():
         {"job_key": "quantum_chart", "label": "Quantencomputer - Charttechnik - 10", "universe": "Quantencomputer", "style": "Charttechnik", "max_candidates": 10},
         {"job_key": "em_balanced", "label": "Emerging Markets - Ausgewogen - 10", "universe": "Emerging Markets", "style": "Ausgewogen", "max_candidates": 10},
     ]
-    slot_groups = [
-        ("10:30", ["10:30", "10:40", "10:50", "11:00", "11:10", "11:20", "11:30", "11:40"]),
-        ("15:40", ["15:40", "15:50", "16:00", "16:10", "16:20", "16:30", "16:40", "16:50"]),
-        ("18:30", ["18:30", "18:40", "18:50", "19:00", "19:10", "19:20", "19:30", "19:40"]),
-    ]
+
+    # v17.2.7: robuste Slot-Planung ohne Indexzugriff auf eine zu kurze Liste.
+    # Bei neuen Radar-Jobs werden automatisch weitere 10-Minuten-Slots erzeugt.
+    def _build_run_times(start_time, count, step_minutes=10):
+        try:
+            h, m = [int(x) for x in str(start_time).split(":")[:2]]
+        except Exception:
+            h, m = 10, 30
+        out = []
+        for i in range(max(0, int(count))):
+            total = h * 60 + m + i * step_minutes
+            hh = (total // 60) % 24
+            mm = total % 60
+            out.append(f"{hh:02d}:{mm:02d}")
+        return out
+
+    slot_groups = ["10:30", "15:40", "18:30"]
     jobs = []
-    for slot_group, run_times in slot_groups:
-        # Robust: Wenn kuenftig mehr Snapshot-Jobs als Run-Zeiten existieren,
-        # erzeugen wir automatisch weitere 10-Minuten-Slots statt mit IndexError abzubrechen.
-        if len(run_times) < len(base_jobs):
-            try:
-                base_h, base_m = [int(x) for x in run_times[-1].split(":")] if run_times else [10, 30]
-                while len(run_times) < len(base_jobs):
-                    base_m += 10
-                    base_h += base_m // 60
-                    base_m = base_m % 60
-                    run_times.append(f"{base_h:02d}:{base_m:02d}")
-            except Exception:
-                run_times = list(run_times) + [slot_group] * max(0, len(base_jobs) - len(run_times))
+    for slot_group in slot_groups:
+        run_times = _build_run_times(slot_group, len(base_jobs), step_minutes=10)
         for idx, base_job in enumerate(base_jobs):
             job = dict(base_job)
-            job["job_id"] = f"radar_{slot_group.replace(':', '')}_{job.pop('job_key')}"
+            job_key = job.pop("job_key", f"job_{idx}")
+            job["job_id"] = f"radar_{str(slot_group).replace(':', '')}_{job_key}"
             job["slot_group"] = slot_group
             job["run_at"] = run_times[idx] if idx < len(run_times) else slot_group
             job["enabled"] = True
             jobs.append(job)
     return jobs
-
 
 def get_due_radar_jobs_for_slot(slot_label):
     slot_label = str(slot_label or "").strip()

@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.2.7",
+        "Export_Version": "v17.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2229,7 +2229,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.2.7"
+APP_VERSION = "v17.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5484,6 +5484,256 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
                 "Move_60T_Tief_%": round(float(move_from_60_low), 1) if pd.notna(move_from_60_low) else "n/a",
                 "Volumen_Ratio": round(float(vol_ratio), 2) if pd.notna(vol_ratio) else "n/a",
             },
+        })
+        return out
+    except Exception as exc:
+        out["summary"] = f"Setup-Muster-Kontext nicht belastbar: {exc}"
+        return out
+
+
+# v17.3: erweiterter Spezialmuster-Kontext. Diese spaetere Definition ueberschreibt bewusst
+# die fruehere v16.2-Variante und ergaenzt Pocket Pivot, VCP, MA-Pullback,
+# Undercut & Rally sowie Failed-Breakout/Exhaustion-Warnungen.
+def build_setup_pattern_context_v162(chart_df=None, result=None):
+    result = result or {}
+    out = {
+        "label": "kein klares Spezialmuster",
+        "phase": "Nicht aktiv",
+        "pattern_type": "keines",
+        "summary": "Kein belastbarer Spezialmuster-Kontext erkennbar.",
+        "action_hint": "Nicht aus diesem Baustein handeln; normale Entry-, S/R- und Bestaetigungssignale nutzen.",
+        "active_zone_text": "n/a",
+        "trigger_label": "kein Trigger",
+        "trigger_score": 0,
+        "trigger_text": "Kein aktiver Spezialmuster-Trigger.",
+        "trigger_action": "Nur beobachten; andere Analysebausteine bleiben fuehrend.",
+        "confirmation_needed": "Kein Spezialmuster aktiv; normale Entry-, S/R- und Konfluenzsignale bleiben wichtiger.",
+        "drivers": [],
+        "rows": [],
+        "is_score_relevant": False,
+    }
+    try:
+        dfp = chart_df.copy() if chart_df is not None else None
+        if dfp is None or dfp.empty:
+            return out
+        close_col = "Close" if "Close" in dfp.columns else "Adj Close" if "Adj Close" in dfp.columns else None
+        if close_col is None:
+            return out
+        high_col = "High" if "High" in dfp.columns else close_col
+        low_col = "Low" if "Low" in dfp.columns else close_col
+        open_col = "Open" if "Open" in dfp.columns else close_col
+        vol_col = "Volume" if "Volume" in dfp.columns else None
+        close = pd.to_numeric(dfp[close_col], errors="coerce")
+        high = pd.to_numeric(dfp[high_col], errors="coerce")
+        low = pd.to_numeric(dfp[low_col], errors="coerce")
+        opn = pd.to_numeric(dfp[open_col], errors="coerce")
+        work = pd.DataFrame({"close": close, "high": high, "low": low, "open": opn}).dropna()
+        if len(work) < 45:
+            return out
+        price = float(work["close"].iloc[-1])
+        prev_close = float(work["close"].iloc[-2]) if len(work) >= 2 else price
+        day_high = float(work["high"].iloc[-1]); day_low = float(work["low"].iloc[-1]); day_open = float(work["open"].iloc[-1])
+        day_range = max(day_high - day_low, 1e-9)
+        close_pos = (price - day_low) / day_range
+        body_pct = abs(price - day_open) / max(price, 1e-9) * 100
+        lower_wick_pct = (min(price, day_open) - day_low) / max(price, 1e-9) * 100
+        upper_wick_pct = (day_high - max(price, day_open)) / max(price, 1e-9) * 100
+        ma10 = float(work["close"].rolling(10).mean().iloc[-1]) if len(work) >= 10 else np.nan
+        ma20 = float(work["close"].rolling(20).mean().iloc[-1]) if len(work) >= 20 else np.nan
+        ma50 = float(work["close"].rolling(50).mean().iloc[-1]) if len(work) >= 50 else np.nan
+        high10 = float(work["high"].tail(10).max()); low10 = float(work["low"].tail(10).min())
+        high20 = float(work["high"].tail(20).max()); low20 = float(work["low"].tail(20).min())
+        high40 = float(work["high"].tail(40).max()); low40 = float(work["low"].tail(40).min())
+        high60 = float(work["high"].tail(min(60, len(work))).max()); low60 = float(work["low"].tail(min(60, len(work))).min())
+        prev_high10 = float(work["high"].iloc[:-1].tail(10).max()) if len(work) > 11 else high10
+        prev_high20 = float(work["high"].iloc[:-1].tail(20).max()) if len(work) > 21 else high20
+        prev_low20 = float(work["low"].iloc[:-1].tail(20).min()) if len(work) > 21 else low20
+        run20 = ((price / float(work["close"].iloc[-21])) - 1) * 100 if len(work) > 21 and float(work["close"].iloc[-21]) else np.nan
+        run40 = ((price / float(work["close"].iloc[-41])) - 1) * 100 if len(work) > 41 and float(work["close"].iloc[-41]) else np.nan
+        move_from_60_low = ((high60 / low60) - 1) * 100 if low60 else np.nan
+        pullback20 = ((high20 - price) / high20) * 100 if high20 else np.nan
+        pullback60 = ((high60 - price) / high60) * 100 if high60 else np.nan
+        tight10 = ((high10 - low10) / max(price, 1e-9)) * 100
+        tight20 = ((high20 - low20) / max(price, 1e-9)) * 100
+        tight40 = ((high40 - low40) / max(price, 1e-9)) * 100
+        dist_ma10 = ((price / ma10) - 1) * 100 if pd.notna(ma10) and ma10 else np.nan
+        dist_ma20 = ((price / ma20) - 1) * 100 if pd.notna(ma20) and ma20 else np.nan
+        dist_ma50 = ((price / ma50) - 1) * 100 if pd.notna(ma50) and ma50 else np.nan
+        vol_ratio = np.nan
+        if vol_col and vol_col in dfp.columns:
+            vol = pd.to_numeric(dfp[vol_col], errors="coerce").dropna()
+            if len(vol) >= 20 and float(vol.tail(20).mean() or 0) > 0:
+                vol_ratio = float(vol.iloc[-1] / vol.tail(20).mean())
+        drivers=[]
+        def add_driver(txt):
+            if txt and txt not in drivers:
+                drivers.append(txt)
+        near_high = pd.notna(pullback20) and pullback20 <= 6
+        above_short = (pd.notna(ma10) and price >= ma10 * 0.985) and (pd.notna(ma20) and price >= ma20 * 0.97)
+        above_ma50 = pd.notna(ma50) and price >= ma50
+        strong_60_move = pd.notna(move_from_60_low) and move_from_60_low >= 45
+        extreme_60_move = pd.notna(move_from_60_low) and move_from_60_low >= 90
+        tight_recent = tight10 <= 7 or tight20 <= 12
+        flag_depth_ok = pd.notna(pullback60) and 5 <= pullback60 <= 28
+        pivot_zone = prev_high10 if prev_high10 and np.isfinite(prev_high10) else prev_high20
+        pivot_dist = ((pivot_zone - price) / max(price, 1e-9)) * 100 if pivot_zone else np.nan
+        breakout = bool(pivot_zone and price >= pivot_zone * 1.002)
+        near_pivot = bool(pivot_zone and abs(pivot_dist) <= 2.0)
+        vol_conf = pd.notna(vol_ratio) and vol_ratio >= 1.15
+        bull_day = price > prev_close and close_pos >= 0.60
+        strong_close = close_pos >= 0.72
+        scores = {
+            "High Tight Pivot": 0, "Power Play": 0, "High Tight Flag": 0,
+            "Pocket Pivot": 0, "VCP / Volatility Contraction": 0,
+            "MA10/20 Pullback-Reaktion": 0, "Undercut & Rally / Support-Reclaim": 0,
+            "Failed Breakout / Exhaustion-Warnung": 0,
+        }
+        # Bestehende seltene Muster.
+        if near_high: scores["High Tight Pivot"] += 20; add_driver(f"nahe 20T-Hoch ({pullback20:.1f}% darunter)")
+        if tight_recent: scores["High Tight Pivot"] += 24; add_driver(f"enge kurzfristige Range ({tight10:.1f}% / 10T)")
+        if above_short: scores["High Tight Pivot"] += 18; add_driver("Kurs haelt MA10/MA20")
+        if near_pivot or breakout: scores["High Tight Pivot"] += 24; add_driver(f"Pivotbereich um {_v1533_1_fmt_price(pivot_zone)}")
+        if vol_conf: scores["High Tight Pivot"] += 10; add_driver(f"Volumen ueber Schnitt ({vol_ratio:.2f}x)")
+        if pd.notna(run20) and run20 >= 20: scores["Power Play"] += 22; add_driver(f"starker 20T-Lauf ({run20:.1f}%)")
+        if pd.notna(run40) and run40 >= 35: scores["Power Play"] += 22; add_driver(f"starker 40T-Lauf ({run40:.1f}%)")
+        if near_high: scores["Power Play"] += 18
+        if above_short and above_ma50: scores["Power Play"] += 18
+        if tight20 <= 16: scores["Power Play"] += 12
+        if vol_conf: scores["Power Play"] += 8
+        if extreme_60_move: scores["High Tight Flag"] += 34; add_driver(f"sehr starker Move vom 60T-Tief ({move_from_60_low:.1f}%)")
+        elif strong_60_move: scores["High Tight Flag"] += 20; add_driver(f"starker Move vom 60T-Tief ({move_from_60_low:.1f}%)")
+        if flag_depth_ok: scores["High Tight Flag"] += 24; add_driver(f"Flag-/Konsolidierungstiefe {pullback60:.1f}%")
+        if tight_recent: scores["High Tight Flag"] += 18
+        if above_ma50: scores["High Tight Flag"] += 10
+        if near_pivot or breakout: scores["High Tight Flag"] += 10
+        if vol_conf: scores["High Tight Flag"] += 4
+        # Neue, praxisnaehere Signale.
+        if vol_conf and bull_day: scores["Pocket Pivot"] += 32; add_driver(f"bullischer Volumentag ({vol_ratio:.2f}x)")
+        if above_short: scores["Pocket Pivot"] += 18
+        if near_pivot or breakout: scores["Pocket Pivot"] += 22
+        if strong_close: scores["Pocket Pivot"] += 12
+        if tight_recent: scores["Pocket Pivot"] += 8
+        contraction_ratio = tight10 / max(tight40, 1e-9) if tight40 and np.isfinite(tight40) else np.nan
+        if pd.notna(contraction_ratio) and contraction_ratio <= 0.58: scores["VCP / Volatility Contraction"] += 34; add_driver(f"Volatilitaet zieht zusammen ({tight10:.1f}% vs. {tight40:.1f}%)")
+        if tight_recent: scores["VCP / Volatility Contraction"] += 18
+        if near_high: scores["VCP / Volatility Contraction"] += 16
+        if above_short: scores["VCP / Volatility Contraction"] += 12
+        if near_pivot: scores["VCP / Volatility Contraction"] += 12
+        near_ma10 = pd.notna(dist_ma10) and abs(dist_ma10) <= 2.2
+        near_ma20 = pd.notna(dist_ma20) and abs(dist_ma20) <= 3.0
+        reclaim_ma10 = pd.notna(ma10) and price >= ma10 and day_low <= ma10 * 1.01
+        reclaim_ma20 = pd.notna(ma20) and price >= ma20 and day_low <= ma20 * 1.015
+        if near_ma10 or near_ma20: scores["MA10/20 Pullback-Reaktion"] += 24; add_driver(f"nahe MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)})")
+        if reclaim_ma10 or reclaim_ma20: scores["MA10/20 Pullback-Reaktion"] += 24
+        if bull_day: scores["MA10/20 Pullback-Reaktion"] += 18
+        if lower_wick_pct >= 0.8 and strong_close: scores["MA10/20 Pullback-Reaktion"] += 18
+        if vol_conf: scores["MA10/20 Pullback-Reaktion"] += 8
+        undercut = day_low < prev_low20 * 0.995 if prev_low20 else False
+        reclaim_support = price > prev_low20 * 1.003 if prev_low20 else False
+        if undercut and reclaim_support: scores["Undercut & Rally / Support-Reclaim"] += 42; add_driver(f"Undercut/Reclaim um {_v1533_1_fmt_price(prev_low20)}")
+        if bull_day: scores["Undercut & Rally / Support-Reclaim"] += 18
+        if lower_wick_pct >= 1.0: scores["Undercut & Rally / Support-Reclaim"] += 18
+        if vol_conf: scores["Undercut & Rally / Support-Reclaim"] += 10
+        failed_breakout = price < pivot_zone * 0.99 and high10 >= pivot_zone * 1.002 if pivot_zone else False
+        exhaustion = pd.notna(dist_ma10) and dist_ma10 >= 9 and upper_wick_pct >= 1.0 and close_pos <= 0.55
+        if failed_breakout: scores["Failed Breakout / Exhaustion-Warnung"] += 45; add_driver(f"Rueckfall unter Pivot {_v1533_1_fmt_price(pivot_zone)}")
+        if exhaustion: scores["Failed Breakout / Exhaustion-Warnung"] += 35; add_driver(f"deutlich ueber MA10 ({dist_ma10:.1f}%) mit schwachem Close")
+        if pd.notna(vol_ratio) and vol_ratio >= 1.4 and close_pos <= 0.45: scores["Failed Breakout / Exhaustion-Warnung"] += 20
+        best_type = max(scores, key=scores.get)
+        best_score = int(round(min(max(scores[best_type],0),100)))
+        warning = best_type == "Failed Breakout / Exhaustion-Warnung" and best_score >= 45
+        if best_score < 45:
+            label="kein klares Spezialmuster"; phase="Nicht aktiv"; pattern_type="keines"
+            summary="Kein belastbarer Spezialmuster-Kontext. Normale Chart- und Entry-Logik bleibt fuehrend."
+            action="Nicht aus diesem Baustein handeln; S/R, Entry-Zone, Candlestick und Konfluenz pruefen."
+        elif warning:
+            label="Exhaustion-/Failed-Breakout-Warnung"; phase="Defensiver Spezialkontext"; pattern_type=best_type
+            summary="Der Chart zeigt eher ein Warnsignal: Ausbruch/Stretch wirkt anfaellig oder wird nicht sauber bestaetigt."
+            action=f"Nicht prozyklisch hinterherlaufen. Defensiver bei Rueckfall unter Pivot/Support um {_v1533_1_fmt_price(pivot_zone)}; neue enge Base abwarten."
+        elif best_type == "Pocket Pivot":
+            label="moeglicher Pocket Pivot"; phase="Volumenimpuls nahe Trigger"; pattern_type=best_type
+            summary="Ein bullischer Volumentag nahe Pivot/MA-Struktur kann fruehe institutionelle Nachfrage anzeigen."
+            action=f"Aktiv pruefen, wenn der Kurs den Pivotbereich um {_v1533_1_fmt_price(pivot_zone)} haelt/ueberschreitet und Volumen bestaetigt."
+        elif best_type == "VCP / Volatility Contraction":
+            label="moegliches VCP"; phase="Volatilitaet zieht zusammen"; pattern_type=best_type
+            summary="Die Schwankungen werden enger. Das kann auf abnehmendes Angebot vor einem Ausbruch hinweisen."
+            action=f"Alarm am Pivotbereich um {_v1533_1_fmt_price(pivot_zone)} setzen. Aktiv erst bei Ausbruch mit Volumen/Schlusskurs."
+        elif best_type == "MA10/20 Pullback-Reaktion":
+            label="MA10/20-Pullback-Reaktion"; phase="Pullback-Reaktion"; pattern_type=best_type
+            summary="Der Kurs reagiert an MA10/MA20. Das kann ein frueher Entry-Hinweis sein, wenn die Reaktion haelt."
+            action=f"Einstieg nur pruefen, wenn MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) halten und die Kerze/Volumen bestaetigen."
+        elif best_type == "Undercut & Rally / Support-Reclaim":
+            label="moeglicher Undercut & Rally / Support-Reclaim"; phase="Reclaim nach kurzem Bruch"; pattern_type=best_type
+            summary="Ein Tief/Support wurde kurz verletzt und zurueckerobert. Das kann ein Reversal-Trigger sein."
+            action=f"Aktiv pruefen, wenn der Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt und Folgestaerke entsteht."
+        elif best_type == "High Tight Pivot":
+            label="moeglicher High Tight Pivot"; phase="Enger Pivot nahe Hoch"; pattern_type=best_type
+            summary="Kurs handelt eng nahe dem Hoch. Das kann ein kurzer Pivot sein, braucht aber Ausbruch/Bestaetigung."
+            action=f"Aktiv pruefen erst bei Ausbruch/Stabilisierung ueber dem Pivotbereich um {_v1533_1_fmt_price(pivot_zone)}; defensiver, wenn MA10/MA20 brechen."
+        elif best_type == "Power Play":
+            label="moegliches Power Play"; phase="Starker kurzer Impuls"; pattern_type=best_type
+            summary="Sehr dynamischer kurzfristiger Move. Staerke ist vorhanden, aber FOMO-/Ueberdehnungsrisiko beachten."
+            action=f"Nicht hinterherlaufen. Einstieg nur bei enger Konsolidierung, Reclaim oder Pullback Richtung MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)})."
+        else:
+            label="moegliche High Tight Flag"; phase="Starker Move mit enger Flagge"; pattern_type=best_type
+            summary="Nach starkem Anstieg haelt der Kurs relativ eng im oberen Bereich. Das braucht Ausbruchsbestaetigung."
+            action=f"Trigger waere ein sauberer Ausbruch ueber den Flag-/Pivotbereich um {_v1533_1_fmt_price(pivot_zone)} mit Bestaetigung."
+        trigger_score = 0; tdrivers=[]
+        if warning:
+            trigger_score = best_score
+            trig_label = "Warnung aktiv" if best_score >= 60 else "Warnung im Aufbau"
+            trig_text = "Warnsignal aus Failed-Breakout/Exhaustion-Kontext."
+            trig_action = "Defensiver handeln; keinen aggressiven Long-Trigger daraus ableiten."
+        else:
+            if breakout: trigger_score += 35; tdrivers.append(f"Kurs ueber Pivot {_v1533_1_fmt_price(pivot_zone)}")
+            elif near_pivot: trigger_score += 18; tdrivers.append(f"Kurs nahe Pivot {_v1533_1_fmt_price(pivot_zone)}")
+            if above_short: trigger_score += 18; tdrivers.append("MA10/MA20 halten")
+            if tight_recent: trigger_score += 14; tdrivers.append("kurzfristig enge Struktur")
+            if vol_conf: trigger_score += 18; tdrivers.append(f"Volumenbestaetigung {vol_ratio:.2f}x")
+            if bull_day: trigger_score += 10; tdrivers.append("bullische Tagesreaktion")
+            trigger_score = int(round(min(trigger_score,100))) if best_score >= 45 else 0
+            if best_score < 45:
+                trig_label="kein Trigger"; trig_text="Kein aktiver Spezialmuster-Trigger."; trig_action="Normale Analysebausteine verwenden."
+            elif trigger_score >= 72:
+                trig_label="bestaetigt"; trig_text="Spezialmuster-Trigger wirkt bestaetigt: Pivot/Struktur, Trend und Bestaetigung ziehen zusammen."; trig_action="Nur mit Aktion, Risiko, Entry-Zone und Konfluenz als aktiven Trigger werten."
+            elif trigger_score >= 52:
+                trig_label="erste Bestaetigung"; trig_text="Erste Bestaetigung sichtbar, aber noch nicht vollstaendig."; trig_action="Vorbereiten/aktiv pruefen; auf Schlusskurs, Volumen und Folgetag achten."
+            elif trigger_score >= 30:
+                trig_label="unter Beobachtung"; trig_text="Struktur ist interessant, aber Trigger ist noch unvollstaendig."; trig_action="Watchlist/Alarm am Pivotbereich setzen; nicht blind handeln."
+            else:
+                trig_label="noch nicht erreicht"; trig_text="Musterkontext moeglich, aber der operative Trigger fehlt."; trig_action="Auf Pivot-Ausbruch, Reclaim oder enge Konsolidierung warten."
+        need_map = {
+            "Pocket Pivot": f"Passt eher, wenn ein bullischer Volumentag nahe Pivot/MA-Struktur entsteht und der Kurs den Bereich um {_v1533_1_fmt_price(pivot_zone)} haelt oder ueberschreitet.",
+            "VCP / Volatility Contraction": f"Passt eher, wenn die Range weiter eng bleibt und der Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen/Schlusskurs erfolgt.",
+            "MA10/20 Pullback-Reaktion": f"Passt eher, wenn MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) halten, die Kerze bullisch dreht und kein starker Abgabedruck folgt.",
+            "Undercut & Rally / Support-Reclaim": f"Passt eher, wenn der Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt und Folgestaerke entsteht.",
+            "Failed Breakout / Exhaustion-Warnung": "Warnsignal: Passt als Bremse, wenn der Kurs nach Ausbruch/Stretch nicht anschliesst und unter Pivot/MA-Struktur zurueckfaellt.",
+            "High Tight Pivot": f"Passt wahrscheinlicher, wenn der Kurs den Pivotbereich um {_v1533_1_fmt_price(pivot_zone)} zurueckerobert oder darueber schliesst, MA10/MA20 halten und Volumen anzieht.",
+            "Power Play": f"Passt wahrscheinlicher, wenn der starke Lauf nicht abverkauft wird, der Kurs eng nahe MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) konsolidiert und wieder nach oben dreht.",
+            "High Tight Flag": f"Passt wahrscheinlicher, wenn die Flagge eng bleibt, MA10/MA20 halten und der Kurs den Pivotbereich um {_v1533_1_fmt_price(pivot_zone)} mit Schlusskurs/Volumen ueberschreitet.",
+        }
+        confirmation_needed = need_map.get(best_type, "Kein Spezialmuster aktiv; normale Entry-, S/R- und Konfluenzsignale bleiben wichtiger.")
+        row_info = {
+            "High Tight Pivot": ("Enger Pivot nahe Hoch.", f"Ausbruch/Stabilisierung ueber Pivot um {_v1533_1_fmt_price(pivot_zone)}, MA10/MA20 halten, ideal mit Volumen."),
+            "Power Play": ("Starker kurzer Impuls.", f"Enge Konsolidierung statt Abverkauf; Reclaim/Halten von MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)})."),
+            "High Tight Flag": ("Starker Move plus enge Flagge.", f"Flagge bleibt eng; Ausbruch ueber Pivot/Flagge um {_v1533_1_fmt_price(pivot_zone)} mit Schlusskurs/Volumen."),
+            "Pocket Pivot": ("Bullischer Volumenimpuls nahe Pivot/MA.", f"Volumen ueber Schnitt, Schluss stark, Pivot/MA um {_v1533_1_fmt_price(pivot_zone)} wird gehalten/ueberschritten."),
+            "VCP / Volatility Contraction": ("Schwankung zieht zusammen.", f"Range bleibt eng; Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen."),
+            "MA10/20 Pullback-Reaktion": ("Ruecksetzer reagiert an MA10/20.", f"MA10/MA20 halten ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}), bullische Kerze/Folgestaerke."),
+            "Undercut & Rally / Support-Reclaim": ("Kurzer Bruch wird zurueckerobert.", f"Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt, ideal mit Volumen/Folgestaerke."),
+            "Failed Breakout / Exhaustion-Warnung": ("Warnung: Ausbruch/Stretch wird anfaellig.", f"Defensiv, wenn Rueckfall unter Pivot {_v1533_1_fmt_price(pivot_zone)} oder MA10/MA20-Bruch folgt."),
+        }
+        rows=[]
+        for k in ["Pocket Pivot","VCP / Volatility Contraction","MA10/20 Pullback-Reaktion","Undercut & Rally / Support-Reclaim","High Tight Pivot","Power Play","High Tight Flag","Failed Breakout / Exhaustion-Warnung"]:
+            les, need = row_info[k]
+            rows.append({"Muster": k, "Score": int(round(min(max(scores[k],0),100))), "Lesart": les, "Damit es passt": need})
+        out.update({
+            "label": label, "phase": phase, "pattern_type": pattern_type, "summary": summary,
+            "action_hint": action, "active_zone_text": f"Pivot/Triggerbereich um {_v1533_1_fmt_price(pivot_zone)}" if pivot_zone else "n/a",
+            "trigger_label": trig_label, "trigger_score": trigger_score, "trigger_text": trig_text,
+            "trigger_action": trig_action, "confirmation_needed": confirmation_needed,
+            "drivers": (tdrivers + drivers)[:8], "rows": rows,
+            "metrics": {"Kurs": round(price,2), "Pivotbereich": round(float(pivot_zone),2) if pivot_zone and np.isfinite(pivot_zone) else "n/a", "Range_10T_%": round(float(tight10),1), "Range_20T_%": round(float(tight20),1), "Volumen_Ratio": round(float(vol_ratio),2) if pd.notna(vol_ratio) else "n/a"},
         })
         return out
     except Exception as exc:
@@ -17920,7 +18170,7 @@ if result is not None:
                 result["setup_pattern_pkg"] = setup_pattern_pkg
                 result["setup_pattern_label"] = setup_pattern_pkg.get("label")
                 result["setup_pattern_trigger"] = setup_pattern_pkg.get("trigger_label")
-            st.markdown("**Spezialmuster-Kontext: High Tight Pivot / Power Play / High Tight Flag (weich, nicht im Score)**")
+            st.markdown("**Spezialmuster-Kontext: Pivot, Power Play, VCP, Pullback/Reclaim und Exhaustion (weich, nicht im Score)**")
             _sp_drivers = setup_pattern_pkg.get("drivers", []) if isinstance(setup_pattern_pkg, dict) else []
             _sp_driver_text = " · ".join([str(x) for x in _sp_drivers[:4]]) if _sp_drivers else "keine dominanten Spezialmuster-Treiber"
             st.markdown(
@@ -17941,7 +18191,7 @@ if result is not None:
             _sp_rows = setup_pattern_pkg.get("rows", []) if isinstance(setup_pattern_pkg, dict) else []
             if _sp_rows:
                 _render_wrapped_detail_table_v1533(_sp_rows, ["Muster", "Score", "Lesart", "Damit es passt"], table_class="wrapped-pattern-table")
-            st.caption("High Tight Pivot, Power Play und High Tight Flag sind seltene, weiche Strukturhinweise. Sie sind keine automatischen Kaufsignale und werden nicht direkt in den Score gerechnet.")
+            st.caption("Spezialmuster sind weiche charttechnische Hinweise. Sie sind keine automatischen Kaufsignale und werden nicht direkt in den Score gerechnet; sie helfen nur, Triggernaehe und Qualitaet der Struktur einzuordnen.")
 
             # v15.33.2: Fibonacci-Kontext als weicher Chartbaustein, nicht score-wirksam.
             fib_pkg = fibonacci_context_pkg if "fibonacci_context_pkg" in locals() else build_fibonacci_context_v1533(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

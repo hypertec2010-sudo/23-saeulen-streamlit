@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.5",
+        "Export_Version": "v17.5.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2237,7 +2237,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.5"
+APP_VERSION = "v17.5.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5823,26 +5823,26 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
         }
         confirmation_needed = need_map.get(best_type, "Kein Spezialmuster aktiv; normale Entry-, S/R- und Konfluenzsignale bleiben wichtiger.")
         row_info = {
-            "High Tight Pivot": ("Enger Pivot nahe Hoch.", f"Ausbruch/Stabilisierung ueber Pivot um {_v1533_1_fmt_price(pivot_zone)}, MA10/MA20 halten, ideal mit Volumen."),
-            "Power Play": ("Starker kurzer Impuls.", f"Enge Konsolidierung statt Abverkauf; Reclaim/Halten von MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)})."),
-            "High Tight Flag": ("Starker Move plus enge Flagge.", f"Flagge bleibt eng; Ausbruch ueber Pivot/Flagge um {_v1533_1_fmt_price(pivot_zone)} mit Schlusskurs/Volumen."),
-            "Pocket Pivot": ("Bullischer Volumenimpuls nahe Pivot/MA.", f"Volumen ueber Schnitt, Schluss stark, Pivot/MA um {_v1533_1_fmt_price(pivot_zone)} wird gehalten/ueberschritten."),
-            "VCP / Volatility Contraction": ("Schwankung zieht zusammen.", f"Range bleibt eng; Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen."),
-            "MA10/20 Pullback-Reaktion": ("Ruecksetzer reagiert an MA10/20.", f"MA10/MA20 halten ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}), bullische Kerze/Folgestaerke."),
-            "Undercut & Rally / Support-Reclaim": ("Kurzer Bruch wird zurueckerobert.", f"Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt, ideal mit Volumen/Folgestaerke."),
-            "Flat Base / Base Breakout": ("Flache Base / enge Range.", f"Schlusskurs ueber Range/Pivot {_v1533_1_fmt_price(pivot_zone)} mit Volumen; Invalidierung unter Range."),
-            "Tight Range Breakout": ("Sehr enge Kurzfrist-Range.", f"Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)}; nicht vor dem Trigger vorwegnehmen."),
-            "Accumulation Cluster": ("Mehrere Akkumulations-/Volumenhinweise.", "Qualitaetsbestaetigung; wird erst mit Entry-/Pivottrigger handelbar."),
-            "Pullback Dry-Up": ("Ruhiger Pullback, Verkaufsdruck nimmt ab.", f"MA10/MA20 halten ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) plus bullische Reaktion."),
-            "RS-New-High / Leadership-Reclaim": ("Relative Staerke verbessert sich.", "Bestaetigt Leader-Qualitaet; aktiver Trigger braucht Kurs-/Pivotbestaetigung."),
-            "Double Bottom / Higher Low": ("Moegliche Boden-/Higher-Low-Struktur.", f"Zweites Tief haelt; Bruch ueber Zwischenhoch/Pivot {_v1533_1_fmt_price(pivot_zone)}."),
-            "Failed Breakout / Exhaustion-Warnung": ("Warnung: Ausbruch/Stretch wird anfaellig.", f"Defensiv, wenn Rueckfall unter Pivot {_v1533_1_fmt_price(pivot_zone)} oder MA10/MA20-Bruch folgt."),
-            "Wide & Loose / Climax-Warnung": ("Warnung: zu unruhig oder ueberdehnt.", "Keine Long-Bestaetigung; neue enge Base oder klare Stabilisierung abwarten."),
+            "High Tight Pivot": ("Enger Pivot nahe Hoch.", "Frueher Trigger nahe Hoch: Käufer halten den Kurs eng am Pivot statt abzuverkaufen.", f"Ausbruch/Stabilisierung ueber Pivot um {_v1533_1_fmt_price(pivot_zone)}, MA10/MA20 halten, ideal mit Volumen."),
+            "Power Play": ("Starker kurzer Impuls.", "Sehr starker Anstieg, der danach nicht stark abverkauft wird; nur interessant, wenn die enge Konsolidierung haelt.", f"Enge Konsolidierung statt Abverkauf; Reclaim/Halten von MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)})."),
+            "High Tight Flag": ("Starker Move plus enge Flagge.", "Seltener Momentum-Aufbau: starker Lauf, danach kleine enge Flagge im oberen Bereich.", f"Flagge bleibt eng; Ausbruch ueber Pivot/Flagge um {_v1533_1_fmt_price(pivot_zone)} mit Schlusskurs/Volumen."),
+            "Pocket Pivot": ("Bullischer Volumenimpuls nahe Pivot/MA.", "Frueher Kaufdruck vor dem klassischen Ausbruch; Volumen muss den Move bestaetigen.", f"Volumen ueber Schnitt, Schluss stark, Pivot/MA um {_v1533_1_fmt_price(pivot_zone)} wird gehalten/ueberschritten."),
+            "VCP / Volatility Contraction": ("Schwankung zieht zusammen.", "Mehrere engere Ruecksetzer: Angebot trocknet aus, ein Ausbruch kann dadurch belastbarer werden.", f"Range bleibt eng; Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen."),
+            "MA10/20 Pullback-Reaktion": ("Ruecksetzer reagiert an MA10/20.", "Trend-Pullback: Kurs testet die kurzfristigen Linien und zeigt dort wieder Nachfrage.", f"MA10/MA20 halten ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}), bullische Kerze/Folgestaerke."),
+            "Undercut & Rally / Support-Reclaim": ("Kurzer Bruch wird zurueckerobert.", "Shakeout/Reversal: ein Tief oder Support wird kurz verletzt und danach wieder zurueckerobert.", f"Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt, ideal mit Volumen/Folgestaerke."),
+            "Flat Base / Base Breakout": ("Flache Base / enge Range.", "Ruhige Seitwaertsphase; wird erst interessant, wenn die obere Range sauber bricht.", f"Schlusskurs ueber Range/Pivot {_v1533_1_fmt_price(pivot_zone)} mit Volumen; Invalidierung unter Range."),
+            "Tight Range Breakout": ("Sehr enge Kurzfrist-Range.", "Kurzfristige Spannung baut sich auf; der Trigger ist der Ausbruch aus der engen Range.", f"Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)}; nicht vor dem Trigger vorwegnehmen."),
+            "Accumulation Cluster": ("Mehrere Akkumulations-/Volumenhinweise.", "Hinweis auf wiederholte Nachfrage/groessere Kaeufer; allein noch kein Entry-Signal.", "Qualitaetsbestaetigung; wird erst mit Entry-/Pivottrigger handelbar."),
+            "Pullback Dry-Up": ("Ruhiger Pullback, Verkaufsdruck nimmt ab.", "Ruecksetzer bei sinkendem Volumen: Verkaufsdruck trocknet aus, danach braucht es eine bullische Reaktion.", f"MA10/MA20 halten ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) plus bullische Reaktion."),
+            "RS-New-High / Leadership-Reclaim": ("Relative Staerke verbessert sich.", "Die Aktie wird relativ zum Markt/Sektor staerker; guter Zusatzfilter fuer Leader.", "Bestaetigt Leader-Qualitaet; aktiver Trigger braucht Kurs-/Pivotbestaetigung."),
+            "Double Bottom / Higher Low": ("Moegliche Boden-/Higher-Low-Struktur.", "Bodenbildungs-/Turnaround-Struktur: zweites Tief haelt besser als das erste.", f"Zweites Tief haelt; Bruch ueber Zwischenhoch/Pivot {_v1533_1_fmt_price(pivot_zone)}."),
+            "Failed Breakout / Exhaustion-Warnung": ("Warnung: Ausbruch/Stretch wird anfaellig.", "Warnsignal: Ausbruch scheitert oder der Kurs wirkt nach starkem Lauf erschoepft.", f"Defensiv, wenn Rueckfall unter Pivot {_v1533_1_fmt_price(pivot_zone)} oder MA10/MA20-Bruch folgt."),
+            "Wide & Loose / Climax-Warnung": ("Warnung: zu unruhig oder ueberdehnt.", "Warnsignal: zu grosse, chaotische Schwankungen oder Climax-Lauf; schlechter fuer kontrollierte Entries.", "Keine Long-Bestaetigung; neue enge Base oder klare Stabilisierung abwarten."),
         }
         rows=[]
         for k in ["Pocket Pivot","VCP / Volatility Contraction","Flat Base / Base Breakout","Tight Range Breakout","MA10/20 Pullback-Reaktion","Pullback Dry-Up","Undercut & Rally / Support-Reclaim","Double Bottom / Higher Low","Accumulation Cluster","RS-New-High / Leadership-Reclaim","High Tight Pivot","Power Play","High Tight Flag","Failed Breakout / Exhaustion-Warnung","Wide & Loose / Climax-Warnung"]:
-            les, need = row_info[k]
-            rows.append({"Muster": k, "Score": int(round(min(max(scores[k],0),100))), "Lesart": les, "Damit es passt": need})
+            les, expl, need = row_info[k]
+            rows.append({"Muster": k, "Score": int(round(min(max(scores[k],0),100))), "Lesart": les, "Kurz erklärt": expl, "Damit es passt": need})
         out.update({
             "label": label, "phase": phase, "pattern_type": pattern_type, "summary": summary,
             "action_hint": action, "active_zone_text": f"Pivot/Triggerbereich um {_v1533_1_fmt_price(pivot_zone)}" if pivot_zone else "n/a",
@@ -18545,7 +18545,7 @@ if result is not None:
             )
             _sp_rows = setup_pattern_pkg.get("rows", []) if isinstance(setup_pattern_pkg, dict) else []
             if _sp_rows:
-                _render_wrapped_detail_table_v1533(_sp_rows, ["Muster", "Score", "Lesart", "Damit es passt"], table_class="wrapped-pattern-table")
+                _render_wrapped_detail_table_v1533(_sp_rows, ["Muster", "Score", "Lesart", "Kurz erklärt", "Damit es passt"], table_class="wrapped-pattern-table")
             st.caption("Spezialmuster sind weiche charttechnische Hinweise. Sie sind keine automatischen Kaufsignale und werden nicht direkt in den Score gerechnet; sie helfen nur, Triggernaehe und Qualitaet der Struktur einzuordnen.")
 
             # v17.4: expliziter charttechnischer Turnaround-Kontext.

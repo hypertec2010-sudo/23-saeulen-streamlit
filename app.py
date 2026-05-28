@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.4",
+        "Export_Version": "v17.5",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2237,7 +2237,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.4"
+APP_VERSION = "v17.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5594,7 +5594,10 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
             "High Tight Pivot": 0, "Power Play": 0, "High Tight Flag": 0,
             "Pocket Pivot": 0, "VCP / Volatility Contraction": 0,
             "MA10/20 Pullback-Reaktion": 0, "Undercut & Rally / Support-Reclaim": 0,
-            "Failed Breakout / Exhaustion-Warnung": 0,
+            "Flat Base / Base Breakout": 0, "Tight Range Breakout": 0,
+            "Accumulation Cluster": 0, "Pullback Dry-Up": 0,
+            "RS-New-High / Leadership-Reclaim": 0, "Double Bottom / Higher Low": 0,
+            "Failed Breakout / Exhaustion-Warnung": 0, "Wide & Loose / Climax-Warnung": 0,
         }
         # Bestehende seltene Muster.
         if near_high: scores["High Tight Pivot"] += 20; add_driver(f"nahe 20T-Hoch ({pullback20:.1f}% darunter)")
@@ -5644,19 +5647,86 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
         if vol_conf: scores["Undercut & Rally / Support-Reclaim"] += 10
         failed_breakout = price < pivot_zone * 0.99 and high10 >= pivot_zone * 1.002 if pivot_zone else False
         exhaustion = pd.notna(dist_ma10) and dist_ma10 >= 9 and upper_wick_pct >= 1.0 and close_pos <= 0.55
+        # Weitere relevante, weiche Chartmuster. Diese Signale sollen keine eigenen Kaufsignale sein,
+        # sondern die Triggernaehe/Qualitaet der Struktur fuer Konfluenz und Radar besser einordnen.
+        flat_base = (tight40 <= 18 and tight20 <= 11 and abs(pullback60) <= 20) if pd.notna(pullback60) else False
+        if flat_base: scores["Flat Base / Base Breakout"] += 34; add_driver(f"flache Base/Range ({tight40:.1f}% / 40T)")
+        if above_ma50: scores["Flat Base / Base Breakout"] += 14
+        if near_high: scores["Flat Base / Base Breakout"] += 14
+        if near_pivot or breakout: scores["Flat Base / Base Breakout"] += 20
+        if vol_conf: scores["Flat Base / Base Breakout"] += 8
+
+        tight3 = ((float(work["high"].tail(3).max()) - float(work["low"].tail(3).min())) / max(price, 1e-9)) * 100 if len(work) >= 3 else np.nan
+        tight5 = ((float(work["high"].tail(5).max()) - float(work["low"].tail(5).min())) / max(price, 1e-9)) * 100 if len(work) >= 5 else np.nan
+        if pd.notna(tight5) and tight5 <= 4.5: scores["Tight Range Breakout"] += 28; add_driver(f"sehr enge 5T-Range ({tight5:.1f}%)")
+        if pd.notna(tight3) and tight3 <= 3.0: scores["Tight Range Breakout"] += 16
+        if near_pivot or breakout: scores["Tight Range Breakout"] += 24
+        if above_short: scores["Tight Range Breakout"] += 12
+        if vol_conf and breakout: scores["Tight Range Breakout"] += 12
+
+        # Akkumulation/Distribution als Kontext, falls bereits berechnet.
+        acc_score = _turnaround_v174_float(result.get("accumulation_score"), 0)
+        dist_score = _turnaround_v174_float(result.get("distribution_pressure_score", result.get("distribution_score")), 0)
+        acc_days = _turnaround_v174_float(result.get("accumulation_day_count"), 0)
+        dist_days = _turnaround_v174_float(result.get("distribution_day_count"), 0)
+        pullback_dry = _turnaround_v174_float(result.get("pullback_dryup_score"), 0)
+        breakout_vol_score = _turnaround_v174_float(result.get("breakout_volume_score"), 0)
+        if acc_score >= 60 or (acc_days and acc_days >= 2): scores["Accumulation Cluster"] += 32; add_driver(f"Akkumulation sichtbar ({acc_score:.0f})")
+        if dist_score <= 45: scores["Accumulation Cluster"] += 12
+        if vol_conf and bull_day: scores["Accumulation Cluster"] += 22
+        if breakout_vol_score >= 55: scores["Accumulation Cluster"] += 16
+
+        pullback_context = (pd.notna(pullback20) and 2 <= pullback20 <= 12) or near_ma10 or near_ma20
+        if pullback_context and pullback_dry >= 55: scores["Pullback Dry-Up"] += 36; add_driver(f"Pullback-Volumen trocknet aus ({pullback_dry:.0f})")
+        if pullback_context: scores["Pullback Dry-Up"] += 16
+        if above_short: scores["Pullback Dry-Up"] += 12
+        if bull_day or lower_wick_pct >= 0.8: scores["Pullback Dry-Up"] += 14
+
+        leadership_score = _turnaround_v174_float(result.get("leadership_score"), 0)
+        rs_acc = _turnaround_v174_float(result.get("rs_acceleration_score"), 0)
+        rs_bench = _turnaround_v174_float(result.get("rs_benchmark_score"), 0)
+        if leadership_score >= 65 or rs_bench >= 65: scores["RS-New-High / Leadership-Reclaim"] += 28; add_driver(f"Relative Staerke/Leadership konstruktiv ({max(leadership_score, rs_bench):.0f})")
+        if rs_acc >= 55: scores["RS-New-High / Leadership-Reclaim"] += 18
+        if near_high and above_short: scores["RS-New-High / Leadership-Reclaim"] += 16
+        if breakout or near_pivot: scores["RS-New-High / Leadership-Reclaim"] += 12
+
+        # Doppelboden/Higher-Low-Reversal als weicher Turnaround-/Reclaim-Hinweis.
+        recent_lows = work["low"].tail(30)
+        dbl_score = 0
+        if len(recent_lows) >= 18:
+            first_low = float(recent_lows.iloc[:15].min())
+            second_low = float(recent_lows.iloc[15:].min())
+            low_gap = abs(second_low - first_low) / max(first_low, 1e-9) * 100
+            higher_low = second_low > first_low * 1.01
+            if low_gap <= 4.0 or higher_low:
+                dbl_score += 30; add_driver(f"zweites Tief/Higher Low nahe {_v1533_1_fmt_price(second_low)}")
+            if price > float(work["close"].tail(10).mean()): dbl_score += 12
+            if bull_day or reclaim_ma10 or reclaim_ma20: dbl_score += 18
+            if vol_conf: dbl_score += 10
+        scores["Double Bottom / Higher Low"] += dbl_score
+
+        failed_breakout = price < pivot_zone * 0.99 and high10 >= pivot_zone * 1.002 if pivot_zone else False
+        exhaustion = pd.notna(dist_ma10) and dist_ma10 >= 9 and upper_wick_pct >= 1.0 and close_pos <= 0.55
         if failed_breakout: scores["Failed Breakout / Exhaustion-Warnung"] += 45; add_driver(f"Rueckfall unter Pivot {_v1533_1_fmt_price(pivot_zone)}")
         if exhaustion: scores["Failed Breakout / Exhaustion-Warnung"] += 35; add_driver(f"deutlich ueber MA10 ({dist_ma10:.1f}%) mit schwachem Close")
         if pd.notna(vol_ratio) and vol_ratio >= 1.4 and close_pos <= 0.45: scores["Failed Breakout / Exhaustion-Warnung"] += 20
+
+        wide_loose = (tight20 >= 22 and pd.notna(pullback20) and pullback20 >= 8) or (body_pct >= 4.0 and close_pos <= 0.45)
+        climax = (pd.notna(run20) and run20 >= 35 and pd.notna(dist_ma10) and dist_ma10 >= 10)
+        if wide_loose: scores["Wide & Loose / Climax-Warnung"] += 32; add_driver(f"weite/unruhige Struktur ({tight20:.1f}% / 20T)")
+        if climax: scores["Wide & Loose / Climax-Warnung"] += 32; add_driver(f"Climax-/Stretch-Risiko ({run20:.1f}% / 20T, {dist_ma10:.1f}% ueber MA10)")
+        if pd.notna(vol_ratio) and vol_ratio >= 1.4 and close_pos <= 0.5: scores["Wide & Loose / Climax-Warnung"] += 16
+
         best_type = max(scores, key=scores.get)
         best_score = int(round(min(max(scores[best_type],0),100)))
-        warning = best_type == "Failed Breakout / Exhaustion-Warnung" and best_score >= 45
+        warning = best_type in {"Failed Breakout / Exhaustion-Warnung", "Wide & Loose / Climax-Warnung"} and best_score >= 45
         if best_score < 45:
             label="kein klares Spezialmuster"; phase="Nicht aktiv"; pattern_type="keines"
             summary="Kein belastbarer Spezialmuster-Kontext. Normale Chart- und Entry-Logik bleibt fuehrend."
             action="Nicht aus diesem Baustein handeln; S/R, Entry-Zone, Candlestick und Konfluenz pruefen."
         elif warning:
-            label="Exhaustion-/Failed-Breakout-Warnung"; phase="Defensiver Spezialkontext"; pattern_type=best_type
-            summary="Der Chart zeigt eher ein Warnsignal: Ausbruch/Stretch wirkt anfaellig oder wird nicht sauber bestaetigt."
+            label="Chart-Warnsignal: Failed Breakout / Wide & Loose"; phase="Defensiver Spezialkontext"; pattern_type=best_type
+            summary="Der Chart zeigt eher ein Warnsignal: Ausbruch, Stretch oder weite Schwankungen wirken anfaellig."
             action=f"Nicht prozyklisch hinterherlaufen. Defensiver bei Rueckfall unter Pivot/Support um {_v1533_1_fmt_price(pivot_zone)}; neue enge Base abwarten."
         elif best_type == "Pocket Pivot":
             label="moeglicher Pocket Pivot"; phase="Volumenimpuls nahe Trigger"; pattern_type=best_type
@@ -5674,6 +5744,30 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
             label="moeglicher Undercut & Rally / Support-Reclaim"; phase="Reclaim nach kurzem Bruch"; pattern_type=best_type
             summary="Ein Tief/Support wurde kurz verletzt und zurueckerobert. Das kann ein Reversal-Trigger sein."
             action=f"Aktiv pruefen, wenn der Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt und Folgestaerke entsteht."
+        elif best_type == "Flat Base / Base Breakout":
+            label="moegliche Flat Base / Base-Breakout"; phase="enge Base nahe Trigger"; pattern_type=best_type
+            summary="Der Kurs konsolidiert relativ flach. Das ist konstruktiv, wenn die obere Range mit Volumen gebrochen wird."
+            action=f"Alarm am Base-/Pivotbereich um {_v1533_1_fmt_price(pivot_zone)} setzen; aktiv erst bei Schlusskurs/Volumen ueber der Range."
+        elif best_type == "Tight Range Breakout":
+            label="moeglicher Tight-Range-Breakout"; phase="Spannung baut sich auf"; pattern_type=best_type
+            summary="Die kurzfristige Range ist sehr eng. Ein Ausbruch kann relevant werden, wenn Volumen und Schlusskurs bestaetigen."
+            action=f"Nicht vorwegnehmen. Aktiv pruefen bei Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)} mit enger Invalidierung."
+        elif best_type == "Accumulation Cluster":
+            label="Akkumulationscluster sichtbar"; phase="Smart-Money-Bestaetigung"; pattern_type=best_type
+            summary="Mehrere Volumen-/Akkumulationshinweise sprechen dafuer, dass Kaufinteresse vorhanden ist."
+            action="Als Qualitaetsbestaetigung werten; Einstieg trotzdem nur ueber Entry-Zone, Pivot oder Konfluenz aktivieren."
+        elif best_type == "Pullback Dry-Up":
+            label="Pullback-Dry-Up"; phase="Verkaufsdruck trocknet aus"; pattern_type=best_type
+            summary="Der Ruecksetzer wirkt kontrolliert, weil das Volumen im Pullback nachlaesst."
+            action=f"Bullischer wird es bei Reaktion an MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) oder Reclaim der Entry-Zone."
+        elif best_type == "RS-New-High / Leadership-Reclaim":
+            label="Leadership-/Relative-Staerke-Reclaim"; phase="relative Staerke verbessert sich"; pattern_type=best_type
+            summary="Relative Staerke/Leadership zieht an. Das stuetzt Leader-Setups, ist aber allein kein Entry-Trigger."
+            action="Als Bestaetigung werten; aktiv wird es erst mit Pivot, Entry-Zone oder klarer Kursreaktion."
+        elif best_type == "Double Bottom / Higher Low":
+            label="moeglicher Double-Bottom / Higher-Low-Reversal"; phase="fruehe Bodenbildung"; pattern_type=best_type
+            summary="Der Kurs zeigt eine moegliche zweite Tief-/Higher-Low-Struktur. Das kann ein frueher Turnaround-Hinweis sein."
+            action=f"Aktiv pruefen erst bei Bruch ueber das Zwischenhoch/Pivot um {_v1533_1_fmt_price(pivot_zone)} oder Reclaim wichtiger MAs."
         elif best_type == "High Tight Pivot":
             label="moeglicher High Tight Pivot"; phase="Enger Pivot nahe Hoch"; pattern_type=best_type
             summary="Kurs handelt eng nahe dem Hoch. Das kann ein kurzer Pivot sein, braucht aber Ausbruch/Bestaetigung."
@@ -5690,7 +5784,7 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
         if warning:
             trigger_score = best_score
             trig_label = "Warnung aktiv" if best_score >= 60 else "Warnung im Aufbau"
-            trig_text = "Warnsignal aus Failed-Breakout/Exhaustion-Kontext."
+            trig_text = "Warnsignal aus Failed-Breakout, Wide-&-Loose oder Climax-Kontext."
             trig_action = "Defensiver handeln; keinen aggressiven Long-Trigger daraus ableiten."
         else:
             if breakout: trigger_score += 35; tdrivers.append(f"Kurs ueber Pivot {_v1533_1_fmt_price(pivot_zone)}")
@@ -5715,7 +5809,14 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
             "VCP / Volatility Contraction": f"Passt eher, wenn die Range weiter eng bleibt und der Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen/Schlusskurs erfolgt.",
             "MA10/20 Pullback-Reaktion": f"Passt eher, wenn MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) halten, die Kerze bullisch dreht und kein starker Abgabedruck folgt.",
             "Undercut & Rally / Support-Reclaim": f"Passt eher, wenn der Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt und Folgestaerke entsteht.",
+            "Flat Base / Base Breakout": f"Passt eher, wenn die flache Range intakt bleibt und ein Schlusskurs ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen erfolgt.",
+            "Tight Range Breakout": f"Passt eher, wenn die enge Range nach oben aufloest und der Kurs ueber {_v1533_1_fmt_price(pivot_zone)} schliesst.",
+            "Accumulation Cluster": "Passt eher als Qualitaetsbestaetigung, wenn Akkumulation/Volumen weiter konstruktiv bleiben und Distribution nicht anzieht.",
+            "Pullback Dry-Up": f"Passt eher, wenn der Pullback ruhig bleibt, MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) halten und anschliessend eine bullische Reaktion folgt.",
+            "RS-New-High / Leadership-Reclaim": "Passt eher, wenn relative Staerke weiter anzieht und ein Kurs-/Pivottrigger nachfolgt.",
+            "Double Bottom / Higher Low": f"Passt eher, wenn das zweite Tief haelt und der Kurs ueber das Zwischenhoch/Pivot um {_v1533_1_fmt_price(pivot_zone)} zieht.",
             "Failed Breakout / Exhaustion-Warnung": "Warnsignal: Passt als Bremse, wenn der Kurs nach Ausbruch/Stretch nicht anschliesst und unter Pivot/MA-Struktur zurueckfaellt.",
+            "Wide & Loose / Climax-Warnung": "Warnsignal: Passt als Bremse, wenn die Bewegung sehr unruhig oder ueberdehnt wird und keine enge Base entsteht.",
             "High Tight Pivot": f"Passt wahrscheinlicher, wenn der Kurs den Pivotbereich um {_v1533_1_fmt_price(pivot_zone)} zurueckerobert oder darueber schliesst, MA10/MA20 halten und Volumen anzieht.",
             "Power Play": f"Passt wahrscheinlicher, wenn der starke Lauf nicht abverkauft wird, der Kurs eng nahe MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) konsolidiert und wieder nach oben dreht.",
             "High Tight Flag": f"Passt wahrscheinlicher, wenn die Flagge eng bleibt, MA10/MA20 halten und der Kurs den Pivotbereich um {_v1533_1_fmt_price(pivot_zone)} mit Schlusskurs/Volumen ueberschreitet.",
@@ -5729,10 +5830,17 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
             "VCP / Volatility Contraction": ("Schwankung zieht zusammen.", f"Range bleibt eng; Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen."),
             "MA10/20 Pullback-Reaktion": ("Ruecksetzer reagiert an MA10/20.", f"MA10/MA20 halten ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}), bullische Kerze/Folgestaerke."),
             "Undercut & Rally / Support-Reclaim": ("Kurzer Bruch wird zurueckerobert.", f"Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt, ideal mit Volumen/Folgestaerke."),
+            "Flat Base / Base Breakout": ("Flache Base / enge Range.", f"Schlusskurs ueber Range/Pivot {_v1533_1_fmt_price(pivot_zone)} mit Volumen; Invalidierung unter Range."),
+            "Tight Range Breakout": ("Sehr enge Kurzfrist-Range.", f"Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)}; nicht vor dem Trigger vorwegnehmen."),
+            "Accumulation Cluster": ("Mehrere Akkumulations-/Volumenhinweise.", "Qualitaetsbestaetigung; wird erst mit Entry-/Pivottrigger handelbar."),
+            "Pullback Dry-Up": ("Ruhiger Pullback, Verkaufsdruck nimmt ab.", f"MA10/MA20 halten ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) plus bullische Reaktion."),
+            "RS-New-High / Leadership-Reclaim": ("Relative Staerke verbessert sich.", "Bestaetigt Leader-Qualitaet; aktiver Trigger braucht Kurs-/Pivotbestaetigung."),
+            "Double Bottom / Higher Low": ("Moegliche Boden-/Higher-Low-Struktur.", f"Zweites Tief haelt; Bruch ueber Zwischenhoch/Pivot {_v1533_1_fmt_price(pivot_zone)}."),
             "Failed Breakout / Exhaustion-Warnung": ("Warnung: Ausbruch/Stretch wird anfaellig.", f"Defensiv, wenn Rueckfall unter Pivot {_v1533_1_fmt_price(pivot_zone)} oder MA10/MA20-Bruch folgt."),
+            "Wide & Loose / Climax-Warnung": ("Warnung: zu unruhig oder ueberdehnt.", "Keine Long-Bestaetigung; neue enge Base oder klare Stabilisierung abwarten."),
         }
         rows=[]
-        for k in ["Pocket Pivot","VCP / Volatility Contraction","MA10/20 Pullback-Reaktion","Undercut & Rally / Support-Reclaim","High Tight Pivot","Power Play","High Tight Flag","Failed Breakout / Exhaustion-Warnung"]:
+        for k in ["Pocket Pivot","VCP / Volatility Contraction","Flat Base / Base Breakout","Tight Range Breakout","MA10/20 Pullback-Reaktion","Pullback Dry-Up","Undercut & Rally / Support-Reclaim","Double Bottom / Higher Low","Accumulation Cluster","RS-New-High / Leadership-Reclaim","High Tight Pivot","Power Play","High Tight Flag","Failed Breakout / Exhaustion-Warnung","Wide & Loose / Climax-Warnung"]:
             les, need = row_info[k]
             rows.append({"Muster": k, "Score": int(round(min(max(scores[k],0),100))), "Lesart": les, "Damit es passt": need})
         out.update({
@@ -14975,7 +15083,7 @@ if workspace_mode:
 
         style_note_map = {
             "Leader": "Bevorzugt bestätigte Stärke, Leadership und saubere Trend-Setups.",
-            "Charttechnik": "Sucht gezielt nach charttechnischen Impulsen: Trigger-Nähe, MA10/20, Spezialmuster, Fib-/Strukturreaktion, Volumen und Konfluenz.",
+            "Charttechnik": "Sucht gezielt nach charttechnischen Impulsen: Trigger-Nähe, MA10/20, Spezialmuster, Bases/VCP, Pullback/Reclaim, Volumen/Smart Money, Fib-/Strukturreaktion und Konfluenz.",
             "Turnaround": "Bevorzugt frühe Drehkandidaten, Rebounds und technische Erholungsfenster.",
             "Ausgewogen": "Mittelweg zwischen bestätigter Stärke und früheren Chancen.",
         }
@@ -18417,7 +18525,7 @@ if result is not None:
                 result["setup_pattern_pkg"] = setup_pattern_pkg
                 result["setup_pattern_label"] = setup_pattern_pkg.get("label")
                 result["setup_pattern_trigger"] = setup_pattern_pkg.get("trigger_label")
-            st.markdown("**Spezialmuster-Kontext: Pivot, Power Play, VCP, Pullback/Reclaim und Exhaustion (weich, nicht im Score)**")
+            st.markdown("**Spezialmuster-Kontext: Pivot, Bases, VCP, Pullback/Reclaim, Smart Money und Warnsignale (weich, nicht im Score)**")
             _sp_drivers = setup_pattern_pkg.get("drivers", []) if isinstance(setup_pattern_pkg, dict) else []
             _sp_driver_text = " · ".join([str(x) for x in _sp_drivers[:4]]) if _sp_drivers else "keine dominanten Spezialmuster-Treiber"
             st.markdown(

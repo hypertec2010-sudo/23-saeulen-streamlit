@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.5.1",
+        "Export_Version": "v17.5.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2237,7 +2237,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.5.1"
+APP_VERSION = "v17.5.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2460,6 +2460,18 @@ def get_radar_universe_map():
         "IONQ", "RGTI", "QBTS", "QUBT", "ARQQ", "IBM", "GOOGL", "MSFT", "AMZN", "HON",
         "NVDA", "INTC", "FORM", "TER"
     ]
+    software_universe = [
+        # Large Cap / Plattform-Software
+        "MSFT", "ORCL", "SAP", "CRM", "NOW", "ADBE", "INTU", "ADSK", "FICO", "TYL",
+        # Cloud, Data, Observability, DevTools
+        "SNOW", "MDB", "DDOG", "NET", "ESTC", "DT", "CFLT", "DOCN", "FROG", "GTLB",
+        # Cybersecurity
+        "PANW", "CRWD", "FTNT", "ZS", "OKTA", "CYBR", "S", "TENB", "VRNS", "QLYS",
+        # SaaS / Business Applications
+        "WDAY", "TEAM", "HUBS", "SHOP", "MNDY", "BILL", "PAYC", "PCOR", "GWRE", "DOCU",
+        # AI-/App-/Data-nahe Software und Plattformen
+        "PLTR", "APP", "TTD", "PATH", "U", "RBLX", "AFRM", "DUOL", "IOT", "MANH"
+    ]
     emerging_markets_universe = [
         "EEM", "IEMG", "VWO", "KWEB", "MCHI", "FXI", "INDA", "EWZ", "EWT", "EWY",
         "EWW", "EIDO", "TUR", "EPOL", "ARGT", "NU", "MELI", "TSM", "BABA", "PDD",
@@ -2474,6 +2486,7 @@ def get_radar_universe_map():
         "Europa Small & Mid Caps Qualität": (europa_small_mid_quality_universe, "Europa Small & Mid Caps Qualität", "Breiteres Europa-Universum aus Small- und Mid-Caps mit Qualitäts- und Leader-Fokus."),
         "Space Aktien": (space_stocks_universe, "Space Aktien", "Raumfahrt-, Satelliten- und Aerospace-nahe Titel; spekulativeres Themenuniversum mit hoher Volatilität."),
         "Quantencomputer": (quantum_computing_universe, "Quantencomputer", "Quantum-Computing-Pure-Plays und große Technologieanbieter mit Quantum-Exposure; stark thematisch und teils volatil."),
+        "Software": (software_universe, "Software", "Software-, SaaS-, Cloud-, Cybersecurity- und Datenplattform-Werte als eigener Radar-Schwerpunkt."),
         "Emerging Markets": (emerging_markets_universe, "Emerging Markets", "EM-ETFs und große liquide Emerging-Markets-Werte als Makro-/Länder- und Wachstumsscreen."),
     }
 
@@ -2487,6 +2500,7 @@ def get_radar_snapshot_jobs():
         {"job_key": "eu_sm_turnaround", "label": "Europa Small & Mid Caps Qualität - Turnaround - 15", "universe": "Europa Small & Mid Caps Qualität", "style": "Turnaround", "max_candidates": 15},
         {"job_key": "space_chart", "label": "Space Aktien - Charttechnik - 10", "universe": "Space Aktien", "style": "Charttechnik", "max_candidates": 10},
         {"job_key": "quantum_chart", "label": "Quantencomputer - Charttechnik - 10", "universe": "Quantencomputer", "style": "Charttechnik", "max_candidates": 10},
+        {"job_key": "software_chart", "label": "Software - Charttechnik - 10", "universe": "Software", "style": "Charttechnik", "max_candidates": 10},
         {"job_key": "em_balanced", "label": "Emerging Markets - Ausgewogen - 10", "universe": "Emerging Markets", "style": "Ausgewogen", "max_candidates": 10},
     ]
 
@@ -15045,7 +15059,7 @@ if workspace_mode:
 
         rc1, rc2, rc3, rc4 = st.columns([1.3, 1.0, 0.7, 1.0])
         with rc1:
-            radar_universe_options = ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Europa Small & Mid Caps Qualität", "Halbleiter", "US Small & Mid Caps", "Space Aktien", "Quantencomputer", "Emerging Markets", "Eigene Liste"]
+            radar_universe_options = ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Europa Small & Mid Caps Qualität", "Halbleiter", "US Small & Mid Caps", "Space Aktien", "Quantencomputer", "Software", "Emerging Markets", "Eigene Liste"]
             radar_universe_current = st.session_state.radar_universe if st.session_state.radar_universe in radar_universe_options else ("Europa Qualität & Leader" if st.session_state.radar_universe == "Europa Qualität" else "US Tech")
             radar_universe = st.selectbox(
                 "Universum",

@@ -639,6 +639,80 @@ def append_single_analysis_df_to_gsheet_complete(df, worksheet_name="Analysis_Lo
         return False, str(e)
 
 
+def build_backtest_log_df_v1710(single_export_df, result=None, context=None):
+    """Erstellt eine eigene Backtesting-Zeile aus der aktuellen Einzelanalyse.
+
+    Ziel: Signal-Snapshot genau in dem Moment speichern, in dem ein Wert in der App
+    als kaufbar / pruefbar / interessant markiert wird. Die spaeteren Ergebnisfelder
+    bleiben bewusst leer und koennen im Sheet nach 5/10/20 Tagen ergaenzt werden.
+    """
+    result = result or {}
+    context = context or {}
+    if single_export_df is None or single_export_df.empty:
+        return pd.DataFrame()
+
+    row = single_export_df.iloc[0].to_dict()
+
+    def _bt_first(*vals, default=""):
+        for v in vals:
+            try:
+                if v is None:
+                    continue
+                if isinstance(v, float) and np.isnan(v):
+                    continue
+                s = str(v).strip()
+                if s and s.lower() not in {"nan", "none", "n/a", "na", "-"}:
+                    return v
+            except Exception:
+                continue
+        return default
+
+    signal_price = _bt_first(
+        row.get("Aktueller_Kurs"),
+        row.get("Analyse_Kursbasis"),
+        row.get("Kurs"),
+        result.get("live_price"),
+        result.get("price"),
+        default="",
+    )
+
+    bt_prefix = {
+        "Backtest_Log_Version": "v17.10",
+        "Backtest_Logged_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Backtest_Status": "Open",
+        "Backtest_Signal_Date": datetime.now().strftime("%Y-%m-%d"),
+        "Backtest_Ticker": _bt_first(row.get("Ticker"), result.get("ticker")),
+        "Backtest_Name": _bt_first(row.get("Name"), result.get("name")),
+        "Backtest_Signal_Price": signal_price,
+        "Backtest_Action": _bt_first(
+            row.get("Action_Clarity_Label"),
+            row.get("Aktion_Final"),
+            row.get("Handlung"),
+            row.get("Aktion"),
+            result.get("position_action"),
+            result.get("emp"),
+        ),
+        "Backtest_Timing_Confidence": _bt_first(row.get("Timing_Handlungs_Konfidenz_Label"), row.get("Timing-Konfidenz")),
+        "Backtest_Trigger_Confluence": _bt_first(row.get("Trigger_Konfluenz_Label"), row.get("Trigger-Konfluenz")),
+        "Backtest_Charttechnik_Setup": _bt_first(row.get("Charttechnik_Setup_Label")),
+        "Backtest_Entry_Zone": _bt_first(row.get("Entry-Zone"), row.get("Entry_Zone"), result.get("suggested_entry_zone")),
+        "Backtest_Invalidation": _bt_first(row.get("Action_Clarity_Invalidierung"), row.get("Charttechnik_Setup_Invalidierung"), row.get("PM_Stop_Plan")),
+        "Backtest_Stop": _bt_first(row.get("Stop"), row.get("Stop_used"), result.get("stop_used")),
+        "Backtest_TP1": _bt_first(row.get("TP1"), result.get("tp1")),
+        "Backtest_TP2": _bt_first(row.get("TP2"), result.get("tp2")),
+        "Backtest_TP3": _bt_first(row.get("TP3"), result.get("tp3")),
+        "Backtest_Review_5D": "",
+        "Backtest_Review_10D": "",
+        "Backtest_Review_20D": "",
+        "Backtest_Outcome": "",
+        "Backtest_Notes": "",
+    }
+
+    # Backtest-Spalten vorne, vollstaendiger Analyse-Snapshot dahinter.
+    out = {**bt_prefix, **row}
+    return pd.DataFrame([out])
+
+
 # ---------- v15.16: Export-/Sheets-Schutzschicht für neue Analysefelder ----------
 def _export_safe_value(value):
     """Macht komplexe Werte CSV-/Sheets-tauglich, ohne den eigentlichen Export zu brechen."""
@@ -2039,7 +2113,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.9.1",
+        "Export_Version": "v17.10",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2252,7 +2326,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.9.1"
+APP_VERSION = "v17.10"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -19472,7 +19546,7 @@ if result is not None:
                 )
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # v17.9.1: Die Trigger-Konfluenz-Aussage bleibt in der Standardansicht sichtbar.
+    # v17.10: Die Trigger-Konfluenz-Aussage bleibt in der Standardansicht sichtbar.
     # Nur die Detailtabelle ist weiterhin eingeklappt.
     if True:
         # ---------- v15.37: Trigger-Konfluenz als zentraler Richtungscheck ----------
@@ -20752,7 +20826,7 @@ if result is not None:
                 </style>
                 """, unsafe_allow_html=True)
                 with st.container(key="export_buttons_bar_single"):
-                    export_col_csv, export_col_sheets, export_col_spacer = st.columns([1, 1, 5], vertical_alignment="top")
+                    export_col_csv, export_col_sheets, export_col_backtest, export_col_spacer = st.columns([1, 1, 1.25, 4.75], vertical_alignment="top")
                     with export_col_csv:
                         st.download_button(
                             "CSV herunterladen",
@@ -20766,6 +20840,14 @@ if result is not None:
                         if st.button("In Sheets speichern", use_container_width=True, key=f"sheet_log_single_{ticker}"):
                             ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
                             show_sheet_result(ok, msg)
+                    with export_col_backtest:
+                        if st.button("In Backtest-Log", use_container_width=True, key=f"backtest_log_single_{ticker}", help="Speichert die aktuelle Einzelanalyse als Signal-Snapshot im Tab Backtest_Log."):
+                            backtest_df = build_backtest_log_df_v1710(single_export_df, result=result, context={"mode_label": mode_label if 'mode_label' in globals() else ''})
+                            ok, msg = append_single_analysis_df_to_gsheet_complete(backtest_df, worksheet_name="Backtest_Log")
+                            if ok:
+                                show_sheet_result(True, "Signal-Snapshot erfolgreich im Backtest_Log gespeichert.")
+                            else:
+                                show_sheet_result(False, msg)
 
             with st.expander("Detaildiagnose / Scores anzeigen", expanded=False):
                 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)

@@ -677,7 +677,7 @@ def build_backtest_log_df_v1710(single_export_df, result=None, context=None):
     )
 
     bt_prefix = {
-        "Backtest_Log_Version": "v17.10",
+        "Backtest_Log_Version": "v17.11",
         "Backtest_Logged_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Backtest_Status": "Open",
         "Backtest_Signal_Date": datetime.now().strftime("%Y-%m-%d"),
@@ -2113,7 +2113,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.10",
+        "Export_Version": "v17.11",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2287,6 +2287,8 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         ),
         "Marktregime_Label": (context.get("regime_ctx") or {}).get("label"),
         "Marktregime_Summary": (context.get("regime_ctx") or {}).get("summary"),
+        "Markt_Korrekturmodus": bool(((result or {}).get("market_info", {}) or {}).get("correction_mode", False)),
+        "Markt_Schock_Hinweis": ((result or {}).get("market_info", {}) or {}).get("shock_reason", ""),
         "Candlestick_Daily": (context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}).get("bias") if isinstance((context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}), dict) else "",
         "Candlestick_Daily_Pattern": (context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}).get("pattern") if isinstance((context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}), dict) else "",
         "Candlestick_Daily_Tone": (context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}).get("tone") if isinstance((context.get("daily_sig") or ((result or {}).get("candlestick_bias_pkg") or {}).get("daily") or {}), dict) else "",
@@ -2326,7 +2328,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.10"
+APP_VERSION = "v17.11"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5062,6 +5064,18 @@ def regime_public_label(regime):
 def get_market_regime_context(market_info):
     regime_raw = str((market_info or {}).get("regime", "UNBEKANNT")).strip().upper()
     label = regime_public_label(regime_raw)
+
+    # v17.11: Korrekturmodus ist kein strukturelles Risk-off.
+    # Er bremst aggressives Handeln, soll aber starke Einzelaktien nicht pauschal zerstoeren.
+    if bool((market_info or {}).get("correction_mode", False)):
+        return {
+            "label": "Korrekturmodus",
+            "tone": "caution",
+            "bias_factor": 0,
+            "leadership": "Selektivität zählt",
+            "summary": (market_info or {}).get("shock_reason") or "Breiter Rücksetzer: Setups selektiv prüfen, nicht pauschal verwerfen.",
+        }
+
     if regime_raw == "POSITIV":
         return {
             "label": label,
@@ -9479,17 +9493,32 @@ def calc_return_metrics(close_series):
 
 
 def evaluate_market_filter(benchmark_df):
+    """
+    v17.11: Marktfilter mit Schock-/Korrektur-Normalisierung.
+
+    Ein einzelner starker Index-Rueckgang soll nicht automatisch alle Aktien wie in
+    einem strukturellen Risk-off bewerten. Deshalb trennt die Logik jetzt:
+    - strukturelles Risk-off: Index unter MA50/MA200 und MA50 unter MA200
+    - Korrekturmodus: kurzfristiger Schock/Ruecksetzer, aber langfristiger Trend noch intakt
+    - normales positives/neutrales Umfeld
+    """
     if benchmark_df is None or benchmark_df.empty or "Close" not in benchmark_df.columns:
         return {
             "price": np.nan,
             "ma50": np.nan,
             "ma200": np.nan,
+            "ret1": np.nan,
+            "ret5": np.nan,
+            "ret10": np.nan,
             "ret21": np.nan,
             "ret63": np.nan,
             "ret126": np.nan,
             "high252": np.nan,
             "low252": np.nan,
             "dist252": np.nan,
+            "correction_mode": False,
+            "market_shock": False,
+            "shock_reason": "Keine belastbaren Benchmark-Daten.",
             "regime": "UNBEKANNT",
             "ampel": "⚪",
             "score": 50
@@ -9504,27 +9533,62 @@ def evaluate_market_filter(benchmark_df):
     dist252 = price / high252 * 100 if pd.notna(price) and pd.notna(high252) and high252 else np.nan
 
     rets = calc_return_metrics(close)
+    ret1 = safe_last(close.pct_change(1) * 100, np.nan)
+    ret5 = safe_last(close.pct_change(5) * 100, np.nan)
+    ret10 = safe_last(close.pct_change(10) * 100, np.nan)
+
+    correction_mode = False
+    market_shock = False
+    shock_reason = ""
 
     if pd.notna(price) and pd.notna(ma50) and pd.notna(ma200):
-        if price > ma50 and price > ma200 and ma50 > ma200:
-            regime, ampel_icon, score = "POSITIV", "🟢", 100
-        elif price < ma50 and price < ma200 and ma50 < ma200:
+        long_trend_intact = price > ma200 and ma50 >= ma200
+        structural_bear = price < ma50 and price < ma200 and ma50 < ma200
+        short_shock = (pd.notna(ret1) and ret1 <= -3.0) or (pd.notna(ret5) and ret5 <= -4.5)
+        ma50_lost_but_long_ok = price < ma50 and long_trend_intact
+
+        if structural_bear:
             regime, ampel_icon, score = "NEGATIV", "🔴", 30
+            shock_reason = "Strukturelles Risk-off: Index unter MA50 und MA200, MA50 unter MA200."
+        elif long_trend_intact and (short_shock or ma50_lost_but_long_ok):
+            # Bewusst als NEUTRAL belassen, damit alte harte NEGATIV-Pfade nicht alles pauschal abwerten.
+            regime, ampel_icon, score = "NEUTRAL", "🟠", 58
+            correction_mode = True
+            market_shock = bool(short_shock)
+            bits = []
+            if pd.notna(ret1) and ret1 <= -3.0:
+                bits.append(f"1T {ret1:.1f}%")
+            if pd.notna(ret5) and ret5 <= -4.5:
+                bits.append(f"5T {ret5:.1f}%")
+            if ma50_lost_but_long_ok:
+                bits.append("MA50 unter Druck, MA200-Trend noch intakt")
+            shock_reason = "Korrekturmodus: " + "; ".join(bits) if bits else "Kurzfristige Korrektur, langfristiger Trend noch nicht gebrochen."
+        elif price > ma50 and price > ma200 and ma50 > ma200:
+            regime, ampel_icon, score = "POSITIV", "🟢", 100
+            shock_reason = "Trendbild positiv."
         else:
             regime, ampel_icon, score = "NEUTRAL", "🟡", 60
+            shock_reason = "Gemischtes Marktbild."
     else:
         regime, ampel_icon, score = "UNBEKANNT", "⚪", 50
+        shock_reason = "Benchmark-Daten unvollstaendig."
 
     return {
         "price": price,
         "ma50": ma50,
         "ma200": ma200,
+        "ret1": ret1,
+        "ret5": ret5,
+        "ret10": ret10,
         "ret21": rets["ret21"],
         "ret63": rets["ret63"],
         "ret126": rets["ret126"],
         "high252": high252,
         "low252": low252,
         "dist252": dist252,
+        "correction_mode": correction_mode,
+        "market_shock": market_shock,
+        "shock_reason": shock_reason,
         "regime": regime,
         "ampel": ampel_icon,
         "score": score

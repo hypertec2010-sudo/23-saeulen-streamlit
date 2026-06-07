@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.9",
+        "Export_Version": "v17.9.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2252,7 +2252,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.9"
+APP_VERSION = "v17.9.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -19472,7 +19472,9 @@ if result is not None:
                 )
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with st.expander("Trigger-Konfluenz: Details anzeigen", expanded=False):
+    # v17.9.1: Die Trigger-Konfluenz-Aussage bleibt in der Standardansicht sichtbar.
+    # Nur die Detailtabelle ist weiterhin eingeklappt.
+    if True:
         # ---------- v15.37: Trigger-Konfluenz als zentraler Richtungscheck ----------
         _tc = trigger_confluence_pkg if "trigger_confluence_pkg" in locals() and isinstance(trigger_confluence_pkg, dict) else {}
         _tc_cls = _v1537_confluence_class(_tc.get("label", "gemischt"))
@@ -20545,6 +20547,8 @@ if result is not None:
         key=f"deep_details_gate_{ticker}",
         help="Blendet Markt-/Setup-/Fundamental-/Risiko-Details, Export und Diagnosebereiche ein.",
     )
+    if not show_deep_details:
+        st.caption("Export: Schalter öffnen und unten den Bereich 'Export' aufklappen. CSV und Sheets liegen dort zusammen.")
     if show_deep_details:
         with st.expander("Markt & Relative Stärke", expanded=False):
             st.markdown(

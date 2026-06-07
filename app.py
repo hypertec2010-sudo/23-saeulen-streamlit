@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.7",
+        "Export_Version": "v17.8",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2252,7 +2252,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.7"
+APP_VERSION = "v17.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -15795,7 +15795,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v15.21: Der Radar trennt Kandidatentyp, Setup-Reife, Radar-Priorität, Risiko, nächsten Schritt und Bremsfaktor. Sortiert wird nicht mehr nur score-lastig.")
+                st.caption("v17.8: Der Radar wird nicht nur sortiert, sondern in handlungsorientierte Gruppen geclustert: Jetzt prüfbar, Nahe am Trigger, Starke Watchlist, Pullback bevorzugt und Warnsignale.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -15878,6 +15878,87 @@ if workspace_mode:
                 radar_near_df = sort_section_df(radar_df[mask_near].copy())
                 radar_later_df = sort_section_df(radar_df[mask_later].copy())
 
+                # v17.8: Radar nicht nur ranken, sondern handlungsorientiert clustern.
+                # Die Cluster bestimmen NICHT die Einzelanalyse, sondern ordnen die Radar-Auswahl nutzbarer ein:
+                # jetzt pruefbar, nahe am Trigger, starke Watchlist, Pullback/ueberdehnt, Warnsignale.
+                def _radar_text_series(_col):
+                    if _col in radar_df.columns:
+                        return radar_df[_col].fillna("").astype(str).str.lower()
+                    return pd.Series([""] * len(radar_df), index=radar_df.index)
+
+                _radar_risk_txt = _radar_text_series("Radar-Risiko")
+                _radar_prio_txt = _radar_text_series("Radar-Priorität")
+                _radar_step_txt = _radar_text_series("Nächster Schritt")
+                _radar_brake_txt = _radar_text_series("Was bremst") + " " + _radar_text_series("Chart-Bremse") + " " + _radar_text_series("Top Red Flag")
+                _radar_trigger_txt = _radar_text_series("Trigger-Status")
+                _radar_maturity_txt = _radar_text_series("Setup-Reife")
+                _chart_impulse_txt = _radar_text_series("Chart-Impuls")
+                _chart_score_num = pd.to_numeric(radar_df["Chart-Score"], errors="coerce") if "Chart-Score" in radar_df.columns else pd.Series([np.nan] * len(radar_df), index=radar_df.index)
+                _style_score_num = pd.to_numeric(radar_df.get("__style_sort", pd.Series([np.nan] * len(radar_df), index=radar_df.index)), errors="coerce")
+
+                _warn_words = r"warn|failed|exhaust|climax|wide|loose|fomo kritisch|riskant|red flag|exit|distribution|bruch|meiden"
+                _pullback_words = r"pullback|ruecksetzer|rücksetzer|nicht hinterherlaufen|überdehnt|ueberdehnt|zu weit|gedehnt|base abwarten|neue base"
+
+                radar_warn_mask = (
+                    _radar_risk_txt.str.contains("hoch|kritisch", regex=True)
+                    | _radar_prio_txt.eq("niedrig")
+                    | _radar_brake_txt.str.contains(_warn_words, regex=True)
+                    | _radar_step_txt.str.contains("risiko zuerst|nicht hinterherlaufen|meiden", regex=True)
+                )
+                radar_pullback_mask = (
+                    ~radar_warn_mask
+                    & (
+                        _radar_step_txt.str.contains(_pullback_words, regex=True)
+                        | _chart_impulse_txt.str.contains("überdehnt|ueberdehnt|fortgeschritten", regex=True)
+                        | _radar_brake_txt.str.contains("fomo|entry|stretch|überdehnt|ueberdehnt", regex=True)
+                    )
+                )
+                radar_now_mask = (
+                    ~radar_warn_mask
+                    & ~radar_pullback_mask
+                    & (
+                        _radar_trigger_txt.isin(["aktiv", "jetzt prüfbar", "jetzt pruefbar"])
+                        | (entry_series >= 75)
+                        | (_radar_maturity_txt.isin(["prüfbar", "pruefbar"]) & (_radar_prio_txt.eq("hoch") | (_chart_score_num >= 70)))
+                    )
+                )
+                radar_near_mask = (
+                    ~radar_warn_mask
+                    & ~radar_pullback_mask
+                    & ~radar_now_mask
+                    & (
+                        _radar_trigger_txt.isin(["nahe dran", "fast prüfbar", "fast pruefbar", "frühe beobachtung", "fruehe beobachtung", "früh interessant", "frueh interessant"])
+                        | _radar_maturity_txt.isin(["nahe dran", "aufbauen"])
+                        | ((entry_series >= 58) & (invest_series >= 60))
+                        | (_chart_score_num >= 58)
+                    )
+                )
+                radar_watchlist_mask = (
+                    ~radar_warn_mask
+                    & ~radar_pullback_mask
+                    & ~radar_now_mask
+                    & ~radar_near_mask
+                    & (
+                        _radar_prio_txt.isin(["hoch", "mittel"])
+                        | (invest_series >= 70)
+                        | (_style_score_num >= 60)
+                    )
+                )
+
+                radar_df["Radar-Gruppe"] = "Später beobachten"
+                radar_df.loc[radar_watchlist_mask, "Radar-Gruppe"] = "Starke Watchlist"
+                radar_df.loc[radar_pullback_mask, "Radar-Gruppe"] = "Pullback bevorzugt / nicht hinterherlaufen"
+                radar_df.loc[radar_warn_mask, "Radar-Gruppe"] = "Warnsignale / meiden"
+                radar_df.loc[radar_near_mask, "Radar-Gruppe"] = "Nahe am Trigger"
+                radar_df.loc[radar_now_mask, "Radar-Gruppe"] = "Jetzt prüfbar"
+
+                radar_now_df = sort_section_df(radar_df[radar_now_mask].copy())
+                radar_near_df = sort_section_df(radar_df[radar_near_mask].copy())
+                radar_watchlist_df = sort_section_df(radar_df[radar_watchlist_mask].copy())
+                radar_pullback_df = sort_section_df(radar_df[radar_pullback_mask].copy())
+                radar_warn_df = sort_section_df(radar_df[radar_warn_mask].copy())
+                radar_later_df = sort_section_df(radar_df[~(radar_now_mask | radar_near_mask | radar_watchlist_mask | radar_pullback_mask | radar_warn_mask)].copy())
+
                 def radar_score_badge(value):
                     try:
                         num = float(str(value).replace('%', '').replace(',', '.').strip())
@@ -15927,16 +16008,22 @@ if workspace_mode:
 
                 if str(st.session_state.get("radar_screening_style", "")) == "Charttechnik":
                     section_specs = [
-                        ("Jetzt spannend", "Charttechnische Impulse, die bereits nah am Trigger oder direkt prüfbar sind.", radar_now_df),
-                        ("Nahe dran", "Technisch interessante Kandidaten mit Aufbau, aber noch fehlender Bestätigung.", radar_near_df),
-                        ("Später beobachten", "Charttechnisch noch zu früh oder aktuell ohne klaren Impuls.", radar_later_df),
+                        ("Jetzt prüfbar", "Charttechnische Impulse mit aktivem oder sehr nah prüfbarem Trigger.", radar_now_df),
+                        ("Nahe am Trigger", "Technisch interessante Kandidaten, bei denen nur noch Bestätigung/Reclaim/Pivot fehlt.", radar_near_df),
+                        ("Starke Watchlist", "Gute technische Ausgangslage, aber noch nicht am operativen Trigger.", radar_watchlist_df),
+                        ("Pullback bevorzugt / nicht hinterherlaufen", "Konstruktiv, aber aktuell eher Rücksetzer, neue Base oder bessere Entry-Zone abwarten.", radar_pullback_df),
+                        ("Warnsignale / meiden", "Technisch auffällig, aber Risiko-, FOMO-, Exhaustion- oder Failed-Breakout-Hinweise bremsen.", radar_warn_df),
+                        ("Später beobachten", "Noch zu früh oder aktuell ohne klaren technischen Impuls.", radar_later_df),
                     ]
                 else:
                     section_specs = [
-                    ("Jetzt spannend", "Aktive oder direkt prüfbare Kandidaten mit brauchbarer Einstiegsreife.", radar_now_df),
-                    ("Nahe dran", "Interessante Kandidaten, bei denen Timing oder Bestätigung noch einen Schritt brauchen.", radar_near_df),
-                    ("Später beobachten", "Gute Werte für die engere Watchlist, aber noch nicht reif für einen direkten Einstieg.", radar_later_df),
-                ]
+                        ("Jetzt prüfbar", "Aktive oder direkt prüfbare Kandidaten mit brauchbarer Einstiegsreife.", radar_now_df),
+                        ("Nahe am Trigger", "Interessante Kandidaten, bei denen Timing oder Bestätigung noch einen Schritt brauchen.", radar_near_df),
+                        ("Starke Watchlist", "Qualitativ oder technisch interessant, aber noch nicht unmittelbar am Trigger.", radar_watchlist_df),
+                        ("Pullback bevorzugt / nicht hinterherlaufen", "Gute Setups, bei denen der Preis aktuell nicht ideal ist oder ein Rücksetzer sinnvoller wirkt.", radar_pullback_df),
+                        ("Warnsignale / meiden", "Kandidaten mit erhöhtem Risiko, FOMO, schwacher Struktur oder klaren Bremsfaktoren.", radar_warn_df),
+                        ("Später beobachten", "Gute Werte für die engere Watchlist, aber noch nicht reif für einen direkten Einstieg.", radar_later_df),
+                    ]
 
                 radar_limit = int(st.session_state.radar_max_candidates)
                 remaining_slots = radar_limit

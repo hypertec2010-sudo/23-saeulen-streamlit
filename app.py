@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.8",
+        "Export_Version": "v17.9",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2252,7 +2252,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.8"
+APP_VERSION = "v17.9"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -15795,7 +15795,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v17.8: Der Radar wird nicht nur sortiert, sondern in handlungsorientierte Gruppen geclustert: Jetzt prüfbar, Nahe am Trigger, Starke Watchlist, Pullback bevorzugt und Warnsignale.")
+                st.caption("v17.9: Der Radar wird nicht nur sortiert, sondern in handlungsorientierte Gruppen geclustert: Jetzt prüfbar, Nahe am Trigger, Starke Watchlist, Pullback bevorzugt und Warnsignale.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -15878,7 +15878,7 @@ if workspace_mode:
                 radar_near_df = sort_section_df(radar_df[mask_near].copy())
                 radar_later_df = sort_section_df(radar_df[mask_later].copy())
 
-                # v17.8: Radar nicht nur ranken, sondern handlungsorientiert clustern.
+                # v17.9: Radar nicht nur ranken, sondern handlungsorientiert clustern.
                 # Die Cluster bestimmen NICHT die Einzelanalyse, sondern ordnen die Radar-Auswahl nutzbarer ein:
                 # jetzt pruefbar, nahe am Trigger, starke Watchlist, Pullback/ueberdehnt, Warnsignale.
                 def _radar_text_series(_col):
@@ -19405,10 +19405,28 @@ if result is not None:
             final_action_label = "vorbereiten"
             final_action_reason = "FOMO-/Smart-Money-Risiko ist kritisch; kein Hinterherlaufen trotz grundsätzlich gutem Setup."
 
+    # v17.9: Standardansicht auf die drei wirklich entscheidenden Aussagen verdichten.
+    # Setup-Qualitaet und Signal-Konflikt bleiben intern/exportiert erhalten,
+    # werden aber nicht mehr als eigene Hauptkacheln wiederholt.
+    _action_clarity_ui = action_clarity_pkg if isinstance(action_clarity_pkg, dict) else {}
+    _timing_conf_ui = timing_action_confidence_pkg if isinstance(timing_action_confidence_pkg, dict) else {}
+    _charttech_ui = charttechnik_setup_pkg if isinstance(charttechnik_setup_pkg, dict) else {}
     primary_summary_data = [
-        ("Aktion", final_action_label, ((display_mode_label(mode_label) + " · " + compact_action_text_phase_ui(final_action_label)) if scores_visible() else compact_action_text_phase_ui(final_action_label))),
-        ("Setup-Qualität", str(overall_setup_pkg.get("label", "brauchbar")).capitalize(), overall_setup_pkg.get("summary", "-")),
-        ("Signal-Konflikt", str(conflict_pkg.get("label", "konsistent")).capitalize(), conflict_pkg.get("summary", "-")),
+        (
+            "Nächste Handlung",
+            _action_clarity_ui.get("label", final_action_label),
+            _action_clarity_ui.get("summary", compact_action_text_phase_ui(final_action_label)),
+        ),
+        (
+            "Timing-Konfidenz",
+            _timing_conf_ui.get("label", "-"),
+            f"{_timing_conf_ui.get('score', '-')}/100 · {_timing_conf_ui.get('summary', '-')}",
+        ),
+        (
+            "Charttechnik",
+            _charttech_ui.get("label", "-"),
+            _charttech_ui.get("summary", _charttech_ui.get("trigger", "-")),
+        ),
     ]
     st.markdown('<div class="overview-primary-grid">', unsafe_allow_html=True)
     primary_cols = st.columns(3)
@@ -19426,77 +19444,79 @@ if result is not None:
             )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    context_summary_data = [
-        ("Marktumfeld", regime_ctx.get("label", "Neutral"), regime_ctx.get("summary", "-")),
-        ("Investment-Case", final_investment_case, ((f"Score: {investment_case_score}/100 · " if scores_visible() else "") + ("Grundsätzlich interessanter Wert" if final_investment_case == "attraktiv" else "In Teilen interessant" if final_investment_case == "solide" else "Kein klares Gesamtbild" if final_investment_case == "gemischt" else "Aktuell kein überzeugender Grundcase"))),
-        ("Timing", final_timing_label, ((f"Score: {trading_case_score}/100 · " if scores_visible() else "") + final_timing_reason)),
-        ("Risiko", final_risk_label, ((f"Score: Exit {result.get('exit_score', 0)}/100 · " if scores_visible() else "") + final_risk_reason)),
-        ("Setup-Priorität", final_priority_label, ((f"Score: {fmt_num(result.get('setup_priority_score', np.nan),0)}/100 · " if scores_visible() else "") + final_priority_reason)),
-        ("FOMO / Smart Money", str(fomo_pkg_ui.get("label", "unauffällig")).capitalize(), f"Gesamt: {fomo_pkg_ui.get('score', '-')}/100 · Aktie: {stock_fomo_pkg_ui.get('label', '-')} · Markt: {market_fomo_pkg_ui.get('label', '-')} · {fomo_pkg_ui.get('action_hint', '')}"),
-    ]
-    st.markdown('<div class="overview-context-grid">', unsafe_allow_html=True)
-    context_cols = st.columns(min(6, len(context_summary_data)))
-    for _col, (_title, _value, _sub) in zip(context_cols, context_summary_data):
-        with _col:
-            _extra_cls = ""
-            if str(_title).strip().lower().startswith("fomo"):
-                _extra_cls = " " + str(fomo_pkg_ui.get("class", _fomo_v1525_class(fomo_pkg_ui.get("label", "unauffällig"))))
-            st.markdown(
-                f"""
-                <div class="overview-context-card{_extra_cls}">
-                    <div class="overview-context-title">{_title}</div>
-                    <div class="overview-context-value">{_value}</div>
-                    <div class="overview-context-sub">{_sub}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.expander("Kurzkontext: Markt, Risiko und FOMO anzeigen", expanded=False):
+        context_summary_data = [
+            ("Marktumfeld", regime_ctx.get("label", "Neutral"), regime_ctx.get("summary", "-")),
+            ("Investment-Case", final_investment_case, ((f"Score: {investment_case_score}/100 · " if scores_visible() else "") + ("Grundsätzlich interessanter Wert" if final_investment_case == "attraktiv" else "In Teilen interessant" if final_investment_case == "solide" else "Kein klares Gesamtbild" if final_investment_case == "gemischt" else "Aktuell kein überzeugender Grundcase"))),
+            ("Timing", final_timing_label, ((f"Score: {trading_case_score}/100 · " if scores_visible() else "") + final_timing_reason)),
+            ("Risiko", final_risk_label, ((f"Score: Exit {result.get('exit_score', 0)}/100 · " if scores_visible() else "") + final_risk_reason)),
+            ("Setup-Priorität", final_priority_label, ((f"Score: {fmt_num(result.get('setup_priority_score', np.nan),0)}/100 · " if scores_visible() else "") + final_priority_reason)),
+            ("FOMO / Smart Money", str(fomo_pkg_ui.get("label", "unauffällig")).capitalize(), f"Gesamt: {fomo_pkg_ui.get('score', '-')}/100 · Aktie: {stock_fomo_pkg_ui.get('label', '-')} · Markt: {market_fomo_pkg_ui.get('label', '-')} · {fomo_pkg_ui.get('action_hint', '')}"),
+        ]
+        st.markdown('<div class="overview-context-grid">', unsafe_allow_html=True)
+        context_cols = st.columns(min(6, len(context_summary_data)))
+        for _col, (_title, _value, _sub) in zip(context_cols, context_summary_data):
+            with _col:
+                _extra_cls = ""
+                if str(_title).strip().lower().startswith("fomo"):
+                    _extra_cls = " " + str(fomo_pkg_ui.get("class", _fomo_v1525_class(fomo_pkg_ui.get("label", "unauffällig"))))
+                st.markdown(
+                    f"""
+                    <div class="overview-context-card{_extra_cls}">
+                        <div class="overview-context-title">{_title}</div>
+                        <div class="overview-context-value">{_value}</div>
+                        <div class="overview-context-sub">{_sub}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # ---------- v15.37: Trigger-Konfluenz als zentraler Richtungscheck ----------
-    _tc = trigger_confluence_pkg if "trigger_confluence_pkg" in locals() and isinstance(trigger_confluence_pkg, dict) else {}
-    _tc_cls = _v1537_confluence_class(_tc.get("label", "gemischt"))
-    _tc_label = str(_tc.get("label", "gemischt")).capitalize()
-    _tc_score = _tc.get("score", "-")
-    _tc_counts = _tc.get("counts_text", "-")
-    _tc_summary = str(_tc.get("summary", "-"))
-    _tc_action = str(_tc.get("action_hint", "-"))
-    st.markdown(
-        f"""
-        <style>
-        .trigger-confluence-box{{margin:.7rem 0 .95rem 0; padding:.9rem 1rem; border-radius:18px; border:1px solid rgba(148,163,184,.22); background:rgba(15,23,42,.26);}}
-        .trigger-confluence-box.confluence-strong{{border-color:rgba(34,197,94,.42); background:linear-gradient(135deg,rgba(34,197,94,.16),rgba(15,23,42,.30));}}
-        .trigger-confluence-box.confluence-bullish{{border-color:rgba(59,130,246,.40); background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(15,23,42,.30));}}
-        .trigger-confluence-box.confluence-mixed{{border-color:rgba(234,179,8,.36); background:linear-gradient(135deg,rgba(234,179,8,.12),rgba(15,23,42,.30));}}
-        .trigger-confluence-box.confluence-defensive{{border-color:rgba(249,115,22,.40); background:linear-gradient(135deg,rgba(249,115,22,.14),rgba(15,23,42,.30));}}
-        .trigger-confluence-box.confluence-bearish{{border-color:rgba(239,68,68,.44); background:linear-gradient(135deg,rgba(239,68,68,.16),rgba(15,23,42,.30));}}
-        .trigger-confluence-kicker{{font-size:.70rem; letter-spacing:.13em; text-transform:uppercase; color:#9ca3af; font-weight:800;}}
-        .trigger-confluence-main{{display:flex; gap:.75rem; align-items:baseline; flex-wrap:wrap; margin-top:.25rem;}}
-        .trigger-confluence-label{{font-size:1.05rem; font-weight:850; color:#fff;}}
-        .trigger-confluence-score{{font-size:.86rem; color:#d1d5db;}}
-        .trigger-confluence-text{{font-size:.86rem; line-height:1.4; color:#d1d5db; margin-top:.35rem;}}
-        </style>
-        <div class="trigger-confluence-box {_tc_cls}">
-            <div class="trigger-confluence-kicker">Trigger-Konfluenz</div>
-            <div class="trigger-confluence-main"><div class="trigger-confluence-label">{html.escape(_tc_label)}</div><div class="trigger-confluence-score">{html.escape(str(_tc_score))}/100 · {html.escape(_tc_counts)}</div></div>
-            <div class="trigger-confluence-text">{html.escape(_tc_summary)} {html.escape(_tc_action)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    with st.expander("Trigger-Konfluenz im Detail", expanded=False):
-        st.caption("Prüft, ob Aktion, Timing, Candles, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime in dieselbe Richtung zeigen. Nicht als eigener Score-Ersatz, sondern als Richtungscheck.")
-        _rows = []
-        for _c in (_tc.get("components") or []):
-            _rows.append({
-                "Baustein": _c.get("Baustein", "-"),
-                "Richtung": _v1537_direction_label(_c.get("Richtung", "neutral")),
-                "Lesart": _c.get("Lesart", "-"),
-            })
-        if _rows:
-            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
-        else:
-            st.info("Keine Trigger-Konfluenz-Daten verfügbar.")
+    with st.expander("Trigger-Konfluenz: Details anzeigen", expanded=False):
+        # ---------- v15.37: Trigger-Konfluenz als zentraler Richtungscheck ----------
+        _tc = trigger_confluence_pkg if "trigger_confluence_pkg" in locals() and isinstance(trigger_confluence_pkg, dict) else {}
+        _tc_cls = _v1537_confluence_class(_tc.get("label", "gemischt"))
+        _tc_label = str(_tc.get("label", "gemischt")).capitalize()
+        _tc_score = _tc.get("score", "-")
+        _tc_counts = _tc.get("counts_text", "-")
+        _tc_summary = str(_tc.get("summary", "-"))
+        _tc_action = str(_tc.get("action_hint", "-"))
+        st.markdown(
+            f"""
+            <style>
+            .trigger-confluence-box{{margin:.7rem 0 .95rem 0; padding:.9rem 1rem; border-radius:18px; border:1px solid rgba(148,163,184,.22); background:rgba(15,23,42,.26);}}
+            .trigger-confluence-box.confluence-strong{{border-color:rgba(34,197,94,.42); background:linear-gradient(135deg,rgba(34,197,94,.16),rgba(15,23,42,.30));}}
+            .trigger-confluence-box.confluence-bullish{{border-color:rgba(59,130,246,.40); background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(15,23,42,.30));}}
+            .trigger-confluence-box.confluence-mixed{{border-color:rgba(234,179,8,.36); background:linear-gradient(135deg,rgba(234,179,8,.12),rgba(15,23,42,.30));}}
+            .trigger-confluence-box.confluence-defensive{{border-color:rgba(249,115,22,.40); background:linear-gradient(135deg,rgba(249,115,22,.14),rgba(15,23,42,.30));}}
+            .trigger-confluence-box.confluence-bearish{{border-color:rgba(239,68,68,.44); background:linear-gradient(135deg,rgba(239,68,68,.16),rgba(15,23,42,.30));}}
+            .trigger-confluence-kicker{{font-size:.70rem; letter-spacing:.13em; text-transform:uppercase; color:#9ca3af; font-weight:800;}}
+            .trigger-confluence-main{{display:flex; gap:.75rem; align-items:baseline; flex-wrap:wrap; margin-top:.25rem;}}
+            .trigger-confluence-label{{font-size:1.05rem; font-weight:850; color:#fff;}}
+            .trigger-confluence-score{{font-size:.86rem; color:#d1d5db;}}
+            .trigger-confluence-text{{font-size:.86rem; line-height:1.4; color:#d1d5db; margin-top:.35rem;}}
+            </style>
+            <div class="trigger-confluence-box {_tc_cls}">
+                <div class="trigger-confluence-kicker">Trigger-Konfluenz</div>
+                <div class="trigger-confluence-main"><div class="trigger-confluence-label">{html.escape(_tc_label)}</div><div class="trigger-confluence-score">{html.escape(str(_tc_score))}/100 · {html.escape(_tc_counts)}</div></div>
+                <div class="trigger-confluence-text">{html.escape(_tc_summary)} {html.escape(_tc_action)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.expander("Trigger-Konfluenz im Detail", expanded=False):
+            st.caption("Prüft, ob Aktion, Timing, Candles, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime in dieselbe Richtung zeigen. Nicht als eigener Score-Ersatz, sondern als Richtungscheck.")
+            _rows = []
+            for _c in (_tc.get("components") or []):
+                _rows.append({
+                    "Baustein": _c.get("Baustein", "-"),
+                    "Richtung": _v1537_direction_label(_c.get("Richtung", "neutral")),
+                    "Lesart": _c.get("Lesart", "-"),
+                })
+            if _rows:
+                st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+            else:
+                st.info("Keine Trigger-Konfluenz-Daten verfügbar.")
 
     # ---------- v17.0.1: Timing-/Handlungs-Konfidenz kalibriert und operative Texte gekuerzt ----------
     _tcfg = timing_action_confidence_pkg if "timing_action_confidence_pkg" in locals() and isinstance(timing_action_confidence_pkg, dict) else {}

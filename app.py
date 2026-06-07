@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.5.2",
+        "Export_Version": "v17.6",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2115,6 +2115,15 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Timing_Handlungs_Konfidenz_Passt": ((result or {}).get("timing_action_confidence_pkg") or {}).get("fits_text"),
         "Timing_Handlungs_Konfidenz_Fehlend": ((result or {}).get("timing_action_confidence_pkg") or {}).get("missing_text"),
         "Timing_Handlungs_Konfidenz_Defensiv": ((result or {}).get("timing_action_confidence_pkg") or {}).get("defensive_text"),
+        "Action_Clarity_Label": ((result or {}).get("action_clarity_pkg") or {}).get("label"),
+        "Action_Clarity_Summary": ((result or {}).get("action_clarity_pkg") or {}).get("summary"),
+        "Action_Clarity_Trigger": ((result or {}).get("action_clarity_pkg") or {}).get("trigger"),
+        "Action_Clarity_Invalidierung": ((result or {}).get("action_clarity_pkg") or {}).get("invalid"),
+        "Charttechnik_Setup_Label": ((result or {}).get("charttechnik_setup_pkg") or {}).get("label"),
+        "Charttechnik_Setup_Score": ((result or {}).get("charttechnik_setup_pkg") or {}).get("score"),
+        "Charttechnik_Setup_Trigger": ((result or {}).get("charttechnik_setup_pkg") or {}).get("trigger"),
+        "Charttechnik_Setup_Invalidierung": ((result or {}).get("charttechnik_setup_pkg") or {}).get("invalid"),
+        "Charttechnik_Setup_Handlung": ((result or {}).get("charttechnik_setup_pkg") or {}).get("summary"),
         "Setup_Typ": (result or {}).get("setup_type"),
         "Watchlist_Prioritaet": (result or {}).get("watchlist_priority"),
         "Watchlist_Prioritaet_Score": (result or {}).get("watchlist_priority_score"),
@@ -2237,7 +2246,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.5.2"
+APP_VERSION = "v17.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2249,6 +2258,221 @@ st.set_page_config(
 require_google_login()
 require_allowed_email()
 render_user_bar()
+
+
+# ---------- v17.6: Empfehlungslogik und Charttechnik-Setup-Verdichtung ----------
+def _v176_to_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            value = value.replace('%', '').replace(',', '.').strip()
+            if value.lower() in {'', '-', 'nan', 'none', 'n/a'}:
+                return default
+        out = float(value)
+        if not np.isfinite(out):
+            return default
+        return out
+    except Exception:
+        return default
+
+
+def _v176_clean_text(value, default='-'):
+    txt = str(value if value is not None else '').strip()
+    if txt.lower() in {'', '-', 'none', 'nan', 'n/a'}:
+        return default
+    return txt
+
+
+def _v176_level_price_text(structures=None, price=None, ccy=''):
+    try:
+        txt = support_zone_text_v1525_9(structures, price, ccy, fallback='')
+        return _v176_clean_text(txt, '')
+    except Exception:
+        return ''
+
+
+def build_action_clarity_v176(result, *, final_action_label='-', entry_zone='-', current_price=None,
+                              valid_trade_setup=False, timing_confidence_pkg=None,
+                              fomo_pkg=None, structures=None, ccy=''):
+    """Verdichtet die operative Empfehlung: Setup-Qualitaet, Preis-Lage und Trigger-Aktivierung getrennt."""
+    result = result or {}
+    action_low = str(final_action_label or '').lower()
+    fomo_label = str((fomo_pkg or {}).get('label', '')).lower()
+    conf_label = str((timing_confidence_pkg or {}).get('label', '')).lower()
+    conf_score = _v176_to_float((timing_confidence_pkg or {}).get('score'), 0) or 0
+    ez = _v176_clean_text(entry_zone, '-')
+    pos_txt = ''
+    in_zone = below_zone = above_zone = False
+    if ez != '-':
+        try:
+            pos_txt, in_zone, below_zone, above_zone = _entry_zone_position_text_v1524_12(ez, current_price)
+        except Exception:
+            pass
+    support_txt = _v176_level_price_text(structures, current_price, ccy)
+
+    label = 'Beobachten'
+    stage = 'watchlist'
+    summary = 'Aktuell kein sauber aktivierter Einstieg.'
+    now = 'Nicht erzwingen; erst bei klarer Trigger-/Zonenbestaetigung aktiv werden.'
+    trigger = 'Klarer kurzfristiger Trigger oder Stabilisierung in der relevanten Zone.'
+    invalid = support_txt or 'Bruch der relevanten Support-/Trigger-Zone.'
+
+    if not valid_trade_setup:
+        label = 'Kein aktives Setup'
+        stage = 'no_setup'
+        summary = 'Die Analyse sieht noch kein valides Trade-Setup.'
+        now = 'Nur beobachten; erst neues Setup/Triggerbildung abwarten.'
+    elif fomo_label == 'kritisch':
+        label = 'Nicht hinterherlaufen'
+        stage = 'no_chase'
+        summary = 'Setup kann interessant sein, aber FOMO/Smart-Money-Risiko ist kritisch.'
+        now = 'Kein aggressiver Neueinstieg; Pullback, Base oder klare Reaktion abwarten.'
+    elif 'kaufen' in action_low:
+        if in_zone:
+            label = 'Jetzt pruefbar'
+            stage = 'active'
+            summary = f'Einstieg ist aktiv pruefbar; Kurs liegt in der Entry-Zone {ez}.'
+            now = 'Ausfuehrung nur mit passender Positionsgroesse und klarer Invalidierung pruefen.'
+            trigger = f'Entry-Zone {ez} haelt bzw. zeigt bullische Reaktion.'
+        elif above_zone:
+            label = 'Selektiv jetzt / Pullback bevorzugt'
+            stage = 'selective_or_pullback'
+            summary = f'Setup ist stark, aber der Kurs liegt ueber der idealen Entry-Zone {ez}.'
+            now = 'Sauberer: Pullback in/nahe Entry-Zone abwarten. Aggressiv: nur kleine/selektive Position, wenn Staerke haelt.'
+            trigger = f'Pullback in/nahe Entry-Zone {ez} oder erneuter Ausbruch mit bestaetigter Staerke.'
+        elif below_zone:
+            label = 'Reclaim abwarten'
+            stage = 'reclaim_needed'
+            summary = f'Setup ist konstruktiv, aber der Kurs liegt noch unter der Entry-Zone {ez}.'
+            now = 'Reclaim/Stabilisierung der Entry-Zone abwarten.'
+            trigger = f'Rueckeroberung und Stabilisierung der Entry-Zone {ez}.'
+        else:
+            label = 'Jetzt pruefbar'
+            stage = 'active'
+            summary = 'Einstieg ist grundsaetzlich freigegeben; Umsetzung aktiv pruefen.'
+            now = 'Positionsgroesse und Stop/Invalidierung beachten.'
+    elif any(x in action_low for x in ['vorbereiten', 'prepare']):
+        label = 'Vorbereiten'
+        stage = 'prepare'
+        summary = 'Setup ist interessant, aber ein operativer Einstiegstrigger fehlt noch.'
+        if ez != '-':
+            trigger = f'Stabilisierung/bullische Reaktion in der Entry-Zone {ez} oder Bruch ueber kurzfristiges Hoch.'
+        now = 'Watchlist/Alarm an Triggerzone setzen; nicht vorwegnehmen.'
+    elif any(x in action_low for x in ['abwarten', 'warten', 'watch']):
+        if valid_trade_setup and ('mittel' in conf_label or conf_score >= 55):
+            label = 'Einstieg vorbereiten'
+            stage = 'prepare'
+            summary = 'Setup ist valide, aber der Einstieg ist noch nicht aktiviert.'
+            now = 'Gezielt auf die genannte Trigger-/Entry-Zone achten.'
+            if ez != '-':
+                trigger = f'Bestaetigung in der Entry-Zone {ez} oder Bruch ueber kurzfristiges Hoch.'
+        else:
+            label = 'Beobachten'
+            stage = 'watchlist'
+            summary = 'Interessant, aber aktuell noch kein ausreichender Timing-Kontext.'
+            now = 'Nur beobachten; erst neue Konfluenz/Trigger abwarten.'
+
+    return {
+        'label': label,
+        'stage': stage,
+        'summary': summary,
+        'now': now,
+        'trigger': trigger,
+        'invalid': invalid,
+        'price_context': pos_txt,
+    }
+
+
+def build_charttechnik_setup_v176(result, *, entry_zone='-', current_price=None, structures=None, ccy=''):
+    """Fasst Spezialmuster, Fib, Wellen, Turnaround, MA und Trigger-Konfluenz zu einer Chart-Story zusammen."""
+    result = result or {}
+    sp = result.get('setup_pattern_pkg') or {}
+    fib = result.get('fibonacci_context_pkg') or {}
+    wave = result.get('wave_structure_pkg') or {}
+    turn = result.get('turnaround_context_pkg') or {}
+    tc = result.get('trigger_confluence_pkg') or {}
+    ma10_label = _v176_clean_text(result.get('ma10_timing_label'), '')
+    sp_type = _v176_clean_text(sp.get('pattern_type'), '')
+    sp_trig = str(sp.get('trigger_label', '')).lower()
+    fib_conf = str(fib.get('confirmation_label', '')).lower()
+    wave_conf = str(wave.get('confirmation_label', '')).lower()
+    turn_phase = str(turn.get('phase', '') or turn.get('label', '')).lower()
+    tc_score = _v176_to_float(tc.get('score'), 0) or 0
+    sp_score = _v176_to_float(sp.get('trigger_score'), 0) or 0
+    fib_score = _v176_to_float(fib.get('confirmation_score'), 0) or 0
+    wave_score = _v176_to_float(wave.get('confirmation_score'), 0) or 0
+    turn_score = _v176_to_float(turn.get('score'), 0) or 0
+
+    warning = any(x in sp_type.lower() for x in ['failed', 'exhaustion', 'wide', 'climax']) or 'warnung' in sp_trig
+    label = 'Noch kein aktives Chartsetup'
+    setup_type = 'neutral'
+    summary = 'Charttechnik liefert noch keinen klaren eigenstaendigen Setup-Typ.'
+    trigger = _v176_clean_text(sp.get('trigger_text'), '-')
+    invalid = _v176_level_price_text(structures, current_price, ccy) or 'Bruch der relevanten Support-/Trigger-Zone.'
+    score = max(tc_score * 0.35, sp_score * 0.35, fib_score * 0.25, wave_score * 0.25, turn_score * 0.25)
+    drivers = []
+
+    if warning:
+        label = 'Warnmuster / kein sauberer Long-Trigger'
+        setup_type = 'warning'
+        summary = 'Chartbild wirkt anfaellig oder ueberdehnt; Long-Setups nur sehr selektiv.'
+        trigger = 'Keine Long-Bestaetigung; erst neue enge Base, Reclaim oder klare Stabilisierung abwarten.'
+        drivers.append(sp_type or 'Warnmuster')
+        score = max(35, sp_score)
+    elif any(x in turn_phase for x in ['bestaetigt', 'aufbau', 'stabilisierung']) or turn_score >= 60:
+        label = 'Reclaim-/Turnaround-Setup'
+        setup_type = 'turnaround'
+        summary = 'Chart zeigt eine moegliche Trendwende/Stabilisierung; entscheidend ist Reclaim mit Folgestaerke.'
+        trigger = _v176_clean_text(turn.get('key_level_text') or turn.get('action_hint'), trigger)
+        drivers.append('Turnaround-Kontext')
+        score = max(score, turn_score)
+    elif sp_score >= 60 and sp_type:
+        if any(x in sp_type.lower() for x in ['vcp', 'base', 'tight range']):
+            label = 'Base-/VCP-Setup'
+            setup_type = 'base_vcp'
+            summary = 'Kurs baut Spannung in einer engeren Struktur auf; relevant wird der Ausbruch ueber den Pivot.'
+        elif any(x in sp_type.lower() for x in ['pullback', 'dry-up', 'ma10/20']):
+            label = 'Pullback-/Reclaim-Setup'
+            setup_type = 'pullback'
+            summary = 'Ruecksetzer wirkt kontrolliert; wichtig ist eine bullische Reaktion an MA/Entry/S-R-Zone.'
+        else:
+            label = 'Spezialmuster-Setup'
+            setup_type = 'pattern'
+            summary = f'{sp_type} ist als moeglicher charttechnischer Impuls erkennbar.'
+        trigger = _v176_clean_text(sp.get('confirmation_needed') or sp.get('trigger_text'), trigger)
+        drivers.append(sp_type)
+        score = max(score, sp_score)
+    elif fib_score >= 45 or wave_score >= 45:
+        label = 'Pullback-/Struktur-Setup'
+        setup_type = 'pullback_structure'
+        summary = 'Fib-/Strukturreaktion ist sichtbar; ein handelbarer Trigger braucht Stabilisierung oder Reclaim.'
+        trigger = _v176_clean_text(fib.get('confirmation_action') or wave.get('confirmation_action') or fib.get('action_hint') or wave.get('action_hint'), trigger)
+        if fib_score >= 45: drivers.append('Fibonacci-Reaktion')
+        if wave_score >= 45: drivers.append('Strukturtrigger')
+        score = max(score, fib_score, wave_score)
+    elif tc_score >= 65:
+        label = 'Konstruktive Chartlage, aber Trigger fehlt'
+        setup_type = 'constructive_no_trigger'
+        summary = 'Mehrere chartnahe Bausteine sind konstruktiv, aber der konkrete Trigger ist noch nicht aktiviert.'
+        trigger = f'Stabilisierung in der Entry-Zone {entry_zone} oder Bruch ueber kurzfristiges Hoch.' if _v176_clean_text(entry_zone, '-') != '-' else 'Klarer Pivot-/Reclaim-Trigger.'
+        drivers.append('Trigger-Konfluenz konstruktiv')
+        score = max(score, tc_score * 0.75)
+
+    if ma10_label:
+        drivers.append(f'MA10: {ma10_label}')
+    if _v176_clean_text(entry_zone, '-') != '-':
+        drivers.append(f'Entry-Zone {entry_zone}')
+
+    return {
+        'label': label,
+        'type': setup_type,
+        'score': round(min(max(score, 0), 100), 1),
+        'summary': summary,
+        'trigger': trigger,
+        'invalid': invalid,
+        'drivers': ' · '.join([str(x) for x in drivers if x][:5]),
+    }
 
 
 # ---------- Session State / App Defaults ----------
@@ -18931,6 +19155,28 @@ if result is not None:
     )
     result["timing_action_confidence_pkg"] = timing_action_confidence_pkg
 
+    # ---------- v17.6: klare operative Empfehlung + verdichtetes Charttechnik-Setup ----------
+    action_clarity_pkg = build_action_clarity_v176(
+        result,
+        final_action_label=final_action_label if "final_action_label" in locals() else "-",
+        entry_zone=suggested_entry_zone if "suggested_entry_zone" in locals() else result.get("suggested_entry_zone", "-"),
+        current_price=price if "price" in locals() else result.get("price"),
+        valid_trade_setup=bool(result.get("valid_trade_setup", False)),
+        timing_confidence_pkg=timing_action_confidence_pkg,
+        fomo_pkg=fomo_pkg_ui,
+        structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+        ccy=ccy if "ccy" in locals() else "",
+    )
+    charttechnik_setup_pkg = build_charttechnik_setup_v176(
+        result,
+        entry_zone=suggested_entry_zone if "suggested_entry_zone" in locals() else result.get("suggested_entry_zone", "-"),
+        current_price=price if "price" in locals() else result.get("price"),
+        structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+        ccy=ccy if "ccy" in locals() else "",
+    )
+    result["action_clarity_pkg"] = action_clarity_pkg
+    result["charttechnik_setup_pkg"] = charttechnik_setup_pkg
+
     # FOMO/Smart-Money-Warnungen sollen nicht nur dekorativ sein: Bei kritischer
     # Lage wird ein Sofortkauf in der Anzeige defensiver auf "vorbereiten" gesetzt.
     if not position_mode and str(final_action_label).strip().lower() in {"kaufen", "buy"}:
@@ -19273,6 +19519,49 @@ if result is not None:
                 <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_now_do_label)}</div><div class="action-bridge-value action-bridge-main">{html.escape(_now_do_value)}</div><div class="action-bridge-value">{html.escape(shorten_text(_why_txt, 120))}</div></div>
                 <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_trigger_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_trigger_txt, 180))}</div></div>
                 <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_invalid_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_invalid_txt, 180))}</div></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ---------- v17.6: Charttechnik-Setup verdichtet die vielen technischen Muster ----------
+    try:
+        _ct = charttechnik_setup_pkg if isinstance(charttechnik_setup_pkg, dict) else {}
+    except Exception:
+        _ct = {}
+    _ct_label = _v176_clean_text(_ct.get("label"), "Noch kein aktives Chartsetup")
+    _ct_score = _v176_clean_text(_ct.get("score"), "-")
+    _ct_summary = _v176_clean_text(_ct.get("summary"), "-")
+    _ct_trigger = _v176_clean_text(_ct.get("trigger"), "-")
+    _ct_invalid = _v176_clean_text(_ct.get("invalid"), "-")
+    _ct_drivers = _v176_clean_text(_ct.get("drivers"), "-")
+    _ct_type = str(_ct.get("type", "neutral"))
+    _ct_cls = "ct-warning" if _ct_type == "warning" else "ct-active" if _ct_type in {"pattern","base_vcp","pullback","turnaround","pullback_structure"} else "ct-neutral"
+    st.markdown(
+        f"""
+        <style>
+        .ct-setup-box{{margin:.75rem 0 .95rem 0; padding:.9rem 1rem; border-radius:18px; border:1px solid rgba(148,163,184,.22); background:rgba(15,23,42,.26);}}
+        .ct-setup-box.ct-active{{border-color:rgba(59,130,246,.38); background:linear-gradient(135deg,rgba(59,130,246,.13),rgba(15,23,42,.30));}}
+        .ct-setup-box.ct-warning{{border-color:rgba(249,115,22,.42); background:linear-gradient(135deg,rgba(249,115,22,.14),rgba(15,23,42,.30));}}
+        .ct-setup-kicker{{font-size:.70rem; letter-spacing:.13em; text-transform:uppercase; color:#9ca3af; font-weight:800;}}
+        .ct-setup-main{{display:flex; gap:.75rem; align-items:baseline; flex-wrap:wrap; margin-top:.25rem;}}
+        .ct-setup-label{{font-size:1.02rem; font-weight:850; color:#fff;}}
+        .ct-setup-score{{font-size:.84rem; color:#d1d5db;}}
+        .ct-setup-grid{{display:grid; grid-template-columns:1.2fr 1.2fr 1fr; gap:.65rem; margin-top:.65rem;}}
+        .ct-setup-item{{padding:.62rem .7rem; border-radius:12px; background:rgba(15,23,42,.34); border:1px solid rgba(148,163,184,.18);}}
+        .ct-setup-item-label{{font-size:.66rem; letter-spacing:.08em; text-transform:uppercase; color:#9ca3af; font-weight:800; margin-bottom:.22rem;}}
+        .ct-setup-item-text{{font-size:.82rem; line-height:1.35; color:#e5e7eb; overflow-wrap:anywhere;}}
+        @media(max-width:900px){{.ct-setup-grid{{grid-template-columns:1fr;}}}}
+        </style>
+        <div class="ct-setup-box {_ct_cls}">
+            <div class="ct-setup-kicker">Charttechnik-Setup</div>
+            <div class="ct-setup-main"><div class="ct-setup-label">{html.escape(str(_ct_label))}</div><div class="ct-setup-score">{html.escape(str(_ct_score))}/100</div></div>
+            <div class="ct-setup-item-text" style="margin-top:.35rem;">{html.escape(shorten_text(str(_ct_summary), 220))}</div>
+            <div class="ct-setup-grid">
+                <div class="ct-setup-item"><div class="ct-setup-item-label">Aktiver Trigger</div><div class="ct-setup-item-text">{html.escape(shorten_text(str(_ct_trigger), 180))}</div></div>
+                <div class="ct-setup-item"><div class="ct-setup-item-label">Invalidierung</div><div class="ct-setup-item-text">{html.escape(shorten_text(str(_ct_invalid), 160))}</div></div>
+                <div class="ct-setup-item"><div class="ct-setup-item-label">Treiber</div><div class="ct-setup-item-text">{html.escape(shorten_text(str(_ct_drivers), 160))}</div></div>
             </div>
         </div>
         """,

@@ -2039,7 +2039,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.6",
+        "Export_Version": "v17.7",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2124,6 +2124,12 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Charttechnik_Setup_Trigger": ((result or {}).get("charttechnik_setup_pkg") or {}).get("trigger"),
         "Charttechnik_Setup_Invalidierung": ((result or {}).get("charttechnik_setup_pkg") or {}).get("invalid"),
         "Charttechnik_Setup_Handlung": ((result or {}).get("charttechnik_setup_pkg") or {}).get("summary"),
+        "Exit_Schutzampel_Label": ((result or {}).get("exit_protection_pkg") or {}).get("label"),
+        "Exit_Schutzampel_Score": ((result or {}).get("exit_protection_pkg") or {}).get("score"),
+        "Exit_Schutzampel_Aktion": ((result or {}).get("exit_protection_pkg") or {}).get("action"),
+        "Exit_Schutzampel_Stop": ((result or {}).get("exit_protection_pkg") or {}).get("stop_text"),
+        "Exit_Schutzampel_Grund": ((result or {}).get("exit_protection_pkg") or {}).get("why_text"),
+        "Exit_Schutzampel_Besser_Wenn": ((result or {}).get("exit_protection_pkg") or {}).get("improves_text"),
         "Setup_Typ": (result or {}).get("setup_type"),
         "Watchlist_Prioritaet": (result or {}).get("watchlist_priority"),
         "Watchlist_Prioritaet_Score": (result or {}).get("watchlist_priority_score"),
@@ -2246,7 +2252,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.6"
+APP_VERSION = "v17.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2472,6 +2478,125 @@ def build_charttechnik_setup_v176(result, *, entry_zone='-', current_price=None,
         'trigger': trigger,
         'invalid': invalid,
         'drivers': ' · '.join([str(x) for x in drivers if x][:5]),
+    }
+
+
+# ---------- v17.7: Exit-/Schutzampel ----------
+def build_exit_protection_ampel_v177(result, *, position_mode=False, current_price=None, stop_used=None, ccy='', structures=None):
+    """Verdichtet Exit-, Stop- und Gewinnschutzsignale zu einer zentralen Schutzampel."""
+    result = result or {}
+    price = _v176_to_float(current_price, _v176_to_float(result.get('price'), None))
+    stop = _v176_to_float(stop_used, _v176_to_float(result.get('stop_used'), None))
+    exit_score = _v176_to_float(result.get('exit_score'), 0) or 0
+    tactical_risk = _v176_to_float(result.get('tactical_exit_risk'), 0) or 0
+    trend_break = _v176_to_float(result.get('trend_break_score'), 0) or 0
+    momentum_collapse = _v176_to_float(result.get('momentum_collapse_score'), 0) or 0
+    rel_weak = _v176_to_float(result.get('relative_weakness_score'), 0) or 0
+    distribution = _v176_to_float(result.get('distribution_pressure_score'), 0) or 0
+    ma10_dist = _v176_to_float(result.get('ma10_dist_pct'), 0) or 0
+    pnl = _v176_to_float(result.get('position_pnl_pct'), None)
+    fomo_label = str(((result.get('fomo_smart_money_pkg') or {}).get('label') or result.get('fomo_smart_money_label') or '')).lower()
+    sp_type = str(((result.get('setup_pattern_pkg') or {}).get('pattern_type') or '')).lower()
+    exit_reasons = [str(x).strip() for x in (result.get('exit_reason_list') or []) if str(x).strip()]
+
+    reasons = []
+    if exit_score >= 65:
+        reasons.append(f"Exit-Druck erhöht ({exit_score:.0f}/100)")
+    elif exit_score >= 45:
+        reasons.append(f"erste Exit-/Schutzsignale ({exit_score:.0f}/100)")
+    if tactical_risk >= 55:
+        reasons.append(f"kurzfristiges Rücksetzerrisiko ({tactical_risk:.0f}/100)")
+    if trend_break >= 60:
+        reasons.append(f"Trendbruchrisiko ({trend_break:.0f}/100)")
+    if momentum_collapse >= 60:
+        reasons.append(f"Momentum schwächt sich deutlich ab ({momentum_collapse:.0f}/100)")
+    if rel_weak >= 60:
+        reasons.append(f"relative Schwäche nimmt zu ({rel_weak:.0f}/100)")
+    if distribution >= 65:
+        reasons.append(f"Distribution/Abgabedruck erhöht ({distribution:.0f}/100)")
+    if ma10_dist >= 9:
+        reasons.append(f"Kurs deutlich über MA10 ({ma10_dist:.1f}%)")
+    if fomo_label in {'kritisch', 'erhöht', 'erhoeht'}:
+        reasons.append(f"FOMO/Smart-Money-Risiko {fomo_label}")
+    if any(x in sp_type for x in ['failed', 'exhaustion', 'wide', 'climax']):
+        reasons.append("Warnmuster im Chartbild")
+    for r in exit_reasons:
+        if len(reasons) >= 4:
+            break
+        if r not in reasons and r.lower() not in {'kein akuter exit-grund', 'halten'}:
+            reasons.append(r)
+
+    stop_text = ''
+    if stop is not None and price is not None and stop > 0:
+        try:
+            dist = (price / stop - 1) * 100
+            stop_text = f"Stop/Invalidierung ca. {stop:.2f} {ccy}".strip() + (f" · Abstand {dist:.1f}%" if np.isfinite(dist) else '')
+        except Exception:
+            stop_text = f"Stop/Invalidierung ca. {stop:.2f} {ccy}".strip()
+    if not stop_text:
+        try:
+            stop_text = support_zone_text_v1525_9(structures or result.get('chart_structures_analysis'), price, ccy, fallback='')
+        except Exception:
+            stop_text = ''
+    if not stop_text:
+        stop_text = "Kein belastbares Stopniveau ableitbar; manuelle Invalidierung festlegen."
+
+    score = max(exit_score, tactical_risk * 0.9, trend_break * 0.9, momentum_collapse * 0.8, rel_weak * 0.75, distribution * 0.7)
+    if fomo_label == 'kritisch':
+        score = max(score, 70)
+    elif fomo_label in {'erhöht', 'erhoeht'}:
+        score = max(score, 55)
+    if any(x in sp_type for x in ['failed', 'exhaustion']):
+        score = max(score, 70)
+    if stop is not None and price is not None and stop > 0 and price < stop:
+        score = max(score, 90)
+        reasons.insert(0, "Kurs unter Stop/Invalidierung")
+
+    if score >= 82:
+        label = "Rot - Exit prüfen"
+        level = "red"
+        action = "Position nicht aussitzen; Exit oder deutlichen Risikoabbau aktiv prüfen." if position_mode else "Kein Neueinstieg; erst Stabilisierung und Reclaim abwarten."
+    elif score >= 65:
+        label = "Orange - Gewinnschutz aktivieren"
+        level = "orange"
+        action = "Gewinnschutz/Teilverkauf oder engeren Stop prüfen." if position_mode else "Neueinstieg nur sehr selektiv; Schutz- und FOMO-Risiko zuerst klären."
+    elif score >= 40:
+        label = "Gelb - Stop prüfen"
+        level = "yellow"
+        action = "Trend weiterlaufen lassen, aber Stop/Invalidierung enger beobachten." if position_mode else "Einstieg nur mit klarer Invalidierung und kleinerer Startposition prüfen."
+    else:
+        label = "Grün - laufen lassen" if position_mode else "Grün - kein akuter Schutzdruck"
+        level = "green"
+        action = "Position laufen lassen; Stopniveau beibehalten und nicht überreagieren." if position_mode else "Kein dominanter Schutzdruck; normale Positionsgröße nur bei aktivem Entry-Trigger."
+
+    if pnl is not None and position_mode:
+        if pnl >= 12 and score >= 45:
+            action = "Position im Gewinn: Gewinnschutz/Teilgewinn prüfen, nicht blind weiter ausbauen."
+        elif pnl < 0 and score >= 45:
+            action = "Position im Verlust: nicht verbilligen; Stop/Invalidierung respektieren."
+
+    improves = []
+    if exit_score >= 40 or tactical_risk >= 40:
+        improves.append("Rückkehr unter niedrigeren Exit-/Taktikdruck")
+    if distribution >= 55:
+        improves.append("weniger Distribution bzw. neue Akkumulation")
+    if ma10_dist > 8:
+        improves.append("enge Konsolidierung oder Pullback Richtung MA10")
+    if fomo_label in {'kritisch', 'erhöht', 'erhoeht'}:
+        improves.append("FOMO beruhigt sich oder Kurs baut neue Base")
+    if not improves:
+        improves.append("Trend bleibt oberhalb relevanter Support-/MA-Zonen intakt")
+
+    return {
+        'label': label,
+        'level': level,
+        'score': round(float(score), 1),
+        'action': action,
+        'stop_text': stop_text,
+        'why': reasons[:4],
+        'why_text': ' · '.join(reasons[:4]) if reasons else 'Kein dominanter Exit-/Schutzgrund.',
+        'improves': improves[:3],
+        'improves_text': ' · '.join(improves[:3]),
     }
 
 
@@ -19174,8 +19299,17 @@ if result is not None:
         structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
         ccy=ccy if "ccy" in locals() else "",
     )
+    exit_protection_pkg = build_exit_protection_ampel_v177(
+        result,
+        position_mode=bool(position_mode if "position_mode" in locals() else False),
+        current_price=price if "price" in locals() else result.get("price"),
+        stop_used=stop_used if "stop_used" in locals() else result.get("stop_used"),
+        ccy=ccy if "ccy" in locals() else "",
+        structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+    )
     result["action_clarity_pkg"] = action_clarity_pkg
     result["charttechnik_setup_pkg"] = charttechnik_setup_pkg
+    result["exit_protection_pkg"] = exit_protection_pkg
 
     # FOMO/Smart-Money-Warnungen sollen nicht nur dekorativ sein: Bei kritischer
     # Lage wird ein Sofortkauf in der Anzeige defensiver auf "vorbereiten" gesetzt.
@@ -19524,6 +19658,55 @@ if result is not None:
         """,
         unsafe_allow_html=True,
     )
+
+    # ---------- v17.7: zentrale Exit-/Schutzampel ----------
+    try:
+        _exitp = exit_protection_pkg if isinstance(exit_protection_pkg, dict) else (result.get("exit_protection_pkg") or {})
+    except Exception:
+        _exitp = result.get("exit_protection_pkg") or {}
+    _exit_label = _v176_clean_text(_exitp.get("label"), "Grün - kein akuter Schutzdruck")
+    _exit_score = _v176_clean_text(_exitp.get("score"), "-")
+    _exit_action = _v176_clean_text(_exitp.get("action"), "Stop/Invalidierung beobachten.")
+    _exit_stop = _v176_clean_text(_exitp.get("stop_text"), "Kein belastbares Stopniveau ableitbar.")
+    _exit_why = _exitp.get("why") if isinstance(_exitp.get("why"), list) else []
+    _exit_improves = _exitp.get("improves") if isinstance(_exitp.get("improves"), list) else []
+    _exit_level = str(_exitp.get("level", "green"))
+    _exit_cls = "exit-ampel-red" if _exit_level == "red" else "exit-ampel-orange" if _exit_level == "orange" else "exit-ampel-yellow" if _exit_level == "yellow" else "exit-ampel-green"
+    _exit_why_html = "".join([f"<li>{html.escape(str(x))}</li>" for x in _exit_why[:4]]) or "<li>Kein dominanter Exit-/Schutzgrund.</li>"
+    _exit_improves_html = "".join([f"<li>{html.escape(str(x))}</li>" for x in _exit_improves[:3]]) or "<li>Trend bleibt oberhalb relevanter Zonen intakt.</li>"
+    _show_exit_ampel = bool(position_mode) or _exit_level in {"yellow", "orange", "red"}
+    if _show_exit_ampel:
+        st.markdown(
+            f"""
+            <style>
+            .exit-ampel-box{{margin:.75rem 0 .95rem 0; padding:.9rem 1rem; border-radius:18px; border:1px solid rgba(148,163,184,.22); background:rgba(15,23,42,.26);}}
+            .exit-ampel-green{{border-color:rgba(34,197,94,.34); background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(15,23,42,.30));}}
+            .exit-ampel-yellow{{border-color:rgba(234,179,8,.42); background:linear-gradient(135deg,rgba(234,179,8,.14),rgba(15,23,42,.30));}}
+            .exit-ampel-orange{{border-color:rgba(249,115,22,.48); background:linear-gradient(135deg,rgba(249,115,22,.17),rgba(15,23,42,.32));}}
+            .exit-ampel-red{{border-color:rgba(239,68,68,.55); background:linear-gradient(135deg,rgba(239,68,68,.20),rgba(15,23,42,.34));}}
+            .exit-ampel-kicker{{font-size:.70rem; letter-spacing:.13em; text-transform:uppercase; color:#cbd5e1; font-weight:850;}}
+            .exit-ampel-head{{display:flex; align-items:baseline; gap:.75rem; flex-wrap:wrap; margin:.25rem 0 .45rem 0;}}
+            .exit-ampel-label{{font-size:1.08rem; font-weight:900; color:#fff;}}
+            .exit-ampel-score{{font-size:.86rem; color:#d1d5db;}}
+            .exit-ampel-grid{{display:grid; grid-template-columns:1fr 1fr 1fr; gap:.65rem;}}
+            .exit-ampel-card{{padding:.62rem .7rem; border-radius:12px; background:rgba(15,23,42,.34); border:1px solid rgba(148,163,184,.18);}}
+            .exit-ampel-title{{font-size:.66rem; letter-spacing:.08em; text-transform:uppercase; color:#9ca3af; font-weight:800; margin-bottom:.22rem;}}
+            .exit-ampel-text{{font-size:.82rem; line-height:1.35; color:#e5e7eb; overflow-wrap:anywhere;}}
+            .exit-ampel-text ul{{margin:.15rem 0 0 1rem; padding:0;}}
+            @media(max-width:900px){{.exit-ampel-grid{{grid-template-columns:1fr;}}}}
+            </style>
+            <div class="exit-ampel-box {_exit_cls}">
+                <div class="exit-ampel-kicker">Exit-/Schutzampel</div>
+                <div class="exit-ampel-head"><div class="exit-ampel-label">{html.escape(str(_exit_label))}</div><div class="exit-ampel-score">{html.escape(str(_exit_score))}/100</div></div>
+                <div class="exit-ampel-grid">
+                    <div class="exit-ampel-card"><div class="exit-ampel-title">Jetzt tun</div><div class="exit-ampel-text">{html.escape(str(_exit_action))}</div></div>
+                    <div class="exit-ampel-card"><div class="exit-ampel-title">Stop / Invalidierung</div><div class="exit-ampel-text">{html.escape(str(_exit_stop))}</div></div>
+                    <div class="exit-ampel-card"><div class="exit-ampel-title">Warum / besser wenn</div><div class="exit-ampel-text"><strong>Warnpunkte:</strong><ul>{_exit_why_html}</ul><div style="margin-top:.35rem;"><strong>Entspannung bei:</strong></div><ul>{_exit_improves_html}</ul></div></div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # ---------- v17.6: Charttechnik-Setup verdichtet die vielen technischen Muster ----------
     try:

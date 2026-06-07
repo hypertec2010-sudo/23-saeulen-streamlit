@@ -677,7 +677,7 @@ def build_backtest_log_df_v1710(single_export_df, result=None, context=None):
     )
 
     bt_prefix = {
-        "Backtest_Log_Version": "v17.11",
+        "Backtest_Log_Version": "v17.13",
         "Backtest_Logged_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Backtest_Status": "Open",
         "Backtest_Signal_Date": datetime.now().strftime("%Y-%m-%d"),
@@ -711,6 +711,328 @@ def build_backtest_log_df_v1710(single_export_df, result=None, context=None):
     # Backtest-Spalten vorne, vollstaendiger Analyse-Snapshot dahinter.
     out = {**bt_prefix, **row}
     return pd.DataFrame([out])
+
+
+def build_backtest_ampel_df_v1712(single_export_df, result=None):
+    """Kleine Backtest-Ampel fuer den aktuellen Signal-Snapshot.
+
+    Ziel: Vor dem Speichern ins Backtest_Log schnell sichtbar machen,
+    ob das Signal fuer ein spaeteres Backtesting eher gruen, gelb oder rot ist.
+    Die Ampel ist bewusst kompakt und nutzt nur bereits berechnete Analysefelder.
+    """
+    result = result or {}
+    if single_export_df is None or single_export_df.empty:
+        return pd.DataFrame(columns=["Bereich", "Ampel", "Bewertung", "Lesart"])
+
+    row = single_export_df.iloc[0].to_dict()
+
+    def _first(*keys, default=""):
+        for k in keys:
+            try:
+                if isinstance(k, str):
+                    v = row.get(k, None)
+                else:
+                    v = k
+                if v is None:
+                    continue
+                if isinstance(v, float) and np.isnan(v):
+                    continue
+                s = str(v).strip()
+                if s and s.lower() not in {"nan", "none", "n/a", "na", "-"}:
+                    return v
+            except Exception:
+                continue
+        return default
+
+    def _num(*keys, default=None):
+        v = _first(*keys, default="")
+        try:
+            if isinstance(v, str):
+                v = v.replace("%", "").replace(",", ".").strip()
+            return float(v)
+        except Exception:
+            return default
+
+    def _txt(*keys, default=""):
+        return str(_first(*keys, default=default) or default).strip()
+
+    action = _txt("Action_Clarity_Label", "Aktion_Final", "Handlung", "Aktion", result.get("position_action"), result.get("emp"), default="")
+    action_l = action.lower()
+    timing_label = _txt("Timing_Handlungs_Konfidenz_Label", "Timing-Konfidenz", default="")
+    timing_score = _num("Timing_Handlungs_Konfidenz_Score", "Timing-Konfidenz-Score", default=None)
+    confluence_label = _txt("Trigger_Konfluenz_Label", "Trigger-Konfluenz", default="")
+    confluence_score = _num("Trigger_Konfluenz_Score", default=None)
+    chart_label = _txt("Charttechnik_Setup_Label", "Setup_Pattern_Label", default="")
+    chart_score = _num("Charttechnik_Setup_Score", "Setup_Pattern_Score", default=None)
+    fomo_label = _txt("FOMO_Smart_Money_Label", "FOMO_Aktie_Label", default="")
+    exit_label = _txt("Exit_Schutzampel_Label", "Tactical_Exit_Risk", "Exit-Score-Text", default="")
+    valid_setup = _txt("Valides Setup", default="")
+    invalidation = _txt("Action_Clarity_Invalidierung", "Charttechnik_Setup_Invalidierung", "Backtest_Invalidation", default="")
+
+    def _ampel_green(text):
+        return {"Bereich": text[0], "Ampel": "🟢", "Bewertung": text[1], "Lesart": text[2]}
+
+    def _ampel_yellow(text):
+        return {"Bereich": text[0], "Ampel": "🟡", "Bewertung": text[1], "Lesart": text[2]}
+
+    def _ampel_red(text):
+        return {"Bereich": text[0], "Ampel": "🔴", "Bewertung": text[1], "Lesart": text[2]}
+
+    rows = []
+
+    # 1) Signal/Handlung
+    if any(x in action_l for x in ["jetzt prüfbar", "jetzt pruefbar", "kaufen", "jetzt umsetzen"]):
+        if any(x in action_l for x in ["pullback", "selektiv", "nicht hinterherlaufen"]):
+            rows.append(_ampel_yellow(("Signal", "Selektiv", "Grundsetup stark, aber Preis/Entry nicht ideal. Fuer Backtest als selektives Signal markieren.")))
+        else:
+            rows.append(_ampel_green(("Signal", "Prüfbar", "Aktion ist aktiv genug fuer einen Backtest-Snapshot.")))
+    elif any(x in action_l for x in ["vorbereiten", "reclaim", "nahe", "beobachten"]):
+        rows.append(_ampel_yellow(("Signal", "Watchlist/Trigger", "Noch kein voll aktives Signal; fuer Backtest nur speichern, wenn du Trigger-Nahe messen willst.")))
+    else:
+        rows.append(_ampel_red(("Signal", "Nicht freigegeben", "Kein klares Einstiegssignal. Fuer Signal-Backtest eher nicht speichern.")))
+
+    # 2) Timing-Konfidenz
+    if timing_score is not None and timing_score >= 72:
+        rows.append(_ampel_green(("Timing", f"{timing_label or 'hoch'} ({timing_score:.0f}/100)", "Timing ist ausreichend stark fuer einen aktiven Test.")))
+    elif timing_score is not None and timing_score >= 50:
+        rows.append(_ampel_yellow(("Timing", f"{timing_label or 'mittel'} ({timing_score:.0f}/100)", "Timing ist interessant, aber noch nicht breit bestaetigt.")))
+    elif timing_score is not None:
+        rows.append(_ampel_red(("Timing", f"{timing_label or 'schwach'} ({timing_score:.0f}/100)", "Timing-Kontext ist zu schwach fuer einen guten Signaltest.")))
+    else:
+        rows.append(_ampel_yellow(("Timing", timing_label or "n/a", "Kein belastbarer Timing-Score gefunden; vorsichtig interpretieren.")))
+
+    # 3) Konfluenz/Charttechnik
+    conf_ok = confluence_score is not None and confluence_score >= 70
+    chart_ok = chart_score is not None and chart_score >= 60
+    if conf_ok and (chart_ok or chart_score is None):
+        rows.append(_ampel_green(("Chart/Trigger", f"Konfluenz {confluence_score:.0f}/100", f"{confluence_label or 'konstruktiv'}; Charttechnik: {chart_label or 'n/a'}.")))
+    elif (confluence_score is not None and confluence_score >= 50) or chart_ok:
+        detail = f"Konfluenz {confluence_score:.0f}/100" if confluence_score is not None else "Konfluenz n/a"
+        rows.append(_ampel_yellow(("Chart/Trigger", detail, f"Chartbild interessant, aber noch nicht eindeutig genug. Charttechnik: {chart_label or 'n/a'}.")))
+    else:
+        detail = f"Konfluenz {confluence_score:.0f}/100" if confluence_score is not None else "Konfluenz n/a"
+        rows.append(_ampel_red(("Chart/Trigger", detail, "Zu wenig charttechnische Bestaetigung fuer einen hochwertigen Backtest-Einstieg.")))
+
+    # 4) Risiko/FOMO/Exit
+    fomo_l = fomo_label.lower()
+    exit_l = exit_label.lower()
+    if any(x in fomo_l for x in ["kritisch"]) or any(x in exit_l for x in ["rot", "exit", "de-risk", "derisk"]):
+        rows.append(_ampel_red(("Risiko", "Erhöht/kritisch", f"FOMO/Exit bremst: {fomo_label or exit_label}.")))
+    elif any(x in fomo_l for x in ["erhöht", "erhoeht"]) or any(x in exit_l for x in ["orange", "gelb", "stop prüfen", "stop pruefen"]):
+        rows.append(_ampel_yellow(("Risiko", "Beachten", f"Risikobremse vorhanden: {fomo_label or exit_label}. Positionsgroesse/Stop wichtig.")))
+    else:
+        rows.append(_ampel_green(("Risiko", "OK", f"Keine dominante FOMO-/Exit-Bremse erkannt. {fomo_label or exit_label}")))
+
+    # 5) Backtest-Entscheidung
+    colors = [r["Ampel"] for r in rows]
+    red_count = colors.count("🔴")
+    green_count = colors.count("🟢")
+    if red_count == 0 and green_count >= 3:
+        decision = _ampel_green(("Backtest-Freigabe", "Ja", "Signal eignet sich als sauberer Backtest-Snapshot. Backtest_Log kann gespeichert werden."))
+    elif red_count <= 1:
+        decision = _ampel_yellow(("Backtest-Freigabe", "Optional", "Nur speichern, wenn du bewusst auch Vorbereitungs-/Trigger-Nahe-Signale auswerten willst."))
+    else:
+        decision = _ampel_red(("Backtest-Freigabe", "Eher nein", "Zu viele rote Punkte. Fuer Kauf-Signal-Backtest nicht sauber genug."))
+    rows.append(decision)
+
+    df = pd.DataFrame(rows, columns=["Bereich", "Ampel", "Bewertung", "Lesart"])
+    return df
+
+
+
+def _bt_review_parse_float_v1713(value, default=None):
+    """Robuste Zahlenerkennung fuer Backtest-Review-Felder."""
+    try:
+        if value is None:
+            return default
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            if pd.isna(value):
+                return default
+            return float(value)
+        text = str(value).strip()
+        if not text or text.lower() in {"nan", "none", "n/a", "na", "-"}:
+            return default
+        import re
+        text = text.replace("%", "").replace("EUR", "").replace("USD", "").replace("$", "").strip()
+        text = text.replace(".", "").replace(",", ".") if ("," in text and "." in text and text.rfind(",") > text.rfind(".")) else text.replace(",", ".")
+        m = re.search(r"-?\d+(?:\.\d+)?", text)
+        if not m:
+            return default
+        return float(m.group(0))
+    except Exception:
+        return default
+
+
+def _bt_review_get_current_price_v1713(ticker):
+    """Holt einen aktuellen/letzten belastbaren Kurs fuer den Backtest-Review."""
+    t = str(ticker or "").strip().upper()
+    if not t:
+        return None, "kein Ticker"
+    try:
+        obj = yf.Ticker(t)
+        # fast_info ist schnell, aber nicht bei allen Tickers stabil.
+        try:
+            fi = getattr(obj, "fast_info", {}) or {}
+            for key in ["last_price", "lastPrice", "regular_market_price"]:
+                val = fi.get(key) if hasattr(fi, "get") else None
+                num = _bt_review_parse_float_v1713(val, default=None)
+                if num and num > 0:
+                    return num, "fast_info"
+        except Exception:
+            pass
+        hist = obj.history(period="5d", interval="1d", auto_adjust=False, prepost=True)
+        if hist is not None and not hist.empty and "Close" in hist.columns:
+            close = hist["Close"].dropna()
+            if not close.empty:
+                val = float(close.iloc[-1])
+                if val > 0:
+                    return val, "last_close"
+    except Exception as e:
+        return None, f"Kursabruf fehlgeschlagen: {e}"
+    return None, "kein Kurs"
+
+
+def _bt_review_days_open_v1713(signal_date):
+    try:
+        dt = pd.to_datetime(signal_date).date()
+        return max(0, (datetime.now().date() - dt).days)
+    except Exception:
+        return None
+
+
+def _bt_review_ampel_v1713(ret_pct, signal_action="", stop_hit=False, tp1_hit=False):
+    """Kleine Erfolgsampel fuer offene Backtest-Signale.
+
+    Bewusst einfach: Sie ist kein vollstaendiger Performance-Attributionsmotor,
+    sondern ein schneller Review-Blick fuer gespeicherte Signal-Snapshots.
+    """
+    if ret_pct is None:
+        return "⚪", "Nicht bewertet", "Kein aktueller Kurs verfuegbar."
+    if stop_hit:
+        return "🔴", "Stop/Invalidierung beruehrt", "Signal laeuft gegen die urspruengliche Idee."
+    if tp1_hit or ret_pct >= 5:
+        return "🟢", "Gut gelaufen", f"Aktuell ca. {ret_pct:.1f}% seit Signal."
+    if ret_pct >= 2:
+        return "🟢", "Konstruktiv", f"Aktuell ca. {ret_pct:.1f}% seit Signal."
+    if ret_pct > -2:
+        return "🟡", "Offen/neutral", f"Aktuell ca. {ret_pct:.1f}% seit Signal; noch kein klares Ergebnis."
+    if ret_pct > -5:
+        return "🟠", "Unter Druck", f"Aktuell ca. {ret_pct:.1f}% seit Signal; Stop/These pruefen."
+    return "🔴", "Schwach", f"Aktuell ca. {ret_pct:.1f}% seit Signal; Signal kritisch pruefen."
+
+
+def update_backtest_log_review_v1713(max_rows=200):
+    """Liest Backtest_Log aus Google Sheets, bewertet offene Signale und schreibt Review-Spalten zurueck.
+
+    Ergebnis ist eine kompakte Tabelle mit Rot/Gelb/Gruen-Ampel fuer die UI.
+    """
+    try:
+        sh, err = _logging_utils.open_log_spreadsheet()
+        if sh is None:
+            return False, err, pd.DataFrame()
+        ws = _logging_utils.get_or_create_worksheet(sh, "Backtest_Log", rows=5000, cols=160)
+        values = ws.get_all_values()
+        if not values or len(values) < 2:
+            return False, "Backtest_Log enthaelt noch keine Signale.", pd.DataFrame()
+        headers = [str(h).strip() for h in values[0]]
+        rows = values[1:]
+        width = len(headers)
+        rows = [r + [""] * (width - len(r)) if len(r) < width else r[:width] for r in rows]
+        df = pd.DataFrame(rows, columns=headers)
+        if df.empty:
+            return False, "Backtest_Log enthaelt keine Datenzeilen.", pd.DataFrame()
+
+        review_cols = [
+            "Backtest_Reviewed_At",
+            "Backtest_Current_Price",
+            "Backtest_Current_Price_Source",
+            "Backtest_Return_%",
+            "Backtest_Days_Open",
+            "Backtest_Ampel",
+            "Backtest_Evaluation",
+            "Backtest_Evaluation_Text",
+            "Backtest_Review_5D",
+            "Backtest_Review_10D",
+            "Backtest_Review_20D",
+        ]
+        for col in review_cols:
+            if col not in df.columns:
+                df[col] = ""
+
+        # Nur die neuesten/maximalen Zeilen aktualisieren, um yfinance nicht zu ueberlasten.
+        work_idx = list(df.index)[-int(max_rows):]
+        summary_rows = []
+        reviewed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for i in work_idx:
+            row = df.loc[i]
+            status = str(row.get("Backtest_Status", "Open") or "Open").strip().lower()
+            ticker = str(row.get("Backtest_Ticker", row.get("Ticker", "")) or "").strip().upper()
+            if not ticker:
+                continue
+            signal_price = _bt_review_parse_float_v1713(row.get("Backtest_Signal_Price", row.get("Kurs", "")), default=None)
+            if signal_price is None or signal_price <= 0:
+                continue
+            current_price, source = _bt_review_get_current_price_v1713(ticker)
+            if current_price is None or current_price <= 0:
+                ret_pct = None
+            else:
+                ret_pct = (current_price / signal_price - 1.0) * 100.0
+
+            stop_val = _bt_review_parse_float_v1713(row.get("Backtest_Stop", ""), default=None)
+            tp1_val = _bt_review_parse_float_v1713(row.get("Backtest_TP1", ""), default=None)
+            stop_hit = bool(stop_val and current_price and current_price <= stop_val)
+            tp1_hit = bool(tp1_val and current_price and current_price >= tp1_val)
+            ampel, evaluation, eval_text = _bt_review_ampel_v1713(ret_pct, row.get("Backtest_Action", ""), stop_hit=stop_hit, tp1_hit=tp1_hit)
+            days_open = _bt_review_days_open_v1713(row.get("Backtest_Signal_Date", ""))
+
+            df.at[i, "Backtest_Reviewed_At"] = reviewed_at
+            df.at[i, "Backtest_Current_Price"] = "" if current_price is None else round(float(current_price), 4)
+            df.at[i, "Backtest_Current_Price_Source"] = source
+            df.at[i, "Backtest_Return_%"] = "" if ret_pct is None else round(float(ret_pct), 2)
+            df.at[i, "Backtest_Days_Open"] = "" if days_open is None else days_open
+            df.at[i, "Backtest_Ampel"] = ampel
+            df.at[i, "Backtest_Evaluation"] = evaluation
+            df.at[i, "Backtest_Evaluation_Text"] = eval_text
+
+            # Review-Meilensteine nur automatisch fuellen, wenn sie leer sind.
+            milestone_text = f"{ampel} {evaluation}" + ("" if ret_pct is None else f" ({ret_pct:.1f}%)")
+            try:
+                if days_open is not None and days_open >= 5 and not str(df.at[i, "Backtest_Review_5D"]).strip():
+                    df.at[i, "Backtest_Review_5D"] = milestone_text
+                if days_open is not None and days_open >= 10 and not str(df.at[i, "Backtest_Review_10D"]).strip():
+                    df.at[i, "Backtest_Review_10D"] = milestone_text
+                if days_open is not None and days_open >= 20 and not str(df.at[i, "Backtest_Review_20D"]).strip():
+                    df.at[i, "Backtest_Review_20D"] = milestone_text
+            except Exception:
+                pass
+
+            summary_rows.append({
+                "Ticker": ticker,
+                "Signal-Datum": row.get("Backtest_Signal_Date", ""),
+                "Signal-Kurs": signal_price,
+                "Aktuell": "" if current_price is None else round(float(current_price), 2),
+                "Return %": "" if ret_pct is None else round(float(ret_pct), 2),
+                "Tage": "" if days_open is None else days_open,
+                "Ampel": ampel,
+                "Bewertung": evaluation,
+                "Lesart": eval_text,
+            })
+
+        # Komplettes Sheet mit erweiterten Headern zurueckschreiben.
+        out_df = df.fillna("").astype(str)
+        headers_out = out_df.columns.astype(str).tolist()
+        data = [headers_out] + out_df.values.tolist()
+        try:
+            ws.clear()
+            end_col = _v15196_col_letter(len(headers_out))
+            ws.update(f"A1:{end_col}{len(data)}", data, value_input_option="USER_ENTERED")
+        except Exception as e:
+            return False, f"Review berechnet, aber Schreiben ins Sheet fehlgeschlagen: {e}", pd.DataFrame(summary_rows)
+
+        summary_df = pd.DataFrame(summary_rows)
+        return True, f"Backtest-Review aktualisiert: {len(summary_rows)} Signale bewertet.", summary_df
+    except Exception as e:
+        return False, f"Backtest-Review fehlgeschlagen: {e}", pd.DataFrame()
 
 
 # ---------- v15.16: Export-/Sheets-Schutzschicht für neue Analysefelder ----------
@@ -2113,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.11",
+        "Export_Version": "v17.13",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2328,7 +2650,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.11"
+APP_VERSION = "v17.13"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -20890,7 +21212,7 @@ if result is not None:
                 </style>
                 """, unsafe_allow_html=True)
                 with st.container(key="export_buttons_bar_single"):
-                    export_col_csv, export_col_sheets, export_col_backtest, export_col_spacer = st.columns([1, 1, 1.25, 4.75], vertical_alignment="top")
+                    export_col_csv, export_col_sheets, export_col_ampel, export_col_backtest, export_col_review, export_col_spacer = st.columns([1, 1, 1.15, 1.25, 1.45, 2.15], vertical_alignment="top")
                     with export_col_csv:
                         st.download_button(
                             "CSV herunterladen",
@@ -20904,6 +21226,9 @@ if result is not None:
                         if st.button("In Sheets speichern", use_container_width=True, key=f"sheet_log_single_{ticker}"):
                             ok, msg = append_single_analysis_df_to_gsheet_complete(single_export_df, worksheet_name="Analysis_Log")
                             show_sheet_result(ok, msg)
+                    with export_col_ampel:
+                        if st.button("Backtest-Ampel", use_container_width=True, key=f"backtest_ampel_single_{ticker}", help="Erzeugt eine kleine Rot/Gelb/Gruen-Tabelle, ob dieses Signal fuer den Backtest-Log geeignet ist."):
+                            st.session_state[f"backtest_ampel_df_{ticker}"] = build_backtest_ampel_df_v1712(single_export_df, result=result)
                     with export_col_backtest:
                         if st.button("In Backtest-Log", use_container_width=True, key=f"backtest_log_single_{ticker}", help="Speichert die aktuelle Einzelanalyse als Signal-Snapshot im Tab Backtest_Log."):
                             backtest_df = build_backtest_log_df_v1710(single_export_df, result=result, context={"mode_label": mode_label if 'mode_label' in globals() else ''})
@@ -20912,6 +21237,32 @@ if result is not None:
                                 show_sheet_result(True, "Signal-Snapshot erfolgreich im Backtest_Log gespeichert.")
                             else:
                                 show_sheet_result(False, msg)
+                    with export_col_review:
+                        if st.button("Backtest prüfen", use_container_width=True, key=f"backtest_review_{ticker}", help="Bewertet alle gespeicherten Backtest_Log-Signale mit aktuellem Kurs und Ampel."):
+                            ok, msg, review_df = update_backtest_log_review_v1713(max_rows=200)
+                            show_sheet_result(ok, msg)
+                            if review_df is not None and not review_df.empty:
+                                st.session_state[f"backtest_review_df_{ticker}"] = review_df
+
+                review_key = f"backtest_review_df_{ticker}"
+                if review_key in st.session_state:
+                    st.markdown("#### Backtest-Review")
+                    st.caption("Aktuelle Auswertung der gespeicherten Backtest_Log-Signale mit Rot/Gelb/Gruen-Ampel.")
+                    review_df = st.session_state.get(review_key)
+                    try:
+                        st.dataframe(review_df, use_container_width=True, hide_index=True)
+                    except Exception:
+                        st.table(review_df)
+
+                amp_key = f"backtest_ampel_df_{ticker}"
+                if amp_key in st.session_state:
+                    st.markdown("#### Backtest-Ampel")
+                    st.caption("Kompakter Vorcheck, ob die aktuelle Analyse als Signal-Snapshot in den Backtest-Log sollte.")
+                    amp_df = st.session_state.get(amp_key)
+                    try:
+                        st.dataframe(amp_df, use_container_width=True, hide_index=True)
+                    except Exception:
+                        st.table(amp_df)
 
             with st.expander("Detaildiagnose / Scores anzeigen", expanded=False):
                 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)

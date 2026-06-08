@@ -677,7 +677,7 @@ def build_backtest_log_df_v1710(single_export_df, result=None, context=None):
     )
 
     bt_prefix = {
-        "Backtest_Log_Version": "v17.13",
+        "Backtest_Log_Version": "v17.13.1",
         "Backtest_Logged_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Backtest_Status": "Open",
         "Backtest_Signal_Date": datetime.now().strftime("%Y-%m-%d"),
@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.13",
+        "Export_Version": "v17.13.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2650,7 +2650,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.13"
+APP_VERSION = "v17.13.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -11708,13 +11708,18 @@ def load_data(ticker):
     return hist, info
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=45, show_spinner=False)
 def load_extended_market_quote(ticker):
-    """Lädt einen zusätzlichen aktuellen Kurs inkl. Pre-/After-Market, ohne die Analysebasis zu ersetzen.
+    """Lädt einen zusätzlichen aktuellen Kurs inkl. Vor-/Nachbörse robuster über mehrere Quellen.
 
-    v16.1.2: robuster Fallback über Intraday-Historie mit prepost=True.
-    Grund: yfinance liefert preMarketPrice/postMarketPrice je nach Ticker/Handelsplatz nicht immer in info/fast_info.
-    Dann soll die Anzeige nicht "Aktuell: n/a" zeigen, sondern den letzten belastbaren Intraday-/Schlusskurs.
+    Wichtig: Die reguläre Analysebasis wird dadurch nicht ersetzt. Der zusätzliche Kurs dient nur
+    zur Einordnung von Gap-/Entry-/FOMO-Risiko.
+
+    Reihenfolge der Quellen:
+    1) Yahoo quote endpoint (v7 finance quote) für preMarketPrice/postMarketPrice/regularMarketPrice
+    2) yfinance fast_info/info
+    3) Intraday-Historie mit prepost=True
+    4) Schlusskurs/Analysebasis als Fallback
     """
     out = {
         "regular_price": np.nan,
@@ -11725,58 +11730,110 @@ def load_extended_market_quote(ticker):
         "diff_abs": np.nan,
         "diff_pct": np.nan,
         "note": "",
+        "debug_source": "",
     }
+
+    def _num(v):
+        try:
+            if v is None:
+                return np.nan
+            x = float(v)
+            return x if np.isfinite(x) and x > 0 else np.nan
+        except Exception:
+            return np.nan
+
+    def _merge(a, b):
+        try:
+            if isinstance(b, dict):
+                for k, v in b.items():
+                    if k not in a or a.get(k) in [None, "", np.nan]:
+                        a[k] = v
+        except Exception:
+            pass
+        return a
+
     try:
         if not ticker:
             return out
         ticker_clean = str(ticker).strip()
-        t = yf.Ticker(ticker_clean)
-        info = {}
+        if not ticker_clean:
+            return out
+
+        q = {}
+
+        # 1) Yahoo quote endpoint ist fuer Pre-/After-Hours oft verlaesslicher als yfinance.info.
         try:
-            info = merge_info(info, getattr(t, "fast_info", {}) or {})
-        except Exception:
-            pass
-        try:
-            info = merge_info(info, t.get_info() or {})
-        except Exception:
-            pass
-        try:
-            info = merge_info(info, t.info or {})
+            url = "https://query1.finance.yahoo.com/v7/finance/quote"
+            params = {"symbols": ticker_clean, "fields": ",".join([
+                "regularMarketPrice", "regularMarketPreviousClose", "regularMarketOpen",
+                "regularMarketTime", "regularMarketChangePercent", "marketState",
+                "preMarketPrice", "preMarketChangePercent", "preMarketTime",
+                "postMarketPrice", "postMarketChangePercent", "postMarketTime",
+                "currency", "exchange", "shortName", "longName"
+            ])}
+            headers = {"User-Agent": "Mozilla/5.0"}
+            r = requests.get(url, params=params, headers=headers, timeout=8)
+            if r.ok:
+                js = r.json() or {}
+                res = ((js.get("quoteResponse") or {}).get("result") or [])
+                if res:
+                    q = _merge(q, res[0] or {})
         except Exception:
             pass
 
-        def _num(v):
+        # 2) yfinance info/fast_info ergaenzen.
+        try:
+            t = yf.Ticker(ticker_clean)
+        except Exception:
+            t = None
+        if t is not None:
             try:
-                if v is None:
-                    return np.nan
-                x = float(v)
-                return x if np.isfinite(x) and x > 0 else np.nan
+                q = _merge(q, getattr(t, "fast_info", {}) or {})
             except Exception:
-                return np.nan
+                pass
+            try:
+                q = _merge(q, t.get_info() or {})
+            except Exception:
+                pass
+            try:
+                q = _merge(q, t.info or {})
+            except Exception:
+                pass
 
-        regular = _num(info.get("regularMarketPrice"))
-        if not pd.notna(regular):
-            regular = _num(info.get("currentPrice"))
-        if not pd.notna(regular):
-            regular = _num(info.get("lastPrice"))
-        if not pd.notna(regular):
-            regular = _num(info.get("previousClose"))
+        state = str(q.get("marketState") or "").upper()
+        regular = _num(q.get("regularMarketPrice"))
+        prev_close = _num(q.get("regularMarketPreviousClose"))
+        current = _num(q.get("currentPrice"))
+        last_price = _num(q.get("lastPrice"))
+        pre = _num(q.get("preMarketPrice"))
+        post = _num(q.get("postMarketPrice"))
 
-        pre = _num(info.get("preMarketPrice"))
-        post = _num(info.get("postMarketPrice"))
-        current = _num(info.get("lastPrice"))
-        state = str(info.get("marketState") or "").upper()
+        if not pd.notna(regular):
+            regular = current
+        if not pd.notna(regular):
+            regular = last_price
+        if not pd.notna(regular):
+            regular = prev_close
 
-        # Fallback: letzter Intraday-Kurs inklusive Vor-/Nachbörse.
+        # 3) Intraday mit prepost=True als Fallback / Plausibilisierung.
         intraday_last = np.nan
         intraday_regular_last = np.nan
+        intraday_source = ""
         try:
-            ih = t.history(period="1d", interval="1m", prepost=True, auto_adjust=False)
+            if t is None:
+                t = yf.Ticker(ticker_clean)
+            # 2m ist oft robuster als 1m bei manchen Tickern; wenn leer, wird 5m versucht.
+            ih = t.history(period="1d", interval="2m", prepost=True, auto_adjust=False)
+            if ih is None or ih.empty:
+                ih = t.history(period="5d", interval="5m", prepost=True, auto_adjust=False)
             if ih is not None and not ih.empty and "Close" in ih.columns:
                 close_ser = ih["Close"].dropna()
                 if not close_ser.empty:
                     intraday_last = _num(close_ser.iloc[-1])
-            rh = t.history(period="1d", interval="1m", prepost=False, auto_adjust=False)
+                    intraday_source = "Intraday prepost"
+            rh = t.history(period="1d", interval="2m", prepost=False, auto_adjust=False)
+            if rh is None or rh.empty:
+                rh = t.history(period="5d", interval="5m", prepost=False, auto_adjust=False)
             if rh is not None and not rh.empty and "Close" in rh.columns:
                 rclose = rh["Close"].dropna()
                 if not rclose.empty:
@@ -11784,63 +11841,67 @@ def load_extended_market_quote(ticker):
         except Exception:
             pass
 
-        # Basis fuer Vergleich: bevorzugt regulärer Intraday-/Market-Preis, sonst previous/close.
-        if pd.notna(intraday_regular_last):
-            regular_compare = intraday_regular_last
-        elif pd.notna(regular):
-            regular_compare = regular
+        # Vergleichsbasis: offizielle reguläre Basis bevorzugen, sonst regulärer Intraday-Schluss.
+        if pd.notna(regular):
+            compare = regular
+        elif pd.notna(intraday_regular_last):
+            compare = intraday_regular_last
+        elif pd.notna(prev_close):
+            compare = prev_close
         else:
-            regular_compare = np.nan
+            compare = np.nan
 
-        display = regular if pd.notna(regular) else current
-        source = "Regulärer Handel" if pd.notna(display) else "Schlusskurs"
+        # Anzeige-Logik: explizite Pre/Post-Werte priorisieren, dann Intraday prepost.
+        display = np.nan
+        source = "Schlusskurs"
+        debug_source = ""
 
         if state.startswith("PRE") and pd.notna(pre):
-            display, source = pre, "Vorbörse"
+            display, source, debug_source = pre, "Vorbörse", "yahoo_preMarketPrice"
         elif state.startswith("POST") and pd.notna(post):
-            display, source = post, "Nachbörse"
+            display, source, debug_source = post, "Nachbörse", "yahoo_postMarketPrice"
         elif state in {"CLOSED", "POSTPOST", "PREPRE"}:
-            if pd.notna(post) and pd.notna(regular_compare) and abs(post / regular_compare - 1) > 0.001:
-                display, source = post, "Nachbörse"
-            elif pd.notna(pre) and pd.notna(regular_compare) and abs(pre / regular_compare - 1) > 0.001:
-                display, source = pre, "Vorbörse"
-            elif pd.notna(intraday_last):
-                display, source = intraday_last, "Letzter Kurs"
-        elif state == "REGULAR" and pd.notna(regular):
-            display, source = regular, "Regulärer Handel"
-        elif pd.notna(intraday_last):
-            display, source = intraday_last, "Letzter Kurs"
-
-        # Nie n/a anzeigen, wenn ein sinnvoller Preis aus info/history vorhanden ist.
-        if not pd.notna(display):
-            if pd.notna(current):
-                display, source = current, "Letzter Kurs"
+            if pd.notna(post) and pd.notna(compare) and abs(post / compare - 1.0) >= 0.001:
+                display, source, debug_source = post, "Nachbörse", "yahoo_postMarketPrice_closed"
+            elif pd.notna(pre) and pd.notna(compare) and abs(pre / compare - 1.0) >= 0.001:
+                display, source, debug_source = pre, "Vorbörse", "yahoo_preMarketPrice_closed"
+            elif pd.notna(intraday_last) and pd.notna(compare) and abs(intraday_last / compare - 1.0) >= 0.001:
+                display, source, debug_source = intraday_last, "Letzter außerbörslicher/Intraday-Kurs", intraday_source or "intraday_prepost"
             elif pd.notna(regular):
-                display, source = regular, "Schlusskurs"
-            elif pd.notna(regular_compare):
-                display, source = regular_compare, "Schlusskurs"
+                display, source, debug_source = regular, "Schlusskurs / Analysebasis", "regular_fallback"
+        elif state == "REGULAR" and pd.notna(regular):
+            display, source, debug_source = regular, "Regulärer Handel", "regularMarketPrice"
+        elif pd.notna(intraday_last):
+            display, source, debug_source = intraday_last, "Letzter Kurs", intraday_source or "intraday"
+        elif pd.notna(regular):
+            display, source, debug_source = regular, "Schlusskurs / Analysebasis", "regular_fallback"
+        elif pd.notna(prev_close):
+            display, source, debug_source = prev_close, "Schlusskurs / Analysebasis", "previousClose_fallback"
 
         if pd.notna(display):
             out["display_price"] = float(display)
             out["extended_price"] = float(display)
-        if pd.notna(regular_compare):
-            out["regular_price"] = float(regular_compare)
+        if pd.notna(compare):
+            out["regular_price"] = float(compare)
         elif pd.notna(regular):
             out["regular_price"] = float(regular)
+
         out["source"] = source
         out["market_state"] = state
-        compare = out.get("regular_price", np.nan)
-        if pd.notna(display) and pd.notna(compare) and compare > 0:
-            out["diff_abs"] = float(display - compare)
-            out["diff_pct"] = float((display / compare - 1.0) * 100.0)
-        if source in {"Vorbörse", "Nachbörse"}:
-            out["note"] = "Außerbörslicher Kurs: für Entry-Zonen und Gap-Risiko relevant, aber technische Tages-Signale erst im regulären Handel bestätigen."
+        out["debug_source"] = debug_source
+        compare_final = out.get("regular_price", np.nan)
+        if pd.notna(display) and pd.notna(compare_final) and compare_final > 0:
+            out["diff_abs"] = float(display - compare_final)
+            out["diff_pct"] = float((display / compare_final - 1.0) * 100.0)
+
+        if source in {"Vorbörse", "Nachbörse", "Letzter außerbörslicher/Intraday-Kurs"}:
+            out["note"] = "Außerbörslicher bzw. sehr aktueller Kurs: für Entry-Zonen, Gap-Risiko und FOMO relevant; harte Tages-Signale erst im regulären Handel bestätigen."
         elif source == "Regulärer Handel":
             out["note"] = "Aktueller regulärer Kurs."
         elif source == "Letzter Kurs":
             out["note"] = "Letzter verfügbarer Intraday-Kurs; Analysebasis bleibt der reguläre Kurs/Schlusskurs."
         else:
-            out["note"] = "Analyse nutzt den letzten verfügbaren Schlusskurs."
+            out["note"] = "Kein separater Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
         return out
     except Exception as exc:
         out["note"] = f"Aktueller Kurs nicht belastbar abrufbar: {exc}"

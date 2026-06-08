@@ -2696,6 +2696,44 @@ def _v176_level_price_text(structures=None, price=None, ccy=''):
         return ''
 
 
+def _v176_entry_zone_invalid_text(entry_zone='-', current_price=None, structures=None, ccy='', prefer_entry=False):
+    """Robuste Invalidierung fuer Entry-/Reclaim-Setups.
+
+    Fix v17.13.3: Bei Reclaim-/Turnaround-Setups darf die Invalidierung nicht
+    versehentlich eine darueberliegende aktive S/R-Zone verwenden. Wenn eine
+    konkrete Entry-Zone existiert, ist fuer diese Setup-Familie der Bruch der
+    Entry-/Reclaim-Zone die fachlich passendere Invalidierung.
+    """
+    ez = _v176_clean_text(entry_zone, '-')
+    support_txt = _v176_level_price_text(structures, current_price, ccy)
+    if ez == '-':
+        return support_txt or 'Bruch der relevanten Support-/Trigger-Zone.'
+
+    ez_low, ez_high = _parse_entry_zone_bounds_v1524_12(ez)
+    suffix = f" {ccy}" if str(ccy or '').strip() and str(ccy or '').strip() not in ez else ''
+    entry_invalid = f"Bruch der Reclaim-/Entry-Zone bei {ez}{suffix}"
+
+    if prefer_entry:
+        return entry_invalid
+
+    try:
+        zones = ((structures or {}).get('active_zones') or []) + ((structures or {}).get('supports') or [])
+        mids = []
+        for z in zones:
+            try:
+                mids.append(float(z.get('mid', np.nan)))
+            except Exception:
+                pass
+        # Wenn die ausgewaehlte S/R-Zone oberhalb der Entry-Zone liegt, ist sie
+        # keine sinnvolle Long-Invalidierung fuer den Reclaim an der Entry-Zone.
+        if ez_high is not None and any(pd.notna(m) and m > ez_high * 1.01 for m in mids):
+            return entry_invalid
+    except Exception:
+        pass
+
+    return support_txt or entry_invalid
+
+
 def build_action_clarity_v176(result, *, final_action_label='-', entry_zone='-', current_price=None,
                               valid_trade_setup=False, timing_confidence_pkg=None,
                               fomo_pkg=None, structures=None, ccy=''):
@@ -2720,7 +2758,7 @@ def build_action_clarity_v176(result, *, final_action_label='-', entry_zone='-',
     summary = 'Aktuell kein sauber aktivierter Einstieg.'
     now = 'Nicht erzwingen; erst bei klarer Trigger-/Zonenbestaetigung aktiv werden.'
     trigger = 'Klarer kurzfristiger Trigger oder Stabilisierung in der relevanten Zone.'
-    invalid = support_txt or 'Bruch der relevanten Support-/Trigger-Zone.'
+    invalid = _v176_entry_zone_invalid_text(ez, current_price, structures, ccy, prefer_entry=False)
 
     if not valid_trade_setup:
         label = 'Kein aktives Setup'
@@ -2813,7 +2851,7 @@ def build_charttechnik_setup_v176(result, *, entry_zone='-', current_price=None,
     setup_type = 'neutral'
     summary = 'Charttechnik liefert noch keinen klaren eigenstaendigen Setup-Typ.'
     trigger = _v176_clean_text(sp.get('trigger_text'), '-')
-    invalid = _v176_level_price_text(structures, current_price, ccy) or 'Bruch der relevanten Support-/Trigger-Zone.'
+    invalid = _v176_entry_zone_invalid_text(entry_zone, current_price, structures, ccy, prefer_entry=False)
     score = max(tc_score * 0.35, sp_score * 0.35, fib_score * 0.25, wave_score * 0.25, turn_score * 0.25)
     drivers = []
 
@@ -2829,6 +2867,7 @@ def build_charttechnik_setup_v176(result, *, entry_zone='-', current_price=None,
         setup_type = 'turnaround'
         summary = 'Chart zeigt eine moegliche Trendwende/Stabilisierung; entscheidend ist Reclaim mit Folgestaerke.'
         trigger = _v176_clean_text(turn.get('key_level_text') or turn.get('action_hint'), trigger)
+        invalid = _v176_entry_zone_invalid_text(entry_zone, current_price, structures, ccy, prefer_entry=True)
         drivers.append('Turnaround-Kontext')
         score = max(score, turn_score)
     elif sp_score >= 60 and sp_type:
@@ -2852,6 +2891,7 @@ def build_charttechnik_setup_v176(result, *, entry_zone='-', current_price=None,
         setup_type = 'pullback_structure'
         summary = 'Fib-/Strukturreaktion ist sichtbar; ein handelbarer Trigger braucht Stabilisierung oder Reclaim.'
         trigger = _v176_clean_text(fib.get('confirmation_action') or wave.get('confirmation_action') or fib.get('action_hint') or wave.get('action_hint'), trigger)
+        invalid = _v176_entry_zone_invalid_text(entry_zone, current_price, structures, ccy, prefer_entry=True)
         if fib_score >= 45: drivers.append('Fibonacci-Reaktion')
         if wave_score >= 45: drivers.append('Strukturtrigger')
         score = max(score, fib_score, wave_score)

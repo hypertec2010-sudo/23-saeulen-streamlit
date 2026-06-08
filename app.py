@@ -677,7 +677,7 @@ def build_backtest_log_df_v1710(single_export_df, result=None, context=None):
     )
 
     bt_prefix = {
-        "Backtest_Log_Version": "v17.13.1",
+        "Backtest_Log_Version": "v17.13.6",
         "Backtest_Logged_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Backtest_Status": "Open",
         "Backtest_Signal_Date": datetime.now().strftime("%Y-%m-%d"),
@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.13.5",
+        "Export_Version": "v17.13.6",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2650,7 +2650,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.13.2"
+APP_VERSION = "v17.13.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",

@@ -11792,6 +11792,62 @@ def load_extended_market_quote(ticker):
             pass
         return a
 
+    def _us_session_state_now():
+        """Lokaler Fallback fuer US-Session, wenn Yahoo marketState PRE/REGULAR nicht sauber liefert.
+
+        Problemfall: Kurz vor US-Boersenstart liefert Yahoo teils PREPRE/CLOSED oder gar
+        keinen marketState, obwohl ab 04:00 New York bereits Vorboerse laeuft. Dann darf
+        die App nicht pauschal auf den Schlusskurs zurueckfallen.
+        """
+        try:
+            from zoneinfo import ZoneInfo
+            now_et = datetime.now(ZoneInfo("America/New_York"))
+            if now_et.weekday() >= 5:
+                return "CLOSED", None
+            mins = now_et.hour * 60 + now_et.minute
+            if 4 * 60 <= mins < 9 * 60 + 30:
+                return "PRE", (9 * 60 + 30) - mins
+            if 9 * 60 + 30 <= mins < 16 * 60:
+                return "REGULAR", None
+            if 16 * 60 <= mins < 20 * 60:
+                return "POST", None
+            return "CLOSED", None
+        except Exception:
+            return "", None
+
+    def _intraday_last_meta(df):
+        """Gibt letzten Close plus grobe Session-Einordnung zurueck."""
+        try:
+            if df is None or df.empty or "Close" not in df.columns:
+                return np.nan, "", None
+            close_ser = df["Close"].dropna()
+            if close_ser.empty:
+                return np.nan, "", None
+            last_idx = close_ser.index[-1]
+            last_val = _num(close_ser.iloc[-1])
+            session = ""
+            try:
+                from zoneinfo import ZoneInfo
+                ts = pd.Timestamp(last_idx)
+                if ts.tzinfo is None:
+                    ts_et = ts.tz_localize("America/New_York")
+                else:
+                    ts_et = ts.tz_convert("America/New_York")
+                mins = ts_et.hour * 60 + ts_et.minute
+                if 4 * 60 <= mins < 9 * 60 + 30:
+                    session = "PRE"
+                elif 9 * 60 + 30 <= mins < 16 * 60:
+                    session = "REGULAR"
+                elif 16 * 60 <= mins < 20 * 60:
+                    session = "POST"
+                else:
+                    session = "CLOSED"
+                return last_val, session, ts_et
+            except Exception:
+                return last_val, "", last_idx
+        except Exception:
+            return np.nan, "", None
+
     try:
         if not ticker:
             return out
@@ -11859,6 +11915,8 @@ def load_extended_market_quote(ticker):
         intraday_last = np.nan
         intraday_regular_last = np.nan
         intraday_source = ""
+        intraday_session = ""
+        intraday_ts = None
         try:
             if t is None:
                 t = yf.Ticker(ticker_clean)
@@ -11867,10 +11925,11 @@ def load_extended_market_quote(ticker):
             if ih is None or ih.empty:
                 ih = t.history(period="5d", interval="5m", prepost=True, auto_adjust=False)
             if ih is not None and not ih.empty and "Close" in ih.columns:
-                close_ser = ih["Close"].dropna()
-                if not close_ser.empty:
-                    intraday_last = _num(close_ser.iloc[-1])
+                intraday_last, intraday_session, intraday_ts = _intraday_last_meta(ih)
+                if pd.notna(intraday_last):
                     intraday_source = "Intraday prepost"
+            else:
+                intraday_session, intraday_ts = "", None
             rh = t.history(period="1d", interval="2m", prepost=False, auto_adjust=False)
             if rh is None or rh.empty:
                 rh = t.history(period="5d", interval="5m", prepost=False, auto_adjust=False)
@@ -11896,11 +11955,25 @@ def load_extended_market_quote(ticker):
         source = "Schlusskurs"
         debug_source = ""
 
-        if state.startswith("PRE") and pd.notna(pre):
+        inferred_state, minutes_to_open = _us_session_state_now()
+        effective_state = state
+        # Yahoo liefert kurz vor Handelsstart gelegentlich PREPRE/CLOSED. Fuer US-Werte
+        # priorisieren wir dann den lokalen Session-Fallback, damit Pre-Market nicht
+        # unterdrueckt wird. Besonders relevant <60 Minuten vor 09:30 ET.
+        if inferred_state == "PRE" and (not state or state in {"CLOSED", "PREPRE", "POSTPOST"} or (minutes_to_open is not None and minutes_to_open <= 60)):
+            effective_state = "PRE"
+        elif inferred_state == "POST" and (not state or state in {"CLOSED", "POSTPOST"}):
+            effective_state = "POST"
+        elif inferred_state == "REGULAR" and not state:
+            effective_state = "REGULAR"
+
+        if effective_state.startswith("PRE") and pd.notna(pre):
             display, source, debug_source = pre, "Vorbörse", "yahoo_preMarketPrice"
-        elif state.startswith("POST") and pd.notna(post):
+        elif effective_state.startswith("PRE") and pd.notna(intraday_last) and (intraday_session in {"PRE", ""}):
+            display, source, debug_source = intraday_last, "Vorbörse", intraday_source or "intraday_prepost_pre"
+        elif effective_state.startswith("POST") and pd.notna(post):
             display, source, debug_source = post, "Nachbörse", "yahoo_postMarketPrice"
-        elif state in {"CLOSED", "POSTPOST", "PREPRE"}:
+        elif effective_state in {"CLOSED", "POSTPOST", "PREPRE"}:
             if pd.notna(post) and pd.notna(compare) and abs(post / compare - 1.0) >= 0.001:
                 display, source, debug_source = post, "Nachbörse", "yahoo_postMarketPrice_closed"
             elif pd.notna(pre) and pd.notna(compare) and abs(pre / compare - 1.0) >= 0.001:
@@ -11909,7 +11982,7 @@ def load_extended_market_quote(ticker):
                 display, source, debug_source = intraday_last, "Letzter außerbörslicher/Intraday-Kurs", intraday_source or "intraday_prepost"
             elif pd.notna(regular):
                 display, source, debug_source = regular, "Schlusskurs / Analysebasis", "regular_fallback"
-        elif state == "REGULAR" and pd.notna(regular):
+        elif effective_state == "REGULAR" and pd.notna(regular):
             display, source, debug_source = regular, "Regulärer Handel", "regularMarketPrice"
         elif pd.notna(intraday_last):
             display, source, debug_source = intraday_last, "Letzter Kurs", intraday_source or "intraday"
@@ -11927,7 +12000,9 @@ def load_extended_market_quote(ticker):
             out["regular_price"] = float(regular)
 
         out["source"] = source
-        out["market_state"] = state
+        out["market_state"] = effective_state or state
+        out["raw_market_state"] = state
+        out["minutes_to_us_open"] = minutes_to_open if minutes_to_open is not None else ""
         out["debug_source"] = debug_source
         compare_final = out.get("regular_price", np.nan)
         if pd.notna(display) and pd.notna(compare_final) and compare_final > 0:

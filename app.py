@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.13.1",
+        "Export_Version": "v17.13.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2650,7 +2650,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.13.1"
+APP_VERSION = "v17.13.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -20132,6 +20132,55 @@ if result is not None:
             return "Bruch " + raw
         return raw
 
+    def _v17_13_2_invalid_zone_for_action(entry_zone_text="", current_px=None, structures=None, ccy=""):
+        """Return a coherent invalidation level for the action box.
+
+        The old path sometimes used an active S/R zone above the preferred entry zone
+        as "defensiver bei", while the buy condition pointed to a much lower entry
+        zone. That reads contradictory. For Pre-Entry we first anchor invalidation to
+        the same entry/support zone used for the setup. If no entry zone is available,
+        use the next downside support only; avoid upside/overhead active zones as an
+        invalidation level.
+        """
+        ez = str(entry_zone_text or "").strip()
+        if ez and ez not in {"-", "None", "nan", "n/a"}:
+            return f"Bruch unter die Entry-/Support-Zone {ez}"
+        try:
+            cp = float(current_px) if current_px is not None and not pd.isna(current_px) else np.nan
+        except Exception:
+            cp = np.nan
+        try:
+            structures = structures or {}
+            candidates = []
+            for z in (structures.get("supports", []) or []):
+                try:
+                    mid = float(z.get("mid", np.nan))
+                    low = float(z.get("low", np.nan))
+                    high = float(z.get("high", np.nan))
+                    if pd.isna(mid) or pd.isna(low) or pd.isna(high):
+                        continue
+                    # Invalidation should be a downside level; ignore zones clearly above price.
+                    if pd.notna(cp) and low > cp * 1.002:
+                        continue
+                    candidates.append((abs(cp - mid) if pd.notna(cp) else 0, z, "Support S1"))
+                except Exception:
+                    continue
+            if candidates:
+                candidates.sort(key=lambda x: x[0])
+                _, z, label = candidates[0]
+                ztxt = _fmt_zone_range_v1525_9(z, ccy)
+                if ztxt:
+                    try:
+                        mid = float(z.get("mid", np.nan))
+                        dist = abs((cp / mid) - 1.0) * 100.0 if pd.notna(cp) and pd.notna(mid) and mid else np.nan
+                        dist_txt = f", Abstand {dist:.1f}%" if pd.notna(dist) else ""
+                    except Exception:
+                        dist_txt = ""
+                    return f"Bruch der {label} bei {ztxt}{dist_txt}"
+        except Exception:
+            pass
+        return "Bruch der relevanten Support-/Trigger-Zone."
+
     def _v1721_buy_execution_text(entry_zone_text="", current_px=None, structures=None, ccy=""):
         ez = str(entry_zone_text or "").strip()
         if ez and ez not in {"-", "None", "nan"}:
@@ -20260,6 +20309,20 @@ if result is not None:
         price if "price" in locals() else None,
         ccy if "ccy" in locals() else "",
     )
+
+    # v17.13.2: In der Pre-Entry-Handlungsbox muss die Invalidierung zur
+    # genannten Kauf-/Entry-Zone passen. Keine aktive Zone oberhalb der Entry-Zone
+    # mehr als "defensiver bei" anzeigen.
+    try:
+        if not position_mode:
+            _invalid_txt = _v17_13_2_invalid_zone_for_action(
+                suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+                price if "price" in locals() else None,
+                chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+                ccy if "ccy" in locals() else "",
+            )
+    except Exception:
+        pass
 
     st.markdown(
         f"""

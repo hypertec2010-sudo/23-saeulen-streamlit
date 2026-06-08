@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.13.2",
+        "Export_Version": "v17.13.5",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -11771,6 +11771,9 @@ def load_extended_market_quote(ticker):
         "diff_pct": np.nan,
         "note": "",
         "debug_source": "",
+        "raw_market_state": "",
+        "minutes_to_us_open": "",
+        "chart_timestamp_et": "",
     }
 
     def _num(v):
@@ -11848,6 +11851,61 @@ def load_extended_market_quote(ticker):
         except Exception:
             return np.nan, "", None
 
+    def _yahoo_chart_prepost_last():
+        """Direkter Yahoo-Chart-Fallback fuer Vorboerse.
+
+        yfinance.info/fast_info liefern kurz vor US-Open haeufig nur den Schlusskurs
+        oder marketState=CLOSED/PREPRE. Der Chart-Endpunkt mit includePrePost=true
+        enthaelt dagegen oft die aktuellste 1m/2m-Vorboersenkerze.
+        """
+        try:
+            from zoneinfo import ZoneInfo
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_clean}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            last_err = ""
+            for interval, rng in [("1m", "1d"), ("2m", "1d"), ("5m", "5d")]:
+                try:
+                    rr = requests.get(
+                        url,
+                        params={"range": rng, "interval": interval, "includePrePost": "true"},
+                        headers=headers,
+                        timeout=8,
+                    )
+                    if not rr.ok:
+                        last_err = f"HTTP {rr.status_code}"
+                        continue
+                    js = rr.json() or {}
+                    res = (((js.get("chart") or {}).get("result") or []) or [None])[0]
+                    if not res:
+                        continue
+                    ts_list = res.get("timestamp") or []
+                    quote = (((res.get("indicators") or {}).get("quote") or []) or [{}])[0]
+                    closes = quote.get("close") or []
+                    pairs = [(ts, cl) for ts, cl in zip(ts_list, closes) if _num(cl) == _num(cl)]
+                    if not pairs:
+                        continue
+                    ts, close_val = pairs[-1]
+                    val = _num(close_val)
+                    if not pd.notna(val):
+                        continue
+                    ts_et = pd.to_datetime(int(ts), unit="s", utc=True).tz_convert("America/New_York")
+                    mins = ts_et.hour * 60 + ts_et.minute
+                    if 4 * 60 <= mins < 9 * 60 + 30:
+                        sess = "PRE"
+                    elif 9 * 60 + 30 <= mins < 16 * 60:
+                        sess = "REGULAR"
+                    elif 16 * 60 <= mins < 20 * 60:
+                        sess = "POST"
+                    else:
+                        sess = "CLOSED"
+                    return val, sess, ts_et, f"Yahoo chart prepost {interval}"
+                except Exception as e:
+                    last_err = str(e)
+                    continue
+            return np.nan, "", None, last_err
+        except Exception as e:
+            return np.nan, "", None, str(e)
+
     try:
         if not ticker:
             return out
@@ -11917,6 +11975,14 @@ def load_extended_market_quote(ticker):
         intraday_source = ""
         intraday_session = ""
         intraday_ts = None
+        chart_last = np.nan
+        chart_session = ""
+        chart_ts = None
+        chart_source = ""
+        try:
+            chart_last, chart_session, chart_ts, chart_source = _yahoo_chart_prepost_last()
+        except Exception:
+            chart_last, chart_session, chart_ts, chart_source = np.nan, "", None, ""
         try:
             if t is None:
                 t = yf.Ticker(ticker_clean)
@@ -11937,6 +12003,26 @@ def load_extended_market_quote(ticker):
                 rclose = rh["Close"].dropna()
                 if not rclose.empty:
                     intraday_regular_last = _num(rclose.iloc[-1])
+        except Exception:
+            pass
+
+        # Direkter Yahoo-Chart-Fallback ist fuer Vorboerse oft aktueller als yfinance.history.
+        # Wenn vorhanden und zeitlich in PRE/POST/REGULAR klassifizierbar, als prepost-Kandidat verwenden.
+        try:
+            if pd.notna(chart_last):
+                use_chart = False
+                if intraday_ts is None:
+                    use_chart = True
+                elif chart_ts is not None:
+                    try:
+                        use_chart = pd.Timestamp(chart_ts) >= pd.Timestamp(intraday_ts)
+                    except Exception:
+                        use_chart = True
+                if use_chart:
+                    intraday_last = chart_last
+                    intraday_session = chart_session
+                    intraday_ts = chart_ts
+                    intraday_source = chart_source or "Yahoo chart prepost"
         except Exception:
             pass
 
@@ -11969,7 +12055,10 @@ def load_extended_market_quote(ticker):
 
         if effective_state.startswith("PRE") and pd.notna(pre):
             display, source, debug_source = pre, "Vorbörse", "yahoo_preMarketPrice"
-        elif effective_state.startswith("PRE") and pd.notna(intraday_last) and (intraday_session in {"PRE", ""}):
+        elif effective_state.startswith("PRE") and pd.notna(intraday_last):
+            # In der US-Vorboerse nie auf Schlusskurs zurueckfallen, wenn ein aktueller
+            # prepost-/Chart-Kurs vorhanden ist. Kurz vor Open kann Yahoo den letzten
+            # Kurs falsch als CLOSED/PREPRE klassifizieren; der lokale PRE-State gewinnt.
             display, source, debug_source = intraday_last, "Vorbörse", intraday_source or "intraday_prepost_pre"
         elif effective_state.startswith("POST") and pd.notna(post):
             display, source, debug_source = post, "Nachbörse", "yahoo_postMarketPrice"
@@ -12004,6 +12093,10 @@ def load_extended_market_quote(ticker):
         out["raw_market_state"] = state
         out["minutes_to_us_open"] = minutes_to_open if minutes_to_open is not None else ""
         out["debug_source"] = debug_source
+        try:
+            out["chart_timestamp_et"] = "" if intraday_ts is None else str(pd.Timestamp(intraday_ts))
+        except Exception:
+            out["chart_timestamp_et"] = ""
         compare_final = out.get("regular_price", np.nan)
         if pd.notna(display) and pd.notna(compare_final) and compare_final > 0:
             out["diff_abs"] = float(display - compare_final)

@@ -403,6 +403,39 @@ def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, s
             "Fallback-Analyse genutzt: Datenanbieter lieferte einzelne Kennzahlen in uneinheitlichem Format; "
             "fundamentale Detailwerte vorsichtig interpretieren."
         )
+
+    # v17.13.7: Live-/Vorboersen-Kurs auch nach erfolgreicher externer Core-Analyse injizieren.
+    # Vorher wurde load_extended_market_quote() nur in der lokalen Legacy-Engine genutzt.
+    # Wenn analysis_core sauber durchlief, blieb result["live_price"] oft leer bzw. auf Schlusskurs,
+    # obwohl die robuste Vorboersenlogik in dieser Datei vorhanden war.
+    try:
+        live_quote = load_extended_market_quote(ticker)
+        if isinstance(live_quote, dict):
+            live_px = live_quote.get("display_price", np.nan)
+            base_px = result.get("analysis_price", result.get("price", np.nan))
+            if pd.notna(live_px):
+                result["live_price"] = float(live_px)
+                result["live_price_source"] = live_quote.get("source", "Aktueller Kurs")
+                result["live_price_diff_pct"] = live_quote.get("diff_pct", np.nan)
+                result["live_price_note"] = live_quote.get("note", "")
+            elif pd.notna(base_px):
+                result["live_price"] = float(base_px)
+                result["live_price_source"] = "Schlusskurs / Analysebasis"
+                result["live_price_diff_pct"] = 0.0
+                result["live_price_note"] = "Kein separater Live-/Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
+            # Debug-Felder bewusst im Result belassen, damit UI/Export nachvollziehen können,
+            # warum Pre-Market ggf. nicht genutzt wurde.
+            result["live_price_market_state"] = live_quote.get("market_state", "")
+            result["live_price_raw_market_state"] = live_quote.get("raw_market_state", "")
+            result["live_price_debug_source"] = live_quote.get("debug_source", "")
+            result["live_price_minutes_to_us_open"] = live_quote.get("minutes_to_us_open", "")
+            result["live_price_chart_timestamp_et"] = live_quote.get("chart_timestamp_et", "")
+    except Exception as _live_exc:
+        try:
+            result["live_price_note"] = f"Live-/Vorboersenkurs konnte nicht nachgeladen werden: {_live_exc}"
+        except Exception:
+            pass
+
     return postprocess_asset_mode_v1534(result, ticker=ticker, requested=_asset_mode_setting_v1534())
 
 try:
@@ -677,7 +710,7 @@ def build_backtest_log_df_v1710(single_export_df, result=None, context=None):
     )
 
     bt_prefix = {
-        "Backtest_Log_Version": "v17.13.6",
+        "Backtest_Log_Version": "v17.13.7",
         "Backtest_Logged_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Backtest_Status": "Open",
         "Backtest_Signal_Date": datetime.now().strftime("%Y-%m-%d"),
@@ -2435,7 +2468,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.13.6",
+        "Export_Version": "v17.13.7",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2650,7 +2683,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.13.6"
+APP_VERSION = "v17.13.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",

@@ -403,39 +403,6 @@ def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, s
             "Fallback-Analyse genutzt: Datenanbieter lieferte einzelne Kennzahlen in uneinheitlichem Format; "
             "fundamentale Detailwerte vorsichtig interpretieren."
         )
-
-    # v17.13.7: Live-/Vorboersen-Kurs auch nach erfolgreicher externer Core-Analyse injizieren.
-    # Vorher wurde load_extended_market_quote() nur in der lokalen Legacy-Engine genutzt.
-    # Wenn analysis_core sauber durchlief, blieb result["live_price"] oft leer bzw. auf Schlusskurs,
-    # obwohl die robuste Vorboersenlogik in dieser Datei vorhanden war.
-    try:
-        live_quote = load_extended_market_quote(ticker)
-        if isinstance(live_quote, dict):
-            live_px = live_quote.get("display_price", np.nan)
-            base_px = result.get("analysis_price", result.get("price", np.nan))
-            if pd.notna(live_px):
-                result["live_price"] = float(live_px)
-                result["live_price_source"] = live_quote.get("source", "Aktueller Kurs")
-                result["live_price_diff_pct"] = live_quote.get("diff_pct", np.nan)
-                result["live_price_note"] = live_quote.get("note", "")
-            elif pd.notna(base_px):
-                result["live_price"] = float(base_px)
-                result["live_price_source"] = "Schlusskurs / Analysebasis"
-                result["live_price_diff_pct"] = 0.0
-                result["live_price_note"] = "Kein separater Live-/Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
-            # Debug-Felder bewusst im Result belassen, damit UI/Export nachvollziehen können,
-            # warum Pre-Market ggf. nicht genutzt wurde.
-            result["live_price_market_state"] = live_quote.get("market_state", "")
-            result["live_price_raw_market_state"] = live_quote.get("raw_market_state", "")
-            result["live_price_debug_source"] = live_quote.get("debug_source", "")
-            result["live_price_minutes_to_us_open"] = live_quote.get("minutes_to_us_open", "")
-            result["live_price_chart_timestamp_et"] = live_quote.get("chart_timestamp_et", "")
-    except Exception as _live_exc:
-        try:
-            result["live_price_note"] = f"Live-/Vorboersenkurs konnte nicht nachgeladen werden: {_live_exc}"
-        except Exception:
-            pass
-
     return postprocess_asset_mode_v1534(result, ticker=ticker, requested=_asset_mode_setting_v1534())
 
 try:
@@ -710,7 +677,7 @@ def build_backtest_log_df_v1710(single_export_df, result=None, context=None):
     )
 
     bt_prefix = {
-        "Backtest_Log_Version": "v17.13.7",
+        "Backtest_Log_Version": "v17.13.1",
         "Backtest_Logged_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Backtest_Status": "Open",
         "Backtest_Signal_Date": datetime.now().strftime("%Y-%m-%d"),
@@ -2468,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.13.7",
+        "Export_Version": "v17.13.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2683,7 +2650,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.13.7"
+APP_VERSION = "v17.13.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3603,6 +3570,13 @@ def radar_professional_sort_score(row, result_map, style_name):
     """Regime-sensitive, typkalibrierte Radar-Priorisierung statt reinem Score-Ranking."""
     tkr = str(row.get("Ticker", "") or "")
     r = result_map.get(tkr, {}) or {}
+    # v18: Professional Funnel ist die primaere Sortierlogik.
+    # Der alte Mixscore bleibt als Fallback erhalten, falls ein Snapshot keine Result-Map hat.
+    if r:
+        try:
+            return round(float(build_professional_radar_decision_v18(r, style_name).get("score", 0.0)), 2)
+        except Exception:
+            pass
     trigger_rank_map = {"Aktiv": 6, "Jetzt prüfbar": 6, "Nahe dran": 5, "Fast prüfbar": 5, "Frühe Beobachtung": 4, "Früh interessant": 4, "Beobachten": 3, "Weiter beobachten": 3, "Passiv": 2, "Aktuell kein Fokus": 2, "Warten": 1, "Noch warten": 1}
     trigger_score = float(row.get("__trigger_sort", trigger_rank_map.get(str(row.get("Trigger-Status", "") or ""), 0)) or 0)
     entry = _radar_safe_num(row.get("Einstieg jetzt attraktiv?"), 0)
@@ -3745,6 +3719,242 @@ def radar_brake_reason(result):
     return "keine dominante Bremse"
 
 
+# ---------- v18.0: Professional Radar Funnel ----------
+def _radar_v18_clip(value, lo=0.0, hi=100.0):
+    try:
+        return max(lo, min(hi, float(value)))
+    except Exception:
+        return lo
+
+
+def _radar_v18_text(result, key, default=""):
+    try:
+        txt = str((result or {}).get(key, default) or default).strip()
+        return "" if txt.lower() in {"nan", "none", "null"} else txt
+    except Exception:
+        return default
+
+
+def _radar_v18_entry_position(result):
+    """Approximate entry stretch from existing scoring/text fields without requiring price parsing."""
+    entry_quality = _radar_v18_text(result, "entry_quality", "").lower()
+    trading = _radar_safe_num((result or {}).get("trading_case_score"), 50)
+    stretch = _radar_safe_num((result or {}).get("stretch_risk_score"), 0)
+    fomo_label = str(((result or {}).get("fomo_smart_money_pkg") or {}).get("label") or "").lower()
+    if any(x in entry_quality for x in ["gut", "entry-zone", "zone", "prüfbar", "pruefbar"]):
+        return "in/nahe Zone", 82
+    if any(x in entry_quality for x in ["spät", "spaet", "extended", "überdehnt", "ueberdehnt", "oberhalb", "nicht hinterher"]):
+        return "zu weit gelaufen", max(10, 38 - stretch * 0.25)
+    if any(x in fomo_label for x in ["kritisch", "erhöht", "erhoeht"]):
+        return "FOMO/Stretch beachten", max(20, 55 - stretch * 0.15)
+    if trading >= 70:
+        return "operativ attraktiv", 76
+    if trading >= 58:
+        return "nahe Zone/Trigger", 64
+    if trading >= 45:
+        return "noch nicht ideal", 48
+    return "unattraktiv", 28
+
+
+def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
+    """Professionalisiert den Radar als Funnel: Gates, Subscores, Bucket und Handlung.
+
+    Die Funktion ersetzt nicht die Einzelanalyse. Sie ordnet Radar-Kandidaten strenger ein,
+    damit Top-Listen nicht nur hohe Mischscores, sondern wirklich handlungsrelevante Setups zeigen.
+    """
+    r = result or {}
+    style_name = str(style_name or "Ausgewogen")
+    typ = radar_candidate_type(r)
+    risk = radar_risk_bucket(r)
+    maturity = radar_setup_maturity(r)
+    trigger = _radar_v18_text(r, "trigger_status", "")
+    trigger_display = display_trigger_status_label(trigger) if trigger else "-"
+    valid_setup = bool(r.get("valid_trade_setup", False))
+    regime_raw = str((r.get("market_info", {}) or {}).get("regime", "") or "").upper()
+
+    investment = _radar_safe_num(r.get("investment_case_score"), 50)
+    trading = _radar_safe_num(r.get("trading_case_score"), 50)
+    tradeability = _radar_safe_num(r.get("tradeability_score"), 50)
+    setup_conf = _radar_safe_num(r.get("setup_confidence"), 50)
+    leadership = _radar_safe_num(r.get("leadership_score"), 50)
+    trend = _radar_safe_num(r.get("trend_quality_score"), 50)
+    base = _radar_safe_num(r.get("base_quality_score"), 50)
+    volume = _radar_safe_num(r.get("volume_quality_score"), 50)
+    accumulation = _radar_safe_num(r.get("accumulation_score"), 50)
+    distribution = _radar_safe_num(r.get("distribution_pressure_score"), 0)
+    catalyst = _radar_safe_num(r.get("catalyst_score"), 50)
+    short_term = _radar_safe_num(r.get("short_term_score"), 50)
+    tb = _radar_safe_num(r.get("tb_score_100"), _radar_safe_num(r.get("tb_score"), 50))
+    confluence = _radar_nested_num(r, "trigger_confluence_pkg", "score", 50)
+    fomo_label = str(((r.get("fomo_smart_money_pkg") or {}).get("label") or "").lower())
+    chart_pack = radar_chart_impulse_pack(r)
+    chart_score = _radar_safe_num(chart_pack.get("score"), 0)
+    entry_position, entry_position_score = _radar_v18_entry_position(r)
+
+    setup_score = _radar_v18_clip(setup_conf * 0.32 + confluence * 0.28 + chart_score * 0.24 + max(trend, base) * 0.16)
+    timing_score = _radar_v18_clip(trading * 0.36 + tb * 0.25 + chart_score * 0.20 + entry_position_score * 0.19)
+    leadership_score = _radar_v18_clip(leadership * 0.45 + trend * 0.25 + investment * 0.18 + max(0, accumulation - distribution * 0.35) * 0.12)
+    rr_score = _radar_v18_clip(tradeability * 0.34 + trading * 0.30 + entry_position_score * 0.24 + (100 - max(distribution, 0)) * 0.12)
+    regime_score = 62.0 if regime_raw == "POSITIV" else 45.0 if regime_raw == "NEUTRAL" else 30.0 if regime_raw == "NEGATIV" else 50.0
+    data_quality = _radar_v18_clip(_radar_safe_num((r.get("confidence_info", {}) or {}).get("coverage"), 0.75) * 100 if isinstance(r.get("confidence_info", {}), dict) else 70)
+
+    penalty = 0.0
+    brakes = []
+    gates = []
+    if risk == "hoch":
+        penalty += 18; gates.append("Risiko hoch"); brakes.append("Risiko/Volatilität hoch")
+    elif risk == "erhöht":
+        penalty += 8; brakes.append("Risiko erhöht")
+    if "kritisch" in fomo_label:
+        penalty += 16; gates.append("FOMO kritisch"); brakes.append("FOMO kritisch")
+    elif "erhöht" in fomo_label or "erhoeht" in fomo_label:
+        penalty += 8; brakes.append("FOMO erhöht")
+    if distribution > accumulation + 14:
+        penalty += 10; gates.append("Distribution dominiert"); brakes.append("Distribution > Akkumulation")
+    if typ in {"Hype / Event", "Riskant"}:
+        penalty += 10; gates.append(f"Typ {typ}"); brakes.append("Hype-/Risikotyp")
+    if regime_raw == "NEGATIV" and typ in {"Bounce", "Hype / Event", "Riskant"}:
+        penalty += 10; gates.append("Risk-off bremst Setup-Typ")
+    if entry_position == "zu weit gelaufen":
+        penalty += 9; brakes.append("Kurs zu weit über sinnvoller Zone")
+    if data_quality < 45:
+        penalty += 8; brakes.append("Datenqualität niedrig")
+
+    style = style_name.lower()
+    if "chart" in style:
+        raw_score = setup_score * 0.30 + timing_score * 0.30 + rr_score * 0.17 + leadership_score * 0.10 + regime_score * 0.08 + data_quality * 0.05
+    elif "leader" in style:
+        raw_score = leadership_score * 0.30 + setup_score * 0.23 + timing_score * 0.20 + rr_score * 0.14 + regime_score * 0.08 + data_quality * 0.05
+    elif "turnaround" in style:
+        turnaround_component = _radar_v18_clip(catalyst * 0.24 + short_term * 0.26 + timing_score * 0.24 + chart_score * 0.26)
+        raw_score = turnaround_component * 0.30 + setup_score * 0.23 + rr_score * 0.20 + regime_score * 0.12 + data_quality * 0.05 + investment * 0.10
+    else:
+        raw_score = setup_score * 0.25 + timing_score * 0.23 + leadership_score * 0.20 + rr_score * 0.17 + regime_score * 0.10 + data_quality * 0.05
+
+    # Positive gates: nur echte Reife/Nahe am Trigger bekommt Top-Status.
+    if valid_setup:
+        raw_score += 4
+    if trigger in {"Aktiv", "Jetzt prüfbar"}:
+        raw_score += 5
+    elif trigger in {"Nahe dran", "Fast prüfbar"}:
+        raw_score += 2
+    if typ == "Leader" and "leader" in style:
+        raw_score += 5
+    if chart_score >= 70 and "chart" in style:
+        raw_score += 4
+
+    score = _radar_v18_clip(raw_score - penalty)
+
+    knockout = False
+    if risk == "hoch" and not valid_setup:
+        knockout = True
+    if "kritisch" in fomo_label and trading < 72:
+        knockout = True
+    if distribution > accumulation + 22 and trading < 70:
+        knockout = True
+    if typ in {"Hype / Event", "Riskant"} and risk in {"hoch", "erhöht"} and score < 72:
+        knockout = True
+
+    if knockout:
+        score = min(score, 49.0)
+
+    if knockout or gates and score < 55:
+        bucket = "Warnsignale / meiden"
+        priority = "niedrig"
+    elif entry_position == "zu weit gelaufen" or any("über" in b.lower() or "weit" in b.lower() for b in brakes):
+        bucket = "Pullback bevorzugt / nicht hinterherlaufen"
+        priority = "mittel" if score >= 62 else "niedrig"
+    elif score >= 74 and (maturity == "prüfbar" or trigger in {"Aktiv", "Jetzt prüfbar"}) and risk != "hoch":
+        bucket = "Jetzt prüfbar"
+        priority = "hoch"
+    elif score >= 62 and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"}):
+        bucket = "Nahe am Trigger"
+        priority = "hoch" if score >= 70 and risk == "ruhig" else "mittel"
+    elif score >= 56 or investment >= 70 or leadership_score >= 68:
+        bucket = "Starke Watchlist"
+        priority = "mittel"
+    else:
+        bucket = "Später beobachten"
+        priority = "niedrig" if score < 45 else "mittel"
+
+    if score >= 78 and not knockout:
+        grade = "A"
+    elif score >= 68 and not knockout:
+        grade = "B"
+    elif score >= 55:
+        grade = "C"
+    elif score >= 42:
+        grade = "D"
+    else:
+        grade = "E"
+
+    if bucket == "Jetzt prüfbar":
+        next_step = "Entry-Zone, CRV und Invalidierung jetzt konkret prüfen"
+    elif bucket == "Nahe am Trigger":
+        next_step = _radar_v18_text(r, "next_trigger", "") or "Reclaim/Bestätigung abwarten"
+    elif bucket.startswith("Pullback"):
+        next_step = "Nicht hinterherlaufen; Rücksetzer oder neue Base abwarten"
+    elif bucket.startswith("Warn"):
+        next_step = "Kein Top-Kandidat; Risiko-/FOMO-Bremse zuerst klären"
+    elif bucket == "Starke Watchlist":
+        next_step = "Eng verfolgen; Triggernähe und Volumenbestätigung beobachten"
+    else:
+        next_step = "Nur beobachten; Setup-Reife fehlt noch"
+
+    if not brakes:
+        brakes.append("keine dominante Bremse")
+
+    why_parts = []
+    if setup_score >= 66:
+        why_parts.append(f"Setup {setup_score:.0f}/100")
+    if timing_score >= 66:
+        why_parts.append(f"Timing {timing_score:.0f}/100")
+    if leadership_score >= 68:
+        why_parts.append(f"Leadership {leadership_score:.0f}/100")
+    if chart_score >= 62:
+        why_parts.append(f"Chartimpuls {chart_score:.0f}/100")
+    if entry_position in {"in/nahe Zone", "operativ attraktiv", "nahe Zone/Trigger"}:
+        why_parts.append(entry_position)
+    if not why_parts:
+        why_parts.append("noch keine starke Bestätigungsgruppe")
+
+    subscores_text = (
+        f"Setup {setup_score:.0f} · Timing {timing_score:.0f} · Leadership {leadership_score:.0f} · "
+        f"RR {rr_score:.0f} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
+    )
+    return {
+        "score": round(score, 1),
+        "grade": grade,
+        "bucket": bucket,
+        "priority": priority,
+        "eligible": not knockout,
+        "knockout": knockout,
+        "setup_score": round(setup_score, 1),
+        "timing_score": round(timing_score, 1),
+        "leadership_score": round(leadership_score, 1),
+        "rr_score": round(rr_score, 1),
+        "regime_score": round(regime_score, 1),
+        "data_quality_score": round(data_quality, 1),
+        "penalty": round(penalty, 1),
+        "subscores_text": subscores_text,
+        "why_today": "; ".join(why_parts[:4]),
+        "next_step": next_step,
+        "brake": "; ".join(brakes[:3]),
+        "entry_position": entry_position,
+        "gate_reasons": "; ".join(gates) if gates else "keine harten Gates",
+        "trigger": trigger_display,
+    }
+
+
+def radar_reason_professional_v18(result, style_name_local):
+    d = build_professional_radar_decision_v18(result, style_name_local)
+    typ = radar_candidate_type(result or {})
+    return (
+        f"{d['grade']} · {d['bucket']} · Radar {d['score']}/100. "
+        f"{d['why_today']}. Bremse: {d['brake']}. Typ: {typ}."
+    )
+
+
 def radar_reason_professional_v1521(result, style_name_local):
     if str(style_name_local or "") == "Charttechnik":
         return radar_chart_impulse_reason(result)
@@ -3850,7 +4060,17 @@ def run_radar_snapshot_job(job):
             return False, "Keine auswertbaren Ergebnisse", {"analyzed_count": 0, "resolution_rows": resolution_rows, "errors": errors}
         radar_df = build_ranking_table(results)
         result_map = {str(r.get("ticker", "")): r for r in results}
-        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_reason_professional_v1521(r, style_name) for r in results})
+        radar_v18_map = {str(r.get("ticker", "")): build_professional_radar_decision_v18(r, style_name) for r in results}
+        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_reason_professional_v18(r, style_name) for r in results})
+        radar_df["Radar-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("score") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Grade"] = radar_df["Ticker"].astype(str).map({k: v.get("grade") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Bucket"] = radar_df["Ticker"].astype(str).map({k: v.get("bucket") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Subscores"] = radar_df["Ticker"].astype(str).map({k: v.get("subscores_text") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Gate"] = radar_df["Ticker"].astype(str).map({k: v.get("gate_reasons") for k, v in radar_v18_map.items()})
+        radar_df["Heute-Relevanz"] = radar_df["Ticker"].astype(str).map({k: v.get("why_today") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({k: v.get("priority") for k, v in radar_v18_map.items()})
+        radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({k: v.get("next_step") for k, v in radar_v18_map.items()})
+        radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({k: v.get("brake") for k, v in radar_v18_map.items()})
         radar_df["__style_sort"] = radar_df.apply(lambda row: compute_radar_style_sort_shared(row, result_map, style_name), axis=1)
         signature = _radar_snapshot_signature(universe, style_name, max_candidates, custom_text)
         payload = {
@@ -11804,9 +12024,6 @@ def load_extended_market_quote(ticker):
         "diff_pct": np.nan,
         "note": "",
         "debug_source": "",
-        "raw_market_state": "",
-        "minutes_to_us_open": "",
-        "chart_timestamp_et": "",
     }
 
     def _num(v):
@@ -11827,117 +12044,6 @@ def load_extended_market_quote(ticker):
         except Exception:
             pass
         return a
-
-    def _us_session_state_now():
-        """Lokaler Fallback fuer US-Session, wenn Yahoo marketState PRE/REGULAR nicht sauber liefert.
-
-        Problemfall: Kurz vor US-Boersenstart liefert Yahoo teils PREPRE/CLOSED oder gar
-        keinen marketState, obwohl ab 04:00 New York bereits Vorboerse laeuft. Dann darf
-        die App nicht pauschal auf den Schlusskurs zurueckfallen.
-        """
-        try:
-            from zoneinfo import ZoneInfo
-            now_et = datetime.now(ZoneInfo("America/New_York"))
-            if now_et.weekday() >= 5:
-                return "CLOSED", None
-            mins = now_et.hour * 60 + now_et.minute
-            if 4 * 60 <= mins < 9 * 60 + 30:
-                return "PRE", (9 * 60 + 30) - mins
-            if 9 * 60 + 30 <= mins < 16 * 60:
-                return "REGULAR", None
-            if 16 * 60 <= mins < 20 * 60:
-                return "POST", None
-            return "CLOSED", None
-        except Exception:
-            return "", None
-
-    def _intraday_last_meta(df):
-        """Gibt letzten Close plus grobe Session-Einordnung zurueck."""
-        try:
-            if df is None or df.empty or "Close" not in df.columns:
-                return np.nan, "", None
-            close_ser = df["Close"].dropna()
-            if close_ser.empty:
-                return np.nan, "", None
-            last_idx = close_ser.index[-1]
-            last_val = _num(close_ser.iloc[-1])
-            session = ""
-            try:
-                from zoneinfo import ZoneInfo
-                ts = pd.Timestamp(last_idx)
-                if ts.tzinfo is None:
-                    ts_et = ts.tz_localize("America/New_York")
-                else:
-                    ts_et = ts.tz_convert("America/New_York")
-                mins = ts_et.hour * 60 + ts_et.minute
-                if 4 * 60 <= mins < 9 * 60 + 30:
-                    session = "PRE"
-                elif 9 * 60 + 30 <= mins < 16 * 60:
-                    session = "REGULAR"
-                elif 16 * 60 <= mins < 20 * 60:
-                    session = "POST"
-                else:
-                    session = "CLOSED"
-                return last_val, session, ts_et
-            except Exception:
-                return last_val, "", last_idx
-        except Exception:
-            return np.nan, "", None
-
-    def _yahoo_chart_prepost_last():
-        """Direkter Yahoo-Chart-Fallback fuer Vorboerse.
-
-        yfinance.info/fast_info liefern kurz vor US-Open haeufig nur den Schlusskurs
-        oder marketState=CLOSED/PREPRE. Der Chart-Endpunkt mit includePrePost=true
-        enthaelt dagegen oft die aktuellste 1m/2m-Vorboersenkerze.
-        """
-        try:
-            from zoneinfo import ZoneInfo
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_clean}"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            last_err = ""
-            for interval, rng in [("1m", "1d"), ("2m", "1d"), ("5m", "5d")]:
-                try:
-                    rr = requests.get(
-                        url,
-                        params={"range": rng, "interval": interval, "includePrePost": "true"},
-                        headers=headers,
-                        timeout=8,
-                    )
-                    if not rr.ok:
-                        last_err = f"HTTP {rr.status_code}"
-                        continue
-                    js = rr.json() or {}
-                    res = (((js.get("chart") or {}).get("result") or []) or [None])[0]
-                    if not res:
-                        continue
-                    ts_list = res.get("timestamp") or []
-                    quote = (((res.get("indicators") or {}).get("quote") or []) or [{}])[0]
-                    closes = quote.get("close") or []
-                    pairs = [(ts, cl) for ts, cl in zip(ts_list, closes) if _num(cl) == _num(cl)]
-                    if not pairs:
-                        continue
-                    ts, close_val = pairs[-1]
-                    val = _num(close_val)
-                    if not pd.notna(val):
-                        continue
-                    ts_et = pd.to_datetime(int(ts), unit="s", utc=True).tz_convert("America/New_York")
-                    mins = ts_et.hour * 60 + ts_et.minute
-                    if 4 * 60 <= mins < 9 * 60 + 30:
-                        sess = "PRE"
-                    elif 9 * 60 + 30 <= mins < 16 * 60:
-                        sess = "REGULAR"
-                    elif 16 * 60 <= mins < 20 * 60:
-                        sess = "POST"
-                    else:
-                        sess = "CLOSED"
-                    return val, sess, ts_et, f"Yahoo chart prepost {interval}"
-                except Exception as e:
-                    last_err = str(e)
-                    continue
-            return np.nan, "", None, last_err
-        except Exception as e:
-            return np.nan, "", None, str(e)
 
     try:
         if not ticker:
@@ -12006,16 +12112,6 @@ def load_extended_market_quote(ticker):
         intraday_last = np.nan
         intraday_regular_last = np.nan
         intraday_source = ""
-        intraday_session = ""
-        intraday_ts = None
-        chart_last = np.nan
-        chart_session = ""
-        chart_ts = None
-        chart_source = ""
-        try:
-            chart_last, chart_session, chart_ts, chart_source = _yahoo_chart_prepost_last()
-        except Exception:
-            chart_last, chart_session, chart_ts, chart_source = np.nan, "", None, ""
         try:
             if t is None:
                 t = yf.Ticker(ticker_clean)
@@ -12024,11 +12120,10 @@ def load_extended_market_quote(ticker):
             if ih is None or ih.empty:
                 ih = t.history(period="5d", interval="5m", prepost=True, auto_adjust=False)
             if ih is not None and not ih.empty and "Close" in ih.columns:
-                intraday_last, intraday_session, intraday_ts = _intraday_last_meta(ih)
-                if pd.notna(intraday_last):
+                close_ser = ih["Close"].dropna()
+                if not close_ser.empty:
+                    intraday_last = _num(close_ser.iloc[-1])
                     intraday_source = "Intraday prepost"
-            else:
-                intraday_session, intraday_ts = "", None
             rh = t.history(period="1d", interval="2m", prepost=False, auto_adjust=False)
             if rh is None or rh.empty:
                 rh = t.history(period="5d", interval="5m", prepost=False, auto_adjust=False)
@@ -12036,26 +12131,6 @@ def load_extended_market_quote(ticker):
                 rclose = rh["Close"].dropna()
                 if not rclose.empty:
                     intraday_regular_last = _num(rclose.iloc[-1])
-        except Exception:
-            pass
-
-        # Direkter Yahoo-Chart-Fallback ist fuer Vorboerse oft aktueller als yfinance.history.
-        # Wenn vorhanden und zeitlich in PRE/POST/REGULAR klassifizierbar, als prepost-Kandidat verwenden.
-        try:
-            if pd.notna(chart_last):
-                use_chart = False
-                if intraday_ts is None:
-                    use_chart = True
-                elif chart_ts is not None:
-                    try:
-                        use_chart = pd.Timestamp(chart_ts) >= pd.Timestamp(intraday_ts)
-                    except Exception:
-                        use_chart = True
-                if use_chart:
-                    intraday_last = chart_last
-                    intraday_session = chart_session
-                    intraday_ts = chart_ts
-                    intraday_source = chart_source or "Yahoo chart prepost"
         except Exception:
             pass
 
@@ -12074,28 +12149,11 @@ def load_extended_market_quote(ticker):
         source = "Schlusskurs"
         debug_source = ""
 
-        inferred_state, minutes_to_open = _us_session_state_now()
-        effective_state = state
-        # Yahoo liefert kurz vor Handelsstart gelegentlich PREPRE/CLOSED. Fuer US-Werte
-        # priorisieren wir dann den lokalen Session-Fallback, damit Pre-Market nicht
-        # unterdrueckt wird. Besonders relevant <60 Minuten vor 09:30 ET.
-        if inferred_state == "PRE" and (not state or state in {"CLOSED", "PREPRE", "POSTPOST"} or (minutes_to_open is not None and minutes_to_open <= 60)):
-            effective_state = "PRE"
-        elif inferred_state == "POST" and (not state or state in {"CLOSED", "POSTPOST"}):
-            effective_state = "POST"
-        elif inferred_state == "REGULAR" and not state:
-            effective_state = "REGULAR"
-
-        if effective_state.startswith("PRE") and pd.notna(pre):
+        if state.startswith("PRE") and pd.notna(pre):
             display, source, debug_source = pre, "Vorbörse", "yahoo_preMarketPrice"
-        elif effective_state.startswith("PRE") and pd.notna(intraday_last):
-            # In der US-Vorboerse nie auf Schlusskurs zurueckfallen, wenn ein aktueller
-            # prepost-/Chart-Kurs vorhanden ist. Kurz vor Open kann Yahoo den letzten
-            # Kurs falsch als CLOSED/PREPRE klassifizieren; der lokale PRE-State gewinnt.
-            display, source, debug_source = intraday_last, "Vorbörse", intraday_source or "intraday_prepost_pre"
-        elif effective_state.startswith("POST") and pd.notna(post):
+        elif state.startswith("POST") and pd.notna(post):
             display, source, debug_source = post, "Nachbörse", "yahoo_postMarketPrice"
-        elif effective_state in {"CLOSED", "POSTPOST", "PREPRE"}:
+        elif state in {"CLOSED", "POSTPOST", "PREPRE"}:
             if pd.notna(post) and pd.notna(compare) and abs(post / compare - 1.0) >= 0.001:
                 display, source, debug_source = post, "Nachbörse", "yahoo_postMarketPrice_closed"
             elif pd.notna(pre) and pd.notna(compare) and abs(pre / compare - 1.0) >= 0.001:
@@ -12104,7 +12162,7 @@ def load_extended_market_quote(ticker):
                 display, source, debug_source = intraday_last, "Letzter außerbörslicher/Intraday-Kurs", intraday_source or "intraday_prepost"
             elif pd.notna(regular):
                 display, source, debug_source = regular, "Schlusskurs / Analysebasis", "regular_fallback"
-        elif effective_state == "REGULAR" and pd.notna(regular):
+        elif state == "REGULAR" and pd.notna(regular):
             display, source, debug_source = regular, "Regulärer Handel", "regularMarketPrice"
         elif pd.notna(intraday_last):
             display, source, debug_source = intraday_last, "Letzter Kurs", intraday_source or "intraday"
@@ -12122,14 +12180,8 @@ def load_extended_market_quote(ticker):
             out["regular_price"] = float(regular)
 
         out["source"] = source
-        out["market_state"] = effective_state or state
-        out["raw_market_state"] = state
-        out["minutes_to_us_open"] = minutes_to_open if minutes_to_open is not None else ""
+        out["market_state"] = state
         out["debug_source"] = debug_source
-        try:
-            out["chart_timestamp_et"] = "" if intraday_ts is None else str(pd.Timestamp(intraday_ts))
-        except Exception:
-            out["chart_timestamp_et"] = ""
         compare_final = out.get("regular_price", np.nan)
         if pd.notna(display) and pd.notna(compare_final) and compare_final > 0:
             out["diff_abs"] = float(display - compare_final)
@@ -12395,6 +12447,7 @@ def build_ranking_table(results):
         confidence_info = r.get("confidence_info", {}) or {}
         full_red_flag = r.get("top_red_flag", "-")
         full_thesis = r.get("short_thesis", r.get("decision_summary", "-"))
+        radar_v18 = build_professional_radar_decision_v18(r, "Ausgewogen")
 
         rows.append({
             "Ticker": r.get("ticker", "-"),
@@ -12402,10 +12455,16 @@ def build_ranking_table(results):
             "Setup-Typ": r.get("setup_type", "-"),
             "Kandidatentyp": radar_candidate_type(r),
             "Radar-Risiko": radar_risk_bucket(r),
+            "Radar-Score": radar_v18.get("score"),
+            "Radar-Grade": radar_v18.get("grade"),
+            "Radar-Bucket": radar_v18.get("bucket"),
+            "Radar-Subscores": radar_v18.get("subscores_text"),
+            "Radar-Gate": radar_v18.get("gate_reasons"),
+            "Heute-Relevanz": radar_v18.get("why_today"),
             "Setup-Reife": radar_setup_maturity(r),
-            "Radar-Priorität": radar_priority_label(r, "Ausgewogen"),
-            "Nächster Schritt": radar_next_step(r),
-            "Was bremst": radar_brake_reason(r),
+            "Radar-Priorität": radar_v18.get("priority") or radar_priority_label(r, "Ausgewogen"),
+            "Nächster Schritt": radar_v18.get("next_step") or radar_next_step(r),
+            "Was bremst": radar_v18.get("brake") or radar_brake_reason(r),
             "Benchmark": r.get("benchmark_label", "-"),
             "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
             "Company Quality": r.get("company", np.nan),
@@ -16482,14 +16541,21 @@ if workspace_mode:
                     radar_result_map = {str(r.get("ticker", "")): r for r in radar_results} if radar_results else {}
                 else:
                     radar_df = build_ranking_table(radar_results)
-                    radar_reason_map = {str(r.get("ticker", "")): radar_reason_professional_v1521(r, str(st.session_state.get("radar_screening_style", "Leader") or "Leader")) for r in radar_results}
+                    radar_reason_map = {str(r.get("ticker", "")): radar_reason_professional_v18(r, str(st.session_state.get("radar_screening_style", "Leader") or "Leader")) for r in radar_results}
                     radar_result_map = {str(r.get("ticker", "")): r for r in radar_results}
                     radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map(radar_reason_map)
                     _radar_style_for_cols = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
+                    _radar_v18_map = {str(r.get("ticker", "")): build_professional_radar_decision_v18(r, _radar_style_for_cols) for r in radar_results}
+                    radar_df["Radar-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("score") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-Grade"] = radar_df["Ticker"].astype(str).map({k: v.get("grade") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-Bucket"] = radar_df["Ticker"].astype(str).map({k: v.get("bucket") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-Subscores"] = radar_df["Ticker"].astype(str).map({k: v.get("subscores_text") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-Gate"] = radar_df["Ticker"].astype(str).map({k: v.get("gate_reasons") for k, v in _radar_v18_map.items()})
+                    radar_df["Heute-Relevanz"] = radar_df["Ticker"].astype(str).map({k: v.get("why_today") for k, v in _radar_v18_map.items()})
                     radar_df["Setup-Reife"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_setup_maturity(r) for r in radar_results})
-                    radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_priority_label(r, _radar_style_for_cols) for r in radar_results})
-                    radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_next_step(r) for r in radar_results})
-                    radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_brake_reason(r) for r in radar_results})
+                    radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({k: v.get("priority") for k, v in _radar_v18_map.items()})
+                    radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({k: v.get("next_step") for k, v in _radar_v18_map.items()})
+                    radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({k: v.get("brake") for k, v in _radar_v18_map.items()})
                     radar_df["Chart-Impuls"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("label", "-") for r in radar_results})
                     radar_df["Chart-Score"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("score", 0) for r in radar_results})
                     radar_df["Chart-Trigger"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("trigger", "-") for r in radar_results})
@@ -16524,6 +16590,21 @@ if workspace_mode:
                     radar_df["Chart-Score"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("score", 0) if str(_row.get("Chart-Score", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Score"), axis=1)
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
+
+                # v18.0: Professional-Funnel-Spalten fuer gespeicherte Snapshots nachfuellen.
+                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz"]:
+                    if _col_name not in radar_df.columns:
+                        radar_df[_col_name] = "-"
+                if radar_result_map:
+                    _radar_v18_style = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
+                    def _radar_v18_for_row(_row):
+                        return build_professional_radar_decision_v18(radar_result_map.get(str(_row.get("Ticker", "")), {}), _radar_v18_style)
+                    radar_df["Radar-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("score", _row.get("Radar-Score", "-")), axis=1)
+                    radar_df["Radar-Grade"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("grade", _row.get("Radar-Grade", "-")), axis=1)
+                    radar_df["Radar-Bucket"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("bucket", _row.get("Radar-Bucket", "-")), axis=1)
+                    radar_df["Radar-Subscores"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("subscores_text", _row.get("Radar-Subscores", "-")), axis=1)
+                    radar_df["Radar-Gate"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("gate_reasons", _row.get("Radar-Gate", "-")), axis=1)
+                    radar_df["Heute-Relevanz"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("why_today", _row.get("Heute-Relevanz", "-")), axis=1)
 
                 # v15.23.7: Firmenname im Radar robust nachfuellen.
                 # Bei gespeicherten Snapshots oder Ticker-Fallbacks stand sonst in `Name` oft nur erneut der Ticker.
@@ -16713,6 +16794,24 @@ if workspace_mode:
                 radar_df.loc[radar_warn_mask, "Radar-Gruppe"] = "Warnsignale / meiden"
                 radar_df.loc[radar_near_mask, "Radar-Gruppe"] = "Nahe am Trigger"
                 radar_df.loc[radar_now_mask, "Radar-Gruppe"] = "Jetzt prüfbar"
+
+                # v18.0: Wenn der Professional Funnel einen Bucket liefert, ist er die primaere Cluster-Quelle.
+                if "Radar-Bucket" in radar_df.columns:
+                    _bucket_series = radar_df["Radar-Bucket"].fillna("").astype(str)
+                    _valid_buckets = {
+                        "Jetzt prüfbar",
+                        "Nahe am Trigger",
+                        "Starke Watchlist",
+                        "Pullback bevorzugt / nicht hinterherlaufen",
+                        "Warnsignale / meiden",
+                        "Später beobachten",
+                    }
+                    radar_df["Radar-Gruppe"] = _bucket_series.where(_bucket_series.isin(_valid_buckets), radar_df["Radar-Gruppe"])
+                    radar_now_mask = radar_df["Radar-Gruppe"].eq("Jetzt prüfbar")
+                    radar_near_mask = radar_df["Radar-Gruppe"].eq("Nahe am Trigger")
+                    radar_watchlist_mask = radar_df["Radar-Gruppe"].eq("Starke Watchlist")
+                    radar_pullback_mask = radar_df["Radar-Gruppe"].eq("Pullback bevorzugt / nicht hinterherlaufen")
+                    radar_warn_mask = radar_df["Radar-Gruppe"].eq("Warnsignale / meiden")
 
                 radar_now_df = sort_section_df(radar_df[radar_now_mask].copy())
                 radar_near_df = sort_section_df(radar_df[radar_near_mask].copy())

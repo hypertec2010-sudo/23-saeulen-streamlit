@@ -3719,7 +3719,7 @@ def radar_brake_reason(result):
     return "keine dominante Bremse"
 
 
-# ---------- v18.1: Professional Radar Funnel ----------
+# ---------- v18.2: Professional Radar Funnel ----------
 def _radar_v18_clip(value, lo=0.0, hi=100.0):
     try:
         return max(lo, min(hi, float(value)))
@@ -3756,6 +3756,194 @@ def _radar_v18_entry_position(result):
     return "unattraktiv", 28
 
 
+# ---------- v18.2: Risk/Reward und Entry-Qualitaet fuer Professional Radar ----------
+def _radar_v182_first_non_empty(result, *keys, default=""):
+    for key in keys:
+        try:
+            if isinstance(key, tuple) and len(key) == 2:
+                block = (result or {}).get(key[0], {}) or {}
+                value = block.get(key[1], "") if isinstance(block, dict) else ""
+            else:
+                value = (result or {}).get(key, "")
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text and text.lower() not in {"nan", "none", "null", "-", "n/a", "na"}:
+                return value
+        except Exception:
+            continue
+    return default
+
+
+def _radar_v182_num(value, default=None):
+    try:
+        if value is None:
+            return default
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            if pd.isna(value):
+                return default
+            return float(value)
+        text = str(value).strip()
+        if not text or text.lower() in {"nan", "none", "null", "-", "n/a", "na"}:
+            return default
+        text = text.replace("%", "").replace("USD", "").replace("EUR", "").replace("$", "").strip()
+        text = text.replace(".", "").replace(",", ".") if ("," in text and "." in text and text.rfind(",") > text.rfind(".")) else text.replace(",", ".")
+        m = re.search(r"-?\d+(?:\.\d+)?", text)
+        if not m:
+            return default
+        return float(m.group(0))
+    except Exception:
+        return default
+
+
+def _radar_v182_parse_zone(entry_zone):
+    try:
+        low, high = _parse_entry_zone_bounds_v1524_12(entry_zone)
+        return low, high
+    except Exception:
+        text = str(entry_zone or "").replace(",", ".")
+        nums = [float(x) for x in re.findall(r"[-+]?\d+(?:\.\d+)?", text)]
+        if len(nums) >= 2:
+            return min(nums[0], nums[1]), max(nums[0], nums[1])
+    return None, None
+
+
+def _radar_v182_get_price(result):
+    return _radar_v182_num(_radar_v182_first_non_empty(result, "live_price", "analysis_price", "price", "Aktueller_Kurs", "Analyse_Kursbasis"), default=None)
+
+
+def _radar_v182_entry_zone_text(result):
+    return str(_radar_v182_first_non_empty(
+        result,
+        "suggested_entry_zone",
+        "Entry-Zone",
+        "Entry_Zone",
+        ("action_clarity_pkg", "entry_zone"),
+        default="",
+    ) or "").strip()
+
+
+def _radar_v182_tp1_value(result):
+    return _radar_v182_num(_radar_v182_first_non_empty(result, "tp1", "TP1", "target1", "Target_1", default=""), default=None)
+
+
+def _radar_v182_stop_value(result):
+    stop = _radar_v182_num(_radar_v182_first_non_empty(result, "stop_used", "stop", "Stop", "PM_Stop", default=""), default=None)
+    if stop is not None and stop > 0:
+        return stop
+    invalid_txt = str(_radar_v182_first_non_empty(result, ("action_clarity_pkg", "invalid"), ("charttechnik_setup_pkg", "invalid"), "PM_Stop_Plan", default="") or "")
+    nums = [float(x) for x in re.findall(r"[-+]?\d+(?:[\.,]\d+)?", invalid_txt.replace(",", "."))]
+    if len(nums) >= 2:
+        return min(nums[0], nums[1])
+    if len(nums) == 1:
+        return nums[0]
+    ez = _radar_v182_entry_zone_text(result)
+    low, high = _radar_v182_parse_zone(ez)
+    if low is not None:
+        return low
+    return None
+
+
+def build_radar_entry_rr_package_v182(result):
+    """Berechnet Entry-Abstand und CRV fuer den Radar.
+
+    Ziel: ein technisch gutes Setup wird nicht als Top-Kandidat angezeigt, wenn der
+    Kurs operativ zu weit ueber der Entry-Zone liegt oder das Chance/Risiko-Verhaeltnis
+    zu schwach ist.
+    """
+    r = result or {}
+    price = _radar_v182_get_price(r)
+    entry_zone = _radar_v182_entry_zone_text(r)
+    low, high = _radar_v182_parse_zone(entry_zone)
+    tp1 = _radar_v182_tp1_value(r)
+    stop = _radar_v182_stop_value(r)
+
+    entry_distance_pct = None
+    entry_position = "Keine Entry-Zone"
+    entry_score = 45.0
+    if price is not None and low is not None and high is not None and high > 0:
+        base = max(abs(price), abs(low), abs(high), 1e-9)
+        if low <= price <= high:
+            entry_distance_pct = 0.0
+            entry_position = "In Entry-Zone"
+            entry_score = 92.0
+        elif price < low:
+            entry_distance_pct = -((low - price) / base) * 100.0
+            if abs(entry_distance_pct) <= 1.5:
+                entry_position = "Knapp unter Entry / Reclaim nötig"
+                entry_score = 76.0
+            else:
+                entry_position = "Unter Entry / Reclaim nötig"
+                entry_score = max(35.0, 66.0 - abs(entry_distance_pct) * 1.6)
+        else:
+            entry_distance_pct = ((price - high) / base) * 100.0
+            if entry_distance_pct <= 1.5:
+                entry_position = "Knapp oberhalb Entry"
+                entry_score = 72.0
+            elif entry_distance_pct <= 5.0:
+                entry_position = "Oberhalb Entry"
+                entry_score = max(42.0, 68.0 - entry_distance_pct * 4.0)
+            else:
+                entry_position = "Zu weit über Entry"
+                entry_score = max(12.0, 48.0 - (entry_distance_pct - 5.0) * 3.0)
+
+    crv = None
+    rr_label = "CRV n/a"
+    rr_score = 45.0
+    rr_text = "CRV nicht sauber berechenbar; Entry, Stop oder TP1 fehlen."
+    if price is not None and stop is not None and tp1 is not None and stop > 0 and tp1 > 0:
+        risk = price - stop
+        reward = tp1 - price
+        if risk > 0 and reward > 0:
+            crv = reward / risk
+            if crv >= 3.0:
+                rr_label = "CRV sehr attraktiv"
+                rr_score = 94.0
+            elif crv >= 2.0:
+                rr_label = "CRV attraktiv"
+                rr_score = 82.0
+            elif crv >= 1.5:
+                rr_label = "CRV okay"
+                rr_score = 66.0
+            elif crv >= 1.0:
+                rr_label = "CRV eng"
+                rr_score = 44.0
+            else:
+                rr_label = "CRV unattraktiv"
+                rr_score = 24.0
+            rr_text = f"CRV {crv:.2f} · Stop {stop:.2f} · TP1 {tp1:.2f}"
+        elif risk <= 0:
+            rr_label = "Stop unplausibel"
+            rr_score = 25.0
+            rr_text = "Stop/Invalidierung liegt nicht unter dem aktuellen Kurs."
+        else:
+            rr_label = "TP1 unplausibel"
+            rr_score = 25.0
+            rr_text = "TP1 liegt nicht oberhalb des aktuellen Kurses."
+
+    distance_text = "n/a" if entry_distance_pct is None else f"{entry_distance_pct:+.1f}%"
+    if entry_zone:
+        entry_text = f"{entry_position} ({distance_text}) · Zone {entry_zone}"
+    else:
+        entry_text = entry_position
+
+    return {
+        "entry_zone": entry_zone or "-",
+        "entry_position": entry_position,
+        "entry_distance_pct": None if entry_distance_pct is None else round(entry_distance_pct, 2),
+        "entry_distance_text": distance_text,
+        "entry_score": round(_radar_v18_clip(entry_score), 1),
+        "crv": None if crv is None else round(crv, 2),
+        "rr_label": rr_label,
+        "rr_score": round(_radar_v18_clip(rr_score), 1),
+        "rr_text": rr_text,
+        "entry_text": entry_text,
+        "price": price,
+        "stop": stop,
+        "tp1": tp1,
+    }
+
+
 def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     """Professionalisiert den Radar als Funnel: Gates, Subscores, Bucket und Handlung.
 
@@ -3790,11 +3978,14 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     chart_pack = radar_chart_impulse_pack(r)
     chart_score = _radar_safe_num(chart_pack.get("score"), 0)
     entry_position, entry_position_score = _radar_v18_entry_position(r)
+    entry_rr_pkg = build_radar_entry_rr_package_v182(r)
+    entry_position = entry_rr_pkg.get("entry_position") or entry_position
+    entry_position_score = max(float(entry_position_score or 0), float(entry_rr_pkg.get("entry_score", 0) or 0))
 
     setup_score = _radar_v18_clip(setup_conf * 0.32 + confluence * 0.28 + chart_score * 0.24 + max(trend, base) * 0.16)
     timing_score = _radar_v18_clip(trading * 0.36 + tb * 0.25 + chart_score * 0.20 + entry_position_score * 0.19)
     leadership_score = _radar_v18_clip(leadership * 0.45 + trend * 0.25 + investment * 0.18 + max(0, accumulation - distribution * 0.35) * 0.12)
-    rr_score = _radar_v18_clip(tradeability * 0.34 + trading * 0.30 + entry_position_score * 0.24 + (100 - max(distribution, 0)) * 0.12)
+    rr_score = _radar_v18_clip(tradeability * 0.22 + trading * 0.22 + entry_position_score * 0.22 + float(entry_rr_pkg.get("rr_score", 45) or 45) * 0.26 + (100 - max(distribution, 0)) * 0.08)
     regime_score = 62.0 if regime_raw == "POSITIV" else 45.0 if regime_raw == "NEUTRAL" else 30.0 if regime_raw == "NEGATIV" else 50.0
     data_quality = _radar_v18_clip(_radar_safe_num((r.get("confidence_info", {}) or {}).get("coverage"), 0.75) * 100 if isinstance(r.get("confidence_info", {}), dict) else 70)
 
@@ -3809,13 +4000,24 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         penalty += 16; gates.append("FOMO kritisch"); brakes.append("FOMO kritisch")
     elif "erhöht" in fomo_label or "erhoeht" in fomo_label:
         penalty += 8; brakes.append("FOMO erhöht")
+    entry_distance_pct = entry_rr_pkg.get("entry_distance_pct")
+    crv = entry_rr_pkg.get("crv")
+    rr_label = str(entry_rr_pkg.get("rr_label", "") or "")
+    if entry_distance_pct is not None and entry_distance_pct > 5.0:
+        penalty += 12; gates.append("Entry-Abstand zu groß"); brakes.append(f"{entry_rr_pkg.get('entry_position')} ({entry_rr_pkg.get('entry_distance_text')})")
+    elif entry_distance_pct is not None and entry_distance_pct > 1.5:
+        penalty += 5; brakes.append(f"oberhalb Entry ({entry_rr_pkg.get('entry_distance_text')})")
+    if crv is not None and crv < 1.2:
+        penalty += 14; gates.append("CRV unattraktiv"); brakes.append(f"{rr_label} ({crv:.2f})")
+    elif crv is not None and crv < 1.5:
+        penalty += 7; brakes.append(f"{rr_label} ({crv:.2f})")
     if distribution > accumulation + 14:
         penalty += 10; gates.append("Distribution dominiert"); brakes.append("Distribution > Akkumulation")
     if typ in {"Hype / Event", "Riskant"}:
         penalty += 10; gates.append(f"Typ {typ}"); brakes.append("Hype-/Risikotyp")
     if regime_raw == "NEGATIV" and typ in {"Bounce", "Hype / Event", "Riskant"}:
         penalty += 10; gates.append("Risk-off bremst Setup-Typ")
-    if entry_position == "zu weit gelaufen":
+    if entry_position in {"zu weit gelaufen", "Zu weit über Entry"}:
         penalty += 9; brakes.append("Kurs zu weit über sinnvoller Zone")
     if data_quality < 45:
         penalty += 8; brakes.append("Datenqualität niedrig")
@@ -3855,13 +4057,18 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     if typ in {"Hype / Event", "Riskant"} and risk in {"hoch", "erhöht"} and score < 72:
         knockout = True
 
+    chase_risk = bool(entry_distance_pct is not None and entry_distance_pct > 5.0 and ("kritisch" in fomo_label or "erhöht" in fomo_label or "erhoeht" in fomo_label))
+    if chase_risk:
+        gates.append("Nicht hinterherlaufen: Entry-Abstand + FOMO")
+        brakes.insert(0, f"Nicht hinterherlaufen: {entry_rr_pkg.get('entry_distance_text')} über Entry und FOMO-Bremse")
+        score = min(score, 61.0)
     if knockout:
         score = min(score, 49.0)
 
     if knockout or gates and score < 55:
         bucket = "Warnsignale / meiden"
         priority = "niedrig"
-    elif entry_position == "zu weit gelaufen" or any("über" in b.lower() or "weit" in b.lower() for b in brakes):
+    elif chase_risk or entry_position in {"zu weit gelaufen", "Zu weit über Entry"} or any("über" in b.lower() or "weit" in b.lower() for b in brakes):
         bucket = "Pullback bevorzugt / nicht hinterherlaufen"
         priority = "mittel" if score >= 62 else "niedrig"
     elif score >= 74 and (maturity == "prüfbar" or trigger in {"Aktiv", "Jetzt prüfbar"}) and risk != "hoch":
@@ -3889,11 +4096,11 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         grade = "E"
 
     if bucket == "Jetzt prüfbar":
-        next_step = "Entry-Zone, CRV und Invalidierung jetzt konkret prüfen"
+        next_step = f"Jetzt prüfbar: {entry_rr_pkg.get('entry_text')}; {entry_rr_pkg.get('rr_text')}"
     elif bucket == "Nahe am Trigger":
         next_step = _radar_v18_text(r, "next_trigger", "") or "Reclaim/Bestätigung abwarten"
     elif bucket.startswith("Pullback"):
-        next_step = "Nicht hinterherlaufen; Rücksetzer oder neue Base abwarten"
+        next_step = f"Nicht hinterherlaufen; Pullback in/nahe {entry_rr_pkg.get('entry_zone', 'Entry-Zone')} oder neue Base abwarten"
     elif bucket.startswith("Warn"):
         next_step = "Kein Top-Kandidat; Risiko-/FOMO-Bremse zuerst klären"
     elif bucket == "Starke Watchlist":
@@ -3913,14 +4120,16 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         why_parts.append(f"Leadership {leadership_score:.0f}/100")
     if chart_score >= 62:
         why_parts.append(f"Chartimpuls {chart_score:.0f}/100")
-    if entry_position in {"in/nahe Zone", "operativ attraktiv", "nahe Zone/Trigger"}:
+    if entry_position in {"in/nahe Zone", "operativ attraktiv", "nahe Zone/Trigger", "In Entry-Zone", "Knapp oberhalb Entry", "Knapp unter Entry / Reclaim nötig"}:
         why_parts.append(entry_position)
+    if entry_rr_pkg.get("crv") is not None and float(entry_rr_pkg.get("crv") or 0) >= 1.5:
+        why_parts.append(f"CRV {float(entry_rr_pkg.get('crv')):.2f}")
     if not why_parts:
         why_parts.append("noch keine starke Bestätigungsgruppe")
 
     subscores_text = (
         f"Setup {setup_score:.0f} · Timing {timing_score:.0f} · Leadership {leadership_score:.0f} · "
-        f"RR {rr_score:.0f} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
+        f"RR {rr_score:.0f} · CRV {entry_rr_pkg.get('crv') if entry_rr_pkg.get('crv') is not None else 'n/a'} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
     )
     return {
         "score": round(score, 1),
@@ -3941,6 +4150,12 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "next_step": next_step,
         "brake": "; ".join(brakes[:3]),
         "entry_position": entry_position,
+        "entry_distance_pct": entry_rr_pkg.get("entry_distance_pct"),
+        "entry_distance_text": entry_rr_pkg.get("entry_distance_text"),
+        "entry_quality_text": entry_rr_pkg.get("entry_text"),
+        "crv": entry_rr_pkg.get("crv"),
+        "risk_reward_label": entry_rr_pkg.get("rr_label"),
+        "risk_reward_text": entry_rr_pkg.get("rr_text"),
         "gate_reasons": "; ".join(gates) if gates else "keine harten Gates",
         "trigger": trigger_display,
     }
@@ -16552,6 +16767,10 @@ if workspace_mode:
                     radar_df["Radar-Subscores"] = radar_df["Ticker"].astype(str).map({k: v.get("subscores_text") for k, v in _radar_v18_map.items()})
                     radar_df["Radar-Gate"] = radar_df["Ticker"].astype(str).map({k: v.get("gate_reasons") for k, v in _radar_v18_map.items()})
                     radar_df["Heute-Relevanz"] = radar_df["Ticker"].astype(str).map({k: v.get("why_today") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-CRV"] = radar_df["Ticker"].astype(str).map({k: v.get("crv") if v.get("crv") is not None else "n/a" for k, v in _radar_v18_map.items()})
+                    radar_df["Entry-Abstand"] = radar_df["Ticker"].astype(str).map({k: v.get("entry_distance_text") for k, v in _radar_v18_map.items()})
+                    radar_df["Entry-Qualität"] = radar_df["Ticker"].astype(str).map({k: v.get("entry_quality_text") for k, v in _radar_v18_map.items()})
+                    radar_df["Risk/Reward"] = radar_df["Ticker"].astype(str).map({k: v.get("risk_reward_text") for k, v in _radar_v18_map.items()})
                     radar_df["Setup-Reife"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_setup_maturity(r) for r in radar_results})
                     radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({k: v.get("priority") for k, v in _radar_v18_map.items()})
                     radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({k: v.get("next_step") for k, v in _radar_v18_map.items()})
@@ -16592,7 +16811,7 @@ if workspace_mode:
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
                 # v18.1: Professional-Funnel-Spalten fuer gespeicherte Snapshots nachfuellen.
-                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz"]:
+                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
                 if radar_result_map:
@@ -16605,6 +16824,10 @@ if workspace_mode:
                     radar_df["Radar-Subscores"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("subscores_text", _row.get("Radar-Subscores", "-")), axis=1)
                     radar_df["Radar-Gate"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("gate_reasons", _row.get("Radar-Gate", "-")), axis=1)
                     radar_df["Heute-Relevanz"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("why_today", _row.get("Heute-Relevanz", "-")), axis=1)
+                    radar_df["Radar-CRV"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("crv", "n/a"), axis=1)
+                    radar_df["Entry-Abstand"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("entry_distance_text", _row.get("Entry-Abstand", "-")), axis=1)
+                    radar_df["Entry-Qualität"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("entry_quality_text", _row.get("Entry-Qualität", "-")), axis=1)
+                    radar_df["Risk/Reward"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("risk_reward_text", _row.get("Risk/Reward", "-")), axis=1)
 
                 # v15.23.7: Firmenname im Radar robust nachfuellen.
                 # Bei gespeicherten Snapshots oder Ticker-Fallbacks stand sonst in `Name` oft nur erneut der Ticker.
@@ -16638,7 +16861,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v18.1: Professional Radar ist aktiv: Score, Grade, Bucket, Gates und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
+                st.caption("v18.2: Professional Radar ist aktiv: Score, Grade, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -16933,8 +17156,8 @@ if workspace_mode:
                             header_cols = st.columns([0.55, 0.75, 1.45, 1.15, 0.85, 0.65, 1.25, 1.65, 2.15, 1.75])
                             headers = ["Auswahl", "Ticker", "Name", "Chart-Impuls", "Radar", "Grade", "Bucket", "Chart-Trigger", "Nächster Schritt", "Gate/Bremse"]
                         else:
-                            header_cols = st.columns([0.55, 0.75, 1.55, 0.9, 0.65, 1.35, 1.15, 1.0, 1.15, 2.2, 1.9, 1.7])
-                            headers = ["Auswahl", "Ticker", "Name", "Radar", "Grade", "Bucket", "Heute", "Risiko", "Trigger", "Nächster Schritt", "Gate/Bremse", "Subscores"]
+                            header_cols = st.columns([0.55, 0.75, 1.45, 0.85, 0.55, 1.25, 0.8, 1.05, 1.25, 1.0, 2.25, 1.85, 1.65])
+                            headers = ["Auswahl", "Ticker", "Name", "Radar", "Grade", "Bucket", "CRV", "Entry", "Heute", "Trigger", "Nächster Schritt", "Gate/Bremse", "Subscores"]
                         for _col, _hdr in zip(header_cols, headers):
                             _col.markdown(f"**{_hdr}**")
 
@@ -16949,7 +17172,7 @@ if workspace_mode:
                             if _radar_is_chart_style:
                                 row_cols = st.columns([0.55, 0.75, 1.45, 1.15, 0.85, 0.65, 1.25, 1.65, 2.15, 1.75])
                             else:
-                                row_cols = st.columns([0.55, 0.75, 1.55, 0.9, 0.65, 1.35, 1.15, 1.0, 1.15, 2.2, 1.9, 1.7])
+                                row_cols = st.columns([0.55, 0.75, 1.45, 0.85, 0.55, 1.25, 0.8, 1.05, 1.25, 1.0, 2.25, 1.85, 1.65])
                             is_selected = row_cols[0].checkbox(
                                 "",
                                 value=bool(st.session_state.get(checkbox_key, False)),
@@ -16973,12 +17196,13 @@ if workspace_mode:
                                 row_cols[3].write(radar_score_badge(_row.get("Radar-Score", _row.get("__style_sort", "-"))))
                                 row_cols[4].write(str(_row.get("Radar-Grade", "-")))
                                 row_cols[5].write(str(_row.get("Radar-Bucket", _row.get("Radar-Gruppe", "-"))))
-                                row_cols[6].write(str(_row.get("Heute-Relevanz", _row.get("Warum heute auffällig", "-"))))
-                                row_cols[7].write(str(_row.get("Radar-Risiko", "-")))
-                                row_cols[8].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
-                                row_cols[9].write(str(_row.get("Nächster Schritt", "-")))
-                                row_cols[10].write(str(_row.get("Radar-Gate", _row.get("Was bremst", _row.get("Top Red Flag", "-")))))
-                                row_cols[11].write(str(_row.get("Radar-Subscores", "-")))
+                                row_cols[6].write(str(_row.get("Radar-CRV", "n/a")))
+                                row_cols[7].write(str(_row.get("Entry-Abstand", "-")))
+                                row_cols[8].write(str(_row.get("Heute-Relevanz", _row.get("Warum heute auffällig", "-"))))
+                                row_cols[9].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
+                                row_cols[10].write(str(_row.get("Nächster Schritt", "-")))
+                                row_cols[11].write(str(_row.get("Radar-Gate", _row.get("Was bremst", _row.get("Top Red Flag", "-")))))
+                                row_cols[12].write(str(_row.get("Radar-Subscores", "-")))
 
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 

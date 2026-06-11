@@ -3719,7 +3719,7 @@ def radar_brake_reason(result):
     return "keine dominante Bremse"
 
 
-# ---------- v18.4: Professional Radar Funnel mit Top-Chancen und Stil-Kalibrierung ----------
+# ---------- v18.5: Professional Radar Funnel mit strengem Top-Chancen-Filter ----------
 def _radar_v18_clip(value, lo=0.0, hi=100.0):
     try:
         return max(lo, min(hi, float(value)))
@@ -16702,7 +16702,7 @@ if workspace_mode:
                 <div class="premium-title">Radar Professional v18.4</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.4 priorisiert nach Top-Chancen, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.5 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; Top-Chancen werden streng gefiltert.
                 </div>
             </div>
             """,
@@ -17005,7 +17005,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v18.4: Professional Radar ist aktiv: Top-Chancen, stilkalibrierter Score, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
+                st.caption("v18.5: Professional Radar ist aktiv: Top-Chancen werden jetzt streng gefiltert; Score, Grade, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -17283,19 +17283,42 @@ if workspace_mode:
 
                 selected_radar_tickers = []
 
-                # v18.4: Top-Chancen-Box als schnelle Entscheidungshilfe vor der Detailtabelle.
+                # v18.5: Top-Chancen-Box mit hartem Qualitätsfilter.
                 if radar_display_df is not None and not radar_display_df.empty:
                     _top_box_df = radar_display_df.copy()
                     if "Top-Chance-Rang" not in _top_box_df.columns:
                         _top_box_df["Top-Chance-Rang"] = pd.to_numeric(_top_box_df.get("Radar-Score", 0), errors="coerce").fillna(0)
                     _top_box_df["__top_rank"] = pd.to_numeric(_top_box_df["Top-Chance-Rang"], errors="coerce").fillna(0)
-                    _top_box_df = _top_box_df[~_top_box_df.get("Radar-Bucket", pd.Series([""] * len(_top_box_df))).astype(str).str.startswith("Warnsignale", na=False)]
-                    _top_box_df = _top_box_df.sort_values(["__top_rank", "Radar-Score"], ascending=[False, False]).head(3)
-                    if not _top_box_df.empty:
-                        st.markdown("### Beste heutige Chancen")
-                        st.caption("v18.4 priorisiert hier nicht nur den Score, sondern auch Bucket, Grade, CRV, Entry-Nähe und harte Gates.")
-                        _cols = st.columns(len(_top_box_df))
-                        for _idx, (_, _top_row) in enumerate(_top_box_df.iterrows()):
+                    _top_box_df["__score"] = pd.to_numeric(_top_box_df.get("Radar-Score", 0), errors="coerce").fillna(0)
+                    _top_box_df["__crv"] = pd.to_numeric(_top_box_df.get("Radar-CRV", np.nan), errors="coerce")
+                    _top_box_df["__grade"] = _top_box_df.get("Radar-Grade", "").astype(str).str.upper().str.strip()
+                    _top_box_df["__bucket"] = _top_box_df.get("Radar-Bucket", _top_box_df.get("Radar-Gruppe", "")).astype(str)
+                    _top_box_df["__gate"] = _top_box_df.get("Radar-Gate", "").astype(str).str.lower()
+                    _top_box_df["__entry"] = _top_box_df.get("Entry-Abstand", "").astype(str).str.lower().str.strip()
+
+                    _strict_grade_ok = _top_box_df["__grade"].isin(["A", "B"]) | ((_top_box_df["__grade"] == "C") & (_top_box_df["__crv"] >= 1.5))
+                    _strict_bucket_ok = _top_box_df["__bucket"].isin(["Jetzt prüfbar", "Nahe am Trigger"])
+                    _strict_crv_ok = _top_box_df["__crv"].notna() & (_top_box_df["__crv"] >= 1.2)
+                    _strict_entry_ok = ~_top_box_df["__entry"].isin(["", "-", "n/a", "nan", "none"])
+                    _strict_gate_ok = _top_box_df["__gate"].isin(["", "keine harten gates", "keine harten gate"])
+                    _strict_score_ok = _top_box_df["__score"] >= 62
+                    _strict_no_watchlist = ~_top_box_df["__bucket"].isin(["Starke Watchlist", "Später beobachten", "Pullback bevorzugt / nicht hinterherlaufen", "Warnsignale / meiden"])
+
+                    _top_box_strict_df = _top_box_df[
+                        _strict_grade_ok
+                        & _strict_bucket_ok
+                        & _strict_crv_ok
+                        & _strict_entry_ok
+                        & _strict_gate_ok
+                        & _strict_score_ok
+                        & _strict_no_watchlist
+                    ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
+
+                    st.markdown("### Beste heutige Chancen")
+                    st.caption("v18.5 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    if not _top_box_strict_df.empty:
+                        _cols = st.columns(len(_top_box_strict_df))
+                        for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
                             _ticker = str(_top_row.get("Ticker", "-") or "-")
                             _name = _radar_render_name_v15238(_top_row)
                             _score = _top_row.get("Radar-Score", "-")
@@ -17317,6 +17340,23 @@ if workspace_mode:
                                 </div>
                                 """,
                                 unsafe_allow_html=True,
+                            )
+                    else:
+                        st.markdown(
+                            '<div class="empty-state"><div class="empty-state-title">Keine sauberen heutigen Chancen gefunden</div><div class="empty-state-text">Der Radar erzwingt keine Top 3 mehr. Werte mit Grade D/E, rotem Radar, CRV n/a, CRV unter 1.2, Entry n/a oder Watchlist-/Pullback-Bucket werden hier bewusst ausgeblendet.</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        _watch_box_df = _top_box_df[
+                            _top_box_df["__bucket"].isin(["Starke Watchlist", "Nahe am Trigger", "Später beobachten"])
+                            & ~_top_box_df["__bucket"].str.startswith("Warnsignale", na=False)
+                        ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
+                        if not _watch_box_df.empty:
+                            st.markdown("#### Beste Watchlist-Kandidaten")
+                            st.caption("Diese Werte sind interessant, aber noch keine sauberen heutigen Chancen, weil Entry, CRV, Gate oder Trigger fehlen.")
+                            st.dataframe(
+                                _watch_box_df[[c for c in ["Ticker", "Name", "Radar-Grade", "Radar-Score", "Radar-Bucket", "Radar-CRV", "Entry-Abstand", "Nächster Schritt"] if c in _watch_box_df.columns]],
+                                use_container_width=True,
+                                hide_index=True,
                             )
 
                 st.markdown("### Radar-Auswahl")

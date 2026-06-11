@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.13.2",
+        "Export_Version": "v18.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -3719,7 +3719,7 @@ def radar_brake_reason(result):
     return "keine dominante Bremse"
 
 
-# ---------- v18.0: Professional Radar Funnel ----------
+# ---------- v18.1: Professional Radar Funnel ----------
 def _radar_v18_clip(value, lo=0.0, hi=100.0):
     try:
         return max(lo, min(hi, float(value)))
@@ -16591,7 +16591,7 @@ if workspace_mode:
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
-                # v18.0: Professional-Funnel-Spalten fuer gespeicherte Snapshots nachfuellen.
+                # v18.1: Professional-Funnel-Spalten fuer gespeicherte Snapshots nachfuellen.
                 for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
@@ -16638,7 +16638,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v17.9: Der Radar wird nicht nur sortiert, sondern in handlungsorientierte Gruppen geclustert: Jetzt prüfbar, Nahe am Trigger, Starke Watchlist, Pullback bevorzugt und Warnsignale.")
+                st.caption("v18.1: Professional Radar ist aktiv: Score, Grade, Bucket, Gates und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -16795,7 +16795,7 @@ if workspace_mode:
                 radar_df.loc[radar_near_mask, "Radar-Gruppe"] = "Nahe am Trigger"
                 radar_df.loc[radar_now_mask, "Radar-Gruppe"] = "Jetzt prüfbar"
 
-                # v18.0: Wenn der Professional Funnel einen Bucket liefert, ist er die primaere Cluster-Quelle.
+                # v18.1: Wenn der Professional Funnel einen Bucket liefert, ist er die primaere Cluster-Quelle.
                 if "Radar-Bucket" in radar_df.columns:
                     _bucket_series = radar_df["Radar-Bucket"].fillna("").astype(str)
                     _valid_buckets = {
@@ -16930,11 +16930,11 @@ if workspace_mode:
                     else:
                         _radar_is_chart_style = str(st.session_state.get("radar_screening_style", "")) == "Charttechnik"
                         if _radar_is_chart_style:
-                            header_cols = st.columns([0.55, 0.75, 1.55, 1.35, 0.9, 1.15, 1.05, 1.8, 2.2, 1.6])
-                            headers = ["Auswahl", "Ticker", "Name", "Chart-Impuls", "Score", "Reife", "Prio", "Chart-Trigger", "Nächster Schritt", "Bremse"]
+                            header_cols = st.columns([0.55, 0.75, 1.45, 1.15, 0.85, 0.65, 1.25, 1.65, 2.15, 1.75])
+                            headers = ["Auswahl", "Ticker", "Name", "Chart-Impuls", "Radar", "Grade", "Bucket", "Chart-Trigger", "Nächster Schritt", "Gate/Bremse"]
                         else:
-                            header_cols = st.columns([0.6, 0.8, 1.7, 1.25, 1.0, 1.0, 1.05, 1.15, 1.25, 1.4, 2.4, 1.8])
-                            headers = ["Auswahl", "Ticker", "Name", "Typ", "Reife", "Risiko", "Radar-Prio", "Investment", "Einstieg", "Trigger", "Nächster Schritt", "Was bremst"]
+                            header_cols = st.columns([0.55, 0.75, 1.55, 0.9, 0.65, 1.35, 1.15, 1.0, 1.15, 2.2, 1.9, 1.7])
+                            headers = ["Auswahl", "Ticker", "Name", "Radar", "Grade", "Bucket", "Heute", "Risiko", "Trigger", "Nächster Schritt", "Gate/Bremse", "Subscores"]
                         for _col, _hdr in zip(header_cols, headers):
                             _col.markdown(f"**{_hdr}**")
 
@@ -16947,9 +16947,9 @@ if workspace_mode:
                                 st.session_state[checkbox_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
 
                             if _radar_is_chart_style:
-                                row_cols = st.columns([0.55, 0.75, 1.55, 1.35, 0.9, 1.15, 1.05, 1.8, 2.2, 1.6])
+                                row_cols = st.columns([0.55, 0.75, 1.45, 1.15, 0.85, 0.65, 1.25, 1.65, 2.15, 1.75])
                             else:
-                                row_cols = st.columns([0.6, 0.8, 1.7, 1.25, 1.0, 1.0, 1.05, 1.15, 1.25, 1.4, 2.4, 1.8])
+                                row_cols = st.columns([0.55, 0.75, 1.55, 0.9, 0.65, 1.35, 1.15, 1.0, 1.15, 2.2, 1.9, 1.7])
                             is_selected = row_cols[0].checkbox(
                                 "",
                                 value=bool(st.session_state.get(checkbox_key, False)),
@@ -16963,22 +16963,22 @@ if workspace_mode:
                             row_cols[2].write(_radar_render_name_v15238(_row))
                             if _radar_is_chart_style:
                                 row_cols[3].write(str(_row.get("Chart-Impuls", "-")))
-                                row_cols[4].write(radar_score_badge(_row.get("Chart-Score", "-")))
-                                row_cols[5].write(str(_row.get("Setup-Reife", "-")))
-                                row_cols[6].write(radar_priority_badge(_row.get("Radar-Priorität", _row.get("Watchlist-Priorität", "-"))))
+                                row_cols[4].write(radar_score_badge(_row.get("Radar-Score", _row.get("Chart-Score", "-"))))
+                                row_cols[5].write(str(_row.get("Radar-Grade", "-")))
+                                row_cols[6].write(str(_row.get("Radar-Bucket", _row.get("Radar-Gruppe", "-"))))
                                 row_cols[7].write(str(_row.get("Chart-Trigger", "-")))
                                 row_cols[8].write(str(_row.get("Nächster Schritt", "-")))
-                                row_cols[9].write(str(_row.get("Chart-Bremse", _row.get("Was bremst", "-"))))
+                                row_cols[9].write(str(_row.get("Radar-Gate", _row.get("Chart-Bremse", _row.get("Was bremst", "-")))))
                             else:
-                                row_cols[3].write(str(_row.get("Kandidatentyp", _row.get("Setup-Typ", "-"))))
-                                row_cols[4].write(str(_row.get("Setup-Reife", "-")))
-                                row_cols[5].write(str(_row.get("Radar-Risiko", "-")))
-                                row_cols[6].write(radar_priority_badge(_row.get("Radar-Priorität", _row.get("Watchlist-Priorität", "-"))))
-                                row_cols[7].write(radar_score_badge(_row.get("Investment-Attraktivität", "-")))
-                                row_cols[8].write(radar_score_badge(_row.get("Einstieg jetzt attraktiv?", "-")))
-                                row_cols[9].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
-                                row_cols[10].write(str(_row.get("Nächster Schritt", "-")))
-                                row_cols[11].write(str(_row.get("Was bremst", _row.get("Top Red Flag", "-"))))
+                                row_cols[3].write(radar_score_badge(_row.get("Radar-Score", _row.get("__style_sort", "-"))))
+                                row_cols[4].write(str(_row.get("Radar-Grade", "-")))
+                                row_cols[5].write(str(_row.get("Radar-Bucket", _row.get("Radar-Gruppe", "-"))))
+                                row_cols[6].write(str(_row.get("Heute-Relevanz", _row.get("Warum heute auffällig", "-"))))
+                                row_cols[7].write(str(_row.get("Radar-Risiko", "-")))
+                                row_cols[8].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
+                                row_cols[9].write(str(_row.get("Nächster Schritt", "-")))
+                                row_cols[10].write(str(_row.get("Radar-Gate", _row.get("Was bremst", _row.get("Top Red Flag", "-")))))
+                                row_cols[11].write(str(_row.get("Radar-Subscores", "-")))
 
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 

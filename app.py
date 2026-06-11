@@ -3719,7 +3719,7 @@ def radar_brake_reason(result):
     return "keine dominante Bremse"
 
 
-# ---------- v18.2: Professional Radar Funnel ----------
+# ---------- v18.3: Professional Radar Funnel mit Top-Chancen und Stil-Kalibrierung ----------
 def _radar_v18_clip(value, lo=0.0, hi=100.0):
     try:
         return max(lo, min(hi, float(value)))
@@ -3944,6 +3944,115 @@ def build_radar_entry_rr_package_v182(result):
     }
 
 
+
+
+def _radar_v183_style_fit(result, style_name="Ausgewogen"):
+    """Stil-Fit als separater Kalibrierungsbaustein.
+
+    Ziel: Leader-, Charttechnik- und Turnaround-Radar sollen nicht nur anders sortieren,
+    sondern Kandidaten aktiv nach ihrem Profil belohnen oder bremsen.
+    """
+    r = result or {}
+    style = str(style_name or "Ausgewogen").lower()
+    typ = radar_candidate_type(r)
+    risk = radar_risk_bucket(r)
+    trigger = _radar_v18_text(r, "trigger_status", "")
+    leadership = _radar_safe_num(r.get("leadership_score"), 50)
+    trend = _radar_safe_num(r.get("trend_quality_score"), 50)
+    base = _radar_safe_num(r.get("base_quality_score"), 50)
+    catalyst = _radar_safe_num(r.get("catalyst_score"), 50)
+    short_term = _radar_safe_num(r.get("short_term_score"), 50)
+    tb = _radar_safe_num(r.get("tb_score_100"), _radar_safe_num(r.get("tb_score"), 50))
+    chart_score = _radar_safe_num(radar_chart_impulse_pack(r).get("score"), 0)
+    confluence = _radar_nested_num(r, "trigger_confluence_pkg", "score", 50)
+    setup_type = str(r.get("setup_type", "") or "")
+
+    score = 50.0
+    label = "neutral"
+    reason = "Stil-Fit neutral."
+
+    if "leader" in style:
+        score = leadership * 0.40 + trend * 0.24 + confluence * 0.14 + base * 0.12 + tb * 0.10
+        if typ == "Leader":
+            score += 8
+        if typ in {"Bounce", "Hype / Event", "Riskant"}:
+            score -= 10
+        if risk == "hoch":
+            score -= 8
+        label = "Leader-Fit"
+        reason = f"Leader-Fit: Leadership {leadership:.0f}, Trend {trend:.0f}, Konfluenz {confluence:.0f}."
+    elif "chart" in style:
+        score = chart_score * 0.42 + confluence * 0.22 + tb * 0.18 + base * 0.10 + short_term * 0.08
+        if trigger in {"Aktiv", "Jetzt prüfbar", "Nahe dran", "Fast prüfbar"}:
+            score += 6
+        if risk == "hoch":
+            score -= 7
+        label = "Charttechnik-Fit"
+        reason = f"Chart-Fit: Impuls {chart_score:.0f}, Konfluenz {confluence:.0f}, Trigger {trigger or '-'}."
+    elif "turnaround" in style:
+        score = catalyst * 0.26 + short_term * 0.25 + chart_score * 0.20 + tb * 0.15 + confluence * 0.14
+        if typ == "Bounce" or any(x in setup_type.lower() for x in ["rebound", "reclaim", "turnaround", "pullback"]):
+            score += 7
+        if typ == "Leader" and leadership >= 72:
+            score -= 3
+        if risk == "hoch":
+            score -= 10
+        label = "Turnaround-Fit"
+        reason = f"Turnaround-Fit: Katalysator {catalyst:.0f}, Kurzfrist {short_term:.0f}, Chart {chart_score:.0f}."
+    else:
+        score = leadership * 0.22 + trend * 0.18 + chart_score * 0.20 + confluence * 0.18 + tb * 0.12 + base * 0.10
+        if typ in {"Hype / Event", "Riskant"}:
+            score -= 7
+        label = "Ausgewogen-Fit"
+        reason = f"Ausgewogen-Fit: Leadership {leadership:.0f}, Chart {chart_score:.0f}, Konfluenz {confluence:.0f}."
+
+    score = _radar_v18_clip(score)
+    if score >= 72:
+        fit_label = f"{label} stark"
+    elif score >= 58:
+        fit_label = f"{label} passend"
+    elif score >= 45:
+        fit_label = f"{label} mittel"
+    else:
+        fit_label = f"{label} schwach"
+    return {"score": round(score, 1), "label": fit_label, "reason": reason}
+
+
+def _radar_v183_top_chance_rank(decision):
+    """Zusatz-Ranking fuer die Box 'Beste heutige Chancen'."""
+    d = decision or {}
+    score = _radar_v18_clip(d.get("score", 0))
+    bucket = str(d.get("bucket", "") or "")
+    grade = str(d.get("grade", "") or "")
+    rank = score
+    if bucket == "Jetzt prüfbar":
+        rank += 14
+    elif bucket == "Nahe am Trigger":
+        rank += 8
+    elif bucket == "Starke Watchlist":
+        rank += 3
+    elif bucket.startswith("Pullback"):
+        rank -= 5
+    elif bucket.startswith("Warn"):
+        rank -= 22
+    if grade == "A":
+        rank += 5
+    elif grade == "B":
+        rank += 2
+    try:
+        crv = d.get("crv")
+        if crv is not None:
+            crv = float(crv)
+            if crv >= 2.0:
+                rank += 4
+            elif crv < 1.2:
+                rank -= 8
+    except Exception:
+        pass
+    if d.get("knockout"):
+        rank -= 30
+    return round(rank, 2)
+
 def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     """Professionalisiert den Radar als Funnel: Gates, Subscores, Bucket und Handlung.
 
@@ -3981,6 +4090,8 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     entry_rr_pkg = build_radar_entry_rr_package_v182(r)
     entry_position = entry_rr_pkg.get("entry_position") or entry_position
     entry_position_score = max(float(entry_position_score or 0), float(entry_rr_pkg.get("entry_score", 0) or 0))
+    style_fit_pkg = _radar_v183_style_fit(r, style_name)
+    style_fit_score = _radar_safe_num(style_fit_pkg.get("score"), 50)
 
     setup_score = _radar_v18_clip(setup_conf * 0.32 + confluence * 0.28 + chart_score * 0.24 + max(trend, base) * 0.16)
     timing_score = _radar_v18_clip(trading * 0.36 + tb * 0.25 + chart_score * 0.20 + entry_position_score * 0.19)
@@ -4021,17 +4132,21 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         penalty += 9; brakes.append("Kurs zu weit über sinnvoller Zone")
     if data_quality < 45:
         penalty += 8; brakes.append("Datenqualität niedrig")
+    if style_fit_score < 42:
+        penalty += 7; brakes.append("Stil-Fit schwach")
+    elif style_fit_score < 52:
+        penalty += 3
 
     style = style_name.lower()
     if "chart" in style:
-        raw_score = setup_score * 0.30 + timing_score * 0.30 + rr_score * 0.17 + leadership_score * 0.10 + regime_score * 0.08 + data_quality * 0.05
+        raw_score = setup_score * 0.27 + timing_score * 0.27 + rr_score * 0.16 + style_fit_score * 0.18 + regime_score * 0.07 + data_quality * 0.05
     elif "leader" in style:
-        raw_score = leadership_score * 0.30 + setup_score * 0.23 + timing_score * 0.20 + rr_score * 0.14 + regime_score * 0.08 + data_quality * 0.05
+        raw_score = leadership_score * 0.27 + setup_score * 0.21 + timing_score * 0.18 + rr_score * 0.13 + style_fit_score * 0.13 + regime_score * 0.05 + data_quality * 0.03
     elif "turnaround" in style:
         turnaround_component = _radar_v18_clip(catalyst * 0.24 + short_term * 0.26 + timing_score * 0.24 + chart_score * 0.26)
-        raw_score = turnaround_component * 0.30 + setup_score * 0.23 + rr_score * 0.20 + regime_score * 0.12 + data_quality * 0.05 + investment * 0.10
+        raw_score = turnaround_component * 0.26 + setup_score * 0.20 + rr_score * 0.18 + style_fit_score * 0.18 + regime_score * 0.10 + data_quality * 0.04 + investment * 0.04
     else:
-        raw_score = setup_score * 0.25 + timing_score * 0.23 + leadership_score * 0.20 + rr_score * 0.17 + regime_score * 0.10 + data_quality * 0.05
+        raw_score = setup_score * 0.23 + timing_score * 0.21 + leadership_score * 0.18 + rr_score * 0.16 + style_fit_score * 0.12 + regime_score * 0.07 + data_quality * 0.03
 
     # Positive gates: nur echte Reife/Nahe am Trigger bekommt Top-Status.
     if valid_setup:
@@ -4071,10 +4186,10 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     elif chase_risk or entry_position in {"zu weit gelaufen", "Zu weit über Entry"} or any("über" in b.lower() or "weit" in b.lower() for b in brakes):
         bucket = "Pullback bevorzugt / nicht hinterherlaufen"
         priority = "mittel" if score >= 62 else "niedrig"
-    elif score >= 74 and (maturity == "prüfbar" or trigger in {"Aktiv", "Jetzt prüfbar"}) and risk != "hoch":
+    elif score >= 74 and style_fit_score >= 54 and rr_score >= 48 and (maturity == "prüfbar" or trigger in {"Aktiv", "Jetzt prüfbar"}) and risk != "hoch":
         bucket = "Jetzt prüfbar"
         priority = "hoch"
-    elif score >= 62 and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"}):
+    elif score >= 62 and style_fit_score >= 48 and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"}):
         bucket = "Nahe am Trigger"
         priority = "hoch" if score >= 70 and risk == "ruhig" else "mittel"
     elif score >= 56 or investment >= 70 or leadership_score >= 68:
@@ -4122,6 +4237,8 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         why_parts.append(f"Chartimpuls {chart_score:.0f}/100")
     if entry_position in {"in/nahe Zone", "operativ attraktiv", "nahe Zone/Trigger", "In Entry-Zone", "Knapp oberhalb Entry", "Knapp unter Entry / Reclaim nötig"}:
         why_parts.append(entry_position)
+    if style_fit_score >= 68:
+        why_parts.append(style_fit_pkg.get("label", "Stil-Fit stark"))
     if entry_rr_pkg.get("crv") is not None and float(entry_rr_pkg.get("crv") or 0) >= 1.5:
         why_parts.append(f"CRV {float(entry_rr_pkg.get('crv')):.2f}")
     if not why_parts:
@@ -4129,7 +4246,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
 
     subscores_text = (
         f"Setup {setup_score:.0f} · Timing {timing_score:.0f} · Leadership {leadership_score:.0f} · "
-        f"RR {rr_score:.0f} · CRV {entry_rr_pkg.get('crv') if entry_rr_pkg.get('crv') is not None else 'n/a'} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
+        f"RR {rr_score:.0f} · Stil {style_fit_score:.0f} · CRV {entry_rr_pkg.get('crv') if entry_rr_pkg.get('crv') is not None else 'n/a'} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
     )
     return {
         "score": round(score, 1),
@@ -4144,6 +4261,10 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "rr_score": round(rr_score, 1),
         "regime_score": round(regime_score, 1),
         "data_quality_score": round(data_quality, 1),
+        "style_fit_score": round(style_fit_score, 1),
+        "style_fit_label": style_fit_pkg.get("label", "-"),
+        "style_fit_reason": style_fit_pkg.get("reason", "-"),
+        "top_chance_rank": _radar_v183_top_chance_rank({"score": score, "bucket": bucket, "grade": grade, "crv": entry_rr_pkg.get("crv"), "knockout": knockout}),
         "penalty": round(penalty, 1),
         "subscores_text": subscores_text,
         "why_today": "; ".join(why_parts[:4]),
@@ -16557,10 +16678,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">V1 in diesem Schritt</div>
-                <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Radar-Lauf → Top-Kandidaten heute</div>
+                <div class="premium-title">Radar Professional v18.3</div>
+                <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf ein erstes Start-Universum oder deine eigene Liste angewendet und als kompakte Kandidaten-Tabelle sortiert.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.3 priorisiert nach Top-Chancen, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz.
                 </div>
             </div>
             """,
@@ -16811,7 +16932,7 @@ if workspace_mode:
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
                 # v18.1: Professional-Funnel-Spalten fuer gespeicherte Snapshots nachfuellen.
-                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward"]:
+                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Top-Chance-Rang"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
                 if radar_result_map:
@@ -16828,6 +16949,8 @@ if workspace_mode:
                     radar_df["Entry-Abstand"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("entry_distance_text", _row.get("Entry-Abstand", "-")), axis=1)
                     radar_df["Entry-Qualität"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("entry_quality_text", _row.get("Entry-Qualität", "-")), axis=1)
                     radar_df["Risk/Reward"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("risk_reward_text", _row.get("Risk/Reward", "-")), axis=1)
+                    radar_df["Stil-Fit"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("style_fit_label", _row.get("Stil-Fit", "-")), axis=1)
+                    radar_df["Top-Chance-Rang"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("top_chance_rank", _row.get("Top-Chance-Rang", "-")), axis=1)
 
                 # v15.23.7: Firmenname im Radar robust nachfuellen.
                 # Bei gespeicherten Snapshots oder Ticker-Fallbacks stand sonst in `Name` oft nur erneut der Ticker.
@@ -16861,7 +16984,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v18.2: Professional Radar ist aktiv: Score, Grade, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
+                st.caption("v18.3: Professional Radar ist aktiv: Top-Chancen, stilkalibrierter Score, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -17138,6 +17261,42 @@ if workspace_mode:
                         st.session_state[f"radar_pick_{_ticker}"] = _ticker in radar_default_selected
 
                 selected_radar_tickers = []
+
+                # v18.3: Top-Chancen-Box als schnelle Entscheidungshilfe vor der Detailtabelle.
+                if radar_display_df is not None and not radar_display_df.empty:
+                    _top_box_df = radar_display_df.copy()
+                    if "Top-Chance-Rang" not in _top_box_df.columns:
+                        _top_box_df["Top-Chance-Rang"] = pd.to_numeric(_top_box_df.get("Radar-Score", 0), errors="coerce").fillna(0)
+                    _top_box_df["__top_rank"] = pd.to_numeric(_top_box_df["Top-Chance-Rang"], errors="coerce").fillna(0)
+                    _top_box_df = _top_box_df[~_top_box_df.get("Radar-Bucket", pd.Series([""] * len(_top_box_df))).astype(str).str.startswith("Warnsignale", na=False)]
+                    _top_box_df = _top_box_df.sort_values(["__top_rank", "Radar-Score"], ascending=[False, False]).head(3)
+                    if not _top_box_df.empty:
+                        st.markdown("### Beste heutige Chancen")
+                        st.caption("v18.3 priorisiert hier nicht nur den Score, sondern auch Bucket, Grade, CRV, Entry-Nähe und harte Gates.")
+                        _cols = st.columns(len(_top_box_df))
+                        for _idx, (_, _top_row) in enumerate(_top_box_df.iterrows()):
+                            _ticker = str(_top_row.get("Ticker", "-") or "-")
+                            _name = _radar_render_name_v15238(_top_row)
+                            _score = _top_row.get("Radar-Score", "-")
+                            _grade = str(_top_row.get("Radar-Grade", "-") or "-")
+                            _bucket = str(_top_row.get("Radar-Bucket", _top_row.get("Radar-Gruppe", "-")) or "-")
+                            _crv = str(_top_row.get("Radar-CRV", "n/a") or "n/a")
+                            _entry = str(_top_row.get("Entry-Abstand", "-") or "-")
+                            _why = shorten_text(str(_top_row.get("Heute-Relevanz", _top_row.get("Warum heute auffällig", "-")) or "-"), 95)
+                            _next = shorten_text(str(_top_row.get("Nächster Schritt", "-") or "-"), 105)
+                            _cols[_idx].markdown(
+                                f"""
+                                <div class="section-card" style="border-left:5px solid #22c55e; min-height:220px;">
+                                    <div class="premium-title">#{_idx + 1} · {_ticker}</div>
+                                    <div class="premium-value">{_name}</div>
+                                    <div class="premium-sub"><b>{_grade}</b> · Radar {radar_score_badge(_score)} · CRV {_crv}</div>
+                                    <div class="premium-sub"><b>{_bucket}</b><br>Entry: {_entry}</div>
+                                    <div class="premium-sub">{_why}</div>
+                                    <div class="premium-sub"><b>Nächster Schritt:</b> {_next}</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
 
                 st.markdown("### Radar-Auswahl")
                 st.caption("Werte direkt links in den Zeilen markieren. Standardmäßig ist zunächst nichts vorausgewählt; die Auswahl startet keine neue Radar-Analyse.")

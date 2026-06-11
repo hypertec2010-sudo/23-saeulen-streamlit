@@ -3719,7 +3719,7 @@ def radar_brake_reason(result):
     return "keine dominante Bremse"
 
 
-# ---------- v18.3: Professional Radar Funnel mit Top-Chancen und Stil-Kalibrierung ----------
+# ---------- v18.4: Professional Radar Funnel mit Top-Chancen und Stil-Kalibrierung ----------
 def _radar_v18_clip(value, lo=0.0, hi=100.0):
     try:
         return max(lo, min(hi, float(value)))
@@ -4046,6 +4046,8 @@ def _radar_v183_top_chance_rank(decision):
             if crv >= 2.0:
                 rank += 4
             elif crv < 1.2:
+                rank -= 18
+            elif crv < 1.5:
                 rank -= 8
     except Exception:
         pass
@@ -4177,6 +4179,17 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         gates.append("Nicht hinterherlaufen: Entry-Abstand + FOMO")
         brakes.insert(0, f"Nicht hinterherlaufen: {entry_rr_pkg.get('entry_distance_text')} über Entry und FOMO-Bremse")
         score = min(score, 61.0)
+
+    poor_crv_gate = bool(crv is not None and crv < 1.2)
+    weak_crv_gate = bool(crv is not None and 1.2 <= crv < 1.5)
+    if poor_crv_gate:
+        gates.append("CRV zu eng für aktiven Entry")
+        brakes.insert(0, f"CRV {crv:.2f} zu eng")
+        score = min(score, 64.0)
+    elif weak_crv_gate:
+        brakes.insert(0, f"CRV {crv:.2f} nur selektiv")
+        score = min(score, 70.0)
+
     if knockout:
         score = min(score, 49.0)
 
@@ -4186,10 +4199,10 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     elif chase_risk or entry_position in {"zu weit gelaufen", "Zu weit über Entry"} or any("über" in b.lower() or "weit" in b.lower() for b in brakes):
         bucket = "Pullback bevorzugt / nicht hinterherlaufen"
         priority = "mittel" if score >= 62 else "niedrig"
-    elif score >= 74 and style_fit_score >= 54 and rr_score >= 48 and (maturity == "prüfbar" or trigger in {"Aktiv", "Jetzt prüfbar"}) and risk != "hoch":
+    elif score >= 74 and style_fit_score >= 54 and rr_score >= 48 and not poor_crv_gate and (maturity == "prüfbar" or trigger in {"Aktiv", "Jetzt prüfbar"}) and risk != "hoch":
         bucket = "Jetzt prüfbar"
         priority = "hoch"
-    elif score >= 62 and style_fit_score >= 48 and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"}):
+    elif score >= 62 and style_fit_score >= 48 and not poor_crv_gate and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"}):
         bucket = "Nahe am Trigger"
         priority = "hoch" if score >= 70 and risk == "ruhig" else "mittel"
     elif score >= 56 or investment >= 70 or leadership_score >= 68:
@@ -4210,10 +4223,18 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     else:
         grade = "E"
 
-    if bucket == "Jetzt prüfbar":
+    if poor_crv_gate:
+        next_step = f"Noch nicht als aktiven Entry werten: CRV {crv:.2f} ist zu eng; besseren Entry, engeren Stop oder höhere TP-Bestätigung abwarten."
+    elif weak_crv_gate:
+        next_step = f"Nur selektiv prüfen: CRV {crv:.2f} ist knapp; Positionsgröße reduzieren oder bessere Zone abwarten."
+    elif bucket == "Jetzt prüfbar":
         next_step = f"Jetzt prüfbar: {entry_rr_pkg.get('entry_text')}; {entry_rr_pkg.get('rr_text')}"
     elif bucket == "Nahe am Trigger":
-        next_step = _radar_v18_text(r, "next_trigger", "") or "Reclaim/Bestätigung abwarten"
+        old_next_trigger = _radar_v18_text(r, "next_trigger", "")
+        if old_next_trigger.strip().lower() in {"jetzt prüfbar", "jetzt pruefbar", "aktiv"}:
+            next_step = "Nahe am Trigger: Bestätigung/Reclaim abwarten; noch nicht automatisch als Entry freigeben."
+        else:
+            next_step = old_next_trigger or "Reclaim/Bestätigung abwarten"
     elif bucket.startswith("Pullback"):
         next_step = f"Nicht hinterherlaufen; Pullback in/nahe {entry_rr_pkg.get('entry_zone', 'Entry-Zone')} oder neue Base abwarten"
     elif bucket.startswith("Warn"):
@@ -16678,10 +16699,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">Radar Professional v18.3</div>
+                <div class="premium-title">Radar Professional v18.4</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.3 priorisiert nach Top-Chancen, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.4 priorisiert nach Top-Chancen, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz.
                 </div>
             </div>
             """,
@@ -16984,7 +17005,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v18.3: Professional Radar ist aktiv: Top-Chancen, stilkalibrierter Score, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
+                st.caption("v18.4: Professional Radar ist aktiv: Top-Chancen, stilkalibrierter Score, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -17262,7 +17283,7 @@ if workspace_mode:
 
                 selected_radar_tickers = []
 
-                # v18.3: Top-Chancen-Box als schnelle Entscheidungshilfe vor der Detailtabelle.
+                # v18.4: Top-Chancen-Box als schnelle Entscheidungshilfe vor der Detailtabelle.
                 if radar_display_df is not None and not radar_display_df.empty:
                     _top_box_df = radar_display_df.copy()
                     if "Top-Chance-Rang" not in _top_box_df.columns:
@@ -17272,7 +17293,7 @@ if workspace_mode:
                     _top_box_df = _top_box_df.sort_values(["__top_rank", "Radar-Score"], ascending=[False, False]).head(3)
                     if not _top_box_df.empty:
                         st.markdown("### Beste heutige Chancen")
-                        st.caption("v18.3 priorisiert hier nicht nur den Score, sondern auch Bucket, Grade, CRV, Entry-Nähe und harte Gates.")
+                        st.caption("v18.4 priorisiert hier nicht nur den Score, sondern auch Bucket, Grade, CRV, Entry-Nähe und harte Gates.")
                         _cols = st.columns(len(_top_box_df))
                         for _idx, (_, _top_row) in enumerate(_top_box_df.iterrows()):
                             _ticker = str(_top_row.get("Ticker", "-") or "-")

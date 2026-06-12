@@ -4212,66 +4212,101 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         bucket = "Später beobachten"
         priority = "niedrig" if score < 45 else "mittel"
 
-    # v18.8: Grade komplett vom operativen Heute-/Entry-Score entkoppeln.
-    # Der Radar-Score bleibt streng fuer Bucket und Top-Chancen. Die Grade-Note
-    # bewertet die Grundqualitaet des Kandidaten: Setup, Timing, Leadership,
-    # Stil-Fit und Chartimpuls. Dadurch koennen starke Leader/Watchlist-Werte
-    # B oder A bekommen, auch wenn Entry/CRV noch nicht fuer eine heutige Chance reichen.
+    # v18.9: Grade als echte Qualitätsnote kalibrieren.
+    # Wichtig: Grade darf NICHT der strenge operative Entry-/CRV-Filter sein.
+    # Top-Chancen und Bucket bleiben streng, aber ein starker Leader/Chartwert
+    # kann A/B sein, auch wenn Entry oder CRV aktuell noch nicht handelbar sind.
     try:
+        _setup_q = float(setup_score or 0)
+        _timing_q = float(timing_score or 0)
+        _leader_q = float(leadership_score or 0)
+        _style_q = float(style_fit_score or 0)
+        _chart_q = float(chart_score or 0)
+        _regime_q = float(regime_score or 50)
+        _data_q = float(data_quality or 70)
+
+        # Qualitätsmix: bewusst weniger CRV/Entry, mehr Grundqualität.
         grade_quality_score = (
-            float(setup_score or 0) * 0.27
-            + float(timing_score or 0) * 0.20
-            + float(leadership_score or 0) * 0.24
-            + float(style_fit_score or 0) * 0.17
-            + float(chart_score or 0) * 0.12
+            _setup_q * 0.26
+            + _timing_q * 0.18
+            + _leader_q * 0.25
+            + _style_q * 0.17
+            + _chart_q * 0.09
+            + _regime_q * 0.03
+            + _data_q * 0.02
         )
+
+        # Bonus für klar starke Profile, damit die Skala A/B praktisch erreichbar ist.
+        strong_core_count = sum([
+            _setup_q >= 70,
+            _timing_q >= 70,
+            _leader_q >= 72,
+            _style_q >= 62,
+            _chart_q >= 65,
+        ])
+        if strong_core_count >= 4:
+            grade_quality_score += 6.0
+        elif strong_core_count >= 3:
+            grade_quality_score += 4.0
+        elif strong_core_count >= 2:
+            grade_quality_score += 2.0
+
         if valid_setup:
-            grade_quality_score += 3.0
-        if crv is not None and crv >= 2.0:
-            grade_quality_score += 3.0
-        elif crv is not None and crv >= 1.5:
-            grade_quality_score += 1.5
-        elif crv is not None and crv < 1.2:
-            grade_quality_score -= 4.0
+            grade_quality_score += 2.0
+        if typ == "Leader" and _leader_q >= 74:
+            grade_quality_score += 2.0
+        if "chart" in str(style_name or "").lower() and _chart_q >= 68:
+            grade_quality_score += 2.0
+
+        # Operative Bremsen nur mild in Grade einpreisen. Sie steuern Bucket/Top-Chance separat.
         if risk == "hoch":
-            grade_quality_score -= 5.0
+            grade_quality_score -= 3.0
         elif risk == "erhöht":
-            grade_quality_score -= 2.0
+            grade_quality_score -= 1.0
         if chase_risk:
-            grade_quality_score -= 5.0
+            grade_quality_score -= 2.0
         if data_quality < 45:
-            grade_quality_score -= 5.0
-        # Nicht die gesamte Penalty doppelt zaehlen, sonst landet fast alles bei C.
-        grade_quality_score -= min(float(penalty or 0), 12.0) * 0.25
+            grade_quality_score -= 3.0
+        if style_fit_score < 42:
+            grade_quality_score -= 2.0
+        if distribution > accumulation + 22:
+            grade_quality_score -= 3.0
+
+        # CRV beeinflusst Top-Chancen hart, Grade aber nur leicht.
+        if crv is not None and crv >= 2.0:
+            grade_quality_score += 2.0
+        elif crv is not None and crv >= 1.5:
+            grade_quality_score += 1.0
+        elif crv is not None and crv < 1.2:
+            grade_quality_score -= 1.0
+
         grade_quality_score = _radar_v18_clip(grade_quality_score)
     except Exception:
         grade_quality_score = float(score)
 
+    # v18.9: realistische Notenskala. A/B sollen bei starken Kandidaten erreichbar sein.
     if knockout:
-        grade = "D" if grade_quality_score >= 55 else "E"
-    elif grade_quality_score >= 78:
+        grade = "D" if grade_quality_score >= 58 else "E"
+    elif grade_quality_score >= 74:
         grade = "A"
-    elif grade_quality_score >= 66:
+    elif grade_quality_score >= 63:
         grade = "B"
-    elif grade_quality_score >= 52:
+    elif grade_quality_score >= 50:
         grade = "C"
-    elif grade_quality_score >= 40:
+    elif grade_quality_score >= 38:
         grade = "D"
     else:
         grade = "E"
 
-    # Harte Deckel nur noch fuer wirklich operative No-Go-Faelle.
-    # CRV-n/a deckelt die Grade bewusst NICHT; sonst werden starke Watchlist-Werte
-    # ohne saubere Zone pauschal auf C gedrueckt. Top-Chancen bleiben separat streng.
-    if poor_crv_gate and grade in {"A", "B"}:
-        grade = "C"
-    elif weak_crv_gate and grade == "A":
+    # Harte Grade-Deckel nur fuer echte No-Go-Faelle, nicht fuer normale Entry-/CRV-Probleme.
+    # CRV < 1.2 oder CRV n/a darf Top-Chancen blockieren, aber nicht pauschal die Qualitätsnote.
+    if risk == "hoch" and (not valid_setup) and grade == "A":
         grade = "B"
-    if risk == "hoch" and (not valid_setup) and grade in {"A", "B"}:
+    if chase_risk and grade == "A":
+        grade = "B"
+    if data_quality < 30 and grade in {"A", "B"}:
         grade = "C"
-    if chase_risk and grade in {"A", "B"}:
-        grade = "C"
-    if data_quality < 35 and grade in {"A", "B"}:
+    if typ in {"Hype / Event", "Riskant"} and risk in {"hoch", "erhöht"} and grade in {"A", "B"}:
         grade = "C"
 
     if poor_crv_gate:
@@ -16754,7 +16789,7 @@ if workspace_mode:
                 <div class="premium-title">Radar Professional v18.8</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.8 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; Grade ist als Qualitätsnote entkoppelt, Top-Chancen bleiben streng gefiltert.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.9 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; Grade ist als Qualitätsnote realistisch kalibriert, Top-Chancen bleiben streng gefiltert.
                 </div>
             </div>
             """,
@@ -17057,7 +17092,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v18.8: Professional Radar ist aktiv: Grade ist als Qualitätsnote entkoppelt; Top-Chancen bleiben streng gefiltert; Score, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
+                st.caption("v18.9: Professional Radar ist aktiv: Grade ist als Qualitätsnote realistisch kalibriert; Top-Chancen bleiben streng gefiltert; Score, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:

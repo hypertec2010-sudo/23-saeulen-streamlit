@@ -4212,16 +4212,60 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         bucket = "Später beobachten"
         priority = "niedrig" if score < 45 else "mittel"
 
-    if score >= 78 and not knockout:
+    # v18.7: Grade-Kalibrierung getrennt vom reinen Entry-/Top-Chancen-Gate.
+    # Der Score bleibt streng fuer Sortierung/Bucket, aber die Note soll auch starke
+    # Watchlist-, Leader- oder Charttechnik-Kandidaten sichtbar machen. Harte Gates
+    # deckeln die Note weiterhin, damit schwache CRV-/Risiko-Faelle nicht als A/B wirken.
+    grade_base_score = float(score)
+    try:
+        strong_blocks = 0
+        for _block_score in [setup_score, timing_score, leadership_score, style_fit_score]:
+            if float(_block_score or 0) >= 70:
+                strong_blocks += 1
+        if strong_blocks >= 3:
+            grade_base_score += 6
+        elif strong_blocks == 2:
+            grade_base_score += 4
+        elif strong_blocks == 1:
+            grade_base_score += 2
+        if chart_score >= 72:
+            grade_base_score += 2
+        if valid_setup:
+            grade_base_score += 2
+        if crv is not None and crv >= 1.8:
+            grade_base_score += 3
+        elif crv is not None and crv >= 1.5:
+            grade_base_score += 1.5
+        if data_quality < 45:
+            grade_base_score -= 4
+    except Exception:
+        grade_base_score = float(score)
+
+    if knockout:
+        grade = "D" if score >= 42 else "E"
+    elif grade_base_score >= 76:
         grade = "A"
-    elif score >= 68 and not knockout:
+    elif grade_base_score >= 64:
         grade = "B"
-    elif score >= 55:
+    elif grade_base_score >= 52:
         grade = "C"
-    elif score >= 42:
+    elif grade_base_score >= 40:
         grade = "D"
     else:
         grade = "E"
+
+    # Harte Deckel: Eine gute Grundqualitaet darf sichtbar bleiben, aber schlechte
+    # operative Bedingungen duerfen nicht wie ein sofort hochwertiges Setup aussehen.
+    if poor_crv_gate and grade in {"A", "B"}:
+        grade = "C"
+    elif weak_crv_gate and grade == "A":
+        grade = "B"
+    if risk == "hoch" and grade in {"A", "B"}:
+        grade = "C"
+    if chase_risk and grade in {"A", "B"}:
+        grade = "C"
+    if data_quality < 35 and grade in {"A", "B"}:
+        grade = "C"
 
     if poor_crv_gate:
         next_step = f"Noch nicht als aktiven Entry werten: CRV {crv:.2f} ist zu eng; besseren Entry, engeren Stop oder höhere TP-Bestätigung abwarten."
@@ -16699,10 +16743,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">Radar Professional v18.4</div>
+                <div class="premium-title">Radar Professional v18.7</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.5 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; Top-Chancen werden streng gefiltert.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.7 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; Grade ist neu kalibriert, Top-Chancen bleiben streng gefiltert.
                 </div>
             </div>
             """,
@@ -17005,7 +17049,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v18.5: Professional Radar ist aktiv: Top-Chancen werden jetzt streng gefiltert; Score, Grade, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
+                st.caption("v18.7: Professional Radar ist aktiv: Grade ist neu kalibriert; Top-Chancen bleiben streng gefiltert; Score, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:

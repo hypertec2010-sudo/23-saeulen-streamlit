@@ -17381,13 +17381,17 @@ if workspace_mode:
                         for _col, _hdr in zip(header_cols, headers):
                             _col.markdown(f"**{_hdr}**")
 
-                        for _, _row in section_df.iterrows():
+                        for _row_idx, _row in section_df.reset_index(drop=True).iterrows():
                             _ticker = str(_row.get("Ticker", "")).strip()
                             if not _ticker:
                                 continue
-                            checkbox_key = f"radar_pick_{_ticker}"
-                            if checkbox_key not in st.session_state:
-                                st.session_state[checkbox_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
+                            # v18.6: Streamlit requires widget keys to be unique within one render.
+                            # The same ticker can appear in multiple Radar sections (e.g. Watchlist and Top boxes),
+                            # so the checkbox widget key must include the section and row position.
+                            checkbox_state_key = f"radar_pick_{_ticker}"
+                            checkbox_widget_key = f"radar_pick_{_ticker}_{abs(hash(str(section_title))) % 100000}_{_row_idx}"
+                            if checkbox_state_key not in st.session_state:
+                                st.session_state[checkbox_state_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
 
                             if _radar_is_chart_style:
                                 row_cols = st.columns([0.55, 0.75, 1.45, 1.15, 0.85, 0.65, 1.25, 1.65, 2.15, 1.75])
@@ -17395,11 +17399,12 @@ if workspace_mode:
                                 row_cols = st.columns([0.55, 0.75, 1.45, 0.85, 0.55, 1.25, 0.8, 1.05, 1.25, 1.0, 2.25, 1.85, 1.65])
                             is_selected = row_cols[0].checkbox(
                                 "",
-                                value=bool(st.session_state.get(checkbox_key, False)),
-                                key=checkbox_key,
+                                value=bool(st.session_state.get(checkbox_state_key, False)),
+                                key=checkbox_widget_key,
                                 label_visibility="collapsed"
                             )
-                            if is_selected:
+                            st.session_state[checkbox_state_key] = bool(is_selected)
+                            if is_selected and _ticker not in selected_radar_tickers:
                                 selected_radar_tickers.append(_ticker)
 
                             row_cols[1].write(_ticker)

@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v19.0",
+        "Export_Version": "v19.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2656,7 +2656,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v19.0"
+APP_VERSION = "v19.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7943,6 +7943,98 @@ def _wave_v190_swing_points(df, high_col="High", low_col="Low", close_col="Close
         return []
 
 
+
+def _wave_v191_sequence_text(sequence):
+    seq = str(sequence or "").strip().upper()
+    mapping = {
+        "HH/HL": "höhere Hochs und höhere Tiefs",
+        "HH": "höheres Hoch, aber noch kein bestätigtes höheres Tief",
+        "HL": "höheres Tief, aber noch kein neues höheres Hoch",
+        "LH/LL": "tiefere Hochs und tiefere Tiefs",
+        "LH": "tieferes Hoch",
+        "LL": "tieferes Tief",
+    }
+    return mapping.get(seq, "gemischte Hoch-/Tief-Struktur")
+
+
+def _wave_v191_readable_status(label, phase, quality_label, sequence):
+    lbl = str(label or "").lower()
+    q = str(quality_label or "").lower()
+    if lbl in {"impulsfortsetzung", "welle-2-pullback"}:
+        if q in {"hoch", "gut"}:
+            return "Konstruktiv und nahe an einer Bestätigung"
+        return "Konstruktiv, aber noch nicht klar genug bestätigt"
+    if lbl == "frueher-reclaim":
+        return "Frühe Stabilisierung, Bestätigung fehlt noch"
+    if lbl == "abwaertsstruktur":
+        return "Defensiv: die Wellenstruktur ist angeschlagen"
+    if "gemischt" in lbl or "gemischt" in str(phase or "").lower():
+        if str(sequence or "").upper() == "HH/HL":
+            return "Konstruktiv, aber noch nicht eindeutig bestätigt"
+        return "Seitwärts/gemischt: nicht aus der Wellenstruktur allein handeln"
+    return "Nicht eindeutig genug für ein eigenes Signal"
+
+
+def _wave_v191_strip_price_text(text):
+    txt = str(text or "").strip()
+    if not txt or txt.lower() in {"n/a", "nan", "none", "-"}:
+        return "n/a"
+    return txt
+
+
+def _wave_v191_build_readable_fields(pkg):
+    """Macht aus technischen Wellenfeldern eine verständliche UI-Lesart."""
+    pkg = pkg or {}
+    phase = str(pkg.get("wave_phase") or pkg.get("phase") or "-")
+    label = str(pkg.get("wave_label") or pkg.get("label") or "")
+    sequence = str(pkg.get("wave_sequence") or "gemischt")
+    quality = str(pkg.get("wave_quality_label") or "-")
+    trigger = _wave_v191_strip_price_text(pkg.get("wave_trigger") or pkg.get("confirmation_text") or "-")
+    invalidation = _wave_v191_strip_price_text(pkg.get("wave_invalidation") or "-")
+    target = _wave_v191_strip_price_text(pkg.get("wave_target_zone") or "-")
+    seq_text = _wave_v191_sequence_text(sequence)
+    status = _wave_v191_readable_status(label, phase, quality, sequence)
+
+    if "HH/HL" in sequence.upper() or seq_text.startswith("höhere"):
+        meaning = (
+            f"Der Kurs zeigt {seq_text}. Das spricht grundsätzlich für eine intakte Aufwärtsstruktur. "
+            f"Die Qualität ist {quality}; deshalb sollte der Trigger bestätigt werden, bevor daraus ein aktiver Einstieg wird."
+        )
+    elif "LH/LL" in sequence.upper() or "tiefere" in seq_text:
+        meaning = (
+            f"Der Kurs zeigt {seq_text}. Das bremst Long-Setups; erst ein Reclaim und neue höhere Tiefs würden die Lage verbessern."
+        )
+    else:
+        meaning = (
+            f"Die Swing-Folge ist gemischt. Fibonacci-Zonen, Entry-Zone, Volumen und klassische Trigger bleiben wichtiger als die Wellenstruktur allein."
+        )
+
+    if trigger and trigger != "n/a":
+        action = f"Aktiv wird die Struktur erst bei: {trigger}."
+    else:
+        action = "Aktiv wird die Struktur erst bei einem klaren Reclaim oder Ausbruch mit Bestätigung."
+
+    if invalidation and invalidation != "n/a":
+        risk = f"Hinfällig bzw. angeschlagen wird sie bei: {invalidation}."
+    else:
+        risk = "Hinfällig wird sie bei Bruch der nächsten relevanten Support-/Entry-Zone."
+
+    if target and target != "n/a":
+        target_text = f"Erste Zielzone bei Bestätigung: {target}."
+    else:
+        target_text = "Eine belastbare Zielzone ist aus der Wellenstruktur noch nicht ableitbar."
+
+    compact = f"{status}. {meaning} {action} {risk} {target_text}"
+    return {
+        "wave_readable_status": status,
+        "wave_readable_sequence": seq_text,
+        "wave_readable_meaning": meaning,
+        "wave_readable_action": action,
+        "wave_readable_risk": risk,
+        "wave_readable_target": target_text,
+        "wave_readable_compact": compact,
+    }
+
 def build_wave_structure_context_v190(chart_df=None, result=None):
     """v19.0: Robuste Swing-/Wellenstruktur-Analyse.
 
@@ -7979,6 +8071,7 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
                 "wave_invalidation": base.get("zones", [{}])[-1].get("Zone/Wert", "n/a") if base.get("zones") else "n/a",
                 "wave_target_zone": "n/a",
             })
+            base.update(_wave_v191_build_readable_fields(base))
             return base
 
         highs = [p for p in swings if p["type"] == "H"]
@@ -8129,9 +8222,10 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
         base["confirmation_text"] = wave_conf_text
         base["confirmation_action"] = wave_conf_action
         base["confirmation_drivers"] = drivers[:5]
+        base.update(_wave_v191_build_readable_fields(base))
         return base
     except Exception as exc:
-        base["summary"] = f"Wellenanalyse v19.0 nicht belastbar: {exc}"
+        base["summary"] = f"Wellenanalyse v19.1 nicht belastbar: {exc}"
         base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
         return base
 
@@ -17036,7 +17130,7 @@ if workspace_mode:
                 <div class="premium-title">Radar Professional v18.8</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v19.0 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist eine robuste Swing-/Wellenstruktur-Analyse aktiv.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v19.1 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist eine verständlichere Swing-/Wellenstruktur-Analyse aktiv.
                 </div>
             </div>
             """,
@@ -17339,7 +17433,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v19.0: Professional Radar plus robuste Swing-/Wellenstruktur-Analyse ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Wellenphase, Trigger, Invalidierung und Zielzone ergänzen die Charttechnik.")
+                st.caption("v19.1: Professional Radar plus verständlichere Swing-/Wellenstruktur-Analyse ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Wellenphase, Trigger, Invalidierung und Zielzone ergänzen die Charttechnik.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -20582,7 +20676,7 @@ if result is not None:
                 result["wave_structure_label"] = wave_structure_pkg.get("label")
                 result["wave_structure_summary"] = wave_structure_pkg.get("summary")
                 result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellenanalyse v19.0 / Swing-Struktur**")
+            st.markdown("**Wellenanalyse v19.1 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -20597,7 +20691,7 @@ if result is not None:
                 <div class="section-card" style="padding:0.85rem 0.95rem;margin:0.55rem 0 0.85rem 0;">
                     <div class="premium-title">{html.escape(str(wave_structure_pkg.get('phase', 'Nicht belastbar')))}</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(wave_structure_pkg.get('label', 'unklar')).capitalize())}</div>
-                    <div class="premium-sub" style="margin-top:4px;"><b>Lesart:</b> {html.escape(str(wave_structure_pkg.get('plain_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:4px;"><b>Lesart:</b> {html.escape(str(wave_structure_pkg.get('wave_readable_compact', wave_structure_pkg.get('plain_hint', '-'))))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Triggerprüfung:</b> {html.escape(_wave_conf_label.capitalize())}{' · ' + html.escape(str(_wave_conf_score)) + '/100' if str(_wave_conf_score).strip() not in {'', '0'} and _wave_conf_label not in {'noch nicht erreicht', 'kein Trigger', 'nicht belastbar'} else ''}</div>
                     <div class="premium-sub">{html.escape(_wave_conf_text)}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Jetzt tun:</b> {html.escape(_wave_conf_action)}</div>
@@ -20607,27 +20701,29 @@ if result is not None:
                 """,
                 unsafe_allow_html=True,
             )
-            _wave_phase = str(wave_structure_pkg.get("wave_phase", wave_structure_pkg.get("phase", "-")))
-            _wave_sequence = str(wave_structure_pkg.get("wave_sequence", "-"))
-            _wave_trigger = str(wave_structure_pkg.get("wave_trigger", "-"))
-            _wave_invalid = str(wave_structure_pkg.get("wave_invalidation", "-"))
-            _wave_target = str(wave_structure_pkg.get("wave_target_zone", "-"))
+            _wave_status = str(wave_structure_pkg.get("wave_readable_status", wave_structure_pkg.get("wave_phase", wave_structure_pkg.get("phase", "-"))))
+            _wave_meaning = str(wave_structure_pkg.get("wave_readable_meaning", wave_structure_pkg.get("summary", "-")))
+            _wave_action_readable = str(wave_structure_pkg.get("wave_readable_action", wave_structure_pkg.get("wave_trigger", "-")))
+            _wave_risk_readable = str(wave_structure_pkg.get("wave_readable_risk", wave_structure_pkg.get("wave_invalidation", "-")))
+            _wave_target_readable = str(wave_structure_pkg.get("wave_readable_target", wave_structure_pkg.get("wave_target_zone", "-")))
+            _wave_sequence_readable = str(wave_structure_pkg.get("wave_readable_sequence", wave_structure_pkg.get("wave_sequence", "-")))
             _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
             st.markdown(f"""
             <div class="premium-card" style="margin-top:10px;">
-                <div class="premium-title">Wellenanalyse v19.0</div>
-                <div class="premium-sub"><b>Phase:</b> {html.escape(_wave_phase)}</div>
-                <div class="premium-sub"><b>Sequenz:</b> {html.escape(_wave_sequence)} · <b>Qualitaet:</b> {html.escape(_wave_quality)}</div>
-                <div class="premium-sub"><b>Trigger:</b> {html.escape(_wave_trigger)}</div>
-                <div class="premium-sub"><b>Invalidierung:</b> {html.escape(_wave_invalid)}</div>
-                <div class="premium-sub"><b>Zielzone:</b> {html.escape(_wave_target)}</div>
+                <div class="premium-title">Wellenanalyse v19.1</div>
+                <div class="premium-value" style="font-size:1.02rem;">{html.escape(_wave_status)}</div>
+                <div class="premium-sub" style="margin-top:6px;"><b>Was bedeutet das?</b> {html.escape(_wave_meaning)}</div>
+                <div class="premium-sub" style="margin-top:6px;"><b>Struktur:</b> {html.escape(_wave_sequence_readable)} · <b>Qualität:</b> {html.escape(_wave_quality)}</div>
+                <div class="premium-sub" style="margin-top:6px;"><b>Wann aktiv?</b> {html.escape(_wave_action_readable)}</div>
+                <div class="premium-sub"><b>Wann hinfällig?</b> {html.escape(_wave_risk_readable)}</div>
+                <div class="premium-sub"><b>Ziel bei Bestätigung:</b> {html.escape(_wave_target_readable)}</div>
             </div>
             """, unsafe_allow_html=True)
             _wave_zones = wave_structure_pkg.get("zones", []) if isinstance(wave_structure_pkg, dict) else []
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("v19.0: Regelbasierte Swing-/Wellenstruktur. Keine dogmatische Elliott-Zaehllogik; sie bewertet HH/HL/LH/LL, Pullback-Tiefe, Trigger, Invalidierung und Extension-Zielzone.")
+                st.caption("v19.1: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

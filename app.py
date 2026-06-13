@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v18.1",
+        "Export_Version": "v19.0",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2464,6 +2464,12 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Struktur_Trigger_Score": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_score"),
         "Struktur_Trigger_Text": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_text"),
         "Struktur_Trigger_Handlung": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_action"),
+        "Wellenanalyse_Phase": ((result or {}).get("wave_structure_pkg") or {}).get("wave_phase"),
+        "Wellenanalyse_Sequenz": ((result or {}).get("wave_structure_pkg") or {}).get("wave_sequence"),
+        "Wellenanalyse_Trigger": ((result or {}).get("wave_structure_pkg") or {}).get("wave_trigger"),
+        "Wellenanalyse_Invalidierung": ((result or {}).get("wave_structure_pkg") or {}).get("wave_invalidation"),
+        "Wellenanalyse_Zielzone": ((result or {}).get("wave_structure_pkg") or {}).get("wave_target_zone"),
+        "Wellenanalyse_Qualitaet": ((result or {}).get("wave_structure_pkg") or {}).get("wave_quality_label"),
         "Fibonacci_Label": ((result or {}).get("fibonacci_context_pkg") or {}).get("label"),
         "Fibonacci_Phase": ((result or {}).get("fibonacci_context_pkg") or {}).get("phase"),
         "Fibonacci_Zusammenfassung": ((result or {}).get("fibonacci_context_pkg") or {}).get("summary"),
@@ -2650,7 +2656,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.13.2"
+APP_VERSION = "v19.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -7887,6 +7893,247 @@ def build_wave_structure_context_v1532(chart_df=None, result=None):
         out["summary"] = f"Strukturkontext nicht belastbar: {exc}"
         return out
 
+
+
+def _wave_v190_fmt_num(value, digits=2):
+    try:
+        if value is None or pd.isna(value):
+            return "n/a"
+        return f"{float(value):.{digits}f}"
+    except Exception:
+        return "n/a"
+
+
+def _wave_v190_swing_points(df, high_col="High", low_col="Low", close_col="Close", window=3, max_points=9):
+    """Findet robuste lokale Swing-Highs/-Lows ohne externe Abhaengigkeiten."""
+    points = []
+    try:
+        highs = pd.to_numeric(df[high_col], errors="coerce") if high_col in df.columns else pd.to_numeric(df[close_col], errors="coerce")
+        lows = pd.to_numeric(df[low_col], errors="coerce") if low_col in df.columns else pd.to_numeric(df[close_col], errors="coerce")
+        closes = pd.to_numeric(df[close_col], errors="coerce")
+        n = len(closes)
+        if n < window * 2 + 8:
+            return []
+        start = max(window, n - 180)
+        for i in range(start, n - window):
+            h = highs.iloc[i]
+            l = lows.iloc[i]
+            if pd.isna(h) or pd.isna(l):
+                continue
+            h_slice = highs.iloc[i-window:i+window+1]
+            l_slice = lows.iloc[i-window:i+window+1]
+            if h >= h_slice.max() and h > h_slice.drop(highs.index[i], errors="ignore").max():
+                points.append({"idx": int(i), "type": "H", "price": float(h)})
+            if l <= l_slice.min() and l < l_slice.drop(lows.index[i], errors="ignore").min():
+                points.append({"idx": int(i), "type": "L", "price": float(l)})
+        points = sorted(points, key=lambda x: x["idx"])
+        cleaned = []
+        for p in points:
+            if not cleaned:
+                cleaned.append(p)
+                continue
+            last = cleaned[-1]
+            if p["type"] == last["type"]:
+                if (p["type"] == "H" and p["price"] >= last["price"]) or (p["type"] == "L" and p["price"] <= last["price"]):
+                    cleaned[-1] = p
+            else:
+                cleaned.append(p)
+        return cleaned[-max_points:]
+    except Exception:
+        return []
+
+
+def build_wave_structure_context_v190(chart_df=None, result=None):
+    """v19.0: Robuste Swing-/Wellenstruktur-Analyse.
+
+    Keine dogmatische Elliott-Wellen-Zaehlung. Die Funktion arbeitet regelbasiert:
+    Swing High/Low, HH/HL/LH/LL-Sequenz, Impuls/Korrektur, Pullback-Tiefe,
+    Trigger, Invalidierung und moegliche Extension-Zielzone.
+    """
+    base = build_wave_structure_context_v1532(chart_df, result)
+    result = result or {}
+    try:
+        df = chart_df.copy() if chart_df is not None else None
+        if df is None or df.empty:
+            return base
+        close_col = "Close" if "Close" in df.columns else "Adj Close" if "Adj Close" in df.columns else None
+        if close_col is None:
+            return base
+        high_col = "High" if "High" in df.columns else close_col
+        low_col = "Low" if "Low" in df.columns else close_col
+        close = pd.to_numeric(df[close_col], errors="coerce").dropna()
+        high = pd.to_numeric(df[high_col], errors="coerce").dropna()
+        low = pd.to_numeric(df[low_col], errors="coerce").dropna()
+        if len(close) < 60:
+            return base
+        price = float(close.iloc[-1])
+        ma20 = float(close.rolling(20).mean().iloc[-1]) if len(close) >= 20 else np.nan
+        ma50 = float(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else np.nan
+        swings = _wave_v190_swing_points(df, high_col=high_col, low_col=low_col, close_col=close_col, window=3, max_points=10)
+        if len(swings) < 4:
+            base.update({
+                "wave_phase": "Nicht belastbar",
+                "wave_sequence": "zu wenige Swing-Punkte",
+                "wave_quality_label": "n/a",
+                "wave_trigger": base.get("confirmation_text", "klassische Trigger nutzen"),
+                "wave_invalidation": base.get("zones", [{}])[-1].get("Zone/Wert", "n/a") if base.get("zones") else "n/a",
+                "wave_target_zone": "n/a",
+            })
+            return base
+
+        highs = [p for p in swings if p["type"] == "H"]
+        lows = [p for p in swings if p["type"] == "L"]
+        last_high = highs[-1] if highs else None
+        prev_high = highs[-2] if len(highs) >= 2 else None
+        last_low = lows[-1] if lows else None
+        prev_low = lows[-2] if len(lows) >= 2 else None
+        hh = bool(last_high and prev_high and last_high["price"] > prev_high["price"])
+        hl = bool(last_low and prev_low and last_low["price"] > prev_low["price"])
+        lh = bool(last_high and prev_high and last_high["price"] < prev_high["price"])
+        ll = bool(last_low and prev_low and last_low["price"] < prev_low["price"])
+        seq_parts = []
+        if hh: seq_parts.append("HH")
+        elif lh: seq_parts.append("LH")
+        if hl: seq_parts.append("HL")
+        elif ll: seq_parts.append("LL")
+        sequence = "/".join(seq_parts) if seq_parts else "gemischt"
+
+        # letzten sinnvollen Impuls bestimmen: meist letzter Low->High oder High->Low
+        swing_low = last_low["price"] if last_low else float(low.tail(60).min())
+        swing_high = last_high["price"] if last_high else float(high.tail(60).max())
+        if last_low and last_high and last_low["idx"] > last_high["idx"] and prev_low and last_high:
+            impulse_low = prev_low["price"]
+            impulse_high = last_high["price"]
+        else:
+            impulse_low = swing_low
+            impulse_high = swing_high
+        impulse = max(impulse_high - impulse_low, 1e-9)
+        pullback_pct = ((impulse_high - price) / impulse) * 100.0 if impulse_high >= price and impulse > 0 else 0.0
+        extension_127 = impulse_high + impulse * 0.272
+        extension_162 = impulse_high + impulse * 0.618
+
+        quality = 45.0
+        drivers = []
+        if hh and hl:
+            quality += 22; drivers.append("HH/HL-Sequenz intakt")
+        elif hl and not ll:
+            quality += 12; drivers.append("Higher Low sichtbar")
+        if lh or ll:
+            quality -= 18; drivers.append("LH/LL bremst Struktur")
+        if pd.notna(ma20) and price >= ma20:
+            quality += 8; drivers.append("ueber MA20")
+        elif pd.notna(ma20):
+            quality -= 8; drivers.append("unter MA20")
+        if pd.notna(ma50) and price >= ma50:
+            quality += 7; drivers.append("ueber MA50")
+        elif pd.notna(ma50):
+            quality -= 10; drivers.append("unter MA50")
+        if 30 <= pullback_pct <= 68 and (hl or price >= swing_low):
+            quality += 12; drivers.append(f"Pullback-Tiefe konstruktiv ({pullback_pct:.0f}%)")
+        elif pullback_pct > 78:
+            quality -= 14; drivers.append(f"tiefer Pullback ({pullback_pct:.0f}%)")
+        elif pullback_pct < 15 and price >= impulse_high * 0.98:
+            quality += 4; drivers.append("nahe Impulshoch")
+        quality = max(0, min(100, quality))
+
+        if hh and hl and 25 <= pullback_pct <= 68:
+            phase = "Moegliche Welle-2-/Pullback-Zone vor Fortsetzung"
+            label = "welle-2-pullback"
+            summary = "Swing-Struktur zeigt HH/HL und einen geordneten Ruecklauf. Das ist ein moeglicher frueher Fortsetzungsbereich, aber erst Reclaim/Volumen bestaetigt den Einstieg."
+            action = "Reclaim ueber kurzfristigen Pivot abwarten; Invalidierung unter letztem Higher Low."
+        elif hh and hl and price >= impulse_high * 0.98:
+            phase = "Moegliche fruehe Impulsfortsetzung / Welle 3"
+            label = "impulsfortsetzung"
+            summary = "HH/HL-Sequenz ist intakt und der Kurs arbeitet am Impulshoch. Das spricht fuer eine moegliche Fortsetzung, solange kein Rueckfall unter das letzte Higher Low folgt."
+            action = "Bei Ausbruch/Reclaim mit Volumen aktiv pruefen; nicht hinterherlaufen, wenn Abstand zur Entry-Zone zu gross wird."
+        elif hl and not hh:
+            phase = "Fruehe Boden-/Reclaim-Struktur"
+            label = "frueher-reclaim"
+            summary = "Ein Higher Low ist erkennbar, aber ein neues Higher High fehlt noch. Das ist Watchlist-/Trigger-Naehe, kein voll bestaetigter Impuls."
+            action = "Bullisher erst ueber dem letzten Swing High; Bruch des Higher Low invalidiert die Struktur."
+        elif lh and ll:
+            phase = "Abwaertsstruktur / gebrochene Wellenfolge"
+            label = "abwaertsstruktur"
+            summary = "LH/LL-Sequenz spricht gegen eine aktive Long-Wellenstruktur. Erst Reclaim und neue HH/HL-Folge verbessern die Lage."
+            action = "Kein aggressiver Einstieg; Reversal-/Reclaim-Struktur abwarten."
+        else:
+            phase = "Gemischte Swing-Struktur"
+            label = "gemischt"
+            summary = "Die Swing-Folge ist nicht eindeutig. Fibonacci, Entry-Zone, Volumen und klassische Trigger bleiben primaer."
+            action = "Nicht aus der Wellenstruktur handeln; klare Trigger abwarten."
+
+        trigger_price = None
+        if last_high and price <= last_high["price"]:
+            trigger_price = last_high["price"]
+            trigger = f"Reclaim/Ausbruch ueber letztes Swing High {_wave_v190_fmt_num(trigger_price)}"
+        elif last_high:
+            trigger_price = max(float(high.tail(5).max()), price)
+            trigger = f"Folgestaerke ueber kurzfristigem Hoch {_wave_v190_fmt_num(trigger_price)}"
+        else:
+            trigger = base.get("confirmation_text", "Klassischen Trigger nutzen")
+        invalid_price = last_low["price"] if last_low else (ma20 if pd.notna(ma20) else np.nan)
+        invalidation = f"Bruch unter letztes Swing Low/Higher Low {_wave_v190_fmt_num(invalid_price)}" if pd.notna(invalid_price) else "n/a"
+        target_zone = f"1.272-1.618 Extension ca. {_wave_v190_fmt_num(extension_127)} - {_wave_v190_fmt_num(extension_162)}" if impulse_high > impulse_low else "n/a"
+        quality_label = "hoch" if quality >= 75 else "gut" if quality >= 62 else "mittel" if quality >= 48 else "schwach"
+
+        zones = list(base.get("zones") or [])
+        zones.extend([
+            {"Punkt": "Letztes Swing High", "Zone/Wert": _wave_v190_fmt_num(last_high["price"] if last_high else None), "Lesart": "Reclaim/Ausbruch darueber verbessert die Wellenstruktur."},
+            {"Punkt": "Letztes Swing Low", "Zone/Wert": _wave_v190_fmt_num(last_low["price"] if last_low else None), "Lesart": "Darunter ist die aktuelle Long-Struktur invalidiert."},
+            {"Punkt": "Wellen-Zielzone", "Zone/Wert": target_zone, "Lesart": "Orientierungszone aus Extension, nur mit aktivem Trigger relevant."},
+        ])
+        base.update({
+            "label": label,
+            "phase": phase,
+            "summary": summary,
+            "action_hint": action,
+            "score": int(round(quality)),
+            "drivers": (drivers + list(base.get("drivers") or []))[:6],
+            "zones": zones,
+            "plain_hint": f"{sequence}: {summary}",
+            "wave_phase": phase,
+            "wave_label": label,
+            "wave_sequence": sequence,
+            "wave_quality_score": int(round(quality)),
+            "wave_quality_label": quality_label,
+            "wave_pullback_depth_pct": round(float(pullback_pct), 1),
+            "wave_trigger": trigger,
+            "wave_trigger_price": round(float(trigger_price), 2) if trigger_price is not None and pd.notna(trigger_price) else "n/a",
+            "wave_invalidation": invalidation,
+            "wave_invalidation_price": round(float(invalid_price), 2) if pd.notna(invalid_price) else "n/a",
+            "wave_target_zone": target_zone,
+            "wave_extension_127": round(float(extension_127), 2),
+            "wave_extension_162": round(float(extension_162), 2),
+            "swing_points": swings,
+            "is_score_relevant": True,
+        })
+        # Bestaetigung auf den konkreten Wellentrigger umbiegen, ohne alte Kerzenlogik zu verlieren.
+        old_conf_score = int(base.get("confirmation_score") or 0)
+        if trigger_price is not None and pd.notna(trigger_price) and price >= trigger_price:
+            wave_conf_score = max(old_conf_score, 72)
+            wave_conf_label = "Wellentrigger bestaetigt"
+            wave_conf_text = f"{trigger}; Kurs handelt darueber. {', '.join(drivers[:3])}."
+            wave_conf_action = "Aktiv pruefen, sofern Entry/CRV und Volumen passen."
+        elif quality >= 62 and label in {"welle-2-pullback", "frueher-reclaim"}:
+            wave_conf_score = max(old_conf_score, 52)
+            wave_conf_label = "Wellentrigger unter Beobachtung"
+            wave_conf_text = f"{trigger}; Strukturqualitaet {quality_label}, aber Trigger noch nicht voll aktiv."
+            wave_conf_action = "Vorbereiten; erst bei Reclaim/Ausbruch und passendem CRV handeln."
+        else:
+            wave_conf_score = min(max(old_conf_score, int(round(quality * 0.6))), 55)
+            wave_conf_label = base.get("confirmation_label", "unter Beobachtung")
+            wave_conf_text = f"{trigger}; {summary}"
+            wave_conf_action = action
+        base["confirmation_label"] = wave_conf_label
+        base["confirmation_score"] = int(max(0, min(100, wave_conf_score)))
+        base["confirmation_text"] = wave_conf_text
+        base["confirmation_action"] = wave_conf_action
+        base["confirmation_drivers"] = drivers[:5]
+        return base
+    except Exception as exc:
+        base["summary"] = f"Wellenanalyse v19.0 nicht belastbar: {exc}"
+        base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
+        return base
 
 
 def build_fibonacci_context_v1533(chart_df=None, result=None):
@@ -16789,7 +17036,7 @@ if workspace_mode:
                 <div class="premium-title">Radar Professional v18.8</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v18.9 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; Grade ist als Qualitätsnote realistisch kalibriert, Top-Chancen bleiben streng gefiltert.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v19.0 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist eine robuste Swing-/Wellenstruktur-Analyse aktiv.
                 </div>
             </div>
             """,
@@ -17092,7 +17339,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v18.9: Professional Radar ist aktiv: Grade ist als Qualitätsnote realistisch kalibriert; Top-Chancen bleiben streng gefiltert; Score, Bucket, Gates, CRV, Entry-Abstand und Heute-Relevanz steuern Sortierung und Gruppen sichtbar in der Tabelle.")
+                st.caption("v19.0: Professional Radar plus robuste Swing-/Wellenstruktur-Analyse ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Wellenphase, Trigger, Invalidierung und Zielzone ergänzen die Charttechnik.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -20328,14 +20575,14 @@ if result is not None:
                 <table class="{table_class}"><thead><tr>{head}</tr></thead><tbody>{''.join(html_rows)}</tbody></table>
                 """, unsafe_allow_html=True)
 
-            # v15.32: Weicher Wellen-/Strukturkontext, bewusst nicht score-wirksam.
-            wave_structure_pkg = build_wave_structure_context_v1532(chart_df, result if "result" in locals() else {})
+            # v19.0: Robuste Swing-/Wellenstruktur-Analyse, regelbasiert und handelbar.
+            wave_structure_pkg = build_wave_structure_context_v190(chart_df, result if "result" in locals() else {})
             if isinstance(result, dict):
                 result["wave_structure_pkg"] = wave_structure_pkg
                 result["wave_structure_label"] = wave_structure_pkg.get("label")
                 result["wave_structure_summary"] = wave_structure_pkg.get("summary")
                 result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellen-/Strukturkontext (weich, nicht im Score)**")
+            st.markdown("**Wellenanalyse v19.0 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -20360,11 +20607,27 @@ if result is not None:
                 """,
                 unsafe_allow_html=True,
             )
+            _wave_phase = str(wave_structure_pkg.get("wave_phase", wave_structure_pkg.get("phase", "-")))
+            _wave_sequence = str(wave_structure_pkg.get("wave_sequence", "-"))
+            _wave_trigger = str(wave_structure_pkg.get("wave_trigger", "-"))
+            _wave_invalid = str(wave_structure_pkg.get("wave_invalidation", "-"))
+            _wave_target = str(wave_structure_pkg.get("wave_target_zone", "-"))
+            _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
+            st.markdown(f"""
+            <div class="premium-card" style="margin-top:10px;">
+                <div class="premium-title">Wellenanalyse v19.0</div>
+                <div class="premium-sub"><b>Phase:</b> {html.escape(_wave_phase)}</div>
+                <div class="premium-sub"><b>Sequenz:</b> {html.escape(_wave_sequence)} · <b>Qualitaet:</b> {html.escape(_wave_quality)}</div>
+                <div class="premium-sub"><b>Trigger:</b> {html.escape(_wave_trigger)}</div>
+                <div class="premium-sub"><b>Invalidierung:</b> {html.escape(_wave_invalid)}</div>
+                <div class="premium-sub"><b>Zielzone:</b> {html.escape(_wave_target)}</div>
+            </div>
+            """, unsafe_allow_html=True)
             _wave_zones = wave_structure_pkg.get("zones", []) if isinstance(wave_structure_pkg, dict) else []
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("Wellen-/Strukturkontext ist keine Elliott-Zaehllogik. Er beschreibt nur, ob der letzte Move eher frueh, konstruktiv, fortgeschritten oder korrektiv wirkt.")
+                st.caption("v19.0: Regelbasierte Swing-/Wellenstruktur. Keine dogmatische Elliott-Zaehllogik; sie bewertet HH/HL/LH/LL, Pullback-Tiefe, Trigger, Invalidierung und Extension-Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

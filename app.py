@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v20.1",
+        "Export_Version": "v20.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2661,7 +2661,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v20.1"
+APP_VERSION = "v20.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4345,7 +4345,7 @@ def _mtf_v200_tf_state(df, label, result=None):
 
 
 def build_multi_timeframe_context_v200(daily_df=None, result=None, hourly_df=None):
-    """v20.1: Top-down Multi-Timeframe-Struktur.
+    """v20.2: Top-down Multi-Timeframe-Struktur.
 
     Weekly = uebergeordneter Trend, Daily = Setup, Hourly = Timing.
     Bewusst regelbasiert und weich gewichtet, damit bestehende Radar-Gates stabil bleiben.
@@ -8715,7 +8715,7 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
         base.update(_wave_v191_build_readable_fields(base))
         return base
     except Exception as exc:
-        base["summary"] = f"Wellenanalyse v20.1 nicht belastbar: {exc}"
+        base["summary"] = f"Wellenanalyse v20.2 nicht belastbar: {exc}"
         base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
         return base
 
@@ -13783,6 +13783,86 @@ def search_tickers(query, max_results=8):
     return clean
 
 
+
+# ---------- v20.2: robuste Ticker-/Firmennamen-Auflösung ----------
+_COMMON_NAME_TICKER_MAP_V202 = {
+    # US Mega/Large Caps
+    "apple": "AAPL", "apple inc": "AAPL", "aapl": "AAPL",
+    "microsoft": "MSFT", "microsoft corp": "MSFT", "msft": "MSFT",
+    "nvidia": "NVDA", "nvidia corp": "NVDA", "nvda": "NVDA",
+    "tesla": "TSLA", "tesla inc": "TSLA", "tsla": "TSLA",
+    "amazon": "AMZN", "amazon.com": "AMZN", "amzn": "AMZN",
+    "alphabet": "GOOGL", "google": "GOOGL", "googl": "GOOGL", "goog": "GOOG",
+    "meta": "META", "meta platforms": "META", "facebook": "META",
+    "amd": "AMD", "advanced micro devices": "AMD",
+    "broadcom": "AVGO", "avgo": "AVGO",
+    "netflix": "NFLX", "nflx": "NFLX",
+    "oracle": "ORCL", "orcl": "ORCL",
+    "salesforce": "CRM", "crm": "CRM",
+    "palantir": "PLTR", "pltr": "PLTR",
+    # Europe / Germany commonly used in this app
+    "asml": "ASML", "asml holding": "ASML",
+    "sap": "SAP.DE", "sap se": "SAP.DE",
+    "siemens": "SIE.DE", "siemens ag": "SIE.DE",
+    "siemens energy": "ENR.DE",
+    "basf": "BAS.DE", "basf se": "BAS.DE",
+    "rheinmetall": "RHM.DE", "rheinmetall ag": "RHM.DE",
+    "allianz": "ALV.DE", "allianz se": "ALV.DE",
+    "deutsche telekom": "DTE.DE", "telekom": "DTE.DE",
+    "mercedes": "MBG.DE", "mercedes benz": "MBG.DE", "mercedes-benz": "MBG.DE",
+    "volkswagen": "VOW3.DE", "vw": "VOW3.DE",
+    "bmw": "BMW.DE",
+    "bayer": "BAYN.DE",
+    "adidas": "ADS.DE",
+    "airbus": "AIR.PA", "lvmh": "MC.PA", "novo nordisk": "NVO",
+}
+
+
+def _v202_norm_query(value):
+    txt = str(value or "").strip().lower()
+    txt = txt.replace("-", " ").replace("_", " ")
+    txt = re.sub(r"\s+", " ", txt)
+    return txt
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _v202_yfinance_symbol_has_prices(symbol):
+    """Validiert direkte Ticker ohne die Yahoo-Such-API.
+
+    Die Yahoo Search API kann auf Streamlit Cloud gelegentlich leer laufen. Direkte
+    Ticker wie AAPL, ASML, SAP.DE oder GC=F sollen trotzdem funktionieren, wenn
+    yfinance Kursdaten liefert.
+    """
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return False
+    try:
+        hist = yf.Ticker(sym).history(period="7d", auto_adjust=False)
+        return bool(hist is not None and not hist.empty and "Close" in hist.columns and hist["Close"].dropna().shape[0] > 0)
+    except Exception:
+        return False
+
+
+def _v202_ticker_candidate_variants(raw):
+    txt = str(raw or "").strip()
+    if not txt:
+        return []
+    up = txt.upper()
+    variants = []
+    # Futures / Indizes / Börsensuffixe direkt respektieren.
+    if re.fullmatch(r"[A-Z0-9^=.-]{1,15}", up):
+        variants.append(up)
+    # Deutsche/EU-Namen ohne Suffix werden bei Bedarf mit typischen Suffixen geprüft.
+    if re.fullmatch(r"[A-Z0-9]{1,6}", up):
+        for suffix in [".DE", ".PA", ".AS", ".MI", ".SW", ".L"]:
+            variants.append(up + suffix)
+    seen = set()
+    out = []
+    for v in variants:
+        if v and v not in seen:
+            out.append(v); seen.add(v)
+    return out
+
 def looks_like_real_ticker(user_input):
     raw = str(user_input or "").strip()
     if not raw:
@@ -13839,15 +13919,23 @@ def score_search_result(query, item):
 
 
 def resolve_input_to_ticker(user_input, fallback=None):
+    """Robuste Eingabeauflösung für Ticker, Firmennamen und Rohstoff-Aliasse.
+
+    Reihenfolge v20.2:
+    1) Rohstoff-Aliasse wie Gold/Silber/WTI
+    2) gepflegte Common-Name-Aliasse für häufige Eingaben
+    3) Yahoo Search API, wenn verfügbar
+    4) validierter Direkt-Ticker-Fallback über yfinance-Kursdaten
+    5) übergebener Fallback
+    """
     user_input = str(user_input or "").strip()
     if not user_input:
         return fallback
 
     raw = user_input.strip()
     upper = raw.upper()
+    norm = _v202_norm_query(raw)
 
-    # v15.34.3: Rohstoffnamen wie "gold", "silver", "copper" nicht über Yahoo-Suche
-    # als falsche Aktien/ETFs auflösen, sondern direkt auf die passenden Futures mappen.
     commodity_alias = resolve_commodity_alias_v1534_3(raw)
     if commodity_alias:
         try:
@@ -13857,9 +13945,11 @@ def resolve_input_to_ticker(user_input, fallback=None):
             pass
         return commodity_alias
 
-    if looks_like_real_ticker(raw):
-        return upper
+    alias = _COMMON_NAME_TICKER_MAP_V202.get(norm)
+    if alias:
+        return alias
 
+    # Yahoo-Suche zuerst fuer Firmennamen, aber nicht als einzige Quelle.
     results = search_tickers(raw, max_results=8)
     if results:
         ranked = sorted(results, key=lambda x: score_search_result(raw, x), reverse=True)
@@ -13867,6 +13957,13 @@ def resolve_input_to_ticker(user_input, fallback=None):
         symbol = best.get("symbol")
         if symbol:
             return str(symbol).upper()
+
+    # Direkte Ticker auch dann akzeptieren, wenn die Yahoo-Suche leer bleibt.
+    # Wichtig: vorher kamen Common-Name-Aliasse und Yahoo-Suche, daher wird "Apple"
+    # nicht blind als APPLE genutzt, falls AAPL per Alias/Suche gefunden wurde.
+    for candidate in _v202_ticker_candidate_variants(raw):
+        if _v202_yfinance_symbol_has_prices(candidate):
+            return candidate
 
     return fallback if fallback else None
 
@@ -17870,10 +17967,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">Radar Professional v20.1</div>
+                <div class="premium-title">Radar Professional v20.2</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v20.1 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v20.2 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
                 </div>
             </div>
             """,
@@ -18129,7 +18226,7 @@ if workspace_mode:
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
-                # v20.1: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
+                # v20.2: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
                 for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "MTF-Score", "MTF-Impact", "Wann aktiv?", "Ziel bei Bestätigung", "Top-Chance-Rang"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
@@ -18188,7 +18285,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v20.1: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
+                st.caption("v20.2: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -18498,7 +18595,7 @@ if workspace_mode:
                     ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
 
                     st.markdown("### Beste heutige Chancen")
-                    st.caption("v20.1 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    st.caption("v20.2 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
                     if not _top_box_strict_df.empty:
                         _cols = st.columns(len(_top_box_strict_df))
                         for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
@@ -18903,7 +19000,7 @@ if workspace_mode:
         if analysis_mode == "Einzelanalyse":
             search_input = single_input
             if search_input:
-                # v20.1: Ticker-/Namensauflösung wieder trennen.
+                # v20.2: Ticker-/Namensauflösung wieder trennen.
                 # Ein-Wort-Firmennamen wie "Apple", "Nvidia" oder "Siemens" duerfen
                 # nicht blind zu APPLE/NVIDIA/SIEMENS gemacht werden, sonst findet die
                 # App scheinbar keine Ticker mehr. Direkte Ticker gelten nur bei echter
@@ -18917,7 +19014,7 @@ if workspace_mode:
                     st.session_state.selected_search_label = None
                     resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Rohstoff-Alias"}]
                 elif looks_like_ticker:
-                    ticker = search_input.upper()
+                    ticker = resolve_input_to_ticker(search_input, fallback=search_input.upper())
                     st.session_state.selected_ticker = ticker
                     st.session_state.selected_search_label = None
                     resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Ticker direkt"}]
@@ -18947,8 +19044,18 @@ if workspace_mode:
                         st.session_state.selected_ticker = ticker
                         resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Aus Trefferauswahl"}]
                     else:
-                        st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
-                        ticker = st.session_state.selected_ticker
+                        # v20.2: Wenn die Yahoo-Such-API leer bleibt, trotzdem robuste
+                        # Auflösung über Common-Name-Aliasse und validierten Ticker-Fallback versuchen.
+                        resolved_fallback = resolve_input_to_ticker(search_input, fallback=None)
+                        if resolved_fallback:
+                            ticker = resolved_fallback
+                            st.session_state.selected_ticker = ticker
+                            st.session_state.selected_search_label = None
+                            resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "v20.2 Fallback-Auflösung"}]
+                            st.caption(f"Aufgelöst: {ticker}")
+                        else:
+                            st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
+                            ticker = st.session_state.selected_ticker
             else:
                 ticker = st.session_state.selected_ticker
 
@@ -18962,7 +19069,7 @@ if workspace_mode:
 
             analysis_candidates = []
             for entry in raw_batch_entries:
-                # v20.1: Auch im Batch-Modus Firmennamen nicht blind als Ticker interpretieren.
+                # v20.2: Auch im Batch-Modus Firmennamen nicht blind als Ticker interpretieren.
                 commodity_alias = resolve_commodity_alias_v1534_3(entry) if "resolve_commodity_alias_v1534_3" in globals() else None
                 looks_like_ticker = looks_like_real_ticker(entry)
                 if commodity_alias:
@@ -18977,7 +19084,12 @@ if workspace_mode:
                         analysis_candidates.append(matches[0]["symbol"])
                         resolved_input_rows.append({"Eingabe": entry, "Auflösung": matches[0]["symbol"], "Typ": "Firmenname aufgelöst"})
                     else:
-                        resolved_input_rows.append({"Eingabe": entry, "Auflösung": "-", "Typ": "Nicht gefunden"})
+                        resolved_fallback = resolve_input_to_ticker(entry, fallback=None)
+                        if resolved_fallback:
+                            analysis_candidates.append(resolved_fallback)
+                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": resolved_fallback, "Typ": "v20.2 Fallback-Auflösung"})
+                        else:
+                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": "-", "Typ": "Nicht gefunden"})
 
             seen = set()
             analysis_candidates = [x for x in analysis_candidates if not (x in seen or seen.add(x))]
@@ -21400,7 +21512,7 @@ if result is not None:
     except Exception:
         wave_structure_pkg = (result or {}).get("wave_structure_pkg", {}) if isinstance(result, dict) else {}
 
-    # v20.1: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
+    # v20.2: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
     try:
         _mtf_hourly_df = get_intraday_hourly_df_for_candles(result if "result" in locals() else {}, chart_df) if "get_intraday_hourly_df_for_candles" in globals() else None
         multi_timeframe_pkg = build_multi_timeframe_context_v200(chart_df, result if "result" in locals() else {}, _mtf_hourly_df)
@@ -21492,7 +21604,7 @@ if result is not None:
                     result["wave_structure_label"] = wave_structure_pkg.get("label")
                     result["wave_structure_summary"] = wave_structure_pkg.get("summary")
                     result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellenanalyse v20.1 / Swing-Struktur**")
+            st.markdown("**Wellenanalyse v20.2 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -21526,7 +21638,7 @@ if result is not None:
             _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
             st.markdown(f"""
             <div class="premium-card" style="margin-top:10px;">
-                <div class="premium-title">Wellenanalyse v20.1</div>
+                <div class="premium-title">Wellenanalyse v20.2</div>
                 <div class="premium-value" style="font-size:1.02rem;">{html.escape(_wave_status)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Was bedeutet das?</b> {html.escape(_wave_meaning)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Struktur:</b> {html.escape(_wave_sequence_readable)} · <b>Qualität:</b> {html.escape(_wave_quality)}</div>
@@ -21535,7 +21647,7 @@ if result is not None:
                 <div class="premium-sub"><b>Ziel bei Bestätigung:</b> {html.escape(_wave_target_readable)}</div>
             </div>
             """, unsafe_allow_html=True)
-            # v20.1: Multi-Timeframe-Block (Weekly/Daily/Hourly)
+            # v20.2: Multi-Timeframe-Block (Weekly/Daily/Hourly)
             try:
                 _mtf_pkg = multi_timeframe_pkg if "multi_timeframe_pkg" in locals() and isinstance(multi_timeframe_pkg, dict) else ((result or {}).get("multi_timeframe_pkg") if isinstance(result, dict) else {})
             except Exception:
@@ -21546,7 +21658,7 @@ if result is not None:
                 _h = _mtf_pkg.get("hourly", {}) or {}
                 st.markdown(f"""
                 <div class="premium-card" style="margin-top:10px;">
-                    <div class="premium-title">Multi-Timeframe v20.1</div>
+                    <div class="premium-title">Multi-Timeframe v20.2</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(_mtf_pkg.get('label', 'MTF nicht berechnet')))} · {html.escape(str(_mtf_pkg.get('score', 'n/a')))}/100</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Lesart:</b> {html.escape(str(_mtf_pkg.get('summary', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Weekly:</b> {html.escape(str(_w.get('status', '-')))} · {html.escape(str(_w.get('reason', '-')))}</div>
@@ -21561,7 +21673,7 @@ if result is not None:
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("v20.1: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
+                st.caption("v20.2: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

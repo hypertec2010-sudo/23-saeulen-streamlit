@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v19.2",
+        "Export_Version": "v19.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2656,7 +2656,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v19.2"
+APP_VERSION = "v19.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4025,7 +4025,7 @@ def _radar_v183_style_fit(result, style_name="Ausgewogen"):
 
 
 def _radar_v192_wave_impact(result):
-    """v19.2: Uebersetzt die Wellenanalyse in einen Radar-Baustein.
+    """v19.3: Uebersetzt die Wellenanalyse in einen Radar-Baustein.
 
     Ziel: Die Wellenanalyse bleibt ein weicher Strukturkontext, beeinflusst aber
     Score, Heute-Relevanz, Bucket und Handlung. Keine dogmatische Elliott-Logik.
@@ -8435,7 +8435,7 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
         base.update(_wave_v191_build_readable_fields(base))
         return base
     except Exception as exc:
-        base["summary"] = f"Wellenanalyse v19.2 nicht belastbar: {exc}"
+        base["summary"] = f"Wellenanalyse v19.3 nicht belastbar: {exc}"
         base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
         return base
 
@@ -12554,7 +12554,212 @@ def evaluate_chart_structure_bias(df, structures):
     return result
 
 
-def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None, show_fib=False, fib_pkg=None):
+
+
+def _trade_overlay_num_v193(value, default=None):
+    """Robuste Zahlenerkennung fuer Trade-Setup-Overlay."""
+    try:
+        if value is None:
+            return default
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            if pd.isna(value):
+                return default
+            return float(value)
+        text = str(value).strip()
+        if not text or text.lower() in {"nan", "none", "n/a", "na", "-"}:
+            return default
+        text = text.replace("%", "").replace("EUR", "").replace("USD", "").replace("$", "")
+        text = text.replace("–", "-").replace("—", "-").replace(",", ".")
+        m = re.search(r"-?\d+(?:\.\d+)?", text)
+        return float(m.group(0)) if m else default
+    except Exception:
+        return default
+
+
+def _trade_overlay_zone_v193(value):
+    """Extrahiert eine Preiszone aus Text wie '254.30 - 259.41 USD'."""
+    try:
+        text = str(value or "").strip()
+        if not text or text.lower() in {"nan", "none", "n/a", "na", "-"}:
+            return None, None
+        text = text.replace("–", "-").replace("—", "-").replace(",", ".")
+        nums = re.findall(r"-?\d+(?:\.\d+)?", text)
+        vals = [float(x) for x in nums if x not in {"", "-"}]
+        vals = [x for x in vals if x > 0]
+        if len(vals) >= 2:
+            lo, hi = min(vals[0], vals[1]), max(vals[0], vals[1])
+            return lo, hi
+        if len(vals) == 1:
+            return vals[0], vals[0]
+    except Exception:
+        pass
+    return None, None
+
+
+def _trade_overlay_wave_level_v193(text):
+    """Nimmt aus Wave-Texten den relevantesten Preislevel."""
+    try:
+        raw = str(text or "").replace(",", ".")
+        nums = [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", raw) if float(x) > 0]
+        if not nums:
+            return None
+        # Bei Texten wie '1.272-1.618 Extension ca. 320.77 - 325.05' sollen
+        # die Extension-Verhaeltnisse ignoriert werden. Preislevels sind meist deutlich > 10.
+        price_like = [x for x in nums if x > 10]
+        return price_like[0] if price_like else nums[-1]
+    except Exception:
+        return None
+
+
+def _trade_overlay_wave_zone_v193(text):
+    try:
+        raw = str(text or "").replace(",", ".")
+        nums = [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", raw) if float(x) > 10]
+        if len(nums) >= 2:
+            return min(nums[-2], nums[-1]), max(nums[-2], nums[-1])
+        if len(nums) == 1:
+            return nums[0], nums[0]
+    except Exception:
+        pass
+    return None, None
+
+
+def build_trade_setup_overlay_v193(result=None, wave_pkg=None, ccy=""):
+    """Sammelt Entry, Stop/Invalidierung, Ziele und Wave-Levels fuer das Chart-Overlay.
+
+    Ziel v19.3: Alles, was die Entscheidung beeinflusst, soll im Chart sichtbar sein.
+    Die Funktion ist absichtlich defensiv, damit fehlende Felder den Chart nicht brechen.
+    """
+    r = result or {}
+    wave = wave_pkg or r.get("wave_structure_pkg") or {}
+    entry_text = r.get("suggested_entry_zone") or r.get("Entry-Zone") or r.get("Entry_Zone") or ""
+    entry_low, entry_high = _trade_overlay_zone_v193(entry_text)
+    stop = _trade_overlay_num_v193(r.get("stop_used") or r.get("stop") or r.get("Stop"), default=None)
+    tp1 = _trade_overlay_num_v193(r.get("tp1") or r.get("TP1"), default=None)
+    tp2 = _trade_overlay_num_v193(r.get("tp2") or r.get("TP2"), default=None)
+    tp3 = _trade_overlay_num_v193(r.get("tp3") or r.get("TP3"), default=None)
+
+    wave_trigger_text = wave.get("wave_trigger") or wave.get("wave_readable_action") or wave.get("trigger_label") or ""
+    wave_invalid_text = wave.get("wave_invalidation") or wave.get("wave_readable_risk") or ""
+    wave_target_text = wave.get("wave_target_zone") or wave.get("wave_readable_target") or ""
+    wave_trigger = _trade_overlay_wave_level_v193(wave_trigger_text)
+    wave_invalid = _trade_overlay_wave_level_v193(wave_invalid_text)
+    wave_target_low, wave_target_high = _trade_overlay_wave_zone_v193(wave_target_text)
+
+    price = _trade_overlay_num_v193(r.get("live_price") or r.get("analysis_price") or r.get("price"), default=None)
+    crv = None
+    try:
+        if price and stop and tp1 and price > stop and tp1 > price:
+            crv = (tp1 - price) / (price - stop)
+    except Exception:
+        crv = None
+
+    return {
+        "entry_text": entry_text,
+        "entry_low": entry_low,
+        "entry_high": entry_high,
+        "stop": stop,
+        "tp1": tp1,
+        "tp2": tp2,
+        "tp3": tp3,
+        "price": price,
+        "crv": None if crv is None else round(float(crv), 2),
+        "wave_trigger": wave_trigger,
+        "wave_trigger_text": wave_trigger_text,
+        "wave_invalid": wave_invalid,
+        "wave_invalid_text": wave_invalid_text,
+        "wave_target_low": wave_target_low,
+        "wave_target_high": wave_target_high,
+        "wave_target_text": wave_target_text,
+        "ccy": ccy,
+        "has_overlay": any(x is not None for x in [entry_low, stop, tp1, tp2, tp3, wave_trigger, wave_invalid, wave_target_low]),
+    }
+
+
+def _trade_overlay_add_hline_v193(fig, y, name, *, dash="dot", width=1, annotation=None):
+    try:
+        if y is None or not pd.notna(float(y)) or float(y) <= 0:
+            return
+        fig.add_hline(
+            y=float(y),
+            line_dash=dash,
+            line_width=width,
+            annotation_text=annotation or name,
+            annotation_position="right",
+            row=1,
+            col=1,
+        )
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", name=name, showlegend=True), row=1, col=1)
+    except Exception:
+        pass
+
+
+def add_trade_setup_overlay_to_plotly_v193(fig, chart_df, overlay):
+    """Zeichnet Entry-Zone, Stop/Invalidierung, Ziele und Wave-Level in den Kurschart."""
+    try:
+        if not overlay or not overlay.get("has_overlay"):
+            return
+        entry_low = overlay.get("entry_low")
+        entry_high = overlay.get("entry_high")
+        stop = overlay.get("stop")
+        tp1 = overlay.get("tp1")
+        tp2 = overlay.get("tp2")
+        tp3 = overlay.get("tp3")
+        wave_trigger = overlay.get("wave_trigger")
+        wave_invalid = overlay.get("wave_invalid")
+        wt_low = overlay.get("wave_target_low")
+        wt_high = overlay.get("wave_target_high")
+        ccy = str(overlay.get("ccy") or "").strip()
+
+        if entry_low and entry_high:
+            fig.add_hrect(
+                y0=float(entry_low), y1=float(entry_high),
+                fillcolor="rgba(34,197,94,0.14)", line_width=0,
+                annotation_text="Entry-Zone", annotation_position="top left",
+                row=1, col=1,
+            )
+        if wt_low and wt_high:
+            fig.add_hrect(
+                y0=float(wt_low), y1=float(wt_high),
+                fillcolor="rgba(59,130,246,0.10)", line_width=0,
+                annotation_text="Wave-Zielzone", annotation_position="top left",
+                row=1, col=1,
+            )
+
+        _trade_overlay_add_hline_v193(fig, stop, "Stop / Invalidierung", dash="dash", width=2, annotation="Stop / Invalidierung")
+        _trade_overlay_add_hline_v193(fig, tp1, "TP1", dash="dot", width=1, annotation="TP1")
+        _trade_overlay_add_hline_v193(fig, tp2, "TP2", dash="dot", width=1, annotation="TP2")
+        _trade_overlay_add_hline_v193(fig, tp3, "TP3", dash="dot", width=1, annotation="TP3")
+        _trade_overlay_add_hline_v193(fig, wave_trigger, "Wave-Trigger", dash="dashdot", width=2, annotation="Wave-Trigger")
+        # Wave-Invalidierung nur separat zeichnen, wenn sie nicht praktisch identisch mit Stop ist.
+        try:
+            if wave_invalid and (not stop or abs(float(wave_invalid) - float(stop)) / max(float(stop), 1.0) > 0.002):
+                _trade_overlay_add_hline_v193(fig, wave_invalid, "Wave-Invalidierung", dash="dash", width=1, annotation="Wave-Invalidierung")
+        except Exception:
+            _trade_overlay_add_hline_v193(fig, wave_invalid, "Wave-Invalidierung", dash="dash", width=1, annotation="Wave-Invalidierung")
+
+        crv = overlay.get("crv")
+        if crv is not None:
+            try:
+                last_x = chart_df.index[-1]
+                y_ref = tp1 or overlay.get("price") or entry_high or entry_low
+                fig.add_annotation(
+                    x=last_x,
+                    y=float(y_ref),
+                    text=f"CRV {float(crv):.2f}" + (f" · {ccy}" if ccy else ""),
+                    showarrow=False,
+                    bgcolor="rgba(15,23,42,0.76)",
+                    bordercolor="rgba(148,163,184,0.45)",
+                    font=dict(size=11),
+                    row=1,
+                    col=1,
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None, show_fib=False, fib_pkg=None, show_trade_overlay=False, trade_overlay_pkg=None):
     fig = make_subplots(
         rows=2,
         cols=1,
@@ -12624,6 +12829,12 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
     if show_fib:
         try:
             add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg)
+        except Exception:
+            pass
+
+    if show_trade_overlay:
+        try:
+            add_trade_setup_overlay_to_plotly_v193(fig, chart_df, trade_overlay_pkg)
         except Exception:
             pass
 
@@ -17341,10 +17552,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">Radar Professional v19.2</div>
+                <div class="premium-title">Radar Professional v19.3</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v19.2 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist eine verständlichere Swing-/Wellenstruktur-Analyse aktiv.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v19.3 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist eine verständlichere Swing-/Wellenstruktur-Analyse aktiv.
                 </div>
             </div>
             """,
@@ -17598,7 +17809,7 @@ if workspace_mode:
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
-                # v19.2: Professional-Funnel- und Wave-Spalten fuer gespeicherte Snapshots nachfuellen.
+                # v19.3: Professional-Funnel- und Wave-Spalten fuer gespeicherte Snapshots nachfuellen.
                 for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "Wave-Trigger", "Wave-Zielzone", "Top-Chance-Rang"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
@@ -17655,7 +17866,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v19.2: Professional Radar plus verständlichere Swing-/Wellenstruktur-Analyse ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Wellenphase, Trigger, Invalidierung und Zielzone ergänzen die Charttechnik.")
+                st.caption("v19.3: Professional Radar plus verständlichere Swing-/Wellenstruktur-Analyse ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Wellenphase, Trigger, Invalidierung und Zielzone ergänzen die Charttechnik.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -17965,7 +18176,7 @@ if workspace_mode:
                     ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
 
                     st.markdown("### Beste heutige Chancen")
-                    st.caption("v19.2 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    st.caption("v19.3 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
                     if not _top_box_strict_df.empty:
                         _cols = st.columns(len(_top_box_strict_df))
                         for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
@@ -20818,13 +21029,15 @@ if result is not None:
         key=f"chart_range_{ticker}"
     )
 
-    chart_overlay_col1, chart_overlay_col2, chart_overlay_col3 = st.columns(3)
+    chart_overlay_col1, chart_overlay_col2, chart_overlay_col3, chart_overlay_col4 = st.columns(4)
     with chart_overlay_col1:
         show_sr_zones = st.checkbox("Unterstützung / Widerstand anzeigen", value=True, key=f"show_sr_{ticker}")
     with chart_overlay_col2:
         show_trend_channel = st.checkbox("Trendkanal anzeigen", value=False, key=f"show_channel_{ticker}")
     with chart_overlay_col3:
         show_fib_levels = st.checkbox("Fibonacci-Level anzeigen", value=False, key=f"show_fib_{ticker}")
+    with chart_overlay_col4:
+        show_trade_overlay = st.checkbox("Trade-Setup anzeigen", value=True, key=f"show_trade_overlay_{ticker}")
 
     chart_df = compute_display_chart_df_v1535(df, chart_range, ticker)
     chart_sr_basis_df = compute_chart_df(df, "1 Jahr")
@@ -20843,8 +21056,44 @@ if result is not None:
             chart_structures = build_chart_structures(chart_df, sr_basis_df=chart_sr_basis_df)
         except Exception:
             chart_structures = None
-    fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures, show_fib=show_fib_levels, fib_pkg=fibonacci_context_pkg)
+
+    # v19.3: Wellenanalyse vor dem Chart berechnen, damit Wave-Trigger/-Zielzone im Overlay sichtbar sind.
+    try:
+        wave_structure_pkg = build_wave_structure_context_v190(chart_df, result if "result" in locals() else {})
+        if isinstance(result, dict):
+            result["wave_structure_pkg"] = wave_structure_pkg
+            result["wave_structure_label"] = wave_structure_pkg.get("label")
+            result["wave_structure_summary"] = wave_structure_pkg.get("summary")
+            result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
+    except Exception:
+        wave_structure_pkg = (result or {}).get("wave_structure_pkg", {}) if isinstance(result, dict) else {}
+
+    trade_overlay_pkg = build_trade_setup_overlay_v193(result if "result" in locals() else {}, wave_structure_pkg, ccy)
+    fig = build_candlestick_chart(
+        chart_df, ticker, ccy,
+        show_sr=show_sr_zones,
+        show_channel=show_trend_channel,
+        structures=chart_structures,
+        show_fib=show_fib_levels,
+        fib_pkg=fibonacci_context_pkg,
+        show_trade_overlay=show_trade_overlay,
+        trade_overlay_pkg=trade_overlay_pkg,
+    )
     st.plotly_chart(fig, use_container_width=True)
+    if show_trade_overlay and trade_overlay_pkg and trade_overlay_pkg.get("has_overlay"):
+        _overlay_bits = []
+        if trade_overlay_pkg.get("entry_low") and trade_overlay_pkg.get("entry_high"):
+            _overlay_bits.append(f"Entry {trade_overlay_pkg.get('entry_low'):.2f}-{trade_overlay_pkg.get('entry_high'):.2f}")
+        if trade_overlay_pkg.get("stop"):
+            _overlay_bits.append(f"Stop/Invalidierung {trade_overlay_pkg.get('stop'):.2f}")
+        if trade_overlay_pkg.get("tp1"):
+            _overlay_bits.append(f"TP1 {trade_overlay_pkg.get('tp1'):.2f}")
+        if trade_overlay_pkg.get("wave_trigger"):
+            _overlay_bits.append(f"Wave-Trigger {trade_overlay_pkg.get('wave_trigger'):.2f}")
+        if trade_overlay_pkg.get("crv") is not None:
+            _overlay_bits.append(f"CRV {trade_overlay_pkg.get('crv'):.2f}")
+        if _overlay_bits:
+            st.caption("Trade-Setup-Overlay: " + " · ".join(_overlay_bits))
     _chart_data_note = getattr(chart_df, "attrs", {}).get("chart_data_note", "") if chart_df is not None else ""
     if _chart_data_note:
         st.caption(_chart_data_note)
@@ -20893,14 +21142,15 @@ if result is not None:
                 <table class="{table_class}"><thead><tr>{head}</tr></thead><tbody>{''.join(html_rows)}</tbody></table>
                 """, unsafe_allow_html=True)
 
-            # v19.0: Robuste Swing-/Wellenstruktur-Analyse, regelbasiert und handelbar.
-            wave_structure_pkg = build_wave_structure_context_v190(chart_df, result if "result" in locals() else {})
-            if isinstance(result, dict):
-                result["wave_structure_pkg"] = wave_structure_pkg
-                result["wave_structure_label"] = wave_structure_pkg.get("label")
-                result["wave_structure_summary"] = wave_structure_pkg.get("summary")
-                result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellenanalyse v19.2 / Swing-Struktur**")
+            # v19.3: Wellenanalyse wurde bereits vor dem Chart fuer das Trade-Setup-Overlay berechnet.
+            if "wave_structure_pkg" not in locals() or not isinstance(wave_structure_pkg, dict):
+                wave_structure_pkg = build_wave_structure_context_v190(chart_df, result if "result" in locals() else {})
+                if isinstance(result, dict):
+                    result["wave_structure_pkg"] = wave_structure_pkg
+                    result["wave_structure_label"] = wave_structure_pkg.get("label")
+                    result["wave_structure_summary"] = wave_structure_pkg.get("summary")
+                    result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
+            st.markdown("**Wellenanalyse v19.3 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -20934,7 +21184,7 @@ if result is not None:
             _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
             st.markdown(f"""
             <div class="premium-card" style="margin-top:10px;">
-                <div class="premium-title">Wellenanalyse v19.2</div>
+                <div class="premium-title">Wellenanalyse v19.3</div>
                 <div class="premium-value" style="font-size:1.02rem;">{html.escape(_wave_status)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Was bedeutet das?</b> {html.escape(_wave_meaning)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Struktur:</b> {html.escape(_wave_sequence_readable)} · <b>Qualität:</b> {html.escape(_wave_quality)}</div>
@@ -20947,7 +21197,7 @@ if result is not None:
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("v19.2: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
+                st.caption("v19.3: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

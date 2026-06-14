@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v19.1",
+        "Export_Version": "v19.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2656,7 +2656,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v19.1"
+APP_VERSION = "v19.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4024,6 +4024,180 @@ def _radar_v183_style_fit(result, style_name="Ausgewogen"):
     return {"score": round(score, 1), "label": fit_label, "reason": reason}
 
 
+def _radar_v192_wave_impact(result):
+    """v19.2: Uebersetzt die Wellenanalyse in einen Radar-Baustein.
+
+    Ziel: Die Wellenanalyse bleibt ein weicher Strukturkontext, beeinflusst aber
+    Score, Heute-Relevanz, Bucket und Handlung. Keine dogmatische Elliott-Logik.
+    """
+    r = result or {}
+    wave = r.get("wave_structure_pkg") or {}
+    if not isinstance(wave, dict) or not wave:
+        return {
+            "score": 50.0,
+            "impact": 0.0,
+            "label": "Wave neutral",
+            "status": "Keine belastbare Wellenanalyse",
+            "reason": "Wellenstruktur nicht belastbar genug.",
+            "trigger": "-",
+            "trigger_price": None,
+            "trigger_distance_pct": None,
+            "invalidation": "-",
+            "invalidation_price": None,
+            "target_zone": "-",
+            "target_127": None,
+            "target_162": None,
+            "today_boost": 0.0,
+            "gate": "",
+            "subscore_text": "Wave n/a",
+            "next_step_hint": "",
+            "bias": "neutral",
+        }
+
+    def _num(value, default=None):
+        try:
+            if value is None:
+                return default
+            if isinstance(value, str):
+                txt = value.strip().lower()
+                if txt in {"", "n/a", "nan", "none", "-"}:
+                    return default
+                value = txt.replace("%", "").replace(",", ".")
+            f = float(value)
+            if pd.isna(f):
+                return default
+            return f
+        except Exception:
+            return default
+
+    price = _num(r.get("price"), None)
+    if price is None:
+        price = _num(r.get("analysis_price"), None)
+    if price is None:
+        price = _num(r.get("live_price"), None)
+
+    quality = _num(wave.get("wave_quality_score"), _num(wave.get("score"), 50.0))
+    confirmation = _num(wave.get("confirmation_score"), 0.0)
+    label = str(wave.get("wave_label") or wave.get("label") or "").lower()
+    sequence = str(wave.get("wave_sequence") or "").upper()
+    readable_status = str(wave.get("wave_readable_status") or wave.get("wave_phase") or wave.get("phase") or "Wave neutral")
+    trigger = str(wave.get("wave_trigger") or wave.get("confirmation_text") or "-")
+    invalidation = str(wave.get("wave_invalidation") or "-")
+    target_zone = str(wave.get("wave_target_zone") or "-")
+    trigger_price = _num(wave.get("wave_trigger_price"), None)
+    invalid_price = _num(wave.get("wave_invalidation_price"), None)
+    target_127 = _num(wave.get("wave_extension_127"), None)
+    target_162 = _num(wave.get("wave_extension_162"), None)
+
+    trigger_distance_pct = None
+    if trigger_price is not None and price and price > 0:
+        trigger_distance_pct = (trigger_price / price - 1.0) * 100.0
+
+    score = float(quality if quality is not None else 50.0)
+    reason_parts = []
+    bias = "neutral"
+    gate = ""
+    today_boost = 0.0
+
+    if label in {"impulsfortsetzung", "welle-2-pullback"} or "HH/HL" in sequence:
+        score += 8.0
+        bias = "bullish"
+        reason_parts.append("Aufwaertsstruktur mit hoeheren Hochs/Tiefs")
+    elif label in {"frueher-reclaim"} or ("HL" in sequence and "LL" not in sequence):
+        score += 3.0
+        bias = "constructive"
+        reason_parts.append("fruehe Stabilisierung / Higher Low")
+    elif label in {"abwaertsstruktur"} or "LH/LL" in sequence:
+        score -= 16.0
+        bias = "bearish"
+        gate = "Wave-Struktur angeschlagen"
+        reason_parts.append("tiefere Hochs/Tiefs bremsen Long-Setups")
+    elif label in {"gemischt"}:
+        score -= 2.0
+        reason_parts.append("Swing-Folge gemischt")
+
+    if confirmation >= 72:
+        score += 8.0
+        today_boost += 4.0
+        reason_parts.append("Wellentrigger bestaetigt")
+    elif confirmation >= 52:
+        score += 3.0
+        reason_parts.append("Wellentrigger unter Beobachtung")
+
+    if trigger_distance_pct is not None:
+        if trigger_distance_pct <= 0.25:
+            today_boost += 4.0
+            reason_parts.append("Wave-Trigger direkt erreicht/nahe")
+        elif trigger_distance_pct <= 2.0:
+            today_boost += 3.0
+            reason_parts.append(f"Wave-Trigger nur {trigger_distance_pct:.1f}% entfernt")
+        elif trigger_distance_pct <= 4.0:
+            today_boost += 1.0
+            reason_parts.append(f"Wave-Trigger {trigger_distance_pct:.1f}% entfernt")
+        elif trigger_distance_pct > 8.0:
+            score -= 3.0
+            reason_parts.append("Wave-Trigger noch weit entfernt")
+
+    impact = 0.0
+    if score >= 78:
+        impact = 8.0
+        label_text = "Wave stark positiv"
+    elif score >= 66:
+        impact = 5.0
+        label_text = "Wave konstruktiv"
+    elif score >= 55:
+        impact = 2.0
+        label_text = "Wave leicht positiv"
+    elif score >= 43:
+        impact = 0.0
+        label_text = "Wave neutral"
+    elif score >= 30:
+        impact = -5.0
+        label_text = "Wave bremst"
+    else:
+        impact = -9.0
+        label_text = "Wave negativ"
+
+    if bias == "bearish":
+        impact = min(impact, -5.0)
+    if bias in {"bullish", "constructive"}:
+        impact += min(today_boost, 4.0) * 0.5
+
+    score = _radar_v18_clip(score)
+    reason = "; ".join(reason_parts[:4]) if reason_parts else "Wellenstruktur neutral."
+
+    if bias == "bearish":
+        next_step_hint = "Wellenstruktur bremst: erst Reclaim und neue hoeheren Tiefs abwarten."
+    elif trigger and trigger != "-":
+        next_step_hint = f"Wave beachten: {trigger}."
+        if invalidation and invalidation != "-":
+            next_step_hint += f" {invalidation}."
+    else:
+        next_step_hint = "Wave liefert keinen eigenstaendigen Trigger."
+
+    dist_txt = "n/a" if trigger_distance_pct is None else f"{trigger_distance_pct:+.1f}%"
+    return {
+        "score": round(score, 1),
+        "impact": round(float(impact), 1),
+        "label": label_text,
+        "status": readable_status,
+        "reason": reason,
+        "trigger": trigger,
+        "trigger_price": trigger_price,
+        "trigger_distance_pct": None if trigger_distance_pct is None else round(trigger_distance_pct, 2),
+        "invalidation": invalidation,
+        "invalidation_price": invalid_price,
+        "target_zone": target_zone,
+        "target_127": target_127,
+        "target_162": target_162,
+        "today_boost": round(float(today_boost), 1),
+        "gate": gate,
+        "subscore_text": f"Wave {score:.0f} ({label_text}, Trigger {dist_txt})",
+        "next_step_hint": next_step_hint,
+        "bias": bias,
+    }
+
+
 def _radar_v183_top_chance_rank(decision):
     """Zusatz-Ranking fuer die Box 'Beste heutige Chancen'."""
     d = decision or {}
@@ -4100,11 +4274,14 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     entry_position_score = max(float(entry_position_score or 0), float(entry_rr_pkg.get("entry_score", 0) or 0))
     style_fit_pkg = _radar_v183_style_fit(r, style_name)
     style_fit_score = _radar_safe_num(style_fit_pkg.get("score"), 50)
+    wave_impact_pkg = _radar_v192_wave_impact(r)
+    wave_score = _radar_safe_num(wave_impact_pkg.get("score"), 50)
+    wave_impact = _radar_safe_num(wave_impact_pkg.get("impact"), 0)
 
-    setup_score = _radar_v18_clip(setup_conf * 0.32 + confluence * 0.28 + chart_score * 0.24 + max(trend, base) * 0.16)
-    timing_score = _radar_v18_clip(trading * 0.36 + tb * 0.25 + chart_score * 0.20 + entry_position_score * 0.19)
+    setup_score = _radar_v18_clip(setup_conf * 0.29 + confluence * 0.25 + chart_score * 0.22 + max(trend, base) * 0.14 + wave_score * 0.10)
+    timing_score = _radar_v18_clip(trading * 0.33 + tb * 0.23 + chart_score * 0.18 + entry_position_score * 0.17 + wave_score * 0.09)
     leadership_score = _radar_v18_clip(leadership * 0.45 + trend * 0.25 + investment * 0.18 + max(0, accumulation - distribution * 0.35) * 0.12)
-    rr_score = _radar_v18_clip(tradeability * 0.22 + trading * 0.22 + entry_position_score * 0.22 + float(entry_rr_pkg.get("rr_score", 45) or 45) * 0.26 + (100 - max(distribution, 0)) * 0.08)
+    rr_score = _radar_v18_clip(tradeability * 0.20 + trading * 0.20 + entry_position_score * 0.20 + float(entry_rr_pkg.get("rr_score", 45) or 45) * 0.24 + (100 - max(distribution, 0)) * 0.06 + wave_score * 0.10)
     regime_score = 62.0 if regime_raw == "POSITIV" else 45.0 if regime_raw == "NEUTRAL" else 30.0 if regime_raw == "NEGATIV" else 50.0
     data_quality = _radar_v18_clip(_radar_safe_num((r.get("confidence_info", {}) or {}).get("coverage"), 0.75) * 100 if isinstance(r.get("confidence_info", {}), dict) else 70)
 
@@ -4144,6 +4321,10 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         penalty += 7; brakes.append("Stil-Fit schwach")
     elif style_fit_score < 52:
         penalty += 3
+    if wave_impact_pkg.get("gate"):
+        penalty += 6; gates.append(str(wave_impact_pkg.get("gate"))); brakes.append(str(wave_impact_pkg.get("gate")))
+    elif wave_impact < -4:
+        penalty += 3; brakes.append(str(wave_impact_pkg.get("label", "Wave bremst")))
 
     style = style_name.lower()
     if "chart" in style:
@@ -4167,6 +4348,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         raw_score += 5
     if chart_score >= 70 and "chart" in style:
         raw_score += 4
+    raw_score += wave_impact + min(float(wave_impact_pkg.get("today_boost", 0) or 0), 4.0)
 
     score = _radar_v18_clip(raw_score - penalty)
 
@@ -4176,6 +4358,8 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     if "kritisch" in fomo_label and trading < 72:
         knockout = True
     if distribution > accumulation + 22 and trading < 70:
+        knockout = True
+    if str(wave_impact_pkg.get("bias", "")) == "bearish" and trading < 66 and not valid_setup:
         knockout = True
     if typ in {"Hype / Event", "Riskant"} and risk in {"hoch", "erhöht"} and score < 72:
         knockout = True
@@ -4208,7 +4392,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     elif score >= 74 and style_fit_score >= 54 and rr_score >= 48 and not poor_crv_gate and (maturity == "prüfbar" or trigger in {"Aktiv", "Jetzt prüfbar"}) and risk != "hoch":
         bucket = "Jetzt prüfbar"
         priority = "hoch"
-    elif score >= 62 and style_fit_score >= 48 and not poor_crv_gate and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"}):
+    elif score >= 62 and style_fit_score >= 48 and not poor_crv_gate and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"} or float(wave_impact_pkg.get("today_boost", 0) or 0) >= 3.0):
         bucket = "Nahe am Trigger"
         priority = "hoch" if score >= 70 and risk == "ruhig" else "mittel"
     elif score >= 56 or investment >= 70 or leadership_score >= 68:
@@ -4236,9 +4420,10 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
             _setup_q * 0.26
             + _timing_q * 0.18
             + _leader_q * 0.25
-            + _style_q * 0.17
-            + _chart_q * 0.09
-            + _regime_q * 0.03
+            + _style_q * 0.15
+            + _chart_q * 0.08
+            + float(wave_score or 50) * 0.07
+            + _regime_q * 0.02
             + _data_q * 0.02
         )
 
@@ -4263,6 +4448,10 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
             grade_quality_score += 2.0
         if "chart" in str(style_name or "").lower() and _chart_q >= 68:
             grade_quality_score += 2.0
+        if float(wave_score or 0) >= 72:
+            grade_quality_score += 2.0
+        elif float(wave_score or 0) < 35:
+            grade_quality_score -= 2.0
 
         # Operative Bremsen nur mild in Grade einpreisen. Sie steuern Bucket/Top-Chance separat.
         if risk == "hoch":
@@ -4336,6 +4525,11 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     else:
         next_step = "Nur beobachten; Setup-Reife fehlt noch"
 
+    if wave_impact_pkg.get("next_step_hint") and bucket in {"Jetzt prüfbar", "Nahe am Trigger", "Starke Watchlist"}:
+        _wave_hint = str(wave_impact_pkg.get("next_step_hint"))
+        if _wave_hint and _wave_hint not in next_step:
+            next_step = f"{next_step} · {_wave_hint}"
+
     if not brakes:
         brakes.append("keine dominante Bremse")
 
@@ -4348,6 +4542,8 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         why_parts.append(f"Leadership {leadership_score:.0f}/100")
     if chart_score >= 62:
         why_parts.append(f"Chartimpuls {chart_score:.0f}/100")
+    if wave_score >= 62:
+        why_parts.append(str(wave_impact_pkg.get("label", "Wave konstruktiv")))
     if entry_position in {"in/nahe Zone", "operativ attraktiv", "nahe Zone/Trigger", "In Entry-Zone", "Knapp oberhalb Entry", "Knapp unter Entry / Reclaim nötig"}:
         why_parts.append(entry_position)
     if style_fit_score >= 68:
@@ -4359,7 +4555,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
 
     subscores_text = (
         f"Setup {setup_score:.0f} · Timing {timing_score:.0f} · Leadership {leadership_score:.0f} · "
-        f"RR {rr_score:.0f} · Stil {style_fit_score:.0f} · CRV {entry_rr_pkg.get('crv') if entry_rr_pkg.get('crv') is not None else 'n/a'} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
+        f"RR {rr_score:.0f} · Stil {style_fit_score:.0f} · Wave {wave_score:.0f} · CRV {entry_rr_pkg.get('crv') if entry_rr_pkg.get('crv') is not None else 'n/a'} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
     )
     return {
         "score": round(score, 1),
@@ -4378,6 +4574,16 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "style_fit_score": round(style_fit_score, 1),
         "style_fit_label": style_fit_pkg.get("label", "-"),
         "style_fit_reason": style_fit_pkg.get("reason", "-"),
+        "wave_score": round(wave_score, 1),
+        "wave_impact": wave_impact_pkg.get("impact"),
+        "wave_label": wave_impact_pkg.get("label"),
+        "wave_status": wave_impact_pkg.get("status"),
+        "wave_reason": wave_impact_pkg.get("reason"),
+        "wave_trigger": wave_impact_pkg.get("trigger"),
+        "wave_trigger_distance_pct": wave_impact_pkg.get("trigger_distance_pct"),
+        "wave_invalidation": wave_impact_pkg.get("invalidation"),
+        "wave_target_zone": wave_impact_pkg.get("target_zone"),
+        "wave_subscore_text": wave_impact_pkg.get("subscore_text"),
         "top_chance_rank": _radar_v183_top_chance_rank({"score": score, "bucket": bucket, "grade": grade, "crv": entry_rr_pkg.get("crv"), "knockout": knockout}),
         "penalty": round(penalty, 1),
         "subscores_text": subscores_text,
@@ -4521,6 +4727,10 @@ def run_radar_snapshot_job(job):
         radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({k: v.get("priority") for k, v in radar_v18_map.items()})
         radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({k: v.get("next_step") for k, v in radar_v18_map.items()})
         radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({k: v.get("brake") for k, v in radar_v18_map.items()})
+        radar_df["Wave-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_score") for k, v in radar_v18_map.items()})
+        radar_df["Wave-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_label") for k, v in radar_v18_map.items()})
+        radar_df["Wave-Trigger"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_trigger") for k, v in radar_v18_map.items()})
+        radar_df["Wave-Zielzone"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_target_zone") for k, v in radar_v18_map.items()})
         radar_df["__style_sort"] = radar_df.apply(lambda row: compute_radar_style_sort_shared(row, result_map, style_name), axis=1)
         signature = _radar_snapshot_signature(universe, style_name, max_candidates, custom_text)
         payload = {
@@ -8225,7 +8435,7 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
         base.update(_wave_v191_build_readable_fields(base))
         return base
     except Exception as exc:
-        base["summary"] = f"Wellenanalyse v19.1 nicht belastbar: {exc}"
+        base["summary"] = f"Wellenanalyse v19.2 nicht belastbar: {exc}"
         base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
         return base
 
@@ -13250,6 +13460,10 @@ def build_ranking_table(results):
             "Radar-Priorität": radar_v18.get("priority") or radar_priority_label(r, "Ausgewogen"),
             "Nächster Schritt": radar_v18.get("next_step") or radar_next_step(r),
             "Was bremst": radar_v18.get("brake") or radar_brake_reason(r),
+            "Wave-Score": radar_v18.get("wave_score"),
+            "Wave-Impact": radar_v18.get("wave_label"),
+            "Wave-Trigger": radar_v18.get("wave_trigger"),
+            "Wave-Zielzone": radar_v18.get("wave_target_zone"),
             "Benchmark": r.get("benchmark_label", "-"),
             "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
             "Company Quality": r.get("company", np.nan),
@@ -17127,10 +17341,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">Radar Professional v18.8</div>
+                <div class="premium-title">Radar Professional v19.2</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v19.1 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist eine verständlichere Swing-/Wellenstruktur-Analyse aktiv.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v19.2 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist eine verständlichere Swing-/Wellenstruktur-Analyse aktiv.
                 </div>
             </div>
             """,
@@ -17345,6 +17559,10 @@ if workspace_mode:
                     radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({k: v.get("priority") for k, v in _radar_v18_map.items()})
                     radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({k: v.get("next_step") for k, v in _radar_v18_map.items()})
                     radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({k: v.get("brake") for k, v in _radar_v18_map.items()})
+                    radar_df["Wave-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_score") for k, v in _radar_v18_map.items()})
+                    radar_df["Wave-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_label") for k, v in _radar_v18_map.items()})
+                    radar_df["Wave-Trigger"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_trigger") for k, v in _radar_v18_map.items()})
+                    radar_df["Wave-Zielzone"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_target_zone") for k, v in _radar_v18_map.items()})
                     radar_df["Chart-Impuls"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("label", "-") for r in radar_results})
                     radar_df["Chart-Score"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("score", 0) for r in radar_results})
                     radar_df["Chart-Trigger"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("trigger", "-") for r in radar_results})
@@ -17380,8 +17598,8 @@ if workspace_mode:
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
-                # v18.1: Professional-Funnel-Spalten fuer gespeicherte Snapshots nachfuellen.
-                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Top-Chance-Rang"]:
+                # v19.2: Professional-Funnel- und Wave-Spalten fuer gespeicherte Snapshots nachfuellen.
+                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "Wave-Trigger", "Wave-Zielzone", "Top-Chance-Rang"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
                 if radar_result_map:
@@ -17399,6 +17617,10 @@ if workspace_mode:
                     radar_df["Entry-Qualität"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("entry_quality_text", _row.get("Entry-Qualität", "-")), axis=1)
                     radar_df["Risk/Reward"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("risk_reward_text", _row.get("Risk/Reward", "-")), axis=1)
                     radar_df["Stil-Fit"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("style_fit_label", _row.get("Stil-Fit", "-")), axis=1)
+                    radar_df["Wave-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_score", _row.get("Wave-Score", "-")), axis=1)
+                    radar_df["Wave-Impact"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_label", _row.get("Wave-Impact", "-")), axis=1)
+                    radar_df["Wave-Trigger"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_trigger", _row.get("Wave-Trigger", "-")), axis=1)
+                    radar_df["Wave-Zielzone"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_target_zone", _row.get("Wave-Zielzone", "-")), axis=1)
                     radar_df["Top-Chance-Rang"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("top_chance_rank", _row.get("Top-Chance-Rang", "-")), axis=1)
 
                 # v15.23.7: Firmenname im Radar robust nachfuellen.
@@ -17433,7 +17655,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v19.1: Professional Radar plus verständlichere Swing-/Wellenstruktur-Analyse ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Wellenphase, Trigger, Invalidierung und Zielzone ergänzen die Charttechnik.")
+                st.caption("v19.2: Professional Radar plus verständlichere Swing-/Wellenstruktur-Analyse ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Wellenphase, Trigger, Invalidierung und Zielzone ergänzen die Charttechnik.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -17743,7 +17965,7 @@ if workspace_mode:
                     ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
 
                     st.markdown("### Beste heutige Chancen")
-                    st.caption("v18.5 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    st.caption("v19.2 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
                     if not _top_box_strict_df.empty:
                         _cols = st.columns(len(_top_box_strict_df))
                         for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
@@ -17756,6 +17978,7 @@ if workspace_mode:
                             _entry = str(_top_row.get("Entry-Abstand", "-") or "-")
                             _why = shorten_text(str(_top_row.get("Heute-Relevanz", _top_row.get("Warum heute auffällig", "-")) or "-"), 95)
                             _next = shorten_text(str(_top_row.get("Nächster Schritt", "-") or "-"), 105)
+                            _wave = shorten_text(str(_top_row.get("Wave-Impact", "-") or "-"), 70)
                             _cols[_idx].markdown(
                                 f"""
                                 <div class="section-card" style="border-left:5px solid #22c55e; min-height:220px;">
@@ -17764,6 +17987,7 @@ if workspace_mode:
                                     <div class="premium-sub"><b>{_grade}</b> · Radar {radar_score_badge(_score)} · CRV {_crv}</div>
                                     <div class="premium-sub"><b>{_bucket}</b><br>Entry: {_entry}</div>
                                     <div class="premium-sub">{_why}</div>
+                                    <div class="premium-sub"><b>Wave:</b> {_wave}</div>
                                     <div class="premium-sub"><b>Nächster Schritt:</b> {_next}</div>
                                 </div>
                                 """,
@@ -20676,7 +20900,7 @@ if result is not None:
                 result["wave_structure_label"] = wave_structure_pkg.get("label")
                 result["wave_structure_summary"] = wave_structure_pkg.get("summary")
                 result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellenanalyse v19.1 / Swing-Struktur**")
+            st.markdown("**Wellenanalyse v19.2 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -20710,7 +20934,7 @@ if result is not None:
             _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
             st.markdown(f"""
             <div class="premium-card" style="margin-top:10px;">
-                <div class="premium-title">Wellenanalyse v19.1</div>
+                <div class="premium-title">Wellenanalyse v19.2</div>
                 <div class="premium-value" style="font-size:1.02rem;">{html.escape(_wave_status)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Was bedeutet das?</b> {html.escape(_wave_meaning)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Struktur:</b> {html.escape(_wave_sequence_readable)} · <b>Qualität:</b> {html.escape(_wave_quality)}</div>
@@ -20723,7 +20947,7 @@ if result is not None:
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("v19.1: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
+                st.caption("v19.2: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

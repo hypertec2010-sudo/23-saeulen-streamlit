@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v19.4",
+        "Export_Version": "v20.0",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2470,6 +2470,11 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Wellenanalyse_Invalidierung": ((result or {}).get("wave_structure_pkg") or {}).get("wave_invalidation"),
         "Wellenanalyse_Zielzone": ((result or {}).get("wave_structure_pkg") or {}).get("wave_target_zone"),
         "Wellenanalyse_Qualitaet": ((result or {}).get("wave_structure_pkg") or {}).get("wave_quality_label"),
+        "MTF_Label": ((result or {}).get("multi_timeframe_pkg") or {}).get("label"),
+        "MTF_Score": ((result or {}).get("multi_timeframe_pkg") or {}).get("score"),
+        "MTF_Summary": ((result or {}).get("multi_timeframe_pkg") or {}).get("summary"),
+        "MTF_Handlung": ((result or {}).get("multi_timeframe_pkg") or {}).get("action"),
+        "MTF_Konflikt": ((result or {}).get("multi_timeframe_pkg") or {}).get("conflict"),
         "Fibonacci_Label": ((result or {}).get("fibonacci_context_pkg") or {}).get("label"),
         "Fibonacci_Phase": ((result or {}).get("fibonacci_context_pkg") or {}).get("phase"),
         "Fibonacci_Zusammenfassung": ((result or {}).get("fibonacci_context_pkg") or {}).get("summary"),
@@ -2656,7 +2661,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v19.4"
+APP_VERSION = "v20.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4198,6 +4203,254 @@ def _radar_v192_wave_impact(result):
     }
 
 
+
+def _mtf_v200_num(value, default=None):
+    try:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            txt = value.strip().lower()
+            if txt in {"", "n/a", "nan", "none", "-"}:
+                return default
+            value = txt.replace("%", "").replace(",", ".")
+        f = float(value)
+        if pd.isna(f):
+            return default
+        return f
+    except Exception:
+        return default
+
+
+def _mtf_v200_prepare_ohlc(df):
+    try:
+        if df is None or len(df) < 8:
+            return None
+        out = df.copy()
+        rename = {}
+        for c in out.columns:
+            cl = str(c).lower()
+            if cl == "open": rename[c] = "Open"
+            elif cl == "high": rename[c] = "High"
+            elif cl == "low": rename[c] = "Low"
+            elif cl == "close": rename[c] = "Close"
+            elif cl == "volume": rename[c] = "Volume"
+        if rename:
+            out = out.rename(columns=rename)
+        if not {"Open", "High", "Low", "Close"}.issubset(set(out.columns)):
+            return None
+        out = out.dropna(subset=["Open", "High", "Low", "Close"], how="any")
+        if len(out) < 8:
+            return None
+        if not isinstance(out.index, pd.DatetimeIndex):
+            out.index = pd.to_datetime(out.index, errors="coerce")
+            out = out[~out.index.isna()]
+        return out.sort_index()
+    except Exception:
+        return None
+
+
+def _mtf_v200_resample_weekly(df):
+    daily = _mtf_v200_prepare_ohlc(df)
+    if daily is None or len(daily) < 25:
+        return None
+    try:
+        agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last"}
+        if "Volume" in daily.columns:
+            agg["Volume"] = "sum"
+        weekly = daily.resample("W-FRI").agg(agg).dropna(subset=["Open", "High", "Low", "Close"], how="any")
+        return weekly.tail(160) if weekly is not None and len(weekly) >= 8 else None
+    except Exception:
+        return None
+
+
+def _mtf_v200_tf_state(df, label, result=None):
+    d = _mtf_v200_prepare_ohlc(df)
+    if d is None or len(d) < 8:
+        return {"label": label, "score": 50.0, "bias": "neutral", "status": "nicht belastbar", "reason": "zu wenig Daten", "action": "nicht gewichten"}
+    close = d["Close"].astype(float)
+    price = float(close.iloc[-1])
+    ma20 = float(close.rolling(20, min_periods=5).mean().iloc[-1]) if len(close) >= 5 else price
+    ma50 = float(close.rolling(50, min_periods=10).mean().iloc[-1]) if len(close) >= 10 else ma20
+    ma200 = float(close.rolling(200, min_periods=30).mean().iloc[-1]) if len(close) >= 30 else ma50
+    ret_short = 0.0
+    try:
+        lookback = min(len(close)-1, 5 if label.lower().startswith("hour") else 20)
+        if lookback > 0 and float(close.iloc[-lookback-1]) > 0:
+            ret_short = (price / float(close.iloc[-lookback-1]) - 1.0) * 100.0
+    except Exception:
+        ret_short = 0.0
+
+    score = 50.0
+    reasons = []
+    if price >= ma20:
+        score += 9; reasons.append("Kurs über MA20")
+    else:
+        score -= 8; reasons.append("Kurs unter MA20")
+    if ma20 >= ma50:
+        score += 8; reasons.append("MA20 über MA50")
+    else:
+        score -= 7; reasons.append("MA20 unter MA50")
+    if price >= ma50:
+        score += 5
+    else:
+        score -= 5
+    if len(close) >= 80:
+        if price >= ma200:
+            score += 4
+        else:
+            score -= 5
+    if ret_short >= 3:
+        score += 5; reasons.append("Momentum positiv")
+    elif ret_short <= -3:
+        score -= 5; reasons.append("Momentum schwach")
+
+    try:
+        wave = build_wave_structure_context_v190(d, result or {}) if "build_wave_structure_context_v190" in globals() else {}
+        seq = str((wave or {}).get("wave_sequence", "")).upper()
+        wq = _mtf_v200_num((wave or {}).get("wave_quality_score"), 50.0)
+        if "HH/HL" in seq or "HL" in seq and "LL" not in seq:
+            score += 8; reasons.append("Swing-Struktur konstruktiv")
+        elif "LH/LL" in seq or "LL" in seq:
+            score -= 10; reasons.append("Swing-Struktur defensiv")
+        score += max(-4, min(4, (float(wq or 50)-50)/8))
+    except Exception:
+        wave = {}
+
+    score = round(max(0, min(100, score)), 1)
+    if score >= 68:
+        bias = "bullish"; status = "konstruktiv"
+    elif score >= 56:
+        bias = "constructive"; status = "leicht konstruktiv"
+    elif score >= 44:
+        bias = "neutral"; status = "neutral/gemischt"
+    elif score >= 32:
+        bias = "defensive"; status = "defensiv"
+    else:
+        bias = "bearish"; status = "schwach"
+    action = "unterstützt Long-Setup" if score >= 62 else "neutral" if score >= 44 else "bremst Long-Setup"
+    return {
+        "label": label,
+        "score": score,
+        "bias": bias,
+        "status": status,
+        "reason": "; ".join(reasons[:3]) if reasons else "keine klare Tendenz",
+        "action": action,
+        "price": round(price, 4),
+        "ma20": round(ma20, 4),
+        "ma50": round(ma50, 4),
+        "ma200": round(ma200, 4),
+        "ret_short": round(ret_short, 2),
+        "wave_sequence": str((wave or {}).get("wave_readable_sequence", (wave or {}).get("wave_sequence", "-"))),
+    }
+
+
+def build_multi_timeframe_context_v200(daily_df=None, result=None, hourly_df=None):
+    """v20.0: Top-down Multi-Timeframe-Struktur.
+
+    Weekly = uebergeordneter Trend, Daily = Setup, Hourly = Timing.
+    Bewusst regelbasiert und weich gewichtet, damit bestehende Radar-Gates stabil bleiben.
+    """
+    r = result or {}
+    daily = _mtf_v200_prepare_ohlc(daily_df)
+    if daily is None:
+        return {
+            "available": False,
+            "score": 50.0,
+            "impact": 0.0,
+            "label": "MTF nicht belastbar",
+            "summary": "Multi-Timeframe-Struktur nicht berechenbar.",
+            "action": "Nicht gewichten; Tagesanalyse nutzen.",
+            "weekly": {}, "daily": {}, "hourly": {},
+            "conflict": "n/a", "radar_text": "MTF n/a", "gate": "",
+        }
+    weekly_df = _mtf_v200_resample_weekly(daily)
+    hourly = _mtf_v200_prepare_ohlc(hourly_df)
+    weekly_state = _mtf_v200_tf_state(weekly_df, "Weekly", r) if weekly_df is not None else {"label":"Weekly","score":50.0,"bias":"neutral","status":"nicht belastbar","reason":"zu wenig Wochendaten","action":"neutral"}
+    daily_state = _mtf_v200_tf_state(daily, "Daily", r)
+    hourly_state = _mtf_v200_tf_state(hourly, "Hourly", r) if hourly is not None and len(hourly) >= 8 else {"label":"Hourly","score":50.0,"bias":"neutral","status":"nicht belastbar","reason":"keine Intraday-Daten","action":"neutral"}
+
+    ws = float(weekly_state.get("score", 50) or 50)
+    ds = float(daily_state.get("score", 50) or 50)
+    hs = float(hourly_state.get("score", 50) or 50)
+    score = round(max(0, min(100, ws * 0.44 + ds * 0.38 + hs * 0.18)), 1)
+
+    conflict = "keine klare Konfliktlage"
+    gate = ""
+    if ws >= 62 and ds >= 58 and hs >= 54:
+        label = "MTF unterstützt"
+        impact = 5.0
+        summary = "Weekly, Daily und kurzfristiges Timing zeigen in eine konstruktive Richtung."
+        action = "Setup aktiv/nah prüfen; Entry, CRV und Invalidierung beachten."
+    elif ws >= 62 and ds >= 56 and hs < 46:
+        label = "MTF: kurzfristiger Trigger offen"
+        impact = 2.0
+        conflict = "Weekly/Daily konstruktiv, Hourly bremst noch"
+        summary = "Übergeordnete Struktur passt, aber die kurzfristige Aktivierung fehlt noch."
+        action = "Nahe am Trigger; Stunden-Reclaim oder Stabilisierung abwarten."
+    elif ws >= 62 and ds < 46:
+        label = "MTF-Konflikt"
+        impact = -2.0
+        conflict = "Weekly stark, Daily Setup schwach"
+        summary = "Der übergeordnete Trend ist konstruktiv, der Tageschart bestätigt das Setup aber noch nicht."
+        action = "Nicht erzwingen; Tages-Setup/Reclaim abwarten."
+    elif ws < 44 and ds >= 56:
+        label = "MTF Bounce gegen Trend"
+        impact = -4.0
+        conflict = "Daily Bounce gegen schwachen Weekly-Kontext"
+        gate = "MTF-Konflikt: Bounce gegen uebergeordneten Trend"
+        summary = "Der Tageschart wirkt besser, aber der Wochenkontext bremst."
+        action = "Nur selektiv/kleiner handeln; starke Bestätigung nötig."
+    elif score >= 62:
+        label = "MTF leicht konstruktiv"
+        impact = 3.0
+        summary = "Die Zeitebenen sind insgesamt konstruktiv, aber nicht perfekt synchron."
+        action = "Vorbereiten; kurzfristige Bestätigung beachten."
+    elif score >= 48:
+        label = "MTF gemischt"
+        impact = 0.0
+        summary = "Die Zeitebenen liefern kein eindeutiges gemeinsames Signal."
+        action = "Nicht erzwingen; Trigger und Zone abwarten."
+    else:
+        label = "MTF defensiv"
+        impact = -6.0
+        gate = "MTF-Struktur defensiv"
+        summary = "Mehrere Zeitebenen bremsen das Long-Setup."
+        action = "Kein aktiver Entry ohne neue Bestätigung."
+
+    radar_text = f"MTF {score:.0f}: Weekly {weekly_state.get('status','-')}, Daily {daily_state.get('status','-')}, Hourly {hourly_state.get('status','-')}"
+    return {
+        "available": True,
+        "score": score,
+        "impact": round(float(impact), 1),
+        "label": label,
+        "summary": summary,
+        "action": action,
+        "weekly": weekly_state,
+        "daily": daily_state,
+        "hourly": hourly_state,
+        "conflict": conflict,
+        "radar_text": radar_text,
+        "gate": gate,
+    }
+
+
+def _radar_v200_mtf_impact(result):
+    r = result or {}
+    mtf = r.get("multi_timeframe_pkg") or r.get("mtf_context_pkg") or {}
+    if not isinstance(mtf, dict) or not mtf:
+        return {"score": 50.0, "impact": 0.0, "label": "MTF n/a", "summary": "Multi-Timeframe nicht berechnet.", "action": "", "gate": "", "radar_text": "MTF n/a"}
+    score = _mtf_v200_num(mtf.get("score"), 50.0)
+    impact = _mtf_v200_num(mtf.get("impact"), 0.0)
+    return {
+        "score": round(float(score), 1),
+        "impact": round(float(impact), 1),
+        "label": str(mtf.get("label") or "MTF neutral"),
+        "summary": str(mtf.get("summary") or ""),
+        "action": str(mtf.get("action") or ""),
+        "gate": str(mtf.get("gate") or ""),
+        "radar_text": str(mtf.get("radar_text") or f"MTF {score:.0f}"),
+    }
+
 def _radar_v183_top_chance_rank(decision):
     """Zusatz-Ranking fuer die Box 'Beste heutige Chancen'."""
     d = decision or {}
@@ -4277,11 +4530,14 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     wave_impact_pkg = _radar_v192_wave_impact(r)
     wave_score = _radar_safe_num(wave_impact_pkg.get("score"), 50)
     wave_impact = _radar_safe_num(wave_impact_pkg.get("impact"), 0)
+    mtf_impact_pkg = _radar_v200_mtf_impact(r)
+    mtf_score = _radar_safe_num(mtf_impact_pkg.get("score"), 50)
+    mtf_impact = _radar_safe_num(mtf_impact_pkg.get("impact"), 0)
 
-    setup_score = _radar_v18_clip(setup_conf * 0.29 + confluence * 0.25 + chart_score * 0.22 + max(trend, base) * 0.14 + wave_score * 0.10)
-    timing_score = _radar_v18_clip(trading * 0.33 + tb * 0.23 + chart_score * 0.18 + entry_position_score * 0.17 + wave_score * 0.09)
+    setup_score = _radar_v18_clip(setup_conf * 0.25 + confluence * 0.22 + chart_score * 0.20 + max(trend, base) * 0.12 + wave_score * 0.09 + mtf_score * 0.12)
+    timing_score = _radar_v18_clip(trading * 0.30 + tb * 0.21 + chart_score * 0.16 + entry_position_score * 0.16 + wave_score * 0.08 + mtf_score * 0.09)
     leadership_score = _radar_v18_clip(leadership * 0.45 + trend * 0.25 + investment * 0.18 + max(0, accumulation - distribution * 0.35) * 0.12)
-    rr_score = _radar_v18_clip(tradeability * 0.20 + trading * 0.20 + entry_position_score * 0.20 + float(entry_rr_pkg.get("rr_score", 45) or 45) * 0.24 + (100 - max(distribution, 0)) * 0.06 + wave_score * 0.10)
+    rr_score = _radar_v18_clip(tradeability * 0.18 + trading * 0.18 + entry_position_score * 0.18 + float(entry_rr_pkg.get("rr_score", 45) or 45) * 0.22 + (100 - max(distribution, 0)) * 0.05 + wave_score * 0.09 + mtf_score * 0.10)
     regime_score = 62.0 if regime_raw == "POSITIV" else 45.0 if regime_raw == "NEUTRAL" else 30.0 if regime_raw == "NEGATIV" else 50.0
     data_quality = _radar_v18_clip(_radar_safe_num((r.get("confidence_info", {}) or {}).get("coverage"), 0.75) * 100 if isinstance(r.get("confidence_info", {}), dict) else 70)
 
@@ -4325,6 +4581,10 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         penalty += 6; gates.append(str(wave_impact_pkg.get("gate"))); brakes.append(str(wave_impact_pkg.get("gate")))
     elif wave_impact < -4:
         penalty += 3; brakes.append(str(wave_impact_pkg.get("label", "Wave bremst")))
+    if mtf_impact_pkg.get("gate"):
+        penalty += 5; gates.append(str(mtf_impact_pkg.get("gate"))); brakes.append(str(mtf_impact_pkg.get("gate")))
+    elif mtf_impact < -4:
+        penalty += 3; brakes.append(str(mtf_impact_pkg.get("label", "MTF bremst")))
 
     style = style_name.lower()
     if "chart" in style:
@@ -4348,7 +4608,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         raw_score += 5
     if chart_score >= 70 and "chart" in style:
         raw_score += 4
-    raw_score += wave_impact + min(float(wave_impact_pkg.get("today_boost", 0) or 0), 4.0)
+    raw_score += wave_impact + min(float(wave_impact_pkg.get("today_boost", 0) or 0), 4.0) + mtf_impact
 
     score = _radar_v18_clip(raw_score - penalty)
 
@@ -4360,6 +4620,8 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     if distribution > accumulation + 22 and trading < 70:
         knockout = True
     if str(wave_impact_pkg.get("bias", "")) == "bearish" and trading < 66 and not valid_setup:
+        knockout = True
+    if mtf_impact <= -5 and trading < 62 and not valid_setup:
         knockout = True
     if typ in {"Hype / Event", "Riskant"} and risk in {"hoch", "erhöht"} and score < 72:
         knockout = True
@@ -4392,7 +4654,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     elif score >= 74 and style_fit_score >= 54 and rr_score >= 48 and not poor_crv_gate and (maturity == "prüfbar" or trigger in {"Aktiv", "Jetzt prüfbar"}) and risk != "hoch":
         bucket = "Jetzt prüfbar"
         priority = "hoch"
-    elif score >= 62 and style_fit_score >= 48 and not poor_crv_gate and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"} or float(wave_impact_pkg.get("today_boost", 0) or 0) >= 3.0):
+    elif score >= 62 and style_fit_score >= 48 and not poor_crv_gate and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"} or float(wave_impact_pkg.get("today_boost", 0) or 0) >= 3.0 or mtf_impact >= 4.0):
         bucket = "Nahe am Trigger"
         priority = "hoch" if score >= 70 and risk == "ruhig" else "mittel"
     elif score >= 56 or investment >= 70 or leadership_score >= 68:
@@ -4422,7 +4684,8 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
             + _leader_q * 0.25
             + _style_q * 0.15
             + _chart_q * 0.08
-            + float(wave_score or 50) * 0.07
+            + float(wave_score or 50) * 0.06
+            + float(mtf_score or 50) * 0.06
             + _regime_q * 0.02
             + _data_q * 0.02
         )
@@ -4451,6 +4714,10 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         if float(wave_score or 0) >= 72:
             grade_quality_score += 2.0
         elif float(wave_score or 0) < 35:
+            grade_quality_score -= 2.0
+        if float(mtf_score or 0) >= 68:
+            grade_quality_score += 2.0
+        elif float(mtf_score or 0) < 38:
             grade_quality_score -= 2.0
 
         # Operative Bremsen nur mild in Grade einpreisen. Sie steuern Bucket/Top-Chance separat.
@@ -4525,6 +4792,11 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     else:
         next_step = "Nur beobachten; Setup-Reife fehlt noch"
 
+    if mtf_impact_pkg.get("action") and bucket in {"Jetzt prüfbar", "Nahe am Trigger", "Starke Watchlist"}:
+        _mtf_hint = str(mtf_impact_pkg.get("action"))
+        if _mtf_hint and _mtf_hint not in next_step:
+            next_step = f"{next_step} · MTF: {_mtf_hint}"
+
     if wave_impact_pkg.get("next_step_hint") and bucket in {"Jetzt prüfbar", "Nahe am Trigger", "Starke Watchlist"}:
         _wave_hint = str(wave_impact_pkg.get("next_step_hint"))
         if _wave_hint and _wave_hint not in next_step:
@@ -4544,6 +4816,8 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         why_parts.append(f"Chartimpuls {chart_score:.0f}/100")
     if wave_score >= 62:
         why_parts.append(str(wave_impact_pkg.get("label", "Wave konstruktiv")))
+    if mtf_score >= 62:
+        why_parts.append(str(mtf_impact_pkg.get("label", "MTF konstruktiv")))
     if entry_position in {"in/nahe Zone", "operativ attraktiv", "nahe Zone/Trigger", "In Entry-Zone", "Knapp oberhalb Entry", "Knapp unter Entry / Reclaim nötig"}:
         why_parts.append(entry_position)
     if style_fit_score >= 68:
@@ -4555,7 +4829,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
 
     subscores_text = (
         f"Setup {setup_score:.0f} · Timing {timing_score:.0f} · Leadership {leadership_score:.0f} · "
-        f"RR {rr_score:.0f} · Stil {style_fit_score:.0f} · Wave {wave_score:.0f} · CRV {entry_rr_pkg.get('crv') if entry_rr_pkg.get('crv') is not None else 'n/a'} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
+        f"RR {rr_score:.0f} · Stil {style_fit_score:.0f} · Wave {wave_score:.0f} · MTF {mtf_score:.0f} · CRV {entry_rr_pkg.get('crv') if entry_rr_pkg.get('crv') is not None else 'n/a'} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
     )
     return {
         "score": round(score, 1),
@@ -4575,6 +4849,12 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "style_fit_label": style_fit_pkg.get("label", "-"),
         "style_fit_reason": style_fit_pkg.get("reason", "-"),
         "wave_score": round(wave_score, 1),
+        "mtf_score": round(mtf_score, 1),
+        "mtf_impact": mtf_impact_pkg.get("impact"),
+        "mtf_label": mtf_impact_pkg.get("label"),
+        "mtf_summary": mtf_impact_pkg.get("summary"),
+        "mtf_action": mtf_impact_pkg.get("action"),
+        "mtf_radar_text": mtf_impact_pkg.get("radar_text"),
         "wave_impact": wave_impact_pkg.get("impact"),
         "wave_label": wave_impact_pkg.get("label"),
         "wave_status": wave_impact_pkg.get("status"),
@@ -8435,7 +8715,7 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
         base.update(_wave_v191_build_readable_fields(base))
         return base
     except Exception as exc:
-        base["summary"] = f"Wellenanalyse v19.4 nicht belastbar: {exc}"
+        base["summary"] = f"Wellenanalyse v20.0 nicht belastbar: {exc}"
         base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
         return base
 
@@ -17590,10 +17870,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">Radar Professional v19.4</div>
+                <div class="premium-title">Radar Professional v20.0</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v19.4 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist eine verständlichere Swing-/Wellenstruktur-Analyse aktiv.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v20.0 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
                 </div>
             </div>
             """,
@@ -17810,6 +18090,8 @@ if workspace_mode:
                     radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({k: v.get("brake") for k, v in _radar_v18_map.items()})
                     radar_df["Wave-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_score") for k, v in _radar_v18_map.items()})
                     radar_df["Wave-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_label") for k, v in _radar_v18_map.items()})
+                    radar_df["MTF-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("mtf_score") for k, v in _radar_v18_map.items()})
+                    radar_df["MTF-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("mtf_label") for k, v in _radar_v18_map.items()})
                     radar_df["Wann aktiv?"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_trigger") for k, v in _radar_v18_map.items()})
                     radar_df["Ziel bei Bestätigung"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_target_zone") for k, v in _radar_v18_map.items()})
                     radar_df["Chart-Impuls"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("label", "-") for r in radar_results})
@@ -17847,8 +18129,8 @@ if workspace_mode:
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
-                # v19.4: Professional-Funnel- und Wave-Spalten fuer gespeicherte Snapshots nachfuellen.
-                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "Wann aktiv?", "Ziel bei Bestätigung", "Top-Chance-Rang"]:
+                # v20.0: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
+                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "MTF-Score", "MTF-Impact", "Wann aktiv?", "Ziel bei Bestätigung", "Top-Chance-Rang"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
                 if radar_result_map:
@@ -17868,6 +18150,8 @@ if workspace_mode:
                     radar_df["Stil-Fit"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("style_fit_label", _row.get("Stil-Fit", "-")), axis=1)
                     radar_df["Wave-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_score", _row.get("Wave-Score", "-")), axis=1)
                     radar_df["Wave-Impact"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_label", _row.get("Wave-Impact", "-")), axis=1)
+                    radar_df["MTF-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("mtf_score", _row.get("MTF-Score", "-")), axis=1)
+                    radar_df["MTF-Impact"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("mtf_label", _row.get("MTF-Impact", "-")), axis=1)
                     radar_df["Wann aktiv?"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_trigger", _row.get("Wann aktiv?", "-")), axis=1)
                     radar_df["Ziel bei Bestätigung"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_target_zone", _row.get("Ziel bei Bestätigung", "-")), axis=1)
                     radar_df["Top-Chance-Rang"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("top_chance_rank", _row.get("Top-Chance-Rang", "-")), axis=1)
@@ -17904,7 +18188,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v19.4: Professional Radar plus verständlichere Swing-/Wellenstruktur-Analyse ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Wellenphase, Trigger, Invalidierung und Zielzone ergänzen die Charttechnik.")
+                st.caption("v20.0: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -18214,7 +18498,7 @@ if workspace_mode:
                     ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
 
                     st.markdown("### Beste heutige Chancen")
-                    st.caption("v19.4 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    st.caption("v20.0 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
                     if not _top_box_strict_df.empty:
                         _cols = st.columns(len(_top_box_strict_df))
                         for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
@@ -21106,6 +21390,16 @@ if result is not None:
     except Exception:
         wave_structure_pkg = (result or {}).get("wave_structure_pkg", {}) if isinstance(result, dict) else {}
 
+    # v20.0: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
+    try:
+        _mtf_hourly_df = get_intraday_hourly_df_for_candles(result if "result" in locals() else {}, chart_df) if "get_intraday_hourly_df_for_candles" in globals() else None
+        multi_timeframe_pkg = build_multi_timeframe_context_v200(chart_df, result if "result" in locals() else {}, _mtf_hourly_df)
+        if isinstance(result, dict):
+            result["multi_timeframe_pkg"] = multi_timeframe_pkg
+            result["mtf_context_pkg"] = multi_timeframe_pkg
+    except Exception:
+        multi_timeframe_pkg = (result or {}).get("multi_timeframe_pkg", {}) if isinstance(result, dict) else {}
+
     trade_overlay_pkg = build_trade_setup_overlay_v193(result if "result" in locals() else {}, wave_structure_pkg, ccy)
     fig = build_candlestick_chart(
         chart_df, ticker, ccy,
@@ -21188,7 +21482,7 @@ if result is not None:
                     result["wave_structure_label"] = wave_structure_pkg.get("label")
                     result["wave_structure_summary"] = wave_structure_pkg.get("summary")
                     result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellenanalyse v19.4 / Swing-Struktur**")
+            st.markdown("**Wellenanalyse v20.0 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -21222,7 +21516,7 @@ if result is not None:
             _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
             st.markdown(f"""
             <div class="premium-card" style="margin-top:10px;">
-                <div class="premium-title">Wellenanalyse v19.4</div>
+                <div class="premium-title">Wellenanalyse v20.0</div>
                 <div class="premium-value" style="font-size:1.02rem;">{html.escape(_wave_status)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Was bedeutet das?</b> {html.escape(_wave_meaning)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Struktur:</b> {html.escape(_wave_sequence_readable)} · <b>Qualität:</b> {html.escape(_wave_quality)}</div>
@@ -21231,11 +21525,33 @@ if result is not None:
                 <div class="premium-sub"><b>Ziel bei Bestätigung:</b> {html.escape(_wave_target_readable)}</div>
             </div>
             """, unsafe_allow_html=True)
+            # v20.0: Multi-Timeframe-Block (Weekly/Daily/Hourly)
+            try:
+                _mtf_pkg = multi_timeframe_pkg if "multi_timeframe_pkg" in locals() and isinstance(multi_timeframe_pkg, dict) else ((result or {}).get("multi_timeframe_pkg") if isinstance(result, dict) else {})
+            except Exception:
+                _mtf_pkg = {}
+            if isinstance(_mtf_pkg, dict) and _mtf_pkg:
+                _w = _mtf_pkg.get("weekly", {}) or {}
+                _d = _mtf_pkg.get("daily", {}) or {}
+                _h = _mtf_pkg.get("hourly", {}) or {}
+                st.markdown(f"""
+                <div class="premium-card" style="margin-top:10px;">
+                    <div class="premium-title">Multi-Timeframe v20.0</div>
+                    <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(_mtf_pkg.get('label', 'MTF nicht berechnet')))} · {html.escape(str(_mtf_pkg.get('score', 'n/a')))}/100</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Lesart:</b> {html.escape(str(_mtf_pkg.get('summary', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Weekly:</b> {html.escape(str(_w.get('status', '-')))} · {html.escape(str(_w.get('reason', '-')))}</div>
+                    <div class="premium-sub"><b>Daily:</b> {html.escape(str(_d.get('status', '-')))} · {html.escape(str(_d.get('reason', '-')))}</div>
+                    <div class="premium-sub"><b>Hourly:</b> {html.escape(str(_h.get('status', '-')))} · {html.escape(str(_h.get('reason', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Konflikt:</b> {html.escape(str(_mtf_pkg.get('conflict', '-')))}</div>
+                    <div class="premium-sub"><b>Handlung:</b> {html.escape(str(_mtf_pkg.get('action', '-')))}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
             _wave_zones = wave_structure_pkg.get("zones", []) if isinstance(wave_structure_pkg, dict) else []
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("v19.4: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
+                st.caption("v20.0: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

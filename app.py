@@ -170,6 +170,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from analysis_core import analyze_stock as _core_analyze_stock
 import yfinance as yf
 from plotly.subplots import make_subplots
@@ -2435,7 +2436,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v21.1",
+        "Export_Version": "v21.2",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2661,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v21.1"
+APP_VERSION = "v21.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5026,7 +5027,7 @@ def _v210_alert_add(rows, *, ticker, name, alert_type, priority, message, action
 def build_setup_alerts_v210(result, style_name="Ausgewogen", decision=None):
     """Erzeugt echte, handlungsrelevante Setup-Alerts.
 
-    v21.1 trennt bewusst zwischen echten Alerts und Brems-/Diagnosehinweisen:
+    v21.2 trennt bewusst zwischen echten Alerts und Brems-/Diagnosehinweisen:
     - Setup-Gates, Warnsignale und "später beobachten" werden NICHT mehr als Alerts ausgespielt.
     - Entry-Alerts entstehen nur, wenn wirklich eine parsebare Entry-Zone vorhanden ist.
     - CRV-Alerts entstehen nur bei relevantem Bucket, belastbarem CRV und ohne harte Gates.
@@ -5156,6 +5157,115 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
         return "-"
     first = alerts[0]
     return f"{first.get('Priorität','mittel')}: {first.get('Alert-Typ','Alert')}"
+
+
+# ---------- v21.2: Live-Watchlist / Trigger-Monitor ----------
+def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"):
+    """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
+
+    Läuft nur in der geöffneten App und nutzt dieselben Bausteine wie Radar und Setup-Alerts.
+    """
+    r = result or {}
+    d = decision or build_professional_radar_decision_v18(r, style_name)
+    ticker = str(r.get("ticker") or r.get("Ticker") or "").strip().upper()
+    name = str(r.get("name") or r.get("Name") or ticker or "-").strip()
+    price = _v210_alert_price(r)
+    bucket = str(d.get("bucket") or "-").strip()
+    grade = str(d.get("grade") or "-").strip().upper()
+    crv = d.get("crv")
+    try:
+        crv_float = None if crv in {"", "-", "n/a", None} else float(crv)
+    except Exception:
+        crv_float = None
+
+    alerts = build_setup_alerts_v210(r, style_name=style_name, decision=d)
+    alert_types = [str(a.get("Alert-Typ") or "") for a in alerts]
+    alert_text = " · ".join(alert_types[:2]) if alert_types else "-"
+
+    gate = str(d.get("gate_reasons") or "")
+    gate_low = gate.lower().strip()
+    hard_gate = bool(gate_low and gate_low not in {"keine harten gates", "keine harten gate", "-", "nan", "none"})
+    wave_dist = _v210_alert_num(d.get("wave_trigger_distance_pct"), default=None)
+    entry_distance = _v210_alert_num(d.get("entry_distance_pct"), default=None)
+    next_step = str(d.get("next_step") or "-").strip()
+    brake = str(d.get("brake") or "-").strip()
+
+    # Ampel priorisieren: Rot für echte Ausschlüsse, Grün für aktive Trigger, Gelb für Triggernähe.
+    status_icon = "⚪"
+    status = "Beobachten"
+    priority = 4
+    reason = "Noch kein aktiver Trigger."
+
+    if "Invalidierung gebrochen" in alert_types or bucket == "Warnsignale / meiden":
+        status_icon, status, priority = "🔴", "Invalidiert / meiden", 1
+        reason = "Invalidierung oder Warnsignal aktiv."
+    elif "Bucket: Jetzt prüfbar" in alert_types or bucket == "Jetzt prüfbar":
+        status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
+        reason = "Bucket steht auf Jetzt prüfbar."
+    elif "Entry-Zone erreicht" in alert_types and (crv_float is None or crv_float >= 1.5):
+        status_icon, status, priority = "🟢", "Entry erreicht", 0
+        reason = "Kurs liegt in/nahe Entry-Zone und CRV ist nicht bremsend."
+    elif "Wave-Trigger aktiv" in alert_types:
+        status_icon, status, priority = "🟢", "Wave-Trigger aktiv", 0
+        reason = "Wellen-/Swing-Trigger ist aktiviert."
+    elif bucket == "Nahe am Trigger" or "Wave-Trigger nahe" in alert_types:
+        status_icon, status, priority = "🟡", "Nahe am Trigger", 2
+        reason = "Setup ist interessant, Aktivierung fehlt noch."
+    elif "CRV attraktiv" in alert_types or (crv_float is not None and crv_float >= 1.8 and bucket in {"Nahe am Trigger", "Starke Watchlist"}):
+        status_icon, status, priority = "🔵", "CRV attraktiv", 3
+        reason = "Chance/Risiko ist interessant, Trigger/Entry prüfen."
+    elif hard_gate or bucket in {"Pullback bevorzugt / nicht hinterherlaufen", "Später beobachten"}:
+        status_icon, status, priority = "⚪", "Nur beobachten", 5
+        reason = brake if brake and brake != "-" else "Bremse/Gate noch aktiv."
+
+    return {
+        "Ampel": status_icon,
+        "Status": status,
+        "Ticker": ticker,
+        "Name": name,
+        "Kurs": "" if price is None else round(float(price), 4),
+        "Grade": grade,
+        "Bucket": bucket,
+        "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
+        "Entry-Abstand": d.get("entry_distance_text") or ("n/a" if entry_distance is None else f"{entry_distance:+.1f}%"),
+        "Wann aktiv?": d.get("wave_trigger") or "-",
+        "Setup-Alert": alert_text,
+        "Grund": reason,
+        "Nächste Handlung": next_step,
+        "Letztes Update": get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S"),
+        "__prio": priority,
+    }
+
+
+def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=40):
+    rows = []
+    errors = []
+    unique = []
+    for t in tickers or []:
+        tt = str(t or "").strip().upper()
+        if tt and tt not in unique:
+            unique.append(tt)
+    for ticker in unique[:int(max_items or 40)]:
+        try:
+            result = analyze_stock(
+                ticker=ticker,
+                horizon="Swing (1-4 Wochen)",
+                depot=10000,
+                risk_pct=1.0,
+                override=0.0,
+                buy_in_override=0.0,
+                smart_money_default=True,
+                strict_mode=True,
+            )
+            decision = build_professional_radar_decision_v18(result, style_name)
+            rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name))
+        except Exception as exc:
+            errors.append({"Ticker": ticker, "Fehler": str(exc)[:180]})
+    if rows:
+        df = pd.DataFrame(rows).sort_values(["__prio", "Ticker"]).drop(columns=["__prio"], errors="ignore").reset_index(drop=True)
+    else:
+        df = pd.DataFrame(columns=["Ampel", "Status", "Ticker", "Name", "Kurs", "Grade", "Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
+    return df, pd.DataFrame(errors)
 
 def radar_reason_professional_v1521(result, style_name_local):
     if str(style_name_local or "") == "Charttechnik":
@@ -18311,6 +18421,70 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     else:
                         st.info("In dieser Watchlist sind noch keine Ticker.")
 
+
+            # ---------- v21.2: Live-Watchlist / Trigger-Monitor ----------
+            st.markdown("### Live-Watchlist / Trigger-Monitor v21.2")
+            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu.")
+            lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
+            with lm1:
+                live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
+                st.session_state.live_watchlist_monitor_enabled = live_monitor_enabled
+            with lm2:
+                refresh_options = ["15 Minuten", "30 Minuten", "60 Minuten"]
+                current_refresh = st.session_state.get("live_watchlist_refresh_interval", "30 Minuten")
+                if current_refresh not in refresh_options:
+                    current_refresh = "30 Minuten"
+                refresh_label = st.selectbox("Refresh", refresh_options, index=refresh_options.index(current_refresh), key="live_watchlist_refresh_interval_widget")
+                st.session_state.live_watchlist_refresh_interval = refresh_label
+            with lm3:
+                style_options_monitor = ["Ausgewogen", "Leader", "Charttechnik", "Turnaround"]
+                monitor_style = st.selectbox("Prüfstil", style_options_monitor, index=0, key="live_watchlist_style_widget")
+            with lm4:
+                only_active = st.checkbox("Nur grün/gelb", value=bool(st.session_state.get("live_watchlist_only_active", False)), key="live_watchlist_only_active_widget")
+                st.session_state.live_watchlist_only_active = only_active
+
+            run_live_monitor = False
+            lm_run1, lm_run2 = st.columns([1.0, 2.0])
+            with lm_run1:
+                if st.button("Jetzt prüfen", use_container_width=True, key="run_live_watchlist_monitor_now"):
+                    run_live_monitor = True
+                    st.session_state.live_watchlist_last_manual_run = datetime.now().isoformat()
+            with lm_run2:
+                if live_monitor_enabled:
+                    interval_ms = {"15 Minuten": 15 * 60 * 1000, "30 Minuten": 30 * 60 * 1000, "60 Minuten": 60 * 60 * 1000}.get(refresh_label, 30 * 60 * 1000)
+                    st.info(f"Live-Monitor aktiv: automatische Aktualisierung alle {refresh_label}, solange diese App-Seite geöffnet ist.")
+                    components.html(
+                        f"""
+                        <script>
+                        setTimeout(function() {{
+                            window.parent.location.reload();
+                        }}, {int(interval_ms)});
+                        </script>
+                        """,
+                        height=0,
+                    )
+                    run_live_monitor = True
+
+            if run_live_monitor:
+                if not current_tickers:
+                    st.info("Diese Watchlist ist leer.")
+                else:
+                    with st.spinner(f"Live-Watchlist wird geprüft ({min(len(current_tickers), 40)} Werte) ..."):
+                        live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40)
+                    if only_active and not live_df.empty:
+                        live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
+                    if live_df.empty:
+                        st.info("Aktuell keine grünen oder gelben Trigger in dieser Watchlist." if only_active else "Keine Live-Watchlist-Ergebnisse verfügbar.")
+                    else:
+                        st.dataframe(live_df, hide_index=True, use_container_width=True, height=min(520, 42 * len(live_df) + 55))
+                        green_count = int((live_df["Ampel"] == "🟢").sum()) if "Ampel" in live_df.columns else 0
+                        yellow_count = int((live_df["Ampel"] == "🟡").sum()) if "Ampel" in live_df.columns else 0
+                        red_count = int((live_df["Ampel"] == "🔴").sum()) if "Ampel" in live_df.columns else 0
+                        st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
+                    if live_errors is not None and not live_errors.empty:
+                        with st.expander("Nicht prüfbare Watchlist-Werte", expanded=False):
+                            st.dataframe(live_errors, hide_index=True, use_container_width=True)
+
 # ---------- Analyse-Steuerung im Hauptbereich ----------
 if workspace_mode:
     if workspace_mode:
@@ -19225,7 +19399,7 @@ if workspace_mode:
                 if radar_result_map:
                     _alert_style_v210 = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
                     setup_alerts_df_v210 = build_setup_alerts_table_v210(list(radar_result_map.values()), style_name=_alert_style_v210, limit=30)
-                    st.markdown("### Setup-Alerts v21.1")
+                    st.markdown("### Setup-Alerts v21.2")
                     st.caption("Konservative Vorschau: Diese Alerts werden aus Entry, Wave-Trigger, Bucket, CRV und Invalidierung berechnet. Es wird noch nichts automatisch versendet.")
                     if setup_alerts_df_v210.empty:
                         st.info("Aktuell keine handlungsrelevanten Setup-Alerts. Warn-/Gate-/Watchlist-Hinweise werden bewusst nicht als Alerts angezeigt.")

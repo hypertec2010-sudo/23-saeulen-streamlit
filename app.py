@@ -2436,7 +2436,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v21.9",
+        "Export_Version": "v21.10",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v21.9"
+APP_VERSION = "v21.10"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5058,7 +5058,7 @@ def build_setup_alerts_v210(result, style_name="Ausgewogen", decision=None):
     gate_low = gate.lower().strip()
     hard_gate = bool(gate_low and gate_low not in {"keine harten gates", "keine harten gate", "-", "nan", "none"})
 
-    # v21.9: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
+    # v21.10: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
     # Sie ist Positions-/Stop-Risikohinweis, aber kein Einstiegsgate. Rot bleibt nur
     # bei echter Invalidierung oder einem nicht-exitbezogenen harten Gate.
     exit_gate_terms = [
@@ -5169,12 +5169,12 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
     return f"{first.get('Priorität','mittel')}: {first.get('Alert-Typ','Alert')}"
 
 
-# ---------- v21.9: Live-Watchlist / Trigger-Monitor ----------
+# ---------- v21.10: Live-Watchlist / Trigger-Monitor ----------
 
 def _v214_monitor_final_release_check(result, decision=None):
     """Prueft, ob die Live-Watchlist einen Wert wirklich gruen/selektiv freigeben darf.
 
-    v21.9: Die Freigabe wird nicht mehr nur an einem einzelnen Flag festgemacht.
+    v21.10: Die Freigabe wird nicht mehr nur an einem einzelnen Flag festgemacht.
     Einige Analysepfade liefern "Kaufen"/"Trade-Setup valide" nur in Textpaketen
     oder UI-Zusammenfassungen. Deshalb wird zuerst positive Evidenz gesammelt und
     erst danach werden harte Blocker gewertet. Das verhindert MRVL-artige
@@ -5344,7 +5344,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     gate_low = gate.lower().strip()
     hard_gate = bool(gate_low and gate_low not in {"keine harten gates", "keine harten gate", "-", "nan", "none"})
 
-    # v21.9: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
+    # v21.10: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
     # Sie ist Positions-/Stop-Risikohinweis, aber kein Einstiegsgate. Rot bleibt nur
     # bei echter Invalidierung oder einem nicht-exitbezogenen harten Gate.
     exit_gate_terms = [
@@ -5358,7 +5358,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     next_step = str(d.get("next_step") or "-").strip()
     brake = str(d.get("brake") or "-").strip()
 
-    # v21.9: Gruen muss mit der Sofortanalyse konsistent sein.
+    # v21.10: Gruen muss mit der Sofortanalyse konsistent sein.
     # Entry/Wave allein reicht nicht, wenn Timing, valides Setup oder finaler Trigger noch bremsen.
     status_icon = "⚪"
     status = "Beobachten"
@@ -5379,18 +5379,18 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         status_icon, status, priority = "🔴", "Invalidiert / meiden", 1
         reason = "Invalidierung aktiv."
         monitor_action = "Kein Kauf: These/Setup zuerst neu prüfen; Stop-/Invalidierungsbruch beachten."
-    elif bucket == "Warnsignale / meiden" and grade in {"A", "B"} and crv_ok and not entry_hard_gate:
-        # v21.9: Exit-/Schutzampel und alte Warnbucket-Texte duerfen keinen
-        # qualitaetsstarken Kandidaten mit attraktivem CRV allein rot machen.
-        # Das bleibt gelb/selektiv. Rot ist fuer echte Invalidierung oder
-        # nicht-exitbezogene harte Gates reserviert.
+    elif bucket == "Warnsignale / meiden" and grade in {"A", "B"} and crv_ok:
+        # v21.10: Warnbucket ist nur ein Diagnose-/Vorsichtssignal, wenn Grade A/B und CRV passen.
+        # entry_hard_gate wird hier bewusst nicht mehr als Ausschluss verwendet,
+        # weil es in MRVL-artigen Fällen aus Exit-/Schutz-/Warntexten entstehen kann.
+        # Rot bleibt nur fuer echte Invalidierung oder fehlende Qualitaets-/CRV-Entlastung.
         status_icon, status, priority = "🟡", "Selektiv prüfen", 2
         if final_release_ok:
             reason = "Sofortanalyse/Freigabe ist konstruktiv; Radar-Bucket bzw. Exit-/Schutzhinweise verlangen nur defensive Ausführung."
             monitor_action = "Selektiv prüfen: Einstieg ist grundsätzlich möglich; Positionsgröße defensiv wählen und Stop/Invalidierung sauber festlegen."
         else:
-            reason = "Radar-Bucket warnt, aber Qualität und CRV sind stark; kein echter Invalidierungsbruch und kein Einstiegsgate erkannt."
-            monitor_action = "Selektiv prüfen: Warnbucket-Grund kontrollieren und nur mit klarer Stop-/Risikoplanung handeln."
+            reason = "Radar-Bucket warnt, aber Grade und CRV entlasten; kein roter Status ohne echte Invalidierung."
+            monitor_action = "Selektiv prüfen: Warnbucket-Grund kontrollieren, Stop/Invalidierung festlegen und nur mit defensiver Positionsgröße handeln."
     elif bucket == "Warnsignale / meiden" and not final_release_ok:
         status_icon, status, priority = "🔴", "Warnsignal / meiden", 1
         reason = "Radar-Bucket warnt und es gibt keine ausreichende Qualitäts-/CRV-Entlastung."
@@ -18640,8 +18640,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.info("In dieser Watchlist sind noch keine Ticker.")
 
 
-            # ---------- v21.9: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v21.9")
+            # ---------- v21.10: Live-Watchlist / Trigger-Monitor ----------
+            st.markdown("### Live-Watchlist / Trigger-Monitor v21.10")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -19617,7 +19617,7 @@ if workspace_mode:
                 if radar_result_map:
                     _alert_style_v210 = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
                     setup_alerts_df_v210 = build_setup_alerts_table_v210(list(radar_result_map.values()), style_name=_alert_style_v210, limit=30)
-                    st.markdown("### Setup-Alerts v21.9")
+                    st.markdown("### Setup-Alerts v21.10")
                     st.caption("Konservative Vorschau: Diese Alerts werden aus Entry, Wave-Trigger, Bucket, CRV und Invalidierung berechnet. Es wird noch nichts automatisch versendet.")
                     if setup_alerts_df_v210.empty:
                         st.info("Aktuell keine handlungsrelevanten Setup-Alerts. Warn-/Gate-/Watchlist-Hinweise werden bewusst nicht als Alerts angezeigt.")

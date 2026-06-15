@@ -2436,7 +2436,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v21.2",
+        "Export_Version": "v21.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v21.2"
+APP_VERSION = "v21.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5027,7 +5027,7 @@ def _v210_alert_add(rows, *, ticker, name, alert_type, priority, message, action
 def build_setup_alerts_v210(result, style_name="Ausgewogen", decision=None):
     """Erzeugt echte, handlungsrelevante Setup-Alerts.
 
-    v21.2 trennt bewusst zwischen echten Alerts und Brems-/Diagnosehinweisen:
+    v21.3 trennt bewusst zwischen echten Alerts und Brems-/Diagnosehinweisen:
     - Setup-Gates, Warnsignale und "später beobachten" werden NICHT mehr als Alerts ausgespielt.
     - Entry-Alerts entstehen nur, wenn wirklich eine parsebare Entry-Zone vorhanden ist.
     - CRV-Alerts entstehen nur bei relevantem Bucket, belastbarem CRV und ohne harte Gates.
@@ -5159,7 +5159,7 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
     return f"{first.get('Priorität','mittel')}: {first.get('Alert-Typ','Alert')}"
 
 
-# ---------- v21.2: Live-Watchlist / Trigger-Monitor ----------
+# ---------- v21.3: Live-Watchlist / Trigger-Monitor ----------
 def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
 
@@ -5190,33 +5190,57 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     next_step = str(d.get("next_step") or "-").strip()
     brake = str(d.get("brake") or "-").strip()
 
-    # Ampel priorisieren: Rot für echte Ausschlüsse, Grün für aktive Trigger, Gelb für Triggernähe.
+    # v21.3: Gruen bedeutet wirklich operativ aktiv genug.
+    # Entry allein reicht nicht mehr fuer Gruen, wenn der Bucket noch "Nahe am Trigger" ist.
     status_icon = "⚪"
     status = "Beobachten"
     priority = 4
     reason = "Noch kein aktiver Trigger."
+    monitor_action = next_step
+
+    grade_ok = grade in {"A", "B", "C"}
+    crv_ok = crv_float is not None and crv_float >= 1.5
+    entry_reached = "Entry-Zone erreicht" in alert_types
+    wave_active = "Wave-Trigger aktiv" in alert_types
+    bucket_active = bucket == "Jetzt prüfbar" or "Bucket: Jetzt prüfbar" in alert_types
+    bucket_near = bucket == "Nahe am Trigger" or "Wave-Trigger nahe" in alert_types
 
     if "Invalidierung gebrochen" in alert_types or bucket == "Warnsignale / meiden":
         status_icon, status, priority = "🔴", "Invalidiert / meiden", 1
         reason = "Invalidierung oder Warnsignal aktiv."
-    elif "Bucket: Jetzt prüfbar" in alert_types or bucket == "Jetzt prüfbar":
+        monitor_action = "Kein Kauf: These/Setup zuerst neu prüfen; Stop-/Invalidierungsbruch beachten."
+    elif hard_gate:
+        status_icon, status, priority = "🔴", "Setup blockiert", 1
+        reason = brake if brake and brake != "-" else "Hartes Setup-Gate aktiv."
+        monitor_action = "Kein Kauf: Bremse/Gate zuerst klären."
+    elif bucket_active and grade_ok and (crv_ok or "CRV attraktiv" in alert_types):
         status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
-        reason = "Bucket steht auf Jetzt prüfbar."
-    elif "Entry-Zone erreicht" in alert_types and (crv_float is None or crv_float >= 1.5):
-        status_icon, status, priority = "🟢", "Entry erreicht", 0
-        reason = "Kurs liegt in/nahe Entry-Zone und CRV ist nicht bremsend."
-    elif "Wave-Trigger aktiv" in alert_types:
-        status_icon, status, priority = "🟢", "Wave-Trigger aktiv", 0
-        reason = "Wellen-/Swing-Trigger ist aktiviert."
-    elif bucket == "Nahe am Trigger" or "Wave-Trigger nahe" in alert_types:
+        reason = "Setup ist operativ aktiv: Bucket ist Jetzt prüfbar und CRV ist attraktiv."
+        monitor_action = "Setup aktiv. Jetzt Risiko pro Trade, Stückzahl und Stop/Invalidierung festlegen."
+    elif wave_active and grade_ok and crv_ok and bucket in {"Jetzt prüfbar", "Nahe am Trigger"}:
+        status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
+        reason = "Wave-Trigger ist aktiv und CRV/Setup passen."
+        monitor_action = "Setup aktiv. Jetzt Risiko pro Trade, Stückzahl und Stop/Invalidierung festlegen."
+    elif entry_reached and grade_ok and crv_ok and bucket == "Jetzt prüfbar":
+        status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
+        reason = "Entry-Zone ist erreicht, Bucket ist aktiv und CRV ist attraktiv."
+        monitor_action = "Setup aktiv. Jetzt Risiko pro Trade, Stückzahl und Stop/Invalidierung festlegen."
+    elif entry_reached and grade_ok and crv_ok and bucket == "Nahe am Trigger":
+        status_icon, status, priority = "🟡", "Entry erreicht, Trigger offen", 2
+        reason = "Entry-Zone ist erreicht und CRV attraktiv, aber finale Trigger-/Volumenbestätigung fehlt noch."
+        monitor_action = "Entry-Zone erreicht; finale Trigger-/Volumenbestätigung abwarten. Noch nicht wie ein grünes Kaufsignal behandeln."
+    elif bucket_near:
         status_icon, status, priority = "🟡", "Nahe am Trigger", 2
         reason = "Setup ist interessant, Aktivierung fehlt noch."
+        monitor_action = "Nahe am Trigger: finale Aktivierung/Reclaim/Volumenbestätigung abwarten."
     elif "CRV attraktiv" in alert_types or (crv_float is not None and crv_float >= 1.8 and bucket in {"Nahe am Trigger", "Starke Watchlist"}):
         status_icon, status, priority = "🔵", "CRV attraktiv", 3
-        reason = "Chance/Risiko ist interessant, Trigger/Entry prüfen."
-    elif hard_gate or bucket in {"Pullback bevorzugt / nicht hinterherlaufen", "Später beobachten"}:
+        reason = "Chance/Risiko ist interessant, aber Entry/Trigger ist noch nicht aktiv."
+        monitor_action = "CRV attraktiv, aber noch kein aktiver Kauftrigger. Entry/Trigger weiter beobachten."
+    elif bucket in {"Pullback bevorzugt / nicht hinterherlaufen", "Später beobachten"}:
         status_icon, status, priority = "⚪", "Nur beobachten", 5
         reason = brake if brake and brake != "-" else "Bremse/Gate noch aktiv."
+        monitor_action = "Nur beobachten; erst bei besserem Entry, Trigger oder geklärter Bremse neu prüfen."
 
     return {
         "Ampel": status_icon,
@@ -5231,7 +5255,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Wann aktiv?": d.get("wave_trigger") or "-",
         "Setup-Alert": alert_text,
         "Grund": reason,
-        "Nächste Handlung": next_step,
+        "Nächste Handlung": monitor_action,
         "Letztes Update": get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S"),
         "__prio": priority,
     }
@@ -18422,8 +18446,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.info("In dieser Watchlist sind noch keine Ticker.")
 
 
-            # ---------- v21.2: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v21.2")
+            # ---------- v21.3: Live-Watchlist / Trigger-Monitor ----------
+            st.markdown("### Live-Watchlist / Trigger-Monitor v21.3")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -19399,7 +19423,7 @@ if workspace_mode:
                 if radar_result_map:
                     _alert_style_v210 = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
                     setup_alerts_df_v210 = build_setup_alerts_table_v210(list(radar_result_map.values()), style_name=_alert_style_v210, limit=30)
-                    st.markdown("### Setup-Alerts v21.2")
+                    st.markdown("### Setup-Alerts v21.3")
                     st.caption("Konservative Vorschau: Diese Alerts werden aus Entry, Wave-Trigger, Bucket, CRV und Invalidierung berechnet. Es wird noch nichts automatisch versendet.")
                     if setup_alerts_df_v210.empty:
                         st.info("Aktuell keine handlungsrelevanten Setup-Alerts. Warn-/Gate-/Watchlist-Hinweise werden bewusst nicht als Alerts angezeigt.")

@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v20.6",
+        "Export_Version": "v20.7",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2661,7 +2661,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v20.6"
+APP_VERSION = "v20.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4345,7 +4345,7 @@ def _mtf_v200_tf_state(df, label, result=None):
 
 
 def build_multi_timeframe_context_v200(daily_df=None, result=None, hourly_df=None):
-    """v20.6: Top-down Multi-Timeframe-Struktur.
+    """v20.7: Top-down Multi-Timeframe-Struktur.
 
     Weekly = uebergeordneter Trend, Daily = Setup, Hourly = Timing.
     Bewusst regelbasiert und weich gewichtet, damit bestehende Radar-Gates stabil bleiben.
@@ -8715,7 +8715,7 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
         base.update(_wave_v191_build_readable_fields(base))
         return base
     except Exception as exc:
-        base["summary"] = f"Wellenanalyse v20.6 nicht belastbar: {exc}"
+        base["summary"] = f"Wellenanalyse v20.7 nicht belastbar: {exc}"
         base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
         return base
 
@@ -9074,22 +9074,64 @@ def _chart_label_xpos_v205(df, position="right"):
 
 
 
-def _chart_annotation_style_v206(kind="neutral"):
-    """Einheitliche, kontrastreiche Chart-Badges fuer v20.6.
+_CHART_LARGE_LABELS_V207 = False
 
-    Ziel: Beschriftungen bleiben auch im Plotly-Dark-Template lesbar und
-    konkurrieren weniger mit Kerzen/Fib-Zonen.
+def _chart_annotation_style_v206(kind="neutral"):
+    """Einheitliche, kontrastreiche Chart-Badges fuer v20.7.
+
+    v20.7: Labels koennen optional groesser dargestellt werden. Zusaetzlich
+    bekommen alle Badge-Labels unsichtbare Hover-Punkte mit gut lesbaren
+    Detail-Tooltips.
     """
     kind = str(kind or "neutral").lower()
+    large = bool(globals().get("_CHART_LARGE_LABELS_V207", False))
+    small_size = 10 if large else 8
+    trend_size = 11 if large else 9
+    price_size = 13 if large else 11
+    pad_small = 4 if large else 2
     styles = {
-        "fib": dict(font=dict(size=8, color="#111827"), bgcolor="rgba(255,255,255,0.86)", bordercolor="rgba(31,41,55,0.32)", borderwidth=1, borderpad=2),
-        "support": dict(font=dict(size=8, color="#052e16"), bgcolor="rgba(220,252,231,0.88)", bordercolor="rgba(22,163,74,0.35)", borderwidth=1, borderpad=2),
-        "resistance": dict(font=dict(size=8, color="#450a0a"), bgcolor="rgba(254,226,226,0.88)", bordercolor="rgba(220,38,38,0.35)", borderwidth=1, borderpad=2),
-        "active": dict(font=dict(size=8, color="#082f49"), bgcolor="rgba(224,242,254,0.88)", bordercolor="rgba(14,165,233,0.35)", borderwidth=1, borderpad=2),
-        "trend": dict(font=dict(size=9, color="#111827"), bgcolor="rgba(255,255,255,0.84)", bordercolor="rgba(59,130,246,0.30)", borderwidth=1, borderpad=3),
-        "price": dict(font=dict(size=11, color="white"), bgcolor="rgba(2,132,199,0.92)", bordercolor="rgba(226,232,240,0.85)", borderwidth=1, borderpad=4),
+        "fib": dict(font=dict(size=small_size, color="#111827"), bgcolor="rgba(255,255,255,0.90)", bordercolor="rgba(31,41,55,0.38)", borderwidth=1, borderpad=pad_small),
+        "support": dict(font=dict(size=small_size, color="#052e16"), bgcolor="rgba(220,252,231,0.92)", bordercolor="rgba(22,163,74,0.42)", borderwidth=1, borderpad=pad_small),
+        "resistance": dict(font=dict(size=small_size, color="#450a0a"), bgcolor="rgba(254,226,226,0.92)", bordercolor="rgba(220,38,38,0.42)", borderwidth=1, borderpad=pad_small),
+        "active": dict(font=dict(size=small_size, color="#082f49"), bgcolor="rgba(224,242,254,0.92)", bordercolor="rgba(14,165,233,0.42)", borderwidth=1, borderpad=pad_small),
+        "trend": dict(font=dict(size=trend_size, color="#111827"), bgcolor="rgba(255,255,255,0.88)", bordercolor="rgba(59,130,246,0.35)", borderwidth=1, borderpad=4 if large else 3),
+        "price": dict(font=dict(size=price_size, color="white"), bgcolor="rgba(2,132,199,0.94)", bordercolor="rgba(226,232,240,0.90)", borderwidth=1, borderpad=5 if large else 4),
     }
-    return styles.get(kind, dict(font=dict(size=8, color="#111827"), bgcolor="rgba(255,255,255,0.84)", bordercolor="rgba(31,41,55,0.25)", borderwidth=1, borderpad=2))
+    return styles.get(kind, dict(font=dict(size=small_size, color="#111827"), bgcolor="rgba(255,255,255,0.88)", bordercolor="rgba(31,41,55,0.30)", borderwidth=1, borderpad=pad_small))
+
+def _chart_hover_text_v207(text, kind="neutral"):
+    try:
+        clean = str(text or "").replace("<br>", " ").strip()
+        title = str(kind or "Info").replace("_", " ").title()
+        return f"<b>{clean}</b><br>{title}<extra></extra>"
+    except Exception:
+        return str(text or "") + "<extra></extra>"
+
+def _chart_add_hover_point_v207(fig, *, x, y, text, kind="neutral", row=1, col=1):
+    """Unsichtbarer Hover-Trefferpunkt fuer Annotationen.
+
+    Plotly-Annotationen selbst besitzen keinen verlaesslichen Hover-/Mouseover-
+    Stil. Dieser sehr transparente Marker erzeugt einen gut lesbaren Tooltip,
+    ohne den Chart sichtbar zu ueberladen.
+    """
+    try:
+        if x is None or y is None:
+            return
+        fig.add_trace(
+            go.Scatter(
+                x=[x],
+                y=[float(y)],
+                mode="markers",
+                name=str(text or "Info"),
+                marker=dict(size=22 if bool(globals().get("_CHART_LARGE_LABELS_V207", False)) else 18, color="rgba(15,23,42,0.01)", line=dict(width=0)),
+                hovertemplate=_chart_hover_text_v207(text, kind),
+                showlegend=False,
+            ),
+            row=row,
+            col=col,
+        )
+    except Exception:
+        pass
 
 
 def _chart_label_yshift_v206(index, total=1, amplitude=13):
@@ -9127,6 +9169,8 @@ def _chart_add_annotation_v206(fig, *, x, y, text, kind="neutral", xanchor="left
             col=col,
             **style,
         )
+        # v20.7: Mouseover ueber dem Label zeigt groesseren Detail-Tooltip.
+        _chart_add_hover_point_v207(fig, x=x, y=y, text=text, kind=kind, row=row, col=col)
     except Exception:
         pass
 
@@ -13191,11 +13235,12 @@ def add_current_price_marker_to_plotly_v204(fig, chart_df, current_price=None, c
                 bgcolor="rgba(2,132,199,0.94)",
                 bordercolor="rgba(226,232,240,0.90)",
                 borderwidth=1,
-                borderpad=4,
-                font=dict(size=11, color="white"),
+                borderpad=5 if bool(globals().get("_CHART_LARGE_LABELS_V207", False)) else 4,
+                font=dict(size=13 if bool(globals().get("_CHART_LARGE_LABELS_V207", False)) else 11, color="white"),
                 row=1,
                 col=1,
             )
+            _chart_add_hover_point_v207(fig, x=last_x, y=price, text=f"{label} {price:.2f}{suffix}", kind="price", row=1, col=1)
         except Exception:
             pass
     except Exception:
@@ -13235,12 +13280,14 @@ def add_trade_setup_overlay_to_plotly_v193(fig, chart_df, overlay):
         except Exception:
             _trade_overlay_add_hline_v193(fig, chart_df, wave_invalid, "Wann hinfällig?", dash="dash", width=1, hover="Wellenanalyse - wann hinfällig")
 
-        # v20.6: CRV bleibt in der kompakten Zusammenfassung unter dem Chart.
+        # v20.7: CRV bleibt in der kompakten Zusammenfassung unter dem Chart.
         # Im Kursbereich selbst war die CRV-Box ein zusätzlicher rechter Label-Konflikt.
     except Exception:
         pass
 
-def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None, show_fib=False, fib_pkg=None, show_trade_overlay=False, trade_overlay_pkg=None, chart_view="Setup"):
+def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None, show_fib=False, fib_pkg=None, show_trade_overlay=False, trade_overlay_pkg=None, chart_view="Setup", large_labels=False):
+    global _CHART_LARGE_LABELS_V207
+    _CHART_LARGE_LABELS_V207 = bool(large_labels)
     fig = make_subplots(
         rows=2,
         cols=1,
@@ -13325,7 +13372,7 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
         except Exception:
             pass
 
-    # v20.6: Aktueller Kurs bleibt immer sichtbar, unabhaengig von Chart-Ansicht und Overlay-Schaltern.
+    # v20.7: Aktueller Kurs bleibt immer sichtbar, unabhaengig von Chart-Ansicht und Overlay-Schaltern.
     try:
         _current_price, _current_label = _chart_current_price_v204(chart_df, trade_overlay_pkg)
         add_current_price_marker_to_plotly_v204(fig, chart_df, _current_price, ccy, _current_label)
@@ -13962,7 +14009,7 @@ def search_tickers(query, max_results=8):
 
 
 
-# ---------- v20.6: robuste Ticker-/Firmennamen-Auflösung ----------
+# ---------- v20.7: robuste Ticker-/Firmennamen-Auflösung ----------
 _COMMON_NAME_TICKER_MAP_V202 = {
     # US Mega/Large Caps
     "apple": "AAPL", "apple inc": "AAPL", "aapl": "AAPL",
@@ -14099,7 +14146,7 @@ def score_search_result(query, item):
 def resolve_input_to_ticker(user_input, fallback=None):
     """Robuste Eingabeauflösung für Ticker, Firmennamen und Rohstoff-Aliasse.
 
-    Reihenfolge v20.6:
+    Reihenfolge v20.7:
     1) Rohstoff-Aliasse wie Gold/Silber/WTI
     2) gepflegte Common-Name-Aliasse für häufige Eingaben
     3) Yahoo Search API, wenn verfügbar
@@ -18145,10 +18192,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">Radar Professional v20.6</div>
+                <div class="premium-title">Radar Professional v20.7</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v20.6 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v20.7 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
                 </div>
             </div>
             """,
@@ -18404,7 +18451,7 @@ if workspace_mode:
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
-                # v20.6: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
+                # v20.7: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
                 for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "MTF-Score", "MTF-Impact", "Wann aktiv?", "Ziel bei Bestätigung", "Top-Chance-Rang"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
@@ -18463,7 +18510,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v20.6: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
+                st.caption("v20.7: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -18773,7 +18820,7 @@ if workspace_mode:
                     ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
 
                     st.markdown("### Beste heutige Chancen")
-                    st.caption("v20.6 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    st.caption("v20.7 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
                     if not _top_box_strict_df.empty:
                         _cols = st.columns(len(_top_box_strict_df))
                         for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
@@ -19178,7 +19225,7 @@ if workspace_mode:
         if analysis_mode == "Einzelanalyse":
             search_input = single_input
             if search_input:
-                # v20.6: Ticker-/Namensauflösung wieder trennen.
+                # v20.7: Ticker-/Namensauflösung wieder trennen.
                 # Ein-Wort-Firmennamen wie "Apple", "Nvidia" oder "Siemens" duerfen
                 # nicht blind zu APPLE/NVIDIA/SIEMENS gemacht werden, sonst findet die
                 # App scheinbar keine Ticker mehr. Direkte Ticker gelten nur bei echter
@@ -19222,14 +19269,14 @@ if workspace_mode:
                         st.session_state.selected_ticker = ticker
                         resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Aus Trefferauswahl"}]
                     else:
-                        # v20.6: Wenn die Yahoo-Such-API leer bleibt, trotzdem robuste
+                        # v20.7: Wenn die Yahoo-Such-API leer bleibt, trotzdem robuste
                         # Auflösung über Common-Name-Aliasse und validierten Ticker-Fallback versuchen.
                         resolved_fallback = resolve_input_to_ticker(search_input, fallback=None)
                         if resolved_fallback:
                             ticker = resolved_fallback
                             st.session_state.selected_ticker = ticker
                             st.session_state.selected_search_label = None
-                            resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "v20.6 Fallback-Auflösung"}]
+                            resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "v20.7 Fallback-Auflösung"}]
                             st.caption(f"Aufgelöst: {ticker}")
                         else:
                             st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
@@ -19247,7 +19294,7 @@ if workspace_mode:
 
             analysis_candidates = []
             for entry in raw_batch_entries:
-                # v20.6: Auch im Batch-Modus Firmennamen nicht blind als Ticker interpretieren.
+                # v20.7: Auch im Batch-Modus Firmennamen nicht blind als Ticker interpretieren.
                 commodity_alias = resolve_commodity_alias_v1534_3(entry) if "resolve_commodity_alias_v1534_3" in globals() else None
                 looks_like_ticker = looks_like_real_ticker(entry)
                 if commodity_alias:
@@ -19265,7 +19312,7 @@ if workspace_mode:
                         resolved_fallback = resolve_input_to_ticker(entry, fallback=None)
                         if resolved_fallback:
                             analysis_candidates.append(resolved_fallback)
-                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": resolved_fallback, "Typ": "v20.6 Fallback-Auflösung"})
+                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": resolved_fallback, "Typ": "v20.7 Fallback-Auflösung"})
                         else:
                             resolved_input_rows.append({"Eingabe": entry, "Auflösung": "-", "Typ": "Nicht gefunden"})
 
@@ -21659,6 +21706,13 @@ if result is not None:
         help="Kompakt zeigt nur die wichtigsten Ebenen. Setup fokussiert Entry/Stop/Ziele/Wave. Vollanalyse zeigt zusätzlich S/R, Trendkanal und Fibonacci."
     )
 
+    large_chart_labels = st.checkbox(
+        "Große Chart-Labels",
+        value=False,
+        key=f"large_chart_labels_{ticker}",
+        help="Vergrößert die wichtigsten Chart-Badges. Details erscheinen zusätzlich per Mouseover über den Labels."
+    )
+
     if chart_view == "Vollanalyse":
         chart_overlay_col1, chart_overlay_col2, chart_overlay_col3, chart_overlay_col4 = st.columns(4)
         with chart_overlay_col1:
@@ -21712,7 +21766,7 @@ if result is not None:
     except Exception:
         wave_structure_pkg = (result or {}).get("wave_structure_pkg", {}) if isinstance(result, dict) else {}
 
-    # v20.6: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
+    # v20.7: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
     try:
         _mtf_hourly_df = get_intraday_hourly_df_for_candles(result if "result" in locals() else {}, chart_df) if "get_intraday_hourly_df_for_candles" in globals() else None
         multi_timeframe_pkg = build_multi_timeframe_context_v200(chart_df, result if "result" in locals() else {}, _mtf_hourly_df)
@@ -21733,6 +21787,7 @@ if result is not None:
         show_trade_overlay=show_trade_overlay,
         trade_overlay_pkg=trade_overlay_pkg,
         chart_view=chart_view,
+        large_labels=large_chart_labels,
     )
     st.plotly_chart(fig, use_container_width=True)
     if show_trade_overlay and trade_overlay_pkg and trade_overlay_pkg.get("has_overlay"):
@@ -21807,7 +21862,7 @@ if result is not None:
                     result["wave_structure_label"] = wave_structure_pkg.get("label")
                     result["wave_structure_summary"] = wave_structure_pkg.get("summary")
                     result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellenanalyse v20.6 / Swing-Struktur**")
+            st.markdown("**Wellenanalyse v20.7 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -21841,7 +21896,7 @@ if result is not None:
             _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
             st.markdown(f"""
             <div class="premium-card" style="margin-top:10px;">
-                <div class="premium-title">Wellenanalyse v20.6</div>
+                <div class="premium-title">Wellenanalyse v20.7</div>
                 <div class="premium-value" style="font-size:1.02rem;">{html.escape(_wave_status)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Was bedeutet das?</b> {html.escape(_wave_meaning)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Struktur:</b> {html.escape(_wave_sequence_readable)} · <b>Qualität:</b> {html.escape(_wave_quality)}</div>
@@ -21850,7 +21905,7 @@ if result is not None:
                 <div class="premium-sub"><b>Ziel bei Bestätigung:</b> {html.escape(_wave_target_readable)}</div>
             </div>
             """, unsafe_allow_html=True)
-            # v20.6: Multi-Timeframe-Block (Weekly/Daily/Hourly)
+            # v20.7: Multi-Timeframe-Block (Weekly/Daily/Hourly)
             try:
                 _mtf_pkg = multi_timeframe_pkg if "multi_timeframe_pkg" in locals() and isinstance(multi_timeframe_pkg, dict) else ((result or {}).get("multi_timeframe_pkg") if isinstance(result, dict) else {})
             except Exception:
@@ -21861,7 +21916,7 @@ if result is not None:
                 _h = _mtf_pkg.get("hourly", {}) or {}
                 st.markdown(f"""
                 <div class="premium-card" style="margin-top:10px;">
-                    <div class="premium-title">Multi-Timeframe v20.6</div>
+                    <div class="premium-title">Multi-Timeframe v20.7</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(_mtf_pkg.get('label', 'MTF nicht berechnet')))} · {html.escape(str(_mtf_pkg.get('score', 'n/a')))}/100</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Lesart:</b> {html.escape(str(_mtf_pkg.get('summary', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Weekly:</b> {html.escape(str(_w.get('status', '-')))} · {html.escape(str(_w.get('reason', '-')))}</div>
@@ -21876,7 +21931,7 @@ if result is not None:
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("v20.6: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
+                st.caption("v20.7: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

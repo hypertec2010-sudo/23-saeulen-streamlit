@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v20.2",
+        "Export_Version": "v20.3",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2661,7 +2661,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v20.2"
+APP_VERSION = "v20.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4345,7 +4345,7 @@ def _mtf_v200_tf_state(df, label, result=None):
 
 
 def build_multi_timeframe_context_v200(daily_df=None, result=None, hourly_df=None):
-    """v20.2: Top-down Multi-Timeframe-Struktur.
+    """v20.3: Top-down Multi-Timeframe-Struktur.
 
     Weekly = uebergeordneter Trend, Daily = Setup, Hourly = Timing.
     Bewusst regelbasiert und weich gewichtet, damit bestehende Radar-Gates stabil bleiben.
@@ -8715,7 +8715,7 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
         base.update(_wave_v191_build_readable_fields(base))
         return base
     except Exception as exc:
-        base["summary"] = f"Wellenanalyse v20.2 nicht belastbar: {exc}"
+        base["summary"] = f"Wellenanalyse v20.3 nicht belastbar: {exc}"
         base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
         return base
 
@@ -9048,8 +9048,8 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         return out
 
 
-def add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg):
-    """Optionale Fibonacci-Linien im Chart. Bewusst dezent, aber mit Level UND Kurswert beschriftet."""
+def add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg, show_labels=True):
+    """Optionale Fibonacci-Linien im Chart. In kompakten Ansichten ohne rechte Dauerlabels."""
     try:
         if not isinstance(fib_pkg, dict):
             return fig
@@ -9103,24 +9103,25 @@ def add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg):
                     row=1,
                     col=1,
                 )
-                fig.add_annotation(
-                    x=x1,
-                    y=y_float,
-                    xref="x",
-                    yref="y",
-                    text=label,
-                    showarrow=False,
-                    xanchor="right",
-                    yanchor="bottom",
-                    align="right",
-                    font=dict(size=10, color="rgba(245,245,245,0.95)"),
-                    bgcolor="rgba(0,0,0,0.55)",
-                    bordercolor="rgba(255,255,255,0.18)",
-                    borderwidth=1,
-                    borderpad=2,
-                    row=1,
-                    col=1,
-                )
+                if show_labels:
+                    fig.add_annotation(
+                        x=x1,
+                        y=y_float,
+                        xref="x",
+                        yref="y",
+                        text=label,
+                        showarrow=False,
+                        xanchor="right",
+                        yanchor="bottom",
+                        align="right",
+                        font=dict(size=10, color="rgba(245,245,245,0.95)"),
+                        bgcolor="rgba(0,0,0,0.55)",
+                        bordercolor="rgba(255,255,255,0.18)",
+                        borderwidth=1,
+                        borderpad=2,
+                        row=1,
+                        col=1,
+                    )
             else:
                 fig.add_hline(
                     y=y_float,
@@ -12286,7 +12287,7 @@ def format_chart_zone_label(prefix, idx, zone, ccy=""):
         touches = zone.get("touches", "?")
         return f"{prefix}{idx} ({touches}x)"
 
-def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None, ccy=""):
+def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None, ccy="", show_labels=True):
     if df is None or df.empty:
         return
     x0 = df.index.min()
@@ -12306,8 +12307,9 @@ def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None, cc
             row=1,
             col=1
         )
-        fig.add_annotation(
-            x=x1,
+        if show_labels:
+            fig.add_annotation(
+                x=x1,
             y=z["mid"],
             text=label,
             showarrow=False,
@@ -12334,8 +12336,9 @@ def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None, cc
             row=1,
             col=1
         )
-        fig.add_annotation(
-            x=x1,
+        if show_labels:
+            fig.add_annotation(
+                x=x1,
             y=z["mid"],
             text=label,
             showarrow=False,
@@ -12363,8 +12366,9 @@ def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None, cc
             row=1,
             col=1
         )
-        fig.add_annotation(
-            x=x1,
+        if show_labels:
+            fig.add_annotation(
+                x=x1,
             y=z["mid"],
             text=label,
             showarrow=False,
@@ -13077,7 +13081,7 @@ def add_trade_setup_overlay_to_plotly_v193(fig, chart_df, overlay):
     except Exception:
         pass
 
-def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None, show_fib=False, fib_pkg=None, show_trade_overlay=False, trade_overlay_pkg=None):
+def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None, show_fib=False, fib_pkg=None, show_trade_overlay=False, trade_overlay_pkg=None, chart_view="Setup"):
     fig = make_subplots(
         rows=2,
         cols=1,
@@ -13099,25 +13103,31 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
         col=1
     )
 
-    if "MA10" in chart_df.columns:
+    _chart_view = str(chart_view or "Setup")
+    _show_ma10 = _chart_view in {"Setup", "Vollanalyse"}
+    _show_ma20 = True
+    _show_ma50 = True
+    _show_ma200 = _chart_view == "Vollanalyse"
+
+    if _show_ma10 and "MA10" in chart_df.columns:
         fig.add_trace(
             go.Scatter(x=chart_df.index, y=chart_df["MA10"], mode="lines", name="MA10"),
             row=1,
             col=1
         )
-    if "MA20" in chart_df.columns:
+    if _show_ma20 and "MA20" in chart_df.columns:
         fig.add_trace(
             go.Scatter(x=chart_df.index, y=chart_df["MA20"], mode="lines", name="MA20"),
             row=1,
             col=1
         )
-    if "MA50" in chart_df.columns:
+    if _show_ma50 and "MA50" in chart_df.columns:
         fig.add_trace(
             go.Scatter(x=chart_df.index, y=chart_df["MA50"], mode="lines", name="MA50"),
             row=1,
             col=1
         )
-    if "MA200" in chart_df.columns:
+    if _show_ma200 and "MA200" in chart_df.columns:
         fig.add_trace(
             go.Scatter(x=chart_df.index, y=chart_df["MA200"], mode="lines", name="MA200"),
             row=1,
@@ -13138,7 +13148,7 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
         try:
             structures = structures or build_chart_structures(chart_df)
             if show_sr:
-                add_sr_zones_to_plotly(fig, chart_df, structures.get("supports", []), structures.get("resistances", []), structures.get("active_zones", []))
+                add_sr_zones_to_plotly(fig, chart_df, structures.get("supports", []), structures.get("resistances", []), structures.get("active_zones", []), show_labels=(_chart_view == "Vollanalyse"))
             if show_channel:
                 add_trend_channel_to_plotly(fig, chart_df, structures.get("channel"))
         except Exception:
@@ -13146,7 +13156,7 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
 
     if show_fib:
         try:
-            add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg)
+            add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg, show_labels=(_chart_view == "Vollanalyse"))
         except Exception:
             pass
 
@@ -13159,7 +13169,7 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
     fig.update_layout(
         title="",
         xaxis_rangeslider_visible=False,
-        height=650,
+        height=620,
         template="plotly_dark",
         margin=dict(l=20, r=20, t=20, b=20),
         legend=dict(
@@ -13168,7 +13178,9 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
             y=1.02,
             xanchor="left",
             x=0,
-            bgcolor="rgba(0,0,0,0)"
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=9),
+            itemwidth=30,
         )
     )
     fig.update_yaxes(title_text=f"Kurs ({ccy})", row=1, col=1)
@@ -13784,7 +13796,7 @@ def search_tickers(query, max_results=8):
 
 
 
-# ---------- v20.2: robuste Ticker-/Firmennamen-Auflösung ----------
+# ---------- v20.3: robuste Ticker-/Firmennamen-Auflösung ----------
 _COMMON_NAME_TICKER_MAP_V202 = {
     # US Mega/Large Caps
     "apple": "AAPL", "apple inc": "AAPL", "aapl": "AAPL",
@@ -13921,7 +13933,7 @@ def score_search_result(query, item):
 def resolve_input_to_ticker(user_input, fallback=None):
     """Robuste Eingabeauflösung für Ticker, Firmennamen und Rohstoff-Aliasse.
 
-    Reihenfolge v20.2:
+    Reihenfolge v20.3:
     1) Rohstoff-Aliasse wie Gold/Silber/WTI
     2) gepflegte Common-Name-Aliasse für häufige Eingaben
     3) Yahoo Search API, wenn verfügbar
@@ -17967,10 +17979,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">Radar Professional v20.2</div>
+                <div class="premium-title">Radar Professional v20.3</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v20.2 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v20.3 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
                 </div>
             </div>
             """,
@@ -18226,7 +18238,7 @@ if workspace_mode:
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
-                # v20.2: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
+                # v20.3: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
                 for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "MTF-Score", "MTF-Impact", "Wann aktiv?", "Ziel bei Bestätigung", "Top-Chance-Rang"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
@@ -18285,7 +18297,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v20.2: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
+                st.caption("v20.3: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -18595,7 +18607,7 @@ if workspace_mode:
                     ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
 
                     st.markdown("### Beste heutige Chancen")
-                    st.caption("v20.2 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    st.caption("v20.3 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
                     if not _top_box_strict_df.empty:
                         _cols = st.columns(len(_top_box_strict_df))
                         for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
@@ -19000,7 +19012,7 @@ if workspace_mode:
         if analysis_mode == "Einzelanalyse":
             search_input = single_input
             if search_input:
-                # v20.2: Ticker-/Namensauflösung wieder trennen.
+                # v20.3: Ticker-/Namensauflösung wieder trennen.
                 # Ein-Wort-Firmennamen wie "Apple", "Nvidia" oder "Siemens" duerfen
                 # nicht blind zu APPLE/NVIDIA/SIEMENS gemacht werden, sonst findet die
                 # App scheinbar keine Ticker mehr. Direkte Ticker gelten nur bei echter
@@ -19044,14 +19056,14 @@ if workspace_mode:
                         st.session_state.selected_ticker = ticker
                         resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Aus Trefferauswahl"}]
                     else:
-                        # v20.2: Wenn die Yahoo-Such-API leer bleibt, trotzdem robuste
+                        # v20.3: Wenn die Yahoo-Such-API leer bleibt, trotzdem robuste
                         # Auflösung über Common-Name-Aliasse und validierten Ticker-Fallback versuchen.
                         resolved_fallback = resolve_input_to_ticker(search_input, fallback=None)
                         if resolved_fallback:
                             ticker = resolved_fallback
                             st.session_state.selected_ticker = ticker
                             st.session_state.selected_search_label = None
-                            resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "v20.2 Fallback-Auflösung"}]
+                            resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "v20.3 Fallback-Auflösung"}]
                             st.caption(f"Aufgelöst: {ticker}")
                         else:
                             st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
@@ -19069,7 +19081,7 @@ if workspace_mode:
 
             analysis_candidates = []
             for entry in raw_batch_entries:
-                # v20.2: Auch im Batch-Modus Firmennamen nicht blind als Ticker interpretieren.
+                # v20.3: Auch im Batch-Modus Firmennamen nicht blind als Ticker interpretieren.
                 commodity_alias = resolve_commodity_alias_v1534_3(entry) if "resolve_commodity_alias_v1534_3" in globals() else None
                 looks_like_ticker = looks_like_real_ticker(entry)
                 if commodity_alias:
@@ -19087,7 +19099,7 @@ if workspace_mode:
                         resolved_fallback = resolve_input_to_ticker(entry, fallback=None)
                         if resolved_fallback:
                             analysis_candidates.append(resolved_fallback)
-                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": resolved_fallback, "Typ": "v20.2 Fallback-Auflösung"})
+                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": resolved_fallback, "Typ": "v20.3 Fallback-Auflösung"})
                         else:
                             resolved_input_rows.append({"Eingabe": entry, "Auflösung": "-", "Typ": "Nicht gefunden"})
 
@@ -21473,15 +21485,37 @@ if result is not None:
         key=f"chart_range_{ticker}"
     )
 
-    chart_overlay_col1, chart_overlay_col2, chart_overlay_col3, chart_overlay_col4 = st.columns(4)
-    with chart_overlay_col1:
-        show_sr_zones = st.checkbox("Unterstützung / Widerstand anzeigen", value=True, key=f"show_sr_{ticker}")
-    with chart_overlay_col2:
-        show_trend_channel = st.checkbox("Trendkanal anzeigen", value=False, key=f"show_channel_{ticker}")
-    with chart_overlay_col3:
-        show_fib_levels = st.checkbox("Fibonacci-Level anzeigen", value=False, key=f"show_fib_{ticker}")
-    with chart_overlay_col4:
+    chart_view = st.selectbox(
+        "Chart-Ansicht",
+        ["Kompakt", "Setup", "Vollanalyse"],
+        index=1,
+        key=f"chart_view_{ticker}",
+        help="Kompakt zeigt nur die wichtigsten Ebenen. Setup fokussiert Entry/Stop/Ziele/Wave. Vollanalyse zeigt zusätzlich S/R, Trendkanal und Fibonacci."
+    )
+
+    if chart_view == "Vollanalyse":
+        chart_overlay_col1, chart_overlay_col2, chart_overlay_col3, chart_overlay_col4 = st.columns(4)
+        with chart_overlay_col1:
+            show_sr_zones = st.checkbox("Unterstützung / Widerstand", value=True, key=f"show_sr_{ticker}")
+        with chart_overlay_col2:
+            show_trend_channel = st.checkbox("Trendkanal", value=True, key=f"show_channel_{ticker}")
+        with chart_overlay_col3:
+            show_fib_levels = st.checkbox("Fibonacci", value=True, key=f"show_fib_{ticker}")
+        with chart_overlay_col4:
+            show_trade_overlay = st.checkbox("Trade-Setup", value=True, key=f"show_trade_overlay_{ticker}")
+    elif chart_view == "Setup":
+        chart_overlay_col1, chart_overlay_col2 = st.columns(2)
+        with chart_overlay_col1:
+            show_trade_overlay = st.checkbox("Trade-Setup anzeigen", value=True, key=f"show_trade_overlay_{ticker}")
+        with chart_overlay_col2:
+            show_fib_levels = st.checkbox("Fibonacci dezent anzeigen", value=False, key=f"show_fib_{ticker}")
+        show_sr_zones = False
+        show_trend_channel = False
+    else:
         show_trade_overlay = st.checkbox("Trade-Setup anzeigen", value=True, key=f"show_trade_overlay_{ticker}")
+        show_sr_zones = False
+        show_trend_channel = False
+        show_fib_levels = False
 
     chart_df = compute_display_chart_df_v1535(df, chart_range, ticker)
     chart_sr_basis_df = compute_chart_df(df, "1 Jahr")
@@ -21512,7 +21546,7 @@ if result is not None:
     except Exception:
         wave_structure_pkg = (result or {}).get("wave_structure_pkg", {}) if isinstance(result, dict) else {}
 
-    # v20.2: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
+    # v20.3: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
     try:
         _mtf_hourly_df = get_intraday_hourly_df_for_candles(result if "result" in locals() else {}, chart_df) if "get_intraday_hourly_df_for_candles" in globals() else None
         multi_timeframe_pkg = build_multi_timeframe_context_v200(chart_df, result if "result" in locals() else {}, _mtf_hourly_df)
@@ -21532,6 +21566,7 @@ if result is not None:
         fib_pkg=fibonacci_context_pkg,
         show_trade_overlay=show_trade_overlay,
         trade_overlay_pkg=trade_overlay_pkg,
+        chart_view=chart_view,
     )
     st.plotly_chart(fig, use_container_width=True)
     if show_trade_overlay and trade_overlay_pkg and trade_overlay_pkg.get("has_overlay"):
@@ -21547,7 +21582,7 @@ if result is not None:
         if trade_overlay_pkg.get("crv") is not None:
             _overlay_bits.append(f"CRV {trade_overlay_pkg.get('crv'):.2f}")
         if _overlay_bits:
-            st.caption("Trade-Setup-Overlay: " + " · ".join(_overlay_bits))
+            st.caption("Setup im Chart: " + " · ".join(_overlay_bits))
     _chart_data_note = getattr(chart_df, "attrs", {}).get("chart_data_note", "") if chart_df is not None else ""
     if _chart_data_note:
         st.caption(_chart_data_note)
@@ -21604,7 +21639,7 @@ if result is not None:
                     result["wave_structure_label"] = wave_structure_pkg.get("label")
                     result["wave_structure_summary"] = wave_structure_pkg.get("summary")
                     result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellenanalyse v20.2 / Swing-Struktur**")
+            st.markdown("**Wellenanalyse v20.3 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -21638,7 +21673,7 @@ if result is not None:
             _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
             st.markdown(f"""
             <div class="premium-card" style="margin-top:10px;">
-                <div class="premium-title">Wellenanalyse v20.2</div>
+                <div class="premium-title">Wellenanalyse v20.3</div>
                 <div class="premium-value" style="font-size:1.02rem;">{html.escape(_wave_status)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Was bedeutet das?</b> {html.escape(_wave_meaning)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Struktur:</b> {html.escape(_wave_sequence_readable)} · <b>Qualität:</b> {html.escape(_wave_quality)}</div>
@@ -21647,7 +21682,7 @@ if result is not None:
                 <div class="premium-sub"><b>Ziel bei Bestätigung:</b> {html.escape(_wave_target_readable)}</div>
             </div>
             """, unsafe_allow_html=True)
-            # v20.2: Multi-Timeframe-Block (Weekly/Daily/Hourly)
+            # v20.3: Multi-Timeframe-Block (Weekly/Daily/Hourly)
             try:
                 _mtf_pkg = multi_timeframe_pkg if "multi_timeframe_pkg" in locals() and isinstance(multi_timeframe_pkg, dict) else ((result or {}).get("multi_timeframe_pkg") if isinstance(result, dict) else {})
             except Exception:
@@ -21658,7 +21693,7 @@ if result is not None:
                 _h = _mtf_pkg.get("hourly", {}) or {}
                 st.markdown(f"""
                 <div class="premium-card" style="margin-top:10px;">
-                    <div class="premium-title">Multi-Timeframe v20.2</div>
+                    <div class="premium-title">Multi-Timeframe v20.3</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(_mtf_pkg.get('label', 'MTF nicht berechnet')))} · {html.escape(str(_mtf_pkg.get('score', 'n/a')))}/100</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Lesart:</b> {html.escape(str(_mtf_pkg.get('summary', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Weekly:</b> {html.escape(str(_w.get('status', '-')))} · {html.escape(str(_w.get('reason', '-')))}</div>
@@ -21673,7 +21708,7 @@ if result is not None:
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("v20.2: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
+                st.caption("v20.3: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

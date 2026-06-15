@@ -2436,7 +2436,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v21.3",
+        "Export_Version": "v21.4",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v21.3"
+APP_VERSION = "v21.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5159,7 +5159,99 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
     return f"{first.get('Priorität','mittel')}: {first.get('Alert-Typ','Alert')}"
 
 
-# ---------- v21.3: Live-Watchlist / Trigger-Monitor ----------
+# ---------- v21.4: Live-Watchlist / Trigger-Monitor ----------
+
+def _v214_monitor_final_release_check(result, decision=None):
+    """Prueft, ob die Live-Watchlist einen Wert wirklich gruen markieren darf.
+
+    Gruen darf nur erscheinen, wenn die finale Sofortanalyse nicht gleichzeitig
+    "Abwarten", "Timing sehr niedrig" oder "Valides Trade-Setup fehlt" sagt.
+    """
+    r = result or {}
+    d = decision or {}
+    blockers = []
+
+    def _low(v):
+        return str(v or "").strip().lower()
+
+    def _num(v, default=None):
+        try:
+            if v is None:
+                return default
+            if isinstance(v, str) and not v.strip():
+                return default
+            f = float(v)
+            if pd.isna(f):
+                return default
+            return f
+        except Exception:
+            return default
+
+    valid_setup = bool(r.get("valid_trade_setup", False))
+    if not valid_setup:
+        blockers.append("Valides Trade-Setup fehlt")
+
+    timing_pkg = r.get("timing_action_confidence_pkg") if isinstance(r.get("timing_action_confidence_pkg"), dict) else {}
+    timing_score = _num(timing_pkg.get("score"), default=None)
+    timing_label = _low(timing_pkg.get("label"))
+    timing_action = _low(timing_pkg.get("action"))
+    timing_missing = _low(timing_pkg.get("missing_text"))
+    if timing_score is not None and timing_score < 55:
+        blockers.append(f"Timing-Konfidenz zu niedrig ({timing_score:.0f}/100)")
+    elif any(x in timing_label for x in ["sehr niedrig", "niedrig", "noch nicht", "nicht freigegeben"]):
+        blockers.append("Timing noch nicht freigegeben")
+    if any(x in (timing_action + " " + timing_missing) for x in [
+        "kein klares kaufsignal", "einstieg noch nicht", "nicht als kaufsignal", "nicht freigegeben", "valides trade-setup fehlt"
+    ]):
+        blockers.append("Sofortanalyse gibt Einstieg noch nicht frei")
+
+    action_pkg = r.get("action_clarity_pkg") if isinstance(r.get("action_clarity_pkg"), dict) else {}
+    action_text = " ".join([
+        _low(action_pkg.get("label")),
+        _low(action_pkg.get("summary")),
+        _low(action_pkg.get("trigger")),
+        _low(r.get("position_action")),
+    ])
+    if any(x in action_text for x in ["abwarten", "warten", "erst bei", "stabilisierung", "bullische reaktion", "noch nicht"]):
+        blockers.append("Nächste Handlung steht noch auf Abwarten/Bestätigung")
+
+    chart_pkg = r.get("charttechnik_setup_pkg") if isinstance(r.get("charttechnik_setup_pkg"), dict) else {}
+    chart_text = " ".join([
+        _low(chart_pkg.get("trigger")),
+        _low(chart_pkg.get("summary")),
+        _low(chart_pkg.get("label")),
+    ])
+    if any(x in chart_text for x in ["abwarten", "noch nicht", "braucht stabilisierung", "braucht", "reclaim"]):
+        # Reclaim ist nur ein Blocker, wenn er als noch fehlende Bedingung formuliert ist.
+        if any(x in chart_text for x in ["abwarten", "noch nicht", "braucht", "bei bruch der zone"]):
+            blockers.append("Charttechnik-Trigger noch nicht aktiv")
+
+    conf_pkg = r.get("trigger_confluence_pkg") if isinstance(r.get("trigger_confluence_pkg"), dict) else {}
+    conf_score = _num(conf_pkg.get("score"), default=None)
+    conf_label = _low(conf_pkg.get("label"))
+    if conf_score is not None and conf_score < 58:
+        blockers.append(f"Trigger-Konfluenz noch nicht stark ({conf_score:.0f}/100)")
+    elif "gemischt" in conf_label:
+        blockers.append("Trigger-Konfluenz gemischt")
+
+    # Radar-Gates bleiben zusaetzlich wirksam, aber harte Gates werden bereits separat rot behandelt.
+    bucket = str((d or {}).get("bucket") or "").strip()
+    if bucket in {"Warnsignale / meiden", "Später beobachten"}:
+        blockers.append(f"Bucket ist {bucket}")
+
+    # Deduplizieren und auf wenige klare Gruende kuerzen.
+    clean = []
+    seen = set()
+    for b in blockers:
+        if not b:
+            continue
+        key = b.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        clean.append(b)
+    return len(clean) == 0, clean[:4]
+
 def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
 
@@ -5190,8 +5282,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     next_step = str(d.get("next_step") or "-").strip()
     brake = str(d.get("brake") or "-").strip()
 
-    # v21.3: Gruen bedeutet wirklich operativ aktiv genug.
-    # Entry allein reicht nicht mehr fuer Gruen, wenn der Bucket noch "Nahe am Trigger" ist.
+    # v21.4: Gruen muss mit der Sofortanalyse konsistent sein.
+    # Entry/Wave allein reicht nicht, wenn Timing, valides Setup oder finaler Trigger noch bremsen.
     status_icon = "⚪"
     status = "Beobachten"
     priority = 4
@@ -5204,6 +5296,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     wave_active = "Wave-Trigger aktiv" in alert_types
     bucket_active = bucket == "Jetzt prüfbar" or "Bucket: Jetzt prüfbar" in alert_types
     bucket_near = bucket == "Nahe am Trigger" or "Wave-Trigger nahe" in alert_types
+    final_release_ok, final_blockers = _v214_monitor_final_release_check(r, d)
+    final_blocker_text = "; ".join(final_blockers)
 
     if "Invalidierung gebrochen" in alert_types or bucket == "Warnsignale / meiden":
         status_icon, status, priority = "🔴", "Invalidiert / meiden", 1
@@ -5213,15 +5307,19 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         status_icon, status, priority = "🔴", "Setup blockiert", 1
         reason = brake if brake and brake != "-" else "Hartes Setup-Gate aktiv."
         monitor_action = "Kein Kauf: Bremse/Gate zuerst klären."
-    elif bucket_active and grade_ok and (crv_ok or "CRV attraktiv" in alert_types):
+    elif (bucket_active or entry_reached or wave_active) and not final_release_ok:
+        status_icon, status, priority = "🟡", "Trigger offen / Abwarten", 2
+        reason = "Sofortanalyse bestätigt Grün noch nicht" + (f": {final_blocker_text}." if final_blocker_text else ".")
+        monitor_action = "Noch kein grünes Kaufsignal: erst finale Trigger-/Timing-Bestätigung abwarten. Risiko/Stückzahl erst festlegen, wenn die Sofortanalyse den Einstieg freigibt."
+    elif bucket_active and final_release_ok and grade_ok and (crv_ok or "CRV attraktiv" in alert_types):
         status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
         reason = "Setup ist operativ aktiv: Bucket ist Jetzt prüfbar und CRV ist attraktiv."
         monitor_action = "Setup aktiv. Jetzt Risiko pro Trade, Stückzahl und Stop/Invalidierung festlegen."
-    elif wave_active and grade_ok and crv_ok and bucket in {"Jetzt prüfbar", "Nahe am Trigger"}:
+    elif wave_active and final_release_ok and grade_ok and crv_ok and bucket in {"Jetzt prüfbar", "Nahe am Trigger"}:
         status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
         reason = "Wave-Trigger ist aktiv und CRV/Setup passen."
         monitor_action = "Setup aktiv. Jetzt Risiko pro Trade, Stückzahl und Stop/Invalidierung festlegen."
-    elif entry_reached and grade_ok and crv_ok and bucket == "Jetzt prüfbar":
+    elif entry_reached and final_release_ok and grade_ok and crv_ok and bucket == "Jetzt prüfbar":
         status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
         reason = "Entry-Zone ist erreicht, Bucket ist aktiv und CRV ist attraktiv."
         monitor_action = "Setup aktiv. Jetzt Risiko pro Trade, Stückzahl und Stop/Invalidierung festlegen."
@@ -18446,8 +18544,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.info("In dieser Watchlist sind noch keine Ticker.")
 
 
-            # ---------- v21.3: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v21.3")
+            # ---------- v21.4: Live-Watchlist / Trigger-Monitor ----------
+            st.markdown("### Live-Watchlist / Trigger-Monitor v21.4")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -19423,7 +19521,7 @@ if workspace_mode:
                 if radar_result_map:
                     _alert_style_v210 = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
                     setup_alerts_df_v210 = build_setup_alerts_table_v210(list(radar_result_map.values()), style_name=_alert_style_v210, limit=30)
-                    st.markdown("### Setup-Alerts v21.3")
+                    st.markdown("### Setup-Alerts v21.4")
                     st.caption("Konservative Vorschau: Diese Alerts werden aus Entry, Wave-Trigger, Bucket, CRV und Invalidierung berechnet. Es wird noch nichts automatisch versendet.")
                     if setup_alerts_df_v210.empty:
                         st.info("Aktuell keine handlungsrelevanten Setup-Alerts. Warn-/Gate-/Watchlist-Hinweise werden bewusst nicht als Alerts angezeigt.")

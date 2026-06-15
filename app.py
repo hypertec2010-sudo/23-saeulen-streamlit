@@ -2435,7 +2435,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v20.8",
+        "Export_Version": "v20.9",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2661,7 +2661,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v20.8"
+APP_VERSION = "v20.9"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3835,7 +3835,83 @@ def _radar_v182_entry_zone_text(result):
 
 
 def _radar_v182_tp1_value(result):
+    # Legacy helper kept for compatibility. In v20.9 the Radar-RR no longer uses
+    # the mechanical 1R-TP1 as the primary target, because that made almost every
+    # Radar candidate show CRV 1.0. Use _radar_v209_main_target_value instead.
     return _radar_v182_num(_radar_v182_first_non_empty(result, "tp1", "TP1", "target1", "Target_1", default=""), default=None)
+
+
+def _radar_v209_parse_price_zone(value):
+    """Return (low, high) from a text like 'ca. 320.77 - 325.05'."""
+    try:
+        text = str(value or "").replace(",", ".")
+        nums = [float(x) for x in re.findall(r"[-+]?\d+(?:\.\d+)?", text)]
+        # Ignore extension labels like 1.272/1.618 if larger price numbers follow.
+        nums = [x for x in nums if abs(x) >= 2.0]
+        if len(nums) >= 2:
+            return min(nums[-2], nums[-1]), max(nums[-2], nums[-1])
+        if len(nums) == 1:
+            return nums[0], nums[0]
+    except Exception:
+        pass
+    return None, None
+
+
+def _radar_v209_main_target_value(result, price=None):
+    """Bestimmt ein sinnvolles Radar-Ziel fuer CRV.
+
+    Hintergrund v20.9:
+    Das normale Analyse-TP1 ist im Tradingboard oft bewusst ein 1R-Ziel
+    (price + 1 * risk). Wenn der Radar dieses TP1 nutzt, kommt fast immer CRV 1.0
+    heraus. Fuer die Radar-Attraktivitaet ist aber das naechste strukturelle bzw.
+    operative Hauptziel relevanter: TP2, technische Ziele, Wave-Zielzone, 52W-Hoch.
+    Nur wenn gar kein Hauptziel existiert, bleibt CRV n/a statt kuenstlich 1.0.
+    """
+    r = result or {}
+    if price is None:
+        price = _radar_v182_get_price(r)
+
+    def _valid(v):
+        num = _radar_v182_num(v, default=None)
+        if num is None or num <= 0:
+            return None
+        if price is not None and price > 0 and num <= price * 1.002:
+            return None
+        return num
+
+    candidates = [
+        ("TP2 / Hauptziel", _valid(_radar_v182_first_non_empty(r, "tp2", "TP2", "target2", "Target_2", default=""))),
+        ("technisches Ziel", _valid(_radar_v182_first_non_empty(r, "technical_target_1", "Technical_Target_1", "Setup_Target_1", default=""))),
+        ("Wave-Ziel", None),
+        ("52W-Hoch", _valid(_radar_v182_first_non_empty(r, "high52", "52W_High", "high_52w", default=""))),
+        ("Analysten-/Modellziel", _valid(_radar_v182_first_non_empty(r, "target", "Target", "price_target", "analyst_target", default=""))),
+        ("TP3", _valid(_radar_v182_first_non_empty(r, "tp3", "TP3", "target3", "Target_3", default=""))),
+    ]
+
+    # Wave-Zielzone aus der v19/v20-Wellenanalyse konservativ mit der unteren Zone nutzen.
+    wave = r.get("wave_structure_pkg") or {}
+    if isinstance(wave, dict):
+        for key in ("wave_extension_127", "target_127", "wave_target_127"):
+            val = _valid(wave.get(key))
+            if val is not None:
+                candidates[2] = ("Wave-Ziel", val)
+                break
+        if candidates[2][1] is None:
+            low, high = _radar_v209_parse_price_zone(wave.get("wave_target_zone") or wave.get("wave_readable_target") or "")
+            val = _valid(low) or _valid(high)
+            if val is not None:
+                candidates[2] = ("Wave-Ziel", val)
+
+    for source, val in candidates:
+        if val is not None:
+            return val, source
+
+    # 1R-TP1 wird bewusst NICHT als Radar-Hauptziel verwendet. Es ist nur ein
+    # Mindest-Teilziel und wuerde den Radar permanent auf CRV 1.0 kalibrieren.
+    tp1 = _valid(_radar_v182_first_non_empty(r, "tp1", "TP1", "target1", "Target_1", default=""))
+    if tp1 is not None:
+        return None, "kein strukturelles Hauptziel; TP1 ist nur 1R/Teilziel"
+    return None, "kein belastbares Hauptziel"
 
 
 def _radar_v182_stop_value(result):
@@ -3866,7 +3942,7 @@ def build_radar_entry_rr_package_v182(result):
     price = _radar_v182_get_price(r)
     entry_zone = _radar_v182_entry_zone_text(r)
     low, high = _radar_v182_parse_zone(entry_zone)
-    tp1 = _radar_v182_tp1_value(r)
+    tp1, tp1_source = _radar_v209_main_target_value(r, price=price)
     stop = _radar_v182_stop_value(r)
 
     entry_distance_pct = None
@@ -3901,7 +3977,7 @@ def build_radar_entry_rr_package_v182(result):
     crv = None
     rr_label = "CRV n/a"
     rr_score = 45.0
-    rr_text = "CRV nicht sauber berechenbar; Entry, Stop oder TP1 fehlen."
+    rr_text = "CRV nicht sauber berechenbar; Entry, Stop oder strukturelles Ziel fehlen."
     if price is not None and stop is not None and tp1 is not None and stop > 0 and tp1 > 0:
         risk = price - stop
         reward = tp1 - price
@@ -3922,7 +3998,7 @@ def build_radar_entry_rr_package_v182(result):
             else:
                 rr_label = "CRV unattraktiv"
                 rr_score = 24.0
-            rr_text = f"CRV {crv:.2f} · Stop {stop:.2f} · TP1 {tp1:.2f}"
+            rr_text = f"CRV {crv:.2f} · Stop {stop:.2f} · Ziel {tp1:.2f} ({tp1_source})"
         elif risk <= 0:
             rr_label = "Stop unplausibel"
             rr_score = 25.0
@@ -3930,7 +4006,7 @@ def build_radar_entry_rr_package_v182(result):
         else:
             rr_label = "TP1 unplausibel"
             rr_score = 25.0
-            rr_text = "TP1 liegt nicht oberhalb des aktuellen Kurses."
+            rr_text = "Das Ziel liegt nicht oberhalb des aktuellen Kurses."
 
     distance_text = "n/a" if entry_distance_pct is None else f"{entry_distance_pct:+.1f}%"
     if entry_zone:
@@ -3952,6 +4028,7 @@ def build_radar_entry_rr_package_v182(result):
         "price": price,
         "stop": stop,
         "tp1": tp1,
+        "target_source": tp1_source,
     }
 
 
@@ -4345,7 +4422,7 @@ def _mtf_v200_tf_state(df, label, result=None):
 
 
 def build_multi_timeframe_context_v200(daily_df=None, result=None, hourly_df=None):
-    """v20.8: Top-down Multi-Timeframe-Struktur.
+    """v20.9: Top-down Multi-Timeframe-Struktur.
 
     Weekly = uebergeordneter Trend, Daily = Setup, Hourly = Timing.
     Bewusst regelbasiert und weich gewichtet, damit bestehende Radar-Gates stabil bleiben.
@@ -8715,7 +8792,7 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
         base.update(_wave_v191_build_readable_fields(base))
         return base
     except Exception as exc:
-        base["summary"] = f"Wellenanalyse v20.8 nicht belastbar: {exc}"
+        base["summary"] = f"Wellenanalyse v20.9 nicht belastbar: {exc}"
         base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
         return base
 
@@ -9077,9 +9154,9 @@ def _chart_label_xpos_v205(df, position="right"):
 _CHART_LARGE_LABELS_V207 = False
 
 def _chart_annotation_style_v206(kind="neutral"):
-    """Einheitliche, kontrastreiche Chart-Badges fuer v20.8.
+    """Einheitliche, kontrastreiche Chart-Badges fuer v20.9.
 
-    v20.8: Labels koennen optional groesser dargestellt werden. Zusaetzlich
+    v20.9: Labels koennen optional groesser dargestellt werden. Zusaetzlich
     bekommen alle Badge-Labels unsichtbare Hover-Punkte mit gut lesbaren
     Detail-Tooltips.
     """
@@ -9169,7 +9246,7 @@ def _chart_add_annotation_v206(fig, *, x, y, text, kind="neutral", xanchor="left
             col=col,
             **style,
         )
-        # v20.8: Mouseover ueber dem Label zeigt groesseren Detail-Tooltip.
+        # v20.9: Mouseover ueber dem Label zeigt groesseren Detail-Tooltip.
         _chart_add_hover_point_v207(fig, x=x, y=y, text=text, kind=kind, row=row, col=col)
     except Exception:
         pass
@@ -13064,8 +13141,10 @@ def build_trade_setup_overlay_v193(result=None, wave_pkg=None, ccy=""):
     price = _trade_overlay_num_v193(r.get("live_price") or r.get("analysis_price") or r.get("price"), default=None)
     crv = None
     try:
-        if price and stop and tp1 and price > stop and tp1 > price:
-            crv = (tp1 - price) / (price - stop)
+        # v20.9: CRV im Chart ebenfalls am Hauptziel orientieren. TP1 ist oft nur 1R.
+        rr_target = tp2 if tp2 and price and tp2 > price else tp1
+        if price and stop and rr_target and price > stop and rr_target > price:
+            crv = (rr_target - price) / (price - stop)
     except Exception:
         crv = None
 
@@ -13280,7 +13359,7 @@ def add_trade_setup_overlay_to_plotly_v193(fig, chart_df, overlay):
         except Exception:
             _trade_overlay_add_hline_v193(fig, chart_df, wave_invalid, "Wann hinfällig?", dash="dash", width=1, hover="Wellenanalyse - wann hinfällig")
 
-        # v20.8: CRV bleibt in der kompakten Zusammenfassung unter dem Chart.
+        # v20.9: CRV bleibt in der kompakten Zusammenfassung unter dem Chart.
         # Im Kursbereich selbst war die CRV-Box ein zusätzlicher rechter Label-Konflikt.
     except Exception:
         pass
@@ -13372,7 +13451,7 @@ def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=F
         except Exception:
             pass
 
-    # v20.8: Aktueller Kurs bleibt immer sichtbar, unabhaengig von Chart-Ansicht und Overlay-Schaltern.
+    # v20.9: Aktueller Kurs bleibt immer sichtbar, unabhaengig von Chart-Ansicht und Overlay-Schaltern.
     try:
         _current_price, _current_label = _chart_current_price_v204(chart_df, trade_overlay_pkg)
         add_current_price_marker_to_plotly_v204(fig, chart_df, _current_price, ccy, _current_label)
@@ -14009,7 +14088,7 @@ def search_tickers(query, max_results=8):
 
 
 
-# ---------- v20.8: robuste Ticker-/Firmennamen-Auflösung ----------
+# ---------- v20.9: robuste Ticker-/Firmennamen-Auflösung ----------
 _COMMON_NAME_TICKER_MAP_V202 = {
     # US Mega/Large Caps
     "apple": "AAPL", "apple inc": "AAPL", "aapl": "AAPL",
@@ -14146,7 +14225,7 @@ def score_search_result(query, item):
 def resolve_input_to_ticker(user_input, fallback=None):
     """Robuste Eingabeauflösung für Ticker, Firmennamen und Rohstoff-Aliasse.
 
-    Reihenfolge v20.8:
+    Reihenfolge v20.9:
     1) Rohstoff-Aliasse wie Gold/Silber/WTI
     2) gepflegte Common-Name-Aliasse für häufige Eingaben
     3) Yahoo Search API, wenn verfügbar
@@ -18192,10 +18271,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">Radar Professional v20.8</div>
+                <div class="premium-title">Radar Professional v20.9</div>
                 <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v20.8 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v20.9 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
                 </div>
             </div>
             """,
@@ -18451,7 +18530,7 @@ if workspace_mode:
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
-                # v20.8: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
+                # v20.9: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
                 for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "MTF-Score", "MTF-Impact", "Wann aktiv?", "Ziel bei Bestätigung", "Top-Chance-Rang"]:
                     if _col_name not in radar_df.columns:
                         radar_df[_col_name] = "-"
@@ -18510,7 +18589,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v20.8: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
+                st.caption("v20.9: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -18820,7 +18899,7 @@ if workspace_mode:
                     ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
 
                     st.markdown("### Beste heutige Chancen")
-                    st.caption("v20.8 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    st.caption("v20.9 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
                     if not _top_box_strict_df.empty:
                         _cols = st.columns(len(_top_box_strict_df))
                         for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
@@ -19225,7 +19304,7 @@ if workspace_mode:
         if analysis_mode == "Einzelanalyse":
             search_input = single_input
             if search_input:
-                # v20.8: Ticker-/Namensauflösung wieder trennen.
+                # v20.9: Ticker-/Namensauflösung wieder trennen.
                 # Ein-Wort-Firmennamen wie "Apple", "Nvidia" oder "Siemens" duerfen
                 # nicht blind zu APPLE/NVIDIA/SIEMENS gemacht werden, sonst findet die
                 # App scheinbar keine Ticker mehr. Direkte Ticker gelten nur bei echter
@@ -19269,14 +19348,14 @@ if workspace_mode:
                         st.session_state.selected_ticker = ticker
                         resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Aus Trefferauswahl"}]
                     else:
-                        # v20.8: Wenn die Yahoo-Such-API leer bleibt, trotzdem robuste
+                        # v20.9: Wenn die Yahoo-Such-API leer bleibt, trotzdem robuste
                         # Auflösung über Common-Name-Aliasse und validierten Ticker-Fallback versuchen.
                         resolved_fallback = resolve_input_to_ticker(search_input, fallback=None)
                         if resolved_fallback:
                             ticker = resolved_fallback
                             st.session_state.selected_ticker = ticker
                             st.session_state.selected_search_label = None
-                            resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "v20.8 Fallback-Auflösung"}]
+                            resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "v20.9 Fallback-Auflösung"}]
                             st.caption(f"Aufgelöst: {ticker}")
                         else:
                             st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
@@ -19294,7 +19373,7 @@ if workspace_mode:
 
             analysis_candidates = []
             for entry in raw_batch_entries:
-                # v20.8: Auch im Batch-Modus Firmennamen nicht blind als Ticker interpretieren.
+                # v20.9: Auch im Batch-Modus Firmennamen nicht blind als Ticker interpretieren.
                 commodity_alias = resolve_commodity_alias_v1534_3(entry) if "resolve_commodity_alias_v1534_3" in globals() else None
                 looks_like_ticker = looks_like_real_ticker(entry)
                 if commodity_alias:
@@ -19312,7 +19391,7 @@ if workspace_mode:
                         resolved_fallback = resolve_input_to_ticker(entry, fallback=None)
                         if resolved_fallback:
                             analysis_candidates.append(resolved_fallback)
-                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": resolved_fallback, "Typ": "v20.8 Fallback-Auflösung"})
+                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": resolved_fallback, "Typ": "v20.9 Fallback-Auflösung"})
                         else:
                             resolved_input_rows.append({"Eingabe": entry, "Auflösung": "-", "Typ": "Nicht gefunden"})
 
@@ -21748,7 +21827,7 @@ if result is not None:
         result["fibonacci_confirmation"] = fibonacci_context_pkg.get("confirmation_label")
         result["fibonacci_confirmation_score"] = fibonacci_context_pkg.get("confirmation_score")
         result["fibonacci_confirmation_text"] = fibonacci_context_pkg.get("confirmation_text")
-    # v20.8: Technische Chartanalyse ist fachlich unabhängig von der Chart-Detailstufe.
+    # v20.9: Technische Chartanalyse ist fachlich unabhängig von der Chart-Detailstufe.
     # Die Chart-Ansicht steuert nur, welche Overlays gezeichnet werden.
     # S/R-, Trend-, Ultra-, Muster- und Detailausgaben darunter sollen immer berechnet werden.
     chart_structures = None
@@ -21768,7 +21847,7 @@ if result is not None:
     except Exception:
         wave_structure_pkg = (result or {}).get("wave_structure_pkg", {}) if isinstance(result, dict) else {}
 
-    # v20.8: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
+    # v20.9: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
     try:
         _mtf_hourly_df = get_intraday_hourly_df_for_candles(result if "result" in locals() else {}, chart_df) if "get_intraday_hourly_df_for_candles" in globals() else None
         multi_timeframe_pkg = build_multi_timeframe_context_v200(chart_df, result if "result" in locals() else {}, _mtf_hourly_df)
@@ -21821,7 +21900,7 @@ if result is not None:
         st.caption(f"S/R-Basis: {chart_structures.get('sr_basis_label', '1 Jahr')}")
 
     with st.expander("Technische Chartdetails", expanded=False):
-        st.caption("v20.8: Diese technische Einordnung wird unabhängig von der gewählten Chart-Ansicht vollständig berechnet. Kompakt/Setup/Vollanalyse steuert nur die sichtbaren Overlays im Chart.")
+        st.caption("v20.9: Diese technische Einordnung wird unabhängig von der gewählten Chart-Ansicht vollständig berechnet. Kompakt/Setup/Vollanalyse steuert nur die sichtbaren Overlays im Chart.")
         if chart_structures:
             chart_text_items = summarize_chart_structures(chart_df, chart_structures)
             if chart_text_items:
@@ -21865,7 +21944,7 @@ if result is not None:
                     result["wave_structure_label"] = wave_structure_pkg.get("label")
                     result["wave_structure_summary"] = wave_structure_pkg.get("summary")
                     result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellenanalyse v20.8 / Swing-Struktur**")
+            st.markdown("**Wellenanalyse v20.9 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -21899,7 +21978,7 @@ if result is not None:
             _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
             st.markdown(f"""
             <div class="premium-card" style="margin-top:10px;">
-                <div class="premium-title">Wellenanalyse v20.8</div>
+                <div class="premium-title">Wellenanalyse v20.9</div>
                 <div class="premium-value" style="font-size:1.02rem;">{html.escape(_wave_status)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Was bedeutet das?</b> {html.escape(_wave_meaning)}</div>
                 <div class="premium-sub" style="margin-top:6px;"><b>Struktur:</b> {html.escape(_wave_sequence_readable)} · <b>Qualität:</b> {html.escape(_wave_quality)}</div>
@@ -21908,7 +21987,7 @@ if result is not None:
                 <div class="premium-sub"><b>Ziel bei Bestätigung:</b> {html.escape(_wave_target_readable)}</div>
             </div>
             """, unsafe_allow_html=True)
-            # v20.8: Multi-Timeframe-Block (Weekly/Daily/Hourly)
+            # v20.9: Multi-Timeframe-Block (Weekly/Daily/Hourly)
             try:
                 _mtf_pkg = multi_timeframe_pkg if "multi_timeframe_pkg" in locals() and isinstance(multi_timeframe_pkg, dict) else ((result or {}).get("multi_timeframe_pkg") if isinstance(result, dict) else {})
             except Exception:
@@ -21919,7 +21998,7 @@ if result is not None:
                 _h = _mtf_pkg.get("hourly", {}) or {}
                 st.markdown(f"""
                 <div class="premium-card" style="margin-top:10px;">
-                    <div class="premium-title">Multi-Timeframe v20.8</div>
+                    <div class="premium-title">Multi-Timeframe v20.9</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(_mtf_pkg.get('label', 'MTF nicht berechnet')))} · {html.escape(str(_mtf_pkg.get('score', 'n/a')))}/100</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Lesart:</b> {html.escape(str(_mtf_pkg.get('summary', '-')))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Weekly:</b> {html.escape(str(_w.get('status', '-')))} · {html.escape(str(_w.get('reason', '-')))}</div>
@@ -21934,7 +22013,7 @@ if result is not None:
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("v20.8: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
+                st.caption("v20.9: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

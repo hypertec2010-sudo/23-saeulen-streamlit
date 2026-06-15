@@ -2436,7 +2436,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v21.5",
+        "Export_Version": "v21.6",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v21.5"
+APP_VERSION = "v21.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5159,7 +5159,7 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
     return f"{first.get('Priorität','mittel')}: {first.get('Alert-Typ','Alert')}"
 
 
-# ---------- v21.5: Live-Watchlist / Trigger-Monitor ----------
+# ---------- v21.6: Live-Watchlist / Trigger-Monitor ----------
 
 def _v214_monitor_final_release_check(result, decision=None):
     """Prueft, ob die Live-Watchlist einen Wert wirklich gruen markieren darf.
@@ -5206,11 +5206,26 @@ def _v214_monitor_final_release_check(result, decision=None):
         blockers.append("Sofortanalyse gibt Einstieg noch nicht frei")
 
     action_pkg = r.get("action_clarity_pkg") if isinstance(r.get("action_clarity_pkg"), dict) else {}
+    # v21.6: Die Live-Freigabe muss dieselben positiven Felder erkennen wie die Sofortanalyse.
+    # In einigen Result-Objekten steht "Kaufen"/"Einstieg freigegeben" nicht in position_action,
+    # sondern in Timing-, Model-Debug- oder finalen UI-Feldern. Deshalb breiter auslesen.
+    model_debug = r.get("model_debug_pkg") if isinstance(r.get("model_debug_pkg"), dict) else {}
     action_text = " ".join([
         _low(action_pkg.get("label")),
         _low(action_pkg.get("summary")),
         _low(action_pkg.get("trigger")),
+        _low(action_pkg.get("action")),
         _low(r.get("position_action")),
+        _low(r.get("Aktion_Final")),
+        _low(r.get("final_action")),
+        _low(model_debug.get("final_action")),
+        _low(model_debug.get("exec_verdict")),
+    ])
+    timing_positive_text = " ".join([
+        _low(timing_pkg.get("summary")),
+        _low(timing_pkg.get("action")),
+        _low(timing_pkg.get("fits_text")),
+        _low(timing_pkg.get("missing_text")),
     ])
     if any(x in action_text for x in ["abwarten", "warten", "erst bei", "stabilisierung", "bullische reaktion", "noch nicht"]):
         blockers.append("Nächste Handlung steht noch auf Abwarten/Bestätigung")
@@ -5234,15 +5249,27 @@ def _v214_monitor_final_release_check(result, decision=None):
     elif "gemischt" in conf_label:
         blockers.append("Trigger-Konfluenz gemischt")
 
-    # v21.5: Positive Sofortanalyse-Freigabe hat Vorrang vor weichen Radar-/Text-Bremsen.
+    # v21.6: Positive Sofortanalyse-Freigabe hat Vorrang vor weichen Radar-/Text-Bremsen.
     # Hintergrund: Der Live-Monitor darf nicht rot anzeigen, wenn die Einzelanalyse klar
     # "kaufen", valides Trade-Setup, hohes Timing und konstruktive Konfluenz meldet.
+    positive_release_terms = [
+        "kaufen", "kauf", "einstieg prüfen", "einstieg pruefen", "einstieg grundsätzlich freigegeben",
+        "einstieg grundsaetzlich freigegeben", "einstieg ist freigegeben", "bereits offensiv",
+        "trade-setup ist valide", "timing wirkt reif", "mehrere bausteine bestätigen", "mehrere bausteine bestaetigen",
+        "setup aktiv", "offensiv"
+    ]
+    positive_release_text = action_text + " " + timing_positive_text
     offensive_release = (
         bool(valid_setup)
         and (timing_score is not None and timing_score >= 70)
         and (conf_score is not None and conf_score >= 68)
-        and any(x in action_text for x in ["kaufen", "einstieg prüfen", "einstieg pruefen", "offensiv"])
+        and any(x in positive_release_text for x in positive_release_terms)
     )
+    # Fallback: Wenn Setup valide, Timing sehr hoch und Konfluenz konstruktiv sind,
+    # ist das keine rote Warnung mehr, auch wenn der alte Radar-Bucket noch "Warnsignale" sagt.
+    # Das verhindert MRVL-artige Widersprueche zwischen Sofortanalyse und Live-Monitor.
+    if (not offensive_release) and bool(valid_setup) and (timing_score is not None and timing_score >= 82) and (conf_score is not None and conf_score >= 68):
+        offensive_release = True
 
     # Radar-Gates bleiben zusaetzlich wirksam, aber Warn-Buckets duerfen eine klare
     # Sofortanalyse-Freigabe nicht zu "invalidiert/meiden" umdeuten.
@@ -5262,7 +5289,7 @@ def _v214_monitor_final_release_check(result, decision=None):
         seen.add(key)
         clean.append(b)
 
-    # v21.5: Bei klarer positiver Sofortanalyse-Freigabe werden weiche Text-Blocker
+    # v21.6: Bei klarer positiver Sofortanalyse-Freigabe werden weiche Text-Blocker
     # wie "Stabilisierung abwarten" nicht als hartes Gruen-Verbot behandelt. Harte
     # Blocker wie fehlendes valides Setup oder wirklich schwaches Timing bleiben erhalten.
     if 'offensive_release' in locals() and offensive_release:
@@ -5301,7 +5328,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     next_step = str(d.get("next_step") or "-").strip()
     brake = str(d.get("brake") or "-").strip()
 
-    # v21.5: Gruen muss mit der Sofortanalyse konsistent sein.
+    # v21.6: Gruen muss mit der Sofortanalyse konsistent sein.
     # Entry/Wave allein reicht nicht, wenn Timing, valides Setup oder finaler Trigger noch bremsen.
     status_icon = "⚪"
     status = "Beobachten"
@@ -18571,8 +18598,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.info("In dieser Watchlist sind noch keine Ticker.")
 
 
-            # ---------- v21.5: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v21.5")
+            # ---------- v21.6: Live-Watchlist / Trigger-Monitor ----------
+            st.markdown("### Live-Watchlist / Trigger-Monitor v21.6")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -19548,7 +19575,7 @@ if workspace_mode:
                 if radar_result_map:
                     _alert_style_v210 = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
                     setup_alerts_df_v210 = build_setup_alerts_table_v210(list(radar_result_map.values()), style_name=_alert_style_v210, limit=30)
-                    st.markdown("### Setup-Alerts v21.5")
+                    st.markdown("### Setup-Alerts v21.6")
                     st.caption("Konservative Vorschau: Diese Alerts werden aus Entry, Wave-Trigger, Bucket, CRV und Invalidierung berechnet. Es wird noch nichts automatisch versendet.")
                     if setup_alerts_df_v210.empty:
                         st.info("Aktuell keine handlungsrelevanten Setup-Alerts. Warn-/Gate-/Watchlist-Hinweise werden bewusst nicht als Alerts angezeigt.")

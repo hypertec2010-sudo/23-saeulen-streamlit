@@ -2436,7 +2436,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v22.0",
+        "Export_Version": "v22.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.0"
+APP_VERSION = "v22.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5058,7 +5058,7 @@ def build_setup_alerts_v210(result, style_name="Ausgewogen", decision=None):
     gate_low = gate.lower().strip()
     hard_gate = bool(gate_low and gate_low not in {"keine harten gates", "keine harten gate", "-", "nan", "none"})
 
-    # v22.0: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
+    # v22.1: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
     # Sie ist Positions-/Stop-Risikohinweis, aber kein Einstiegsgate. Rot bleibt nur
     # bei echter Invalidierung oder einem nicht-exitbezogenen harten Gate.
     exit_gate_terms = [
@@ -5169,7 +5169,7 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
     return f"{first.get('Priorität','mittel')}: {first.get('Alert-Typ','Alert')}"
 
 
-# ---------- v22.0: Live-Watchlist / Trigger-Monitor mit Statuswechsel-Historie ----------
+# ---------- v22.1: Live-Watchlist / Trigger-Monitor mit Statuswechsel-Historie ----------
 
 def _v214_monitor_final_release_check(result, decision=None):
     """Prueft, ob die Live-Watchlist einen Wert wirklich gruen/selektiv freigeben darf.
@@ -5344,7 +5344,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     gate_low = gate.lower().strip()
     hard_gate = bool(gate_low and gate_low not in {"keine harten gates", "keine harten gate", "-", "nan", "none"})
 
-    # v22.0: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
+    # v22.1: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
     # Sie ist Positions-/Stop-Risikohinweis, aber kein Einstiegsgate. Rot bleibt nur
     # bei echter Invalidierung oder einem nicht-exitbezogenen harten Gate.
     exit_gate_terms = [
@@ -5358,7 +5358,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     next_step = str(d.get("next_step") or "-").strip()
     brake = str(d.get("brake") or "-").strip()
 
-    # v22.0: Gruen muss mit der Sofortanalyse konsistent sein.
+    # v22.1: Gruen muss mit der Sofortanalyse konsistent sein.
     # Entry/Wave allein reicht nicht, wenn Timing, valides Setup oder finaler Trigger noch bremsen.
     status_icon = "⚪"
     status = "Beobachten"
@@ -5380,7 +5380,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         reason = "Invalidierung aktiv."
         monitor_action = "Kein Kauf: These/Setup zuerst neu prüfen; Stop-/Invalidierungsbruch beachten."
     elif bucket == "Warnsignale / meiden" and grade in {"A", "B"} and crv_ok:
-        # v22.0: Warnbucket ist nur ein Diagnose-/Vorsichtssignal, wenn Grade A/B und CRV passen.
+        # v22.1: Warnbucket ist nur ein Diagnose-/Vorsichtssignal, wenn Grade A/B und CRV passen.
         # entry_hard_gate wird hier bewusst nicht mehr als Ausschluss verwendet,
         # weil es in MRVL-artigen Fällen aus Exit-/Schutz-/Warntexten entstehen kann.
         # Rot bleibt nur fuer echte Invalidierung oder fehlende Qualitaets-/CRV-Entlastung.
@@ -5487,7 +5487,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
 
 
 
-# ---------- v22.0: Live-Watchlist Statuswechsel-Historie ----------
+# ---------- v22.1: Live-Watchlist Statuswechsel-Historie ----------
 
 def _v220_live_status_rank(ampel, status):
     """Ordnet Live-Status fuer Verbesserungs-/Verschlechterungslogik.
@@ -18749,8 +18749,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.info("In dieser Watchlist sind noch keine Ticker.")
 
 
-            # ---------- v22.0: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.0")
+            # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.1")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -18800,7 +18800,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40)
                     live_events_df = pd.DataFrame()
                     if not live_df.empty:
-                        live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_wl, style_name=monitor_style)
+                        live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_watchlist_name, style_name=monitor_style)
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty:

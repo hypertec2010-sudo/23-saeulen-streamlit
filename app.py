@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.3"
+APP_VERSION = "v22.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4996,7 +4996,7 @@ def _v210_alert_num(value, default=None):
 def _v210_alert_price(result):
     r = result or {}
 
-    # v22.3: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
+    # v22.4: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
     # bis in die Live-Watchlist durch und wurde dort als "nan USD" angezeigt.
     # Deshalb gilt: nur endliche positive Zahlen sind ein valider Kurs.
     def _valid_price(x):
@@ -5543,7 +5543,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
         df = pd.DataFrame(rows).sort_values(["__prio", "Ticker"]).drop(columns=["__prio"], errors="ignore").reset_index(drop=True)
     else:
         df = pd.DataFrame(columns=["Ampel", "Status", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
-    # v22.3: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
+    # v22.4: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
         df["Kurs"] = df["Kurs"].apply(lambda x: "n/a" if pd.isna(x) else x)
@@ -5551,7 +5551,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
 
 
 
-# ---------- v22.3: Live-Watchlist Preis-/Name-Fix ----------
+# ---------- v22.4: Live-Watchlist Preis-/Name-Fix ----------
 
 def _v220_live_status_rank(ampel, status):
     """Ordnet Live-Status fuer Verbesserungs-/Verschlechterungslogik.
@@ -18814,7 +18814,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.3")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.4")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -21892,27 +21892,67 @@ if result is not None:
     benchmark_label = result["benchmark_label"]
     benchmark_symbol = result["benchmark_symbol"]
     market_info = result["market_info"]
-    price = result["price"]
+    price = result.get("price", np.nan)
     live_price = result.get("live_price", np.nan)
     live_price_source = result.get("live_price_source", "Schlusskurs")
     live_price_diff_pct = result.get("live_price_diff_pct", np.nan)
     live_price_note = result.get("live_price_note", "")
 
-    # v16.1.3: finaler UI-Fallback direkt im Renderpfad.
-    # In einigen Ergebnisobjekten ist live_price trotz Engine-Fallback noch leer.
-    # Dann darf die Kursbasis-Karte nicht "Aktuell: n/a" zeigen, sondern die
-    # reguläre Analysebasis als aktuellen Vergleichswert ausweisen.
-    try:
-        if not pd.notna(live_price):
-            live_price = float(price) if pd.notna(price) else np.nan
-            live_price_source = "Schlusskurs / Analysebasis"
-            live_price_diff_pct = 0.0 if pd.notna(live_price) else np.nan
-            live_price_note = "Kein separater Live-/Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
-    except Exception:
-        live_price = price
+    # v22.4: Kursbasis-Karte robust gegen NaN-Werte machen.
+    # Der Live-Watchlist-Fix hatte nur die Monitor-Tabelle bereinigt; in der
+    # Einzelanalyse konnte result["price"] weiterhin NaN sein und als
+    # "nan USD" gerendert werden. Deshalb wird direkt im Renderpfad aus allen
+    # verfuegbaren Quellen ein sauberer Preis gesucht und die Anzeige bei Bedarf
+    # auf "n/a" gesetzt.
+    def _v224_clean_price_value(value):
+        try:
+            val = float(pd.to_numeric(value, errors="coerce"))
+            if np.isfinite(val) and val > 0:
+                return val
+        except Exception:
+            pass
+        return np.nan
+
+    def _v224_last_close_from_df(_df):
+        try:
+            if _df is not None and not getattr(_df, "empty", True) and "Close" in _df.columns:
+                close_ser = pd.to_numeric(_df["Close"], errors="coerce").dropna()
+                if not close_ser.empty:
+                    return _v224_clean_price_value(close_ser.iloc[-1])
+        except Exception:
+            pass
+        return np.nan
+
+    _analysis_price_candidates = [
+        price,
+        result.get("analysis_price", np.nan),
+        result.get("Analyse_Kursbasis", np.nan),
+        result.get("Aktueller_Kurs", np.nan),
+        live_price,
+        result.get("regularMarketPrice", np.nan),
+        result.get("currentPrice", np.nan),
+        result.get("lastPrice", np.nan),
+        result.get("previousClose", np.nan),
+        _v224_last_close_from_df(df),
+    ]
+    clean_price = np.nan
+    for _candidate_price in _analysis_price_candidates:
+        clean_price = _v224_clean_price_value(_candidate_price)
+        if pd.notna(clean_price):
+            break
+    price = clean_price
+    price_display = fmt_num(price, 2, " " + ccy) if pd.notna(price) else "n/a"
+
+    live_price = _v224_clean_price_value(live_price)
+    if not pd.notna(live_price) and pd.notna(price):
+        live_price = float(price)
         live_price_source = "Schlusskurs / Analysebasis"
         live_price_diff_pct = 0.0
         live_price_note = "Kein separater Live-/Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
+    elif not pd.notna(live_price):
+        live_price_source = "Kurs nicht verfügbar"
+        live_price_diff_pct = np.nan
+        live_price_note = "Kein sauberer Kurswert verfügbar."
     target = result["target"]
     upside = result["upside"]
     regime = result["regime"]
@@ -22121,7 +22161,7 @@ if result is not None:
             f"""
             <div class="premium-card">
                 <div class="premium-title">Kursbasis</div>
-                <div class="premium-value">{price:.2f} {ccy}</div>
+                <div class="premium-value">{price_display}</div>
                 <div class="premium-sub">Reguläre Analysebasis · {ts}</div>
                 <div class="premium-sub">Aktuell: {(fmt_num(live_price, 2, " " + ccy) if pd.notna(live_price) else "n/a")} · {live_price_source}{(" · " + fmt_num(live_price_diff_pct, 1, "%")) if pd.notna(live_price_diff_pct) else ""}</div>
             </div>

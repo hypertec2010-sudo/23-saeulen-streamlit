@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.4"
+APP_VERSION = "v22.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2790,11 +2790,26 @@ def build_action_clarity_v176(result, *, final_action_label='-', entry_zone='-',
             now = 'Ausfuehrung nur mit passender Positionsgroesse und klarer Invalidierung pruefen.'
             trigger = f'Entry-Zone {ez} haelt bzw. zeigt bullische Reaktion.'
         elif above_zone:
-            label = 'Selektiv jetzt / Pullback bevorzugt'
-            stage = 'selective_or_pullback'
-            summary = f'Setup ist stark, aber der Kurs liegt ueber der idealen Entry-Zone {ez}.'
-            now = 'Sauberer: Pullback in/nahe Entry-Zone abwarten. Aggressiv: nur kleine/selektive Position, wenn Staerke haelt.'
-            trigger = f'Pullback in/nahe Entry-Zone {ez} oder erneuter Ausbruch mit bestaetigter Staerke.'
+            _dist_above = None
+            try:
+                _lo_tmp, _hi_tmp = _radar_v182_parse_zone(ez)
+                _px_tmp = _v176_to_float(current_price, None)
+                if _px_tmp is not None and _hi_tmp is not None and _hi_tmp > 0 and _px_tmp > _hi_tmp:
+                    _dist_above = ((_px_tmp - _hi_tmp) / _hi_tmp) * 100.0
+            except Exception:
+                _dist_above = None
+            if _dist_above is not None and _dist_above > 3.0:
+                label = 'Abwarten / nicht hinterherlaufen'
+                stage = 'no_chase_distance'
+                summary = f'Setup ist konstruktiv, aber der Kurs liegt ca. {_dist_above:.1f}% ueber der Entry-Zone {ez}.'
+                now = 'Kein prozyklischer Neueinstieg an dieser Stelle; Pullback, neue Base oder bestaetigten Ausbruch mit engem Risiko abwarten.'
+                trigger = f'Pullback in/nahe Entry-Zone {ez} oder neue enge Base mit klarer Bestaetigung.'
+            else:
+                label = 'Selektiv jetzt / Pullback bevorzugt'
+                stage = 'selective_or_pullback'
+                summary = f'Setup ist stark, aber der Kurs liegt ueber der idealen Entry-Zone {ez}.'
+                now = 'Sauberer: Pullback in/nahe Entry-Zone abwarten. Aggressiv: nur kleine/selektive Position, wenn Staerke haelt.'
+                trigger = f'Pullback in/nahe Entry-Zone {ez} oder erneuter Ausbruch mit bestaetigter Staerke.'
         elif below_zone:
             label = 'Reclaim abwarten'
             stage = 'reclaim_needed'
@@ -4996,7 +5011,7 @@ def _v210_alert_num(value, default=None):
 def _v210_alert_price(result):
     r = result or {}
 
-    # v22.4: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
+    # v22.5: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
     # bis in die Live-Watchlist durch und wurde dort als "nan USD" angezeigt.
     # Deshalb gilt: nur endliche positive Zahlen sind ein valider Kurs.
     def _valid_price(x):
@@ -5543,7 +5558,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
         df = pd.DataFrame(rows).sort_values(["__prio", "Ticker"]).drop(columns=["__prio"], errors="ignore").reset_index(drop=True)
     else:
         df = pd.DataFrame(columns=["Ampel", "Status", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
-    # v22.4: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
+    # v22.5: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
         df["Kurs"] = df["Kurs"].apply(lambda x: "n/a" if pd.isna(x) else x)
@@ -5551,7 +5566,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
 
 
 
-# ---------- v22.4: Live-Watchlist Preis-/Name-Fix ----------
+# ---------- v22.5: Live-Watchlist Preis-/Name-Fix ----------
 
 def _v220_live_status_rank(ampel, status):
     """Ordnet Live-Status fuer Verbesserungs-/Verschlechterungslogik.
@@ -18814,7 +18829,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.4")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.5")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -21898,7 +21913,7 @@ if result is not None:
     live_price_diff_pct = result.get("live_price_diff_pct", np.nan)
     live_price_note = result.get("live_price_note", "")
 
-    # v22.4: Kursbasis-Karte robust gegen NaN-Werte machen.
+    # v22.5: Kursbasis-Karte robust gegen NaN-Werte machen.
     # Der Live-Watchlist-Fix hatte nur die Monitor-Tabelle bereinigt; in der
     # Einzelanalyse konnte result["price"] weiterhin NaN sein und als
     # "nan USD" gerendert werden. Deshalb wird direkt im Renderpfad aus allen
@@ -23608,6 +23623,32 @@ if result is not None:
     _now_do_value = str(final_action_label).capitalize()
     _why_txt = str(final_action_reason if "final_action_reason" in locals() else compact_action_text_phase_ui(final_action_label))
 
+    # v22.5: Kein Hinterherlaufen in der zentralen Handlungskarte.
+    # Wenn der aktuelle Kurs deutlich oberhalb der Entry-Zone liegt, darf die
+    # Anzeige nicht mehr "Kaufen" ausgeben. Dann ist das Setup maximal selektiv
+    # bzw. ein Pullback-/neue-Base-Kandidat. Exit-/Schutzampel und Marktregime
+    # duerfen diese operative Distanz nicht ueberstimmen.
+    try:
+        if not position_mode and str(final_action_label or "").strip().lower() in {"kaufen", "buy"}:
+            _ez_no_chase = suggested_entry_zone if "suggested_entry_zone" in locals() else result.get("suggested_entry_zone", "-")
+            _price_no_chase = _v176_to_float(price if "price" in locals() else result.get("price"), None)
+            _low_no_chase, _high_no_chase = _radar_v182_parse_zone(_ez_no_chase)
+            _dist_no_chase = None
+            if _price_no_chase is not None and _high_no_chase is not None and _high_no_chase > 0 and _price_no_chase > _high_no_chase:
+                _dist_no_chase = ((_price_no_chase - _high_no_chase) / _high_no_chase) * 100.0
+            if _dist_no_chase is not None and _dist_no_chase > 3.0:
+                final_action_label = "abwarten"
+                final_action_reason = (
+                    f"Kurs liegt ca. {_dist_no_chase:.1f}% ueber der Entry-Zone; "
+                    "kein Hinterherlaufen. Pullback, neue Base oder bestaetigten Ausbruch abwarten."
+                )
+                _now_do_value = "Abwarten / Pullback"
+                _why_txt = final_action_reason
+                result["action_overextension_guard_v225"] = True
+                result["action_overextension_distance_pct_v225"] = round(float(_dist_no_chase), 1)
+    except Exception:
+        pass
+
     # v17.0.1: In Pre-Entry soll ein valides, reifes Setup nicht wie passives
     # "Abwarten" wirken. Die Kernlogik bleibt unverändert; die Handlungsbox
     # formuliert die nächste Aktion als Vorbereitung bis zum konkreten Trigger.
@@ -23625,7 +23666,17 @@ if result is not None:
 
     if not position_mode:
         _action_low_bridge = str(final_action_label or "").lower()
-        if "kaufen" in _action_low_bridge:
+        _overextended_for_ui = bool(result.get("action_overextension_guard_v225", False)) if isinstance(result, dict) else False
+        if _overextended_for_ui:
+            _trigger_label = "Sauberer Pullback / neue Base"
+            _trigger_txt = _v17_clean_operational_trigger_text(
+                f"Kein Neueinstieg bei deutlichem Abstand zur Entry-Zone. Sauberer: Pullback in/nahe {suggested_entry_zone if 'suggested_entry_zone' in locals() else '-'} oder neue enge Base/Breakout-Bestaetigung.",
+                suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+                price if "price" in locals() else None,
+                chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+                ccy if "ccy" in locals() else "",
+            )
+        elif "kaufen" in _action_low_bridge:
             _trigger_label = "Jetzt umsetzen / prüfen"
             try:
                 _ez_for_label = suggested_entry_zone if "suggested_entry_zone" in locals() else "-"

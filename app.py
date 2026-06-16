@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.1"
+APP_VERSION = "v22.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -4995,10 +4995,54 @@ def _v210_alert_num(value, default=None):
 
 def _v210_alert_price(result):
     r = result or {}
-    for key in ["live_price", "analysis_price", "price", "regularMarketPrice", "current_price", "Kurs"]:
-        val = _v210_alert_num(r.get(key), default=None)
-        if val is not None and val > 0:
+
+    # v22.3: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
+    # bis in die Live-Watchlist durch und wurde dort als "nan USD" angezeigt.
+    # Deshalb gilt: nur endliche positive Zahlen sind ein valider Kurs.
+    def _valid_price(x):
+        try:
+            if x is None:
+                return None
+            val = _v210_alert_num(x, default=None)
+            if val is None:
+                return None
+            val = float(val)
+            if not np.isfinite(val) or pd.isna(val) or val <= 0:
+                return None
             return val
+        except Exception:
+            return None
+
+    # Erst vorhandene Analyse-/Live-Felder nutzen.
+    for key in [
+        "live_price", "Aktueller_Kurs", "analysis_price", "Analyse_Kursbasis",
+        "price", "regularMarketPrice", "regular_market_price", "current_price",
+        "currentPrice", "last_price", "lastPrice", "previousClose", "Kurs"
+    ]:
+        val = _valid_price(r.get(key))
+        if val is not None:
+            return val
+
+    # Danach info/fast_info-Felder pruefen, falls analyze_stock diese mitliefert.
+    for container_key in ["info", "fast_info", "quote", "meta"]:
+        obj = r.get(container_key)
+        if isinstance(obj, dict):
+            for key in ["regularMarketPrice", "currentPrice", "last_price", "lastPrice", "regular_market_price", "previousClose"]:
+                val = _valid_price(obj.get(key))
+                if val is not None:
+                    return val
+
+    # Fallback: Kurzabruf ueber bestehende yfinance-Hilfsfunktion. Nur fuer Live-Watchlist,
+    # nicht als harte Entscheidungsgrundlage.
+    ticker = str(r.get("ticker") or r.get("Ticker") or "").strip().upper()
+    if ticker:
+        try:
+            fallback_price, _src = _bt_review_get_current_price_v1713(ticker)
+            val = _valid_price(fallback_price)
+            if val is not None:
+                return val
+        except Exception:
+            pass
     return None
 
 
@@ -5012,7 +5056,7 @@ def _v210_alert_add(rows, *, ticker, name, alert_type, priority, message, action
         "Alert-Typ": alert_type,
         "Ticker": ticker,
         "Name": name,
-        "Kurs": "" if price is None else round(float(price), 4),
+        "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
         "Grade": grade,
         "Bucket": bucket,
         "CRV": "n/a" if crv is None else round(float(crv), 2),
@@ -5457,7 +5501,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Status": status,
         "Ticker": ticker,
         "Name": name,
-        "Kurs": "" if price is None else round(float(price), 4),
+        "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
         "Grade": grade,
         "Radar-Bucket": bucket,
         "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
@@ -5499,11 +5543,15 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
         df = pd.DataFrame(rows).sort_values(["__prio", "Ticker"]).drop(columns=["__prio"], errors="ignore").reset_index(drop=True)
     else:
         df = pd.DataFrame(columns=["Ampel", "Status", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
+    # v22.3: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
+    # doch NaN erzeugt, sauber als n/a ausgeben.
+    if not df.empty and "Kurs" in df.columns:
+        df["Kurs"] = df["Kurs"].apply(lambda x: "n/a" if pd.isna(x) else x)
     return df, pd.DataFrame(errors)
 
 
 
-# ---------- v22.2: Live-Watchlist Statuswechsel-Historie ----------
+# ---------- v22.3: Live-Watchlist Preis-/Name-Fix ----------
 
 def _v220_live_status_rank(ampel, status):
     """Ordnet Live-Status fuer Verbesserungs-/Verschlechterungslogik.
@@ -18766,7 +18814,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.2")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.3")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:

@@ -5035,7 +5035,15 @@ def build_setup_alerts_v210(result, style_name="Ausgewogen", decision=None):
     r = result or {}
     decision = decision or build_professional_radar_decision_v18(r, style_name)
     ticker = str(r.get("ticker") or r.get("Ticker") or "").strip().upper()
-    name = str(r.get("name") or r.get("Name") or ticker or "-").strip()
+    # v22.2: In der Live-Watchlist nicht den Ticker als Namen anzeigen.
+    # analyze_stock liefert die Firmendaten meist im Result-/info-Objekt; der robuste
+    # Radar-Name-Resolver vermeidet Fallbacks wie Name = Ticker.
+    try:
+        name = radar_company_display_name_v15237(r, ticker, 36)
+    except Exception:
+        name = str(r.get("company_name") or r.get("longName") or r.get("shortName") or r.get("name") or r.get("Name") or ticker or "-").strip()
+        if name.strip().upper() == ticker:
+            name = str((r.get("info", {}) or {}).get("longName") or (r.get("info", {}) or {}).get("shortName") or ticker).strip()
     price = _v210_alert_price(r)
     bucket = str(decision.get("bucket") or "").strip()
     grade = str(decision.get("grade") or "").strip().upper()
@@ -5323,7 +5331,15 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     r = result or {}
     d = decision or build_professional_radar_decision_v18(r, style_name)
     ticker = str(r.get("ticker") or r.get("Ticker") or "").strip().upper()
-    name = str(r.get("name") or r.get("Name") or ticker or "-").strip()
+    # v22.2: In der Live-Watchlist nicht den Ticker als Namen anzeigen.
+    # analyze_stock liefert die Firmendaten meist im Result-/info-Objekt; der robuste
+    # Radar-Name-Resolver vermeidet Fallbacks wie Name = Ticker.
+    try:
+        name = radar_company_display_name_v15237(r, ticker, 36)
+    except Exception:
+        name = str(r.get("company_name") or r.get("longName") or r.get("shortName") or r.get("name") or r.get("Name") or ticker or "-").strip()
+        if name.strip().upper() == ticker:
+            name = str((r.get("info", {}) or {}).get("longName") or (r.get("info", {}) or {}).get("shortName") or ticker).strip()
     price = _v210_alert_price(r)
     bucket = str(d.get("bucket") or "-").strip()
     grade = str(d.get("grade") or "-").strip().upper()
@@ -5487,7 +5503,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
 
 
 
-# ---------- v22.1: Live-Watchlist Statuswechsel-Historie ----------
+# ---------- v22.2: Live-Watchlist Statuswechsel-Historie ----------
 
 def _v220_live_status_rank(ampel, status):
     """Ordnet Live-Status fuer Verbesserungs-/Verschlechterungslogik.
@@ -18750,7 +18766,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.1")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.2")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:

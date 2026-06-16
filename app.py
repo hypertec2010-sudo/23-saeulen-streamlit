@@ -2436,7 +2436,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v21.11",
+        "Export_Version": "v22.0",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v21.11"
+APP_VERSION = "v22.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5058,7 +5058,7 @@ def build_setup_alerts_v210(result, style_name="Ausgewogen", decision=None):
     gate_low = gate.lower().strip()
     hard_gate = bool(gate_low and gate_low not in {"keine harten gates", "keine harten gate", "-", "nan", "none"})
 
-    # v21.11: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
+    # v22.0: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
     # Sie ist Positions-/Stop-Risikohinweis, aber kein Einstiegsgate. Rot bleibt nur
     # bei echter Invalidierung oder einem nicht-exitbezogenen harten Gate.
     exit_gate_terms = [
@@ -5169,7 +5169,7 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
     return f"{first.get('Priorität','mittel')}: {first.get('Alert-Typ','Alert')}"
 
 
-# ---------- v21.11: Live-Watchlist / Trigger-Monitor ----------
+# ---------- v22.0: Live-Watchlist / Trigger-Monitor mit Statuswechsel-Historie ----------
 
 def _v214_monitor_final_release_check(result, decision=None):
     """Prueft, ob die Live-Watchlist einen Wert wirklich gruen/selektiv freigeben darf.
@@ -5344,7 +5344,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     gate_low = gate.lower().strip()
     hard_gate = bool(gate_low and gate_low not in {"keine harten gates", "keine harten gate", "-", "nan", "none"})
 
-    # v21.11: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
+    # v22.0: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
     # Sie ist Positions-/Stop-Risikohinweis, aber kein Einstiegsgate. Rot bleibt nur
     # bei echter Invalidierung oder einem nicht-exitbezogenen harten Gate.
     exit_gate_terms = [
@@ -5358,7 +5358,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     next_step = str(d.get("next_step") or "-").strip()
     brake = str(d.get("brake") or "-").strip()
 
-    # v21.11: Gruen muss mit der Sofortanalyse konsistent sein.
+    # v22.0: Gruen muss mit der Sofortanalyse konsistent sein.
     # Entry/Wave allein reicht nicht, wenn Timing, valides Setup oder finaler Trigger noch bremsen.
     status_icon = "⚪"
     status = "Beobachten"
@@ -5380,7 +5380,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         reason = "Invalidierung aktiv."
         monitor_action = "Kein Kauf: These/Setup zuerst neu prüfen; Stop-/Invalidierungsbruch beachten."
     elif bucket == "Warnsignale / meiden" and grade in {"A", "B"} and crv_ok:
-        # v21.11: Warnbucket ist nur ein Diagnose-/Vorsichtssignal, wenn Grade A/B und CRV passen.
+        # v22.0: Warnbucket ist nur ein Diagnose-/Vorsichtssignal, wenn Grade A/B und CRV passen.
         # entry_hard_gate wird hier bewusst nicht mehr als Ausschluss verwendet,
         # weil es in MRVL-artigen Fällen aus Exit-/Schutz-/Warntexten entstehen kann.
         # Rot bleibt nur fuer echte Invalidierung oder fehlende Qualitaets-/CRV-Entlastung.
@@ -5484,6 +5484,115 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
     else:
         df = pd.DataFrame(columns=["Ampel", "Status", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
     return df, pd.DataFrame(errors)
+
+
+
+# ---------- v22.0: Live-Watchlist Statuswechsel-Historie ----------
+
+def _v220_live_status_rank(ampel, status):
+    """Ordnet Live-Status fuer Verbesserungs-/Verschlechterungslogik.
+    Niedriger = handlungsnaeher/positiver, hoeher = defensiver.
+    """
+    a = str(ampel or "").strip()
+    stx = str(status or "").strip().lower()
+    if a == "🟢" or "kauftrigger" in stx:
+        return 0
+    if a == "🟡" or "selektiv" in stx or "nahe" in stx or "trigger offen" in stx or "entry erreicht" in stx:
+        return 1
+    if a == "🔵" or "crv" in stx:
+        return 2
+    if a == "⚪" or "beobachten" in stx:
+        return 3
+    if a == "🔴" or "invalid" in stx or "meiden" in stx or "blockiert" in stx:
+        return 4
+    return 3
+
+
+def _v220_live_change_label(prev_ampel, prev_status, new_ampel, new_status):
+    if prev_status is None:
+        return "Neu"
+    prev_key = f"{prev_ampel} {prev_status}".strip()
+    new_key = f"{new_ampel} {new_status}".strip()
+    if prev_key == new_key:
+        return "Unverändert"
+    old_rank = _v220_live_status_rank(prev_ampel, prev_status)
+    new_rank = _v220_live_status_rank(new_ampel, new_status)
+    if new_rank < old_rank:
+        return "Verbessert"
+    if new_rank > old_rank:
+        return "Verschlechtert"
+    return "Geändert"
+
+
+def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", style_name=""):
+    """Ergaenzt Live-Watchlist um Statuswechsel und schreibt Session-Historie.
+
+    Speichert nur im Streamlit-Session-State. Nach App-Neustart ist die Historie leer.
+    """
+    if live_df is None or live_df.empty:
+        return live_df, pd.DataFrame()
+    if "live_watchlist_status_state_v220" not in st.session_state:
+        st.session_state.live_watchlist_status_state_v220 = {}
+    if "live_watchlist_status_events_v220" not in st.session_state:
+        st.session_state.live_watchlist_status_events_v220 = []
+
+    state = st.session_state.live_watchlist_status_state_v220
+    events = st.session_state.live_watchlist_status_events_v220
+    now = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
+    enriched = live_df.copy()
+    changes = []
+    prev_labels = []
+
+    for idx, row in enriched.iterrows():
+        ticker = str(row.get("Ticker") or "").strip().upper()
+        if not ticker:
+            changes.append("-")
+            prev_labels.append("-")
+            continue
+        key = f"{watchlist_name or 'default'}::{style_name or ''}::{ticker}"
+        prev = state.get(key, {}) if isinstance(state.get(key, {}), dict) else {}
+        prev_ampel = prev.get("ampel")
+        prev_status = prev.get("status")
+        new_ampel = str(row.get("Ampel") or "").strip()
+        new_status = str(row.get("Status") or "").strip()
+        change = _v220_live_change_label(prev_ampel, prev_status, new_ampel, new_status)
+        prev_label = "-" if prev_status is None else f"{prev_ampel} {prev_status}".strip()
+        changes.append(change)
+        prev_labels.append(prev_label)
+
+        current_snapshot = {
+            "ampel": new_ampel,
+            "status": new_status,
+            "radar_bucket": str(row.get("Radar-Bucket") or ""),
+            "grade": str(row.get("Grade") or ""),
+            "crv": str(row.get("CRV") or ""),
+            "price": row.get("Kurs"),
+            "updated": now,
+            "reason": str(row.get("Grund") or ""),
+        }
+        if change != "Unverändert":
+            events.append({
+                "Zeit": now,
+                "Ticker": ticker,
+                "Änderung": change,
+                "Von": prev_label,
+                "Zu": f"{new_ampel} {new_status}".strip(),
+                "Kurs": row.get("Kurs"),
+                "Grade": row.get("Grade"),
+                "Radar-Bucket": row.get("Radar-Bucket"),
+                "CRV": row.get("CRV"),
+                "Grund": row.get("Grund"),
+                "Nächste Handlung": row.get("Nächste Handlung"),
+            })
+        state[key] = current_snapshot
+
+    enriched.insert(1, "Änderung", changes)
+    enriched.insert(2, "Vorher", prev_labels)
+    st.session_state.live_watchlist_status_events_v220 = events[-500:]
+    events_df = pd.DataFrame(st.session_state.live_watchlist_status_events_v220)
+    if not events_df.empty:
+        events_df = events_df.iloc[::-1].reset_index(drop=True)
+    return enriched, events_df
 
 def radar_reason_professional_v1521(result, style_name_local):
     if str(style_name_local or "") == "Charttechnik":
@@ -18640,8 +18749,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.info("In dieser Watchlist sind noch keine Ticker.")
 
 
-            # ---------- v21.11: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v21.11")
+            # ---------- v22.0: Live-Watchlist / Trigger-Monitor ----------
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.0")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -18689,6 +18798,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 else:
                     with st.spinner(f"Live-Watchlist wird geprüft ({min(len(current_tickers), 40)} Werte) ..."):
                         live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40)
+                    live_events_df = pd.DataFrame()
+                    if not live_df.empty:
+                        live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_wl, style_name=monitor_style)
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty:
@@ -18698,11 +18810,27 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
                             if bool(override_mask.any()):
                                 st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
-                        st.dataframe(live_df, hide_index=True, use_container_width=True, height=min(520, 42 * len(live_df) + 55))
+                        st.dataframe(live_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(live_df) + 55))
                         green_count = int((live_df["Ampel"] == "🟢").sum()) if "Ampel" in live_df.columns else 0
                         yellow_count = int((live_df["Ampel"] == "🟡").sum()) if "Ampel" in live_df.columns else 0
                         red_count = int((live_df["Ampel"] == "🔴").sum()) if "Ampel" in live_df.columns else 0
-                        st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
+                        changed_count = int((live_df["Änderung"].astype(str).isin(["Neu", "Verbessert", "Verschlechtert", "Geändert"])).sum()) if "Änderung" in live_df.columns else 0
+                        st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
+                        if live_events_df is not None and not live_events_df.empty:
+                            with st.expander("Statuswechsel-Historie dieser App-Session", expanded=bool(changed_count)):
+                                event_filter = st.selectbox("Historie anzeigen", ["Alle", "Nur verbessert", "Nur verschlechtert", "Nur neue/geänderte"], index=0, key="live_watchlist_history_filter_v220")
+                                hist_df = live_events_df.copy()
+                                if event_filter == "Nur verbessert":
+                                    hist_df = hist_df[hist_df["Änderung"] == "Verbessert"]
+                                elif event_filter == "Nur verschlechtert":
+                                    hist_df = hist_df[hist_df["Änderung"] == "Verschlechtert"]
+                                elif event_filter == "Nur neue/geänderte":
+                                    hist_df = hist_df[hist_df["Änderung"].isin(["Neu", "Geändert"])]
+                                st.dataframe(hist_df.head(100), hide_index=True, use_container_width=True, height=min(420, 42 * len(hist_df.head(100)) + 55))
+                                if st.button("Status-Historie dieser Session zurücksetzen", key="reset_live_watchlist_history_v220"):
+                                    st.session_state.live_watchlist_status_state_v220 = {}
+                                    st.session_state.live_watchlist_status_events_v220 = []
+                                    st.rerun()
                     if live_errors is not None and not live_errors.empty:
                         with st.expander("Nicht prüfbare Watchlist-Werte", expanded=False):
                             st.dataframe(live_errors, hide_index=True, use_container_width=True)

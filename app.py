@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.6"
+APP_VERSION = "v22.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3143,7 +3143,7 @@ if "send_watchlist_alerts_after_run" not in st.session_state:
 if "workspace_mode" not in st.session_state:
     st.session_state.workspace_mode = ""
 
-# v22.6: Browser-Reload des Live-Monitors darf nicht wieder im Startmenue landen.
+# v22.7: Browser-Reload des Live-Monitors darf nicht wieder im Startmenue landen.
 # Wenn der Auto-Refresh aktiv ist, wird der Arbeitsmodus ueber Query-Parameter
 # wiederhergestellt. Das ist absichtlich nur fuer den Live-Monitor aktiv, damit
 # normale Navigation nicht von URL-Parametern ueberschrieben wird.
@@ -5037,7 +5037,7 @@ def _v210_alert_num(value, default=None):
 def _v210_alert_price(result):
     r = result or {}
 
-    # v22.6: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
+    # v22.7: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
     # bis in die Live-Watchlist durch und wurde dort als "nan USD" angezeigt.
     # Deshalb gilt: nur endliche positive Zahlen sind ein valider Kurs.
     def _valid_price(x):
@@ -5584,7 +5584,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
         df = pd.DataFrame(rows).sort_values(["__prio", "Ticker"]).drop(columns=["__prio"], errors="ignore").reset_index(drop=True)
     else:
         df = pd.DataFrame(columns=["Ampel", "Status", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
-    # v22.6: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
+    # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
         df["Kurs"] = df["Kurs"].apply(lambda x: "n/a" if pd.isna(x) else x)
@@ -5592,7 +5592,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
 
 
 
-# ---------- v22.6: Live-Watchlist Preis-/Name-Fix ----------
+# ---------- v22.7: Live-Watchlist Preis-/Name-Fix ----------
 
 def _v220_live_status_rank(ampel, status):
     """Ordnet Live-Status fuer Verbesserungs-/Verschlechterungslogik.
@@ -5629,17 +5629,82 @@ def _v220_live_change_label(prev_ampel, prev_status, new_ampel, new_status):
     return "Geändert"
 
 
+def _v227_live_history_file_path():
+    """Persistente Status-Historie fuer Live-Monitor-Reloads.
+
+    Der Auto-Refresh kann auf Streamlit Cloud eine neue Session erzeugen. Deshalb reicht
+    st.session_state allein nicht: ohne persistente Ablage wuerde jeder Refresh wieder
+    als "Neu" erscheinen. Die Datei liegt bewusst lokal zur App/Instanz und wird nur
+    fuer den geoeffneten Live-Monitor genutzt.
+    """
+    try:
+        base_dir = Path(os.environ.get("LIVE_WATCHLIST_HISTORY_DIR", "."))
+        if not base_dir.is_absolute():
+            base_dir = Path.cwd() / base_dir
+        base_dir.mkdir(parents=True, exist_ok=True)
+        return base_dir / ".live_watchlist_status_history_v227.json"
+    except Exception:
+        try:
+            return Path("/tmp/.live_watchlist_status_history_v227.json")
+        except Exception:
+            return None
+
+
+def _v227_load_persistent_live_history():
+    path = _v227_live_history_file_path()
+    if path is None or not path.exists():
+        return {}, []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        state = payload.get("state", {}) if isinstance(payload, dict) else {}
+        events = payload.get("events", []) if isinstance(payload, dict) else []
+        if not isinstance(state, dict):
+            state = {}
+        if not isinstance(events, list):
+            events = []
+        return state, events[-500:]
+    except Exception:
+        return {}, []
+
+
+def _v227_save_persistent_live_history(state, events):
+    path = _v227_live_history_file_path()
+    if path is None:
+        return
+    try:
+        payload = {"state": state if isinstance(state, dict) else {}, "events": (events or [])[-500:]}
+        path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def reset_live_watchlist_status_history_v227():
+    st.session_state.live_watchlist_status_state_v220 = {}
+    st.session_state.live_watchlist_status_events_v220 = []
+    path = _v227_live_history_file_path()
+    try:
+        if path is not None and path.exists():
+            path.unlink()
+    except Exception:
+        pass
+
+
 def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", style_name=""):
     """Ergaenzt Live-Watchlist um Statuswechsel und schreibt Session-Historie.
 
-    Speichert nur im Streamlit-Session-State. Nach App-Neustart ist die Historie leer.
+    v22.7: Die Historie wird zusaetzlich lokal persistiert, damit ein Auto-Refresh
+    nicht wieder alle Zeilen als "Neu" markiert.
     """
     if live_df is None or live_df.empty:
         return live_df, pd.DataFrame()
-    if "live_watchlist_status_state_v220" not in st.session_state:
-        st.session_state.live_watchlist_status_state_v220 = {}
-    if "live_watchlist_status_events_v220" not in st.session_state:
-        st.session_state.live_watchlist_status_events_v220 = []
+
+    # Session-State initialisieren; falls durch Browser-/Streamlit-Reload leer,
+    # aus der persistenten Datei laden.
+    persistent_state, persistent_events = _v227_load_persistent_live_history()
+    if "live_watchlist_status_state_v220" not in st.session_state or not isinstance(st.session_state.get("live_watchlist_status_state_v220"), dict) or not st.session_state.get("live_watchlist_status_state_v220"):
+        st.session_state.live_watchlist_status_state_v220 = persistent_state
+    if "live_watchlist_status_events_v220" not in st.session_state or not isinstance(st.session_state.get("live_watchlist_status_events_v220"), list) or not st.session_state.get("live_watchlist_status_events_v220"):
+        st.session_state.live_watchlist_status_events_v220 = persistent_events
 
     state = st.session_state.live_watchlist_status_state_v220
     events = st.session_state.live_watchlist_status_events_v220
@@ -5693,7 +5758,10 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
 
     enriched.insert(1, "Änderung", changes)
     enriched.insert(2, "Vorher", prev_labels)
+    st.session_state.live_watchlist_status_state_v220 = state
     st.session_state.live_watchlist_status_events_v220 = events[-500:]
+    _v227_save_persistent_live_history(st.session_state.live_watchlist_status_state_v220, st.session_state.live_watchlist_status_events_v220)
+
     events_df = pd.DataFrame(st.session_state.live_watchlist_status_events_v220)
     if not events_df.empty:
         events_df = events_df.iloc[::-1].reset_index(drop=True)
@@ -18855,7 +18923,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.6")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.7")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -18885,7 +18953,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 if live_monitor_enabled:
                     interval_ms = {"15 Minuten": 15 * 60 * 1000, "30 Minuten": 30 * 60 * 1000, "60 Minuten": 60 * 60 * 1000}.get(refresh_label, 30 * 60 * 1000)
                     refresh_minutes = {"15 Minuten": "15", "30 Minuten": "30", "60 Minuten": "60"}.get(refresh_label, "30")
-                    # v22.6: Reload-Ziel in der URL speichern, sonst startet Streamlit Cloud
+                    # v22.7: Reload-Ziel in der URL speichern, sonst startet Streamlit Cloud
                     # nach einem Browser-Reload gelegentlich wieder im Startmenue.
                     try:
                         st.query_params["workspace"] = "Watchlisten"
@@ -18957,9 +19025,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 elif event_filter == "Nur neue/geänderte":
                                     hist_df = hist_df[hist_df["Änderung"].isin(["Neu", "Geändert"])]
                                 st.dataframe(hist_df.head(100), hide_index=True, use_container_width=True, height=min(420, 42 * len(hist_df.head(100)) + 55))
-                                if st.button("Status-Historie dieser Session zurücksetzen", key="reset_live_watchlist_history_v220"):
-                                    st.session_state.live_watchlist_status_state_v220 = {}
-                                    st.session_state.live_watchlist_status_events_v220 = []
+                                if st.button("Status-Historie zurücksetzen", key="reset_live_watchlist_history_v220"):
+                                    reset_live_watchlist_status_history_v227()
                                     st.rerun()
                     if live_errors is not None and not live_errors.empty:
                         with st.expander("Nicht prüfbare Watchlist-Werte", expanded=False):
@@ -21964,7 +22031,7 @@ if result is not None:
     live_price_diff_pct = result.get("live_price_diff_pct", np.nan)
     live_price_note = result.get("live_price_note", "")
 
-    # v22.6: Kursbasis-Karte robust gegen NaN-Werte machen.
+    # v22.7: Kursbasis-Karte robust gegen NaN-Werte machen.
     # Der Live-Watchlist-Fix hatte nur die Monitor-Tabelle bereinigt; in der
     # Einzelanalyse konnte result["price"] weiterhin NaN sein und als
     # "nan USD" gerendert werden. Deshalb wird direkt im Renderpfad aus allen
@@ -23674,7 +23741,7 @@ if result is not None:
     _now_do_value = str(final_action_label).capitalize()
     _why_txt = str(final_action_reason if "final_action_reason" in locals() else compact_action_text_phase_ui(final_action_label))
 
-    # v22.6: Kein Hinterherlaufen in der zentralen Handlungskarte.
+    # v22.7: Kein Hinterherlaufen in der zentralen Handlungskarte.
     # Wenn der aktuelle Kurs deutlich oberhalb der Entry-Zone liegt, darf die
     # Anzeige nicht mehr "Kaufen" ausgeben. Dann ist das Setup maximal selektiv
     # bzw. ein Pullback-/neue-Base-Kandidat. Exit-/Schutzampel und Marktregime

@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.5"
+APP_VERSION = "v22.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3142,6 +3142,32 @@ if "send_watchlist_alerts_after_run" not in st.session_state:
 
 if "workspace_mode" not in st.session_state:
     st.session_state.workspace_mode = ""
+
+# v22.6: Browser-Reload des Live-Monitors darf nicht wieder im Startmenue landen.
+# Wenn der Auto-Refresh aktiv ist, wird der Arbeitsmodus ueber Query-Parameter
+# wiederhergestellt. Das ist absichtlich nur fuer den Live-Monitor aktiv, damit
+# normale Navigation nicht von URL-Parametern ueberschrieben wird.
+def restore_live_monitor_workspace_from_query_v226():
+    try:
+        qp = st.query_params
+        live_param = str(qp.get("live_monitor", "")).lower()
+        workspace_param = str(qp.get("workspace", ""))
+        if live_param in {"1", "true", "yes", "on"}:
+            if workspace_param.lower() in {"watchlisten", "watchlist", "watchlists"}:
+                st.session_state.workspace_mode = "Watchlisten"
+            elif workspace_param.lower() in {"positionen", "positions"}:
+                st.session_state.workspace_mode = "Positionen"
+            st.session_state.live_watchlist_monitor_enabled = True
+            st.session_state.live_watchlist_monitor_enabled_widget = True
+            refresh_param = str(qp.get("refresh", ""))
+            refresh_map = {"15": "15 Minuten", "30": "30 Minuten", "60": "60 Minuten"}
+            if refresh_param in refresh_map:
+                st.session_state.live_watchlist_refresh_interval = refresh_map[refresh_param]
+                st.session_state.live_watchlist_refresh_interval_widget = refresh_map[refresh_param]
+    except Exception:
+        pass
+
+restore_live_monitor_workspace_from_query_v226()
 
 if "ui_refresh_nonce" not in st.session_state:
     st.session_state.ui_refresh_nonce = 0
@@ -5011,7 +5037,7 @@ def _v210_alert_num(value, default=None):
 def _v210_alert_price(result):
     r = result or {}
 
-    # v22.5: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
+    # v22.6: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
     # bis in die Live-Watchlist durch und wurde dort als "nan USD" angezeigt.
     # Deshalb gilt: nur endliche positive Zahlen sind ein valider Kurs.
     def _valid_price(x):
@@ -5558,7 +5584,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
         df = pd.DataFrame(rows).sort_values(["__prio", "Ticker"]).drop(columns=["__prio"], errors="ignore").reset_index(drop=True)
     else:
         df = pd.DataFrame(columns=["Ampel", "Status", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
-    # v22.5: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
+    # v22.6: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
         df["Kurs"] = df["Kurs"].apply(lambda x: "n/a" if pd.isna(x) else x)
@@ -5566,7 +5592,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
 
 
 
-# ---------- v22.5: Live-Watchlist Preis-/Name-Fix ----------
+# ---------- v22.6: Live-Watchlist Preis-/Name-Fix ----------
 
 def _v220_live_status_rank(ampel, status):
     """Ordnet Live-Status fuer Verbesserungs-/Verschlechterungslogik.
@@ -18829,7 +18855,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.5")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.6")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -18858,18 +18884,43 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             with lm_run2:
                 if live_monitor_enabled:
                     interval_ms = {"15 Minuten": 15 * 60 * 1000, "30 Minuten": 30 * 60 * 1000, "60 Minuten": 60 * 60 * 1000}.get(refresh_label, 30 * 60 * 1000)
-                    st.info(f"Live-Monitor aktiv: automatische Aktualisierung alle {refresh_label}, solange diese App-Seite geöffnet ist.")
+                    refresh_minutes = {"15 Minuten": "15", "30 Minuten": "30", "60 Minuten": "60"}.get(refresh_label, "30")
+                    # v22.6: Reload-Ziel in der URL speichern, sonst startet Streamlit Cloud
+                    # nach einem Browser-Reload gelegentlich wieder im Startmenue.
+                    try:
+                        st.query_params["workspace"] = "Watchlisten"
+                        st.query_params["live_monitor"] = "1"
+                        st.query_params["refresh"] = refresh_minutes
+                    except Exception:
+                        pass
+                    st.info(f"Live-Monitor aktiv: automatische Aktualisierung alle {refresh_label}, solange diese App-Seite geöffnet ist. Die Watchlisten-Ansicht wird nach dem Reload wiederhergestellt.")
                     components.html(
                         f"""
                         <script>
                         setTimeout(function() {{
-                            window.parent.location.reload();
+                            try {{
+                                var url = new URL(window.parent.location.href);
+                                url.searchParams.set('workspace', 'Watchlisten');
+                                url.searchParams.set('live_monitor', '1');
+                                url.searchParams.set('refresh', '{refresh_minutes}');
+                                window.parent.location.replace(url.toString());
+                            }} catch (e) {{
+                                window.parent.location.reload();
+                            }}
                         }}, {int(interval_ms)});
                         </script>
                         """,
                         height=0,
                     )
                     run_live_monitor = True
+                else:
+                    # Wenn der Monitor ausgeschaltet wird, URL-Refreshmarker entfernen.
+                    try:
+                        if str(st.query_params.get("live_monitor", "")) in {"1", "true", "True"}:
+                            st.query_params.pop("live_monitor", None)
+                            st.query_params.pop("refresh", None)
+                    except Exception:
+                        pass
 
             if run_live_monitor:
                 if not current_tickers:
@@ -21913,7 +21964,7 @@ if result is not None:
     live_price_diff_pct = result.get("live_price_diff_pct", np.nan)
     live_price_note = result.get("live_price_note", "")
 
-    # v22.5: Kursbasis-Karte robust gegen NaN-Werte machen.
+    # v22.6: Kursbasis-Karte robust gegen NaN-Werte machen.
     # Der Live-Watchlist-Fix hatte nur die Monitor-Tabelle bereinigt; in der
     # Einzelanalyse konnte result["price"] weiterhin NaN sein und als
     # "nan USD" gerendert werden. Deshalb wird direkt im Renderpfad aus allen
@@ -23623,7 +23674,7 @@ if result is not None:
     _now_do_value = str(final_action_label).capitalize()
     _why_txt = str(final_action_reason if "final_action_reason" in locals() else compact_action_text_phase_ui(final_action_label))
 
-    # v22.5: Kein Hinterherlaufen in der zentralen Handlungskarte.
+    # v22.6: Kein Hinterherlaufen in der zentralen Handlungskarte.
     # Wenn der aktuelle Kurs deutlich oberhalb der Entry-Zone liegt, darf die
     # Anzeige nicht mehr "Kaufen" ausgeben. Dann ist das Setup maximal selektiv
     # bzw. ein Pullback-/neue-Base-Kandidat. Exit-/Schutzampel und Marktregime

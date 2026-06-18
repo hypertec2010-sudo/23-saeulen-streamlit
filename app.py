@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.8"
+APP_VERSION = "v22.9"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5668,6 +5668,56 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     final_release_ok, final_blockers = _v214_monitor_final_release_check(r, d)
     final_blocker_text = "; ".join(final_blockers)
 
+    # v22.9: Trendfolge-Gruen getrennt von Pullback-/Entry-Zonen bewerten.
+    # Leader/Momentum-Aktien duerfen nicht nur deshalb blockiert werden, weil der
+    # Kurs weit ueber einer alten Pullback-Entry-Zone liegt. Entscheidend ist dann
+    # Trend-/Timing-Qualitaet plus kontrollierbare Ueberdehnung zum MA20.
+    def _v229_num_any(*vals, default=None):
+        for v in vals:
+            try:
+                if v in {None, "", "-", "n/a", "nan"}:
+                    continue
+                f = float(str(v).replace(",", "."))
+                if np.isfinite(f) and not pd.isna(f) and f > 0:
+                    return f
+            except Exception:
+                continue
+        return default
+
+    info_obj = r.get("info") if isinstance(r.get("info"), dict) else {}
+    fast_info_obj = r.get("fast_info") if isinstance(r.get("fast_info"), dict) else {}
+    ma20_val = _v229_num_any(
+        r.get("ma20"), r.get("MA20"), r.get("SMA20"), r.get("EMA20"),
+        r.get("ma_20"), r.get("sma_20"), info_obj.get("fiftyDayAverage")
+    )
+    ma50_val = _v229_num_any(
+        r.get("ma50"), r.get("MA50"), r.get("SMA50"), r.get("EMA50"),
+        r.get("ma_50"), r.get("sma_50"), info_obj.get("fiftyDayAverage")
+    )
+    price_float = _v229_num_any(price)
+    ma20_stretch_pct = None
+    if price_float is not None and ma20_val is not None and ma20_val > 0:
+        ma20_stretch_pct = (price_float / ma20_val - 1.0) * 100.0
+
+    timing_pkg_lm = r.get("timing_action_confidence_pkg") if isinstance(r.get("timing_action_confidence_pkg"), dict) else {}
+    conf_pkg_lm = r.get("trigger_confluence_pkg") if isinstance(r.get("trigger_confluence_pkg"), dict) else {}
+    timing_score_lm = _v210_alert_num(timing_pkg_lm.get("score"), default=None)
+    conf_score_lm = _v210_alert_num(conf_pkg_lm.get("score"), default=None)
+
+    trend_structure_ok = bool(
+        price_float is not None
+        and ma20_val is not None
+        and price_float > ma20_val
+        and (ma50_val is None or ma20_val >= ma50_val)
+    )
+    trend_timing_ok = bool((timing_score_lm is None or timing_score_lm >= 70) and (conf_score_lm is None or conf_score_lm >= 65))
+    trend_not_too_extended = bool(ma20_stretch_pct is None or ma20_stretch_pct <= 12.0)
+    trend_extended_but_interesting = bool(ma20_stretch_pct is not None and 12.0 < ma20_stretch_pct <= 20.0)
+    trend_quality_ok = grade in {"A", "B"} and (crv_float is None or crv_float >= 1.3)
+    trend_reason_tail = ""
+    if ma20_stretch_pct is not None:
+        trend_reason_tail = f" Abstand zu MA20 ca. {ma20_stretch_pct:.1f}%."
+
     if "Invalidierung gebrochen" in alert_types:
         status_icon, status, priority = "🔴", "Invalidiert / meiden", 1
         reason = "Invalidierung aktiv."
@@ -5700,6 +5750,14 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         status_icon, status, priority = "🟡", "Trigger offen / Abwarten", 2
         reason = "Sofortanalyse bestätigt Grün noch nicht" + (f": {final_blocker_text}." if final_blocker_text else ".")
         monitor_action = "Noch kein grünes Kaufsignal: erst finale Trigger-/Timing-Bestätigung abwarten. Risiko/Stückzahl erst festlegen, wenn die Sofortanalyse den Einstieg freigibt."
+    elif final_release_ok and trend_quality_ok and trend_structure_ok and trend_timing_ok and trend_not_too_extended:
+        status_icon, status, priority = "🟢", "Trendfolge aktiv", 0
+        reason = "Trendfolge-Setup ist aktiv: Kurs hält oberhalb MA20, MA20 liegt über/nahe MA50 und Timing/Konfluenz passen." + trend_reason_tail
+        monitor_action = "Trendfolge aktiv. Nicht auf alte Entry-Zone fixieren; Positionsgröße über Abstand zu MA20/Stop begrenzen und nur mit klarer Invalidierung handeln."
+    elif final_release_ok and trend_quality_ok and trend_structure_ok and trend_timing_ok and trend_extended_but_interesting:
+        status_icon, status, priority = "🟡", "Trend stark / Pullback bevorzugt", 2
+        reason = "Trend und Timing sind stark, aber der Kurs ist bereits deutlich über MA20 gelaufen." + trend_reason_tail
+        monitor_action = "Trend bleibt interessant, aber kein aggressives Hinterherlaufen: kleine Startposition nur bei engem Risiko-Plan oder Pullback/neue Base abwarten."
     elif bucket_active and final_release_ok and grade_ok and (crv_ok or "CRV attraktiv" in alert_types):
         status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
         reason = "Setup ist operativ aktiv: Bucket ist Jetzt prüfbar und CRV ist attraktiv."
@@ -19138,7 +19196,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.8")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.9")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:

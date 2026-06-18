@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.7"
+APP_VERSION = "v22.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3115,6 +3115,11 @@ if "watchlist_new_name" not in st.session_state:
 
 if "watchlist_bulk_add" not in st.session_state:
     st.session_state.watchlist_bulk_add = ""
+
+# v22.8: Watchlist-Add-Queue - neue Werte werden erst lokal gesammelt
+# und dann gebuendelt in Google Sheets gespeichert.
+if "pending_watchlist_adds_v228" not in st.session_state:
+    st.session_state.pending_watchlist_adds_v228 = []
 
 if "selected_watchlist_alert_mode" not in st.session_state:
     st.session_state.selected_watchlist_alert_mode = "Standard"
@@ -5261,6 +5266,193 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
     first = alerts[0]
     return f"{first.get('Priorität','mittel')}: {first.get('Alert-Typ','Alert')}"
 
+
+
+# ---------- v22.8: Watchlist Add Queue / Batch Save ----------
+def _v228_norm_watchlist_ticker(value):
+    try:
+        txt = str(value or "").strip().upper()
+    except Exception:
+        return ""
+    return txt.replace(" ", "")
+
+
+def _v228_get_pending_watchlist_adds():
+    pending = st.session_state.get("pending_watchlist_adds_v228", [])
+    if not isinstance(pending, list):
+        pending = []
+        st.session_state.pending_watchlist_adds_v228 = pending
+    return pending
+
+
+def _v228_pending_for_watchlist(watchlist_name):
+    name_l = str(watchlist_name or "").strip().lower()
+    out = []
+    for item in _v228_get_pending_watchlist_adds():
+        if str(item.get("Watchlist_Name", "")).strip().lower() == name_l:
+            out.append(item)
+    return out
+
+
+def _v228_pending_tickers_for_watchlist(watchlist_name):
+    return [_v228_norm_watchlist_ticker(x.get("Ticker")) for x in _v228_pending_for_watchlist(watchlist_name) if _v228_norm_watchlist_ticker(x.get("Ticker"))]
+
+
+def queue_entries_to_watchlist_v228(watchlist_name, watchlist_type, entries, *, source="Manuell", check_frequency="4x täglich", existing_tickers=None):
+    """Sammelt Watchlist-Aenderungen lokal, ohne Google Sheets sofort zu beschreiben."""
+    watchlist_name = str(watchlist_name or "").strip()
+    watchlist_type = str(watchlist_type or "Watchlist").strip() or "Watchlist"
+    check_frequency = str(check_frequency or "4x täglich").strip() or "4x täglich"
+    if not watchlist_name:
+        return False, "Bitte zuerst eine Ziel-Watchlist auswaehlen."
+    if entries is None:
+        entries = []
+    if isinstance(entries, str):
+        entries = [entries]
+
+    existing = {_v228_norm_watchlist_ticker(x) for x in (existing_tickers or []) if _v228_norm_watchlist_ticker(x)}
+    pending = _v228_get_pending_watchlist_adds()
+    pending_keys = {
+        (str(x.get("Watchlist_Name", "")).strip().lower(), _v228_norm_watchlist_ticker(x.get("Ticker")))
+        for x in pending
+    }
+
+    added = []
+    skipped_existing = []
+    skipped_duplicate = []
+    try:
+        now_txt = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
+    except Exception:
+        now_txt = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    for raw in entries:
+        ticker = _v228_norm_watchlist_ticker(raw)
+        if not ticker:
+            continue
+        key = (watchlist_name.lower(), ticker)
+        if ticker in existing:
+            skipped_existing.append(ticker)
+            continue
+        if key in pending_keys:
+            skipped_duplicate.append(ticker)
+            continue
+        pending.append({
+            "Watchlist_Name": watchlist_name,
+            "Watchlist_Type": watchlist_type,
+            "Ticker": ticker,
+            "Quelle": str(source or "Manuell"),
+            "Check_Frequency": check_frequency,
+            "Vorgemerkt_Am": now_txt,
+        })
+        pending_keys.add(key)
+        added.append(ticker)
+
+    st.session_state.pending_watchlist_adds_v228 = pending
+    parts = []
+    if added:
+        parts.append(f"{len(added)} Wert(e) vorgemerkt: {', '.join(added[:8])}{' ...' if len(added) > 8 else ''}")
+    if skipped_existing:
+        parts.append(f"bereits vorhanden: {len(skipped_existing)}")
+    if skipped_duplicate:
+        parts.append(f"bereits vorgemerkt: {len(skipped_duplicate)}")
+    if not parts:
+        return False, "Keine neuen Werte zum Vormerken erkannt."
+    return True, " · ".join(parts)
+
+
+def save_pending_watchlist_adds_v228(*, watchlist_name=None):
+    """Speichert vorgemerkte Eintraege gebuendelt. Pro Watchlist entsteht nur ein Sheets-Write."""
+    pending = _v228_get_pending_watchlist_adds()
+    if not pending:
+        return False, "Keine ausstehenden Watchlist-Aenderungen vorhanden."
+    target_l = str(watchlist_name or "").strip().lower()
+    to_save = []
+    keep = []
+    for item in pending:
+        if target_l and str(item.get("Watchlist_Name", "")).strip().lower() != target_l:
+            keep.append(item)
+        else:
+            to_save.append(item)
+    if not to_save:
+        return False, "Fuer diese Watchlist gibt es keine ausstehenden Aenderungen."
+
+    grouped = {}
+    for item in to_save:
+        wl = str(item.get("Watchlist_Name", "")).strip()
+        wt = str(item.get("Watchlist_Type", "Watchlist")).strip() or "Watchlist"
+        freq = str(item.get("Check_Frequency", "4x täglich")).strip() or "4x täglich"
+        ticker = _v228_norm_watchlist_ticker(item.get("Ticker"))
+        if not wl or not ticker:
+            continue
+        grouped.setdefault((wl, wt, freq), set()).add(ticker)
+
+    ok_all = True
+    messages = []
+    saved_keys = set()
+    for (wl, wt, freq), tickers in grouped.items():
+        tickers_list = sorted(tickers)
+        ok, msg = add_entries_to_watchlist(wl, wt, tickers_list, check_frequency=freq)
+        if ok:
+            saved_keys.update((wl.lower(), t) for t in tickers_list)
+            messages.append(f"{wl}: {len(tickers_list)} Wert(e) gespeichert")
+        else:
+            ok_all = False
+            messages.append(f"{wl}: Fehler - {msg}")
+
+    new_pending = []
+    for item in keep + to_save:
+        wl = str(item.get("Watchlist_Name", "")).strip().lower()
+        tk = _v228_norm_watchlist_ticker(item.get("Ticker"))
+        if (wl, tk) not in saved_keys:
+            new_pending.append(item)
+    st.session_state.pending_watchlist_adds_v228 = new_pending
+    return ok_all, " · ".join(messages) if messages else "Keine gueltigen Aenderungen gespeichert."
+
+
+def clear_pending_watchlist_adds_v228(*, watchlist_name=None):
+    pending = _v228_get_pending_watchlist_adds()
+    target_l = str(watchlist_name or "").strip().lower()
+    if not target_l:
+        n = len(pending)
+        st.session_state.pending_watchlist_adds_v228 = []
+        return n
+    keep = [x for x in pending if str(x.get("Watchlist_Name", "")).strip().lower() != target_l]
+    removed = len(pending) - len(keep)
+    st.session_state.pending_watchlist_adds_v228 = keep
+    return removed
+
+
+def render_pending_watchlist_adds_v228(*, selected_watchlist_name=None):
+    pending = _v228_get_pending_watchlist_adds()
+    if not pending:
+        return
+    df = pd.DataFrame(pending)
+    if selected_watchlist_name:
+        view_df = df[df["Watchlist_Name"].astype(str).str.strip().str.lower() == str(selected_watchlist_name).strip().lower()].copy()
+    else:
+        view_df = df.copy()
+    if view_df.empty:
+        return
+    st.markdown("**Ausstehende Watchlist-Aenderungen**")
+    st.caption("Diese Werte sind sofort lokal nutzbar, werden aber erst mit 'Aenderungen speichern' gebuendelt in Google Sheets geschrieben.")
+    cols = [c for c in ["Watchlist_Name", "Ticker", "Quelle", "Vorgemerkt_Am"] if c in view_df.columns]
+    st.dataframe(view_df[cols], hide_index=True, use_container_width=True, height=min(260, 42 * len(view_df) + 50))
+    b1, b2, b3 = st.columns([1.1, 1.0, 1.2])
+    safe_key = re.sub(r"[^A-Za-z0-9_]+", "_", str(selected_watchlist_name or "all"))
+    with b1:
+        if st.button("Aenderungen speichern", use_container_width=True, key=f"save_pending_watchlist_adds_v228_{safe_key}"):
+            ok, msg = save_pending_watchlist_adds_v228(watchlist_name=selected_watchlist_name)
+            if ok:
+                st.success(msg)
+                trigger_ui_refresh()
+            else:
+                st.error(msg)
+    with b2:
+        if st.button("Queue leeren", use_container_width=True, key=f"clear_pending_watchlist_adds_v228_{safe_key}"):
+            n = clear_pending_watchlist_adds_v228(watchlist_name=selected_watchlist_name)
+            st.info(f"{n} vorgemerkte Aenderung(en) geloescht.")
+            trigger_ui_refresh()
+    with b3:
+        st.caption(f"Ausstehend: {len(view_df)}")
 
 # ---------- v22.1: Live-Watchlist / Trigger-Monitor mit Statuswechsel-Historie ----------
 
@@ -18719,6 +18911,13 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 if str(x).strip()
             ]
 
+            # v22.8: Vorgemerkte Werte sofort lokal in der Watchlist anzeigen und im Live-Monitor nutzen,
+            # ohne sie direkt in Google Sheets zu schreiben.
+            pending_tickers_v228 = _v228_pending_tickers_for_watchlist(selected_watchlist_name)
+            for _pt in pending_tickers_v228:
+                if _pt and _pt not in current_tickers:
+                    current_tickers.append(_pt)
+
             st.markdown(
                 f'<div class="section-chip"><strong>Ausgewählte Liste:</strong> <span>{selected_watchlist_name} - Typ: {selected_watchlist_type} - Alert: {st.session_state.selected_watchlist_alert_mode} - Frequenz: {st.session_state.selected_watchlist_check_frequency} - Werte: {len(current_tickers)}</span></div>',
                 unsafe_allow_html=True
@@ -18803,7 +19002,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     if st.button("Aktuellen Ticker hinzufügen", use_container_width=True, key="add_current_ticker_watchlist"):
                         current_to_add = st.session_state.get("selected_ticker", "").strip().upper()
                         if current_to_add:
-                            ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, [current_to_add], check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
+                            ok, msg = queue_entries_to_watchlist_v228(
+                                selected_watchlist_name,
+                                selected_watchlist_type,
+                                [current_to_add],
+                                source="Aktueller Ticker",
+                                check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"),
+                                existing_tickers=current_tickers,
+                            )
                             if ok:
                                 st.success(msg)
                                 trigger_ui_refresh()
@@ -18832,13 +19038,22 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     matches = search_tickers(entry, max_results=1)
                                     if matches:
                                         resolved_entries.append(matches[0]["symbol"])
-                            ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, resolved_entries, check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
+                            ok, msg = queue_entries_to_watchlist_v228(
+                                selected_watchlist_name,
+                                selected_watchlist_type,
+                                resolved_entries,
+                                source="Manuelle Eingabe",
+                                check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"),
+                                existing_tickers=current_tickers,
+                            )
                             if ok:
                                 st.success(msg)
                                 st.session_state.watchlist_bulk_add = ""
                                 trigger_ui_refresh()
                             else:
                                 st.error(msg)
+
+                render_pending_watchlist_adds_v228(selected_watchlist_name=selected_watchlist_name)
 
                 st.markdown("**Inhalt der aktuellen Watchlist**")
                 st.caption(f"Anzahl Werte: {len(current_tickers)}")
@@ -18923,7 +19138,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.7")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.8")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -20045,14 +20260,27 @@ if workspace_mode:
                         elif not selected_watchlist_name_for_radar:
                             st.info("Bitte lege zuerst eine Watchlist an oder wähle eine Ziel-Watchlist aus.")
                         else:
-                            ok, msg = add_entries_to_watchlist(
+                            # v22.8: Radar-Kandidaten nur vormerken und gesammelt speichern,
+                            # damit Google-Sheets-Quota nicht bei mehreren Klicks erreicht wird.
+                            existing_for_radar = []
+                            try:
+                                _rdf, _rerr = load_watchlists_df()
+                                if _rerr is None and _rdf is not None and not _rdf.empty:
+                                    _mask = _rdf["Watchlist_Name"].astype(str).str.strip().str.lower() == str(selected_watchlist_name_for_radar).strip().lower()
+                                    existing_for_radar = _rdf.loc[_mask, "Ticker"].astype(str).str.upper().tolist()
+                            except Exception:
+                                existing_for_radar = []
+                            ok, msg = queue_entries_to_watchlist_v228(
                                 selected_watchlist_name_for_radar,
                                 selected_watchlist_type_for_radar,
                                 selected_radar_tickers,
-                                check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich")
+                                source="Kandidaten-Radar",
+                                check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"),
+                                existing_tickers=existing_for_radar,
                             )
                             if ok:
                                 st.success(msg)
+                                st.info("Die Kandidaten sind vorgemerkt. Speichere sie gebuendelt im Watchlisten-Bereich.")
                             else:
                                 st.error(msg)
             elif not radar_should_run_analysis:

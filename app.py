@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.10"
+APP_VERSION = "v22.11"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5645,7 +5645,55 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "tactical", "de-risk", "derisk", "teilverkauf", "risikoabbau"
     ]
     non_entry_exit_gate = bool(hard_gate and gate_low and any(t in gate_low for t in exit_gate_terms))
-    entry_hard_gate = bool(hard_gate and not non_entry_exit_gate)
+
+    # v22.11: Der Live-Monitor ist ein kurzfristiger Chart-Trigger-Monitor.
+    # Fundamentale Warnungen wie Cashflow/Bilanz/Profitabilitaet sollen sichtbar
+    # bleiben, aber nicht als hartes charttechnisches Einstiegsgate zaehlen.
+    fundamental_gate_terms = [
+        "cashflow", "cash flow", "free cash", "fcf", "bilanz", "liquiditaet",
+        "liquidität", "verschuld", "debt", "verwässer", "verwaesser",
+        "profitabil", "marge", "margen", "earnings", "guidance", "umsatz",
+        "bewertung", "valuation", "fundamental", "qualität", "qualitaet"
+    ]
+    non_entry_fundamental_gate = bool(hard_gate and gate_low and any(t in gate_low for t in fundamental_gate_terms))
+    entry_hard_gate = bool(hard_gate and not non_entry_exit_gate and not non_entry_fundamental_gate)
+
+    def _v2211_fundamental_warning_text(src):
+        rr = src or {}
+        candidates = []
+        for key in [
+            "top_red_flag", "red_flags", "red_flag", "fundamental_warning",
+            "fundamental_red_flags", "quality_red_flags", "risk_flags"
+        ]:
+            val = rr.get(key)
+            if isinstance(val, (list, tuple)):
+                candidates.extend([str(x) for x in val if str(x or '').strip()])
+            elif val not in [None, "", "-", "nan"]:
+                candidates.append(str(val))
+        for item in rr.get("red_flag_items", []) or []:
+            if isinstance(item, dict):
+                txt = item.get("text") or item.get("label") or item.get("reason") or item.get("title")
+            else:
+                txt = item
+            if txt not in [None, "", "-", "nan"]:
+                candidates.append(str(txt))
+        # Auch ein Gate kann fundamental sein und soll dann nur als Warnhinweis erscheinen.
+        if non_entry_fundamental_gate and gate:
+            candidates.append(str(gate))
+        cleaned = []
+        seen = set()
+        for txt in candidates:
+            low = txt.lower()
+            if not any(t in low for t in fundamental_gate_terms):
+                continue
+            short = shorten_text(txt, 90) if 'shorten_text' in globals() else txt[:90]
+            if short.lower() in seen:
+                continue
+            seen.add(short.lower())
+            cleaned.append(short)
+        return "-" if not cleaned else "⚠️ " + " · ".join(cleaned[:2])
+
+    fundamental_warning = _v2211_fundamental_warning_text(r)
     wave_dist = _v210_alert_num(d.get("wave_trigger_distance_pct"), default=None)
     entry_distance = _v210_alert_num(d.get("entry_distance_pct"), default=None)
     next_step = str(d.get("next_step") or "-").strip()
@@ -5703,6 +5751,14 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     conf_pkg_lm = r.get("trigger_confluence_pkg") if isinstance(r.get("trigger_confluence_pkg"), dict) else {}
     timing_score_lm = _v210_alert_num(timing_pkg_lm.get("score"), default=None)
     conf_score_lm = _v210_alert_num(conf_pkg_lm.get("score"), default=None)
+    chart_pkg_lm = r.get("charttechnik_setup_pkg") if isinstance(r.get("charttechnik_setup_pkg"), dict) else {}
+    chart_score_lm = _v210_alert_num(chart_pkg_lm.get("score"), default=None)
+    chart_text_lm = " ".join([
+        str(chart_pkg_lm.get("label") or ""),
+        str(chart_pkg_lm.get("summary") or ""),
+        str(chart_pkg_lm.get("trigger") or ""),
+        str(chart_pkg_lm.get("invalid") or ""),
+    ]).lower()
 
     trend_structure_ok = bool(
         price_float is not None
@@ -5787,10 +5843,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         reason = brake if brake and brake != "-" else "Bremse/Gate noch aktiv."
         monitor_action = "Nur beobachten; erst bei besserem Entry, Trigger oder geklärter Bremse neu prüfen."
 
-    # v22.10: Live-Score x/100 zusaetzlich zur Ampel.
-    # Ziel: "knapp gruen" von "sehr gruen" unterscheiden und Gelb/Gruen-Flackern
-    # sichtbar machen. Der Score nutzt dieselben Bausteine wie die Statuslogik und
-    # wird danach je Ampelbereich begrenzt, damit Farbe und Zahl konsistent bleiben.
+    # v22.11: Chart-Weighted Live-Score x/100.
+    # Der Live-Monitor bewertet kurzfristige charttechnische Handlungsreife.
+    # Fundamental-/Qualitaets-Red-Flags werden separat als Warnhinweis gezeigt,
+    # aber nicht mehr stark in den Live-Score oder die Ampel eingerechnet.
     def _v2210_clip(val, lo=0.0, hi=100.0):
         try:
             f = float(val)
@@ -5803,39 +5859,58 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     grade_component = {"A": 92.0, "B": 80.0, "C": 66.0, "D": 48.0, "E": 35.0, "F": 22.0, "G": 12.0}.get(grade, 50.0)
     timing_component = _v2210_clip(timing_score_lm if timing_score_lm is not None else (82.0 if final_release_ok else 50.0))
     conf_component = _v2210_clip(conf_score_lm if conf_score_lm is not None else (78.0 if final_release_ok else 50.0))
-    if crv_float is None:
-        crv_component = 58.0 if final_release_ok else 48.0
-    else:
-        # 1.0 ~ neutral/schwach, 1.5 ~ brauchbar, 2.0+ gut, 3.0+ sehr gut
-        crv_component = _v2210_clip(42.0 + (crv_float - 1.0) * 28.0, 25.0, 96.0)
+    chart_component = _v2210_clip(chart_score_lm if chart_score_lm is not None else (72.0 if final_release_ok else 48.0))
+    if any(t in chart_text_lm for t in ["abwarten", "noch nicht", "kein", "fehlt", "nicht reif"]):
+        chart_component = min(chart_component, 54.0)
+    if any(t in chart_text_lm for t in ["reclaim", "breakout", "ausbruch", "trigger", "entry-zone", "stabilisierung", "bullische reaktion"]):
+        chart_component = max(chart_component, 62.0)
 
-    trigger_component = 45.0
+    if crv_float is None:
+        crv_component = 56.0 if final_release_ok else 48.0
+    else:
+        # CRV ist wichtig, aber fuer den Live-Monitor nur Nebenfilter.
+        crv_component = _v2210_clip(44.0 + (crv_float - 1.0) * 22.0, 25.0, 92.0)
+
+    trigger_component = 42.0
     if bucket_active or wave_active:
-        trigger_component = 82.0
+        trigger_component = 86.0
     elif entry_reached:
-        trigger_component = 74.0
+        trigger_component = 76.0
     elif bucket_near:
         trigger_component = 64.0
     elif "CRV attraktiv" in alert_types:
-        trigger_component = 58.0
+        trigger_component = 54.0
     if trend_structure_ok and trend_timing_ok:
-        trigger_component = max(trigger_component, 78.0 if trend_not_too_extended else 66.0)
+        trigger_component = max(trigger_component, 82.0 if trend_not_too_extended else 66.0)
+
+    trend_component = 50.0
+    if trend_structure_ok and trend_timing_ok and trend_not_too_extended:
+        trend_component = 82.0
+    elif trend_structure_ok and trend_timing_ok:
+        trend_component = 66.0
+    elif trend_structure_ok:
+        trend_component = 58.0
 
     live_score_raw = (
-        0.26 * timing_component
-        + 0.22 * conf_component
-        + 0.20 * grade_component
-        + 0.17 * crv_component
-        + 0.15 * trigger_component
+        0.30 * trigger_component
+        + 0.24 * timing_component
+        + 0.20 * conf_component
+        + 0.14 * chart_component
+        + 0.06 * trend_component
+        + 0.04 * crv_component
+        + 0.02 * grade_component
     )
-    if bucket == "Warnsignale / meiden":
-        live_score_raw -= 8.0
+
+    # Abzuege nur fuer chart-/entry-relevante Bremsen. Fundamentale Hinweise bleiben
+    # in der Warnhinweis-Spalte sichtbar, zaehlen hier aber nicht als harter Score-Abzug.
+    if bucket == "Warnsignale / meiden" and not (grade in {"A", "B"} and crv_ok):
+        live_score_raw -= 6.0
     if entry_hard_gate:
-        live_score_raw -= 25.0
+        live_score_raw -= 24.0
     if "Invalidierung gebrochen" in alert_types:
         live_score_raw -= 45.0
     if ma20_stretch_pct is not None and ma20_stretch_pct > 12.0:
-        live_score_raw -= min(16.0, (ma20_stretch_pct - 12.0) * 1.5)
+        live_score_raw -= min(18.0, (ma20_stretch_pct - 12.0) * 1.6)
     if not final_release_ok and status_icon == "🟢":
         live_score_raw -= 18.0
 
@@ -5864,6 +5939,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Entry-Abstand": d.get("entry_distance_text") or ("n/a" if entry_distance is None else f"{entry_distance:+.1f}%"),
         "Wann aktiv?": d.get("wave_trigger") or "-",
         "Setup-Alert": alert_text,
+        "Warnhinweis": fundamental_warning,
         "Grund": reason,
         "Nächste Handlung": monitor_action,
         "Letztes Update": get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S"),
@@ -5899,7 +5975,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
     if rows:
         df = pd.DataFrame(rows).sort_values(["__prio", "__score", "Ticker"], ascending=[True, False, True]).drop(columns=["__prio", "__score"], errors="ignore").reset_index(drop=True)
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
@@ -19264,7 +19340,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.10")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.11")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:

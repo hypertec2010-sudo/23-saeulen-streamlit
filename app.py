@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.12"
+APP_VERSION = "v22.13"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5103,8 +5103,8 @@ def _v210_alert_add(rows, *, ticker, name, alert_type, priority, message, action
         "Ticker": ticker,
         "Name": name,
         "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
-        "Startkurs": start_price_text,
-        "Seit Aufnahme": perf_text,
+        "Startkurs": "n/a",
+        "Seit Aufnahme": "n/a",
         "Grade": grade,
         "Bucket": bucket,
         "CRV": "n/a" if crv is None else round(float(crv), 2),
@@ -5746,7 +5746,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     )
     price_float = _v229_num_any(price)
 
-    # v22.12: Performance-Kontext seit Watchlist-Aufnahme.
+    # v22.13: Performance-Kontext seit Watchlist-Aufnahme.
     # Der Live-Score bleibt ein aktueller Chart-/Trigger-Score, aber stark gelaufene
     # Watchlist-Werte sollen sichtbar sein, auch wenn aktuell kein frischer Entry aktiv ist.
     def _v2212_parse_dt(val):
@@ -5946,7 +5946,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         reason = brake if brake and brake != "-" else "Bremse/Gate noch aktiv."
         monitor_action = "Nur beobachten; erst bei besserem Entry, Trigger oder geklärter Bremse neu prüfen."
 
-    # v22.12: Starke Watchlist-Performance sichtbar machen.
+    # v22.13: Starke Watchlist-Performance sichtbar machen.
     # Das ist KEIN automatisches Kaufsignal. Es verhindert nur, dass ein +20%-Lauf
     # als irrelevanter weisser Wert wirkt, wenn aktuell kein frischer Entry erkannt wird.
     if (perf_pct is not None and perf_pct >= 12.0 and status_icon in {"⚪", "🔵"}
@@ -19462,7 +19462,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.12")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.13")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:

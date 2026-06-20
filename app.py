@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.16"
+APP_VERSION = "v22.17"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5279,7 +5279,7 @@ def _v228_norm_watchlist_ticker(value):
     return txt.replace(" ", "")
 
 
-# ---------- v22.16: Watchlist Startkurs-Backfill ----------
+# ---------- v22.17: Watchlist Startkurs-Backfill ----------
 def _v2214_start_price_store_path():
     """Lokaler Sidecar-Speicher fuer Watchlist-Aufnahmekurse.
 
@@ -5626,7 +5626,7 @@ def queue_entries_to_watchlist_v228(watchlist_name, watchlist_type, entries, *, 
         if key in pending_keys:
             skipped_duplicate.append(ticker)
             continue
-        # v22.16: Startkurs sofort lokal erfassen, aber ohne zusaetzlichen Google-Sheets-Write.
+        # v22.17: Startkurs sofort lokal erfassen, aber ohne zusaetzlichen Google-Sheets-Write.
         start_price = _v2214_get_current_price_for_ticker(ticker)
         if start_price is not None:
             _v2214_set_start_price(watchlist_name, ticker, start_price, source=str(source or "Manuell"), added_at=now_txt)
@@ -6105,12 +6105,17 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     added_dt = _v2212_parse_dt(start_date_raw)
 
     start_price = None
+    start_price_source = str(meta.get("Startkurs_Quelle") or meta.get("Start_Source") or meta.get("Quelle") or "").strip()
     for k in ["Startkurs", "Start_Kurs", "Start_Price", "start_price", "Added_Price", "Einstand", "Einstandskurs"]:
         start_price = _v2212_valid_price(meta.get(k))
         if start_price is not None:
+            if not start_price_source:
+                start_price_source = k
             break
     if start_price is None:
         start_price = _v2212_chart_start_price(r, added_dt)
+        if start_price is not None and not start_price_source:
+            start_price_source = "Chart-Historie"
 
     # Wenn kein Aufnahmekurs rekonstruierbar ist, Session-Baseline setzen.
     # Damit ist ab dem naechsten Refresh trotzdem eine echte Entwicklung sichtbar.
@@ -6122,8 +6127,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         baseline_key = f"{wl_key}::{ticker}"
         if start_price is None and baseline_key in perf_state:
             start_price = _v2212_valid_price(perf_state.get(baseline_key))
+            if start_price is not None and not start_price_source:
+                start_price_source = "Session-Baseline"
         if start_price is None and price_float is not None:
             start_price = price_float
+            start_price_source = "Session-Baseline ab jetzt"
             perf_state[baseline_key] = start_price
             st.session_state.live_watchlist_start_prices_v2212 = perf_state
     except Exception:
@@ -6352,6 +6360,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
         "Startkurs": start_price_text,
         "Seit Aufnahme": perf_text,
+        "Startquelle": start_price_source or "n/a",
         "Grade": grade,
         "Radar-Bucket": bucket,
         "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
@@ -6395,7 +6404,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
     if rows:
         df = pd.DataFrame(rows).sort_values(["__prio", "__score", "Ticker"], ascending=[True, False, True]).drop(columns=["__prio", "__score"], errors="ignore").reset_index(drop=True)
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Ticker", "Name", "Kurs", "Startkurs", "Seit Aufnahme", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Ticker", "Name", "Kurs", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
@@ -19677,7 +19686,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                 render_pending_watchlist_adds_v228(selected_watchlist_name=selected_watchlist_name)
 
-                # v22.16: Bestehende Watchlists koennen Startkurse lokal nachtragen.
+                # v22.17: Bestehende Watchlists koennen Startkurse lokal nachtragen.
                 with st.expander("Startkurse / Performance-Kontext", expanded=False):
                     st.caption("Startkurse werden lokal gespeichert und dienen nur dem Live-Monitor-Kontext 'Seit Aufnahme'. Google Sheets wird dabei nicht zusaetzlich belastet.")
                     start_meta_map_v2214 = _v2214_get_start_price_meta_map(selected_watchlist_name)
@@ -19710,7 +19719,43 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             else:
                                 st.warning(msg)
                     with c_back3:
-                        st.caption("Fehlende Startkurse werden bevorzugt historisch aus dem Aufnahmedatum berechnet. Wenn kein Aufnahmedatum existiert, wird der aktuelle Kurs als neue Baseline gesetzt. 'Historisch neu berechnen' überschreibt auch versehentlich zu aktuelle Baselines wie +0,0%.")
+                        st.caption("Fehlende Startkurse werden bevorzugt historisch aus dem Aufnahmedatum berechnet. Wenn kein Aufnahmedatum existiert, wird der aktuelle Kurs nur als neue Baseline ab jetzt gesetzt. Für alte Watchlists ohne Aufnahmedatum bitte den Startkurs oder das Aufnahmedatum manuell setzen.")
+
+                    st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
+                    if current_tickers:
+                        m1, m2, m3, m4 = st.columns([1.0, 1.0, 1.0, 1.2])
+                        with m1:
+                            manual_start_ticker_v2217 = st.selectbox("Ticker", options=current_tickers, key="manual_start_ticker_v2217")
+                        with m2:
+                            current_manual_meta_v2217 = _v2214_get_start_price_meta_map(selected_watchlist_name).get(_v228_norm_watchlist_ticker(manual_start_ticker_v2217), {})
+                            default_manual_price_v2217 = _v2214_valid_price(current_manual_meta_v2217.get("Startkurs")) or 0.0
+                            manual_start_price_v2217 = st.number_input("Startkurs", min_value=0.0, value=float(default_manual_price_v2217), step=0.01, format="%.4f", key="manual_start_price_v2217")
+                        with m3:
+                            manual_start_date_v2217 = st.date_input("Aufnahmedatum", value=date.today(), key="manual_start_date_v2217")
+                        with m4:
+                            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                            if st.button("Startkurs speichern", use_container_width=True, key="save_manual_start_price_v2217"):
+                                if manual_start_price_v2217 and manual_start_price_v2217 > 0:
+                                    ok = _v2214_set_start_price(selected_watchlist_name, manual_start_ticker_v2217, float(manual_start_price_v2217), source="Manuell", added_at=str(manual_start_date_v2217), force=True)
+                                    if ok:
+                                        st.success(f"Startkurs für {manual_start_ticker_v2217} gespeichert.")
+                                        trigger_ui_refresh()
+                                    else:
+                                        st.warning("Startkurs konnte nicht gespeichert werden.")
+                                else:
+                                    st.warning("Bitte einen Startkurs > 0 eingeben.")
+                            if st.button("Kurs aus Datum holen", use_container_width=True, key="fetch_manual_start_price_v2217"):
+                                hist_price_v2217 = _v2216_get_historical_price_for_ticker(manual_start_ticker_v2217, str(manual_start_date_v2217))
+                                if hist_price_v2217 is not None:
+                                    ok = _v2214_set_start_price(selected_watchlist_name, manual_start_ticker_v2217, hist_price_v2217, source="Historisch manuell", added_at=str(manual_start_date_v2217), force=True)
+                                    if ok:
+                                        st.success(f"Historischer Startkurs für {manual_start_ticker_v2217}: {hist_price_v2217:.4f}")
+                                        trigger_ui_refresh()
+                                    else:
+                                        st.warning("Historischer Startkurs konnte nicht gespeichert werden.")
+                                else:
+                                    st.warning("Für dieses Datum konnte kein historischer Kurs geladen werden.")
+                    st.caption("Hinweis: Wenn eine alte Watchlist kein Aufnahmedatum gespeichert hat, kann die App die frühere +/-% Entwicklung nicht rekonstruieren. Dann hilft nur manuell Startkurs/Datum setzen.")
 
                 st.markdown("**Inhalt der aktuellen Watchlist**")
                 st.caption(f"Anzahl Werte: {len(current_tickers)}")
@@ -19795,7 +19840,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.16")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.17")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -19876,7 +19921,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         current_watchlist_meta_by_ticker[_tk] = dict(_row)
                         except Exception:
                             current_watchlist_meta_by_ticker = {}
-                        # v22.16: lokal gespeicherte Startkurse ergaenzen/ueberschreiben die Sheets-Metadaten.
+                        # v22.17: lokal gespeicherte Startkurse ergaenzen/ueberschreiben die Sheets-Metadaten.
                         try:
                             for _tk, _meta in _v2214_get_start_price_meta_map(selected_watchlist_name).items():
                                 if not _tk:

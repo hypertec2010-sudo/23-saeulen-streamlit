@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.13"
+APP_VERSION = "v22.14"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5279,6 +5279,206 @@ def _v228_norm_watchlist_ticker(value):
     return txt.replace(" ", "")
 
 
+# ---------- v22.14: Watchlist Startkurs-Backfill ----------
+def _v2214_start_price_store_path():
+    """Lokaler Sidecar-Speicher fuer Watchlist-Aufnahmekurse.
+
+    Google Sheets bleibt der primaere Watchlist-Katalog, aber Startkurse werden
+    bewusst lokal gepuffert, damit der Live-Monitor Performance-Kontext anzeigen
+    kann, ohne bei jedem Watchlist-Edit weitere Sheets-Writes zu erzeugen.
+    """
+    try:
+        base_dir = Path(__file__).resolve().parent
+        return base_dir / ".watchlist_start_prices_v2214.json"
+    except Exception:
+        return Path("/tmp/.watchlist_start_prices_v2214.json")
+
+
+def _v2214_load_start_price_store():
+    try:
+        path = _v2214_start_price_store_path()
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+def _v2214_save_start_price_store(store):
+    try:
+        path = _v2214_start_price_store_path()
+        path.write_text(json.dumps(store or {}, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def _v2214_valid_price(value):
+    try:
+        if value in [None, "", "-", "n/a", "nan", "None"]:
+            return None
+        f = float(str(value).replace(",", "."))
+        if np.isfinite(f) and not pd.isna(f) and f > 0:
+            return float(f)
+    except Exception:
+        pass
+    return None
+
+
+def _v2214_watchlist_key(watchlist_name, ticker):
+    wl = str(watchlist_name or "default").strip() or "default"
+    tk = _v228_norm_watchlist_ticker(ticker)
+    return f"{wl}::{tk}"
+
+
+def _v2214_get_current_price_for_ticker(ticker):
+    """Robuster Kurzabruf fuer den aktuellen Start-/Backfill-Kurs."""
+    tk = _v228_norm_watchlist_ticker(ticker)
+    if not tk:
+        return None
+    cache_key = f"v2214_start_price_quote::{tk}"
+    try:
+        cache = st.session_state.get("watchlist_start_price_quote_cache_v2214", {})
+        if isinstance(cache, dict):
+            cached = cache.get(cache_key)
+            if isinstance(cached, dict):
+                ts = cached.get("ts")
+                val = _v2214_valid_price(cached.get("price"))
+                try:
+                    age = (datetime.now() - datetime.fromisoformat(str(ts))).total_seconds()
+                except Exception:
+                    age = 999999
+                if val is not None and age < 1800:
+                    return val
+    except Exception:
+        pass
+
+    price = None
+    try:
+        t = yf.Ticker(tk)
+        # fast_info ist in yfinance oft deutlich leichter als info.
+        try:
+            fi = getattr(t, "fast_info", {}) or {}
+            for key in ["last_price", "lastPrice", "regular_market_price", "regularMarketPrice", "previous_close", "previousClose"]:
+                try:
+                    price = _v2214_valid_price(fi.get(key) if hasattr(fi, "get") else getattr(fi, key, None))
+                except Exception:
+                    price = None
+                if price is not None:
+                    break
+        except Exception:
+            pass
+        if price is None:
+            try:
+                inf = t.info or {}
+                for key in ["regularMarketPrice", "currentPrice", "lastPrice", "previousClose", "open"]:
+                    price = _v2214_valid_price(inf.get(key))
+                    if price is not None:
+                        break
+            except Exception:
+                pass
+        if price is None:
+            try:
+                hist = t.history(period="7d", auto_adjust=False)
+                if hist is not None and not hist.empty and "Close" in hist.columns:
+                    price = _v2214_valid_price(hist["Close"].dropna().iloc[-1])
+            except Exception:
+                pass
+    except Exception:
+        price = None
+
+    try:
+        cache = st.session_state.get("watchlist_start_price_quote_cache_v2214", {})
+        if not isinstance(cache, dict):
+            cache = {}
+        if price is not None:
+            cache[cache_key] = {"price": price, "ts": datetime.now().isoformat(timespec="seconds")}
+            st.session_state.watchlist_start_price_quote_cache_v2214 = cache
+    except Exception:
+        pass
+    return price
+
+
+def _v2214_set_start_price(watchlist_name, ticker, price=None, *, source="Backfill", added_at=None, force=False):
+    wl = str(watchlist_name or "").strip()
+    tk = _v228_norm_watchlist_ticker(ticker)
+    if not wl or not tk:
+        return False
+    store = _v2214_load_start_price_store()
+    key = _v2214_watchlist_key(wl, tk)
+    existing = store.get(key) if isinstance(store.get(key), dict) else {}
+    if existing and _v2214_valid_price(existing.get("Startkurs")) is not None and not force:
+        return True
+    price = _v2214_valid_price(price)
+    if price is None:
+        price = _v2214_get_current_price_for_ticker(tk)
+    if price is None:
+        return False
+    try:
+        now_txt = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
+    except Exception:
+        now_txt = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    store[key] = {
+        "Watchlist_Name": wl,
+        "Ticker": tk,
+        "Startkurs": round(float(price), 4),
+        "Start_Price": round(float(price), 4),
+        "Added_At": added_at or existing.get("Added_At") or now_txt,
+        "Startkurs_Quelle": str(source or "Backfill"),
+        "Startkurs_Gesetzt_Am": now_txt,
+    }
+    return _v2214_save_start_price_store(store)
+
+
+def _v2214_get_start_price_meta_map(watchlist_name):
+    wl = str(watchlist_name or "").strip()
+    out = {}
+    if not wl:
+        return out
+    store = _v2214_load_start_price_store()
+    prefix = f"{wl}::".lower()
+    for key, item in (store or {}).items():
+        if not str(key).lower().startswith(prefix) or not isinstance(item, dict):
+            continue
+        tk = _v228_norm_watchlist_ticker(item.get("Ticker") or str(key).split("::")[-1])
+        if tk:
+            out[tk] = dict(item)
+    return out
+
+
+def backfill_watchlist_start_prices_v2214(watchlist_name, tickers, *, force=False):
+    wl = str(watchlist_name or "").strip()
+    added = 0
+    skipped = 0
+    failed = []
+    store = _v2214_load_start_price_store()
+    for raw in tickers or []:
+        tk = _v228_norm_watchlist_ticker(raw)
+        if not tk:
+            continue
+        key = _v2214_watchlist_key(wl, tk)
+        existing = store.get(key) if isinstance(store.get(key), dict) else {}
+        if existing and _v2214_valid_price(existing.get("Startkurs")) is not None and not force:
+            skipped += 1
+            continue
+        price = _v2214_get_current_price_for_ticker(tk)
+        if price is None:
+            failed.append(tk)
+            continue
+        if _v2214_set_start_price(wl, tk, price, source="Backfill", force=force):
+            added += 1
+        else:
+            failed.append(tk)
+    msg = f"{added} Startkurs(e) nachgetragen"
+    if skipped:
+        msg += f" · {skipped} bereits vorhanden"
+    if failed:
+        msg += f" · nicht abrufbar: {', '.join(failed[:8])}{' ...' if len(failed) > 8 else ''}"
+    return added > 0 or skipped > 0, msg
+
+
 def _v228_get_pending_watchlist_adds():
     pending = st.session_state.get("pending_watchlist_adds_v228", [])
     if not isinstance(pending, list):
@@ -5337,6 +5537,10 @@ def queue_entries_to_watchlist_v228(watchlist_name, watchlist_type, entries, *, 
         if key in pending_keys:
             skipped_duplicate.append(ticker)
             continue
+        # v22.14: Startkurs sofort lokal erfassen, aber ohne zusaetzlichen Google-Sheets-Write.
+        start_price = _v2214_get_current_price_for_ticker(ticker)
+        if start_price is not None:
+            _v2214_set_start_price(watchlist_name, ticker, start_price, source=str(source or "Manuell"), added_at=now_txt)
         pending.append({
             "Watchlist_Name": watchlist_name,
             "Watchlist_Type": watchlist_type,
@@ -5344,6 +5548,9 @@ def queue_entries_to_watchlist_v228(watchlist_name, watchlist_type, entries, *, 
             "Quelle": str(source or "Manuell"),
             "Check_Frequency": check_frequency,
             "Vorgemerkt_Am": now_txt,
+            "Added_At": now_txt,
+            "Startkurs": round(float(start_price), 4) if start_price is not None else "n/a",
+            "Start_Price": round(float(start_price), 4) if start_price is not None else "n/a",
         })
         pending_keys.add(key)
         added.append(ticker)
@@ -5436,7 +5643,7 @@ def render_pending_watchlist_adds_v228(*, selected_watchlist_name=None):
         return
     st.markdown("**Ausstehende Watchlist-Aenderungen**")
     st.caption("Diese Werte sind sofort lokal nutzbar, werden aber erst mit 'Aenderungen speichern' gebuendelt in Google Sheets geschrieben.")
-    cols = [c for c in ["Watchlist_Name", "Ticker", "Quelle", "Vorgemerkt_Am"] if c in view_df.columns]
+    cols = [c for c in ["Watchlist_Name", "Ticker", "Startkurs", "Quelle", "Vorgemerkt_Am"] if c in view_df.columns]
     st.dataframe(view_df[cols], hide_index=True, use_container_width=True, height=min(260, 42 * len(view_df) + 50))
     b1, b2, b3 = st.columns([1.1, 1.0, 1.2])
     safe_key = re.sub(r"[^A-Za-z0-9_]+", "_", str(selected_watchlist_name or "all"))
@@ -19379,6 +19586,24 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                 render_pending_watchlist_adds_v228(selected_watchlist_name=selected_watchlist_name)
 
+                # v22.14: Bestehende Watchlists koennen Startkurse lokal nachtragen.
+                with st.expander("Startkurse / Performance-Kontext", expanded=False):
+                    st.caption("Startkurse werden lokal gespeichert und dienen nur dem Live-Monitor-Kontext 'Seit Aufnahme'. Google Sheets wird dabei nicht zusaetzlich belastet.")
+                    start_meta_map_v2214 = _v2214_get_start_price_meta_map(selected_watchlist_name)
+                    have_start_v2214 = sum(1 for _tk in current_tickers if _tk in start_meta_map_v2214 and _v2214_valid_price(start_meta_map_v2214[_tk].get("Startkurs")) is not None)
+                    st.write(f"Startkurs vorhanden: {have_start_v2214} / {len(current_tickers)}")
+                    c_back1, c_back2 = st.columns([1.1, 1.4])
+                    with c_back1:
+                        if st.button("Fehlende Startkurse nachtragen", use_container_width=True, key="backfill_start_prices_v2214"):
+                            ok, msg = backfill_watchlist_start_prices_v2214(selected_watchlist_name, current_tickers, force=False)
+                            if ok:
+                                st.success(msg)
+                                trigger_ui_refresh()
+                            else:
+                                st.warning(msg)
+                    with c_back2:
+                        st.caption("Wenn kein historisches Aufnahmedatum/Kursfeld existiert, wird der aktuelle Kurs als Startkurs gesetzt. Ab dann wird die Entwicklung sauber weiterverfolgt.")
+
                 st.markdown("**Inhalt der aktuellen Watchlist**")
                 st.caption(f"Anzahl Werte: {len(current_tickers)}")
                 if current_tickers:
@@ -19462,7 +19687,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.13")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.14")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -19543,11 +19768,25 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         current_watchlist_meta_by_ticker[_tk] = dict(_row)
                         except Exception:
                             current_watchlist_meta_by_ticker = {}
+                        # v22.14: lokal gespeicherte Startkurse ergaenzen/ueberschreiben die Sheets-Metadaten.
+                        try:
+                            for _tk, _meta in _v2214_get_start_price_meta_map(selected_watchlist_name).items():
+                                if not _tk:
+                                    continue
+                                base = current_watchlist_meta_by_ticker.get(_tk, {})
+                                merged = dict(base)
+                                merged.update(dict(_meta))
+                                current_watchlist_meta_by_ticker[_tk] = merged
+                        except Exception:
+                            pass
                         try:
                             for _item in _v228_pending_for_watchlist(selected_watchlist_name):
                                 _tk = _v228_norm_watchlist_ticker(_item.get("Ticker"))
-                                if _tk and _tk not in current_watchlist_meta_by_ticker:
-                                    current_watchlist_meta_by_ticker[_tk] = dict(_item)
+                                if _tk:
+                                    base = current_watchlist_meta_by_ticker.get(_tk, {})
+                                    merged = dict(base)
+                                    merged.update(dict(_item))
+                                    current_watchlist_meta_by_ticker[_tk] = merged
                         except Exception:
                             pass
                         live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40, watchlist_meta_by_ticker=current_watchlist_meta_by_ticker)

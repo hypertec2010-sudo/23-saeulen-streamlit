@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.11"
+APP_VERSION = "v22.12"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5103,6 +5103,8 @@ def _v210_alert_add(rows, *, ticker, name, alert_type, priority, message, action
         "Ticker": ticker,
         "Name": name,
         "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
+        "Startkurs": start_price_text,
+        "Seit Aufnahme": perf_text,
         "Grade": grade,
         "Bucket": bucket,
         "CRV": "n/a" if crv is None else round(float(crv), 2),
@@ -5600,7 +5602,7 @@ def _v214_monitor_final_release_check(result, decision=None):
 
     return len(clean) == 0, clean[:4]
 
-def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"):
+def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
 
     Läuft nur in der geöffneten App und nutzt dieselben Bausteine wie Radar und Setup-Alerts.
@@ -5743,6 +5745,107 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         r.get("ma_50"), r.get("sma_50"), info_obj.get("fiftyDayAverage")
     )
     price_float = _v229_num_any(price)
+
+    # v22.12: Performance-Kontext seit Watchlist-Aufnahme.
+    # Der Live-Score bleibt ein aktueller Chart-/Trigger-Score, aber stark gelaufene
+    # Watchlist-Werte sollen sichtbar sein, auch wenn aktuell kein frischer Entry aktiv ist.
+    def _v2212_parse_dt(val):
+        if val in [None, "", "-", "nan"]:
+            return None
+        try:
+            return pd.to_datetime(val, dayfirst=True, errors="coerce")
+        except Exception:
+            return None
+
+    def _v2212_valid_price(val):
+        try:
+            if val in [None, "", "-", "n/a", "nan"]:
+                return None
+            f = float(str(val).replace(",", "."))
+            if np.isfinite(f) and not pd.isna(f) and f > 0:
+                return f
+        except Exception:
+            pass
+        return None
+
+    def _v2212_chart_start_price(src, added_dt):
+        df0 = src.get("df") if isinstance(src, dict) else None
+        if df0 is None or not isinstance(df0, pd.DataFrame) or df0.empty:
+            return None
+        close_col = None
+        for c in ["Close", "close", "Adj Close", "Adj_Close"]:
+            if c in df0.columns:
+                close_col = c
+                break
+        if close_col is None:
+            return None
+        try:
+            tmp = df0.copy()
+            if "Date" in tmp.columns:
+                tmp["__date"] = pd.to_datetime(tmp["Date"], errors="coerce")
+            else:
+                tmp["__date"] = pd.to_datetime(tmp.index, errors="coerce")
+            tmp = tmp.dropna(subset=["__date", close_col]).sort_values("__date")
+            if tmp.empty:
+                return None
+            if added_dt is not None and not pd.isna(added_dt):
+                # Ersten Schlusskurs am/ab Aufnahmedatum nutzen; wenn zu neu, letzten davor.
+                after = tmp[tmp["__date"] >= added_dt]
+                if not after.empty:
+                    return _v2212_valid_price(after.iloc[0][close_col])
+                before = tmp[tmp["__date"] <= added_dt]
+                if not before.empty:
+                    return _v2212_valid_price(before.iloc[-1][close_col])
+            return None
+        except Exception:
+            return None
+
+    meta = watchlist_meta if isinstance(watchlist_meta, dict) else {}
+    start_date_raw = None
+    for k in ["Added_At", "added_at", "Vorgemerkt_Am", "Created_At", "created_at", "Aufnahme", "Aufnahmedatum"]:
+        if str(meta.get(k, "")).strip() not in {"", "-", "nan", "None"}:
+            start_date_raw = meta.get(k)
+            break
+    added_dt = _v2212_parse_dt(start_date_raw)
+
+    start_price = None
+    for k in ["Startkurs", "Start_Kurs", "Start_Price", "start_price", "Added_Price", "Einstand", "Einstandskurs"]:
+        start_price = _v2212_valid_price(meta.get(k))
+        if start_price is not None:
+            break
+    if start_price is None:
+        start_price = _v2212_chart_start_price(r, added_dt)
+
+    # Wenn kein Aufnahmekurs rekonstruierbar ist, Session-Baseline setzen.
+    # Damit ist ab dem naechsten Refresh trotzdem eine echte Entwicklung sichtbar.
+    try:
+        perf_state = st.session_state.get("live_watchlist_start_prices_v2212", {})
+        if not isinstance(perf_state, dict):
+            perf_state = {}
+        wl_key = str(meta.get("Watchlist_Name") or meta.get("watchlist_name") or "default").strip() or "default"
+        baseline_key = f"{wl_key}::{ticker}"
+        if start_price is None and baseline_key in perf_state:
+            start_price = _v2212_valid_price(perf_state.get(baseline_key))
+        if start_price is None and price_float is not None:
+            start_price = price_float
+            perf_state[baseline_key] = start_price
+            st.session_state.live_watchlist_start_prices_v2212 = perf_state
+    except Exception:
+        pass
+
+    perf_pct = None
+    if start_price is not None and price_float is not None and start_price > 0:
+        perf_pct = (price_float / start_price - 1.0) * 100.0
+
+    if start_price is None:
+        start_price_text = "n/a"
+    else:
+        start_price_text = round(float(start_price), 4)
+    if perf_pct is None:
+        perf_text = "n/a"
+    else:
+        perf_text = f"{perf_pct:+.1f}%"
+
     ma20_stretch_pct = None
     if price_float is not None and ma20_val is not None and ma20_val > 0:
         ma20_stretch_pct = (price_float / ma20_val - 1.0) * 100.0
@@ -5843,6 +5946,20 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         reason = brake if brake and brake != "-" else "Bremse/Gate noch aktiv."
         monitor_action = "Nur beobachten; erst bei besserem Entry, Trigger oder geklärter Bremse neu prüfen."
 
+    # v22.12: Starke Watchlist-Performance sichtbar machen.
+    # Das ist KEIN automatisches Kaufsignal. Es verhindert nur, dass ein +20%-Lauf
+    # als irrelevanter weisser Wert wirkt, wenn aktuell kein frischer Entry erkannt wird.
+    if (perf_pct is not None and perf_pct >= 12.0 and status_icon in {"⚪", "🔵"}
+            and "Invalidierung gebrochen" not in alert_types and not entry_hard_gate):
+        status_icon, status, priority = "🟡", "Läuft stark / Einstieg offen", 2
+        reason = f"Seit Watchlist-Aufnahme {perf_pct:+.1f}% gelaufen; aktuell aber noch kein sauberer frischer Einstiegstrigger."
+        monitor_action = "Trend/Performance anerkennen, aber Neueinstieg nur bei frischem Trigger, Pullback oder neuer Base planen."
+    elif (perf_pct is not None and perf_pct >= 6.0 and status_icon == "⚪" and trend_structure_ok
+            and "Invalidierung gebrochen" not in alert_types and not entry_hard_gate):
+        status_icon, status, priority = "🟡", "Läuft positiv / Trigger offen", 2
+        reason = f"Seit Watchlist-Aufnahme {perf_pct:+.1f}% im Plus; Trend positiv, frischer Einstiegstrigger noch offen."
+        monitor_action = "Weiter beobachten: positive Entwicklung, aber Kauf erst bei klarem Trigger oder kontrollierbarem Pullback."
+
     # v22.11: Chart-Weighted Live-Score x/100.
     # Der Live-Monitor bewertet kurzfristige charttechnische Handlungsreife.
     # Fundamental-/Qualitaets-Red-Flags werden separat als Warnhinweis gezeigt,
@@ -5913,6 +6030,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         live_score_raw -= min(18.0, (ma20_stretch_pct - 12.0) * 1.6)
     if not final_release_ok and status_icon == "🟢":
         live_score_raw -= 18.0
+    # Performance seit Aufnahme ist Kontext, kein primaerer Entry-Trigger:
+    # leichter Bonus fuer starke Entwicklung, aber nur bis gelb/stabil, nicht automatisch gruen.
+    if perf_pct is not None and perf_pct >= 12.0 and status_icon in {"🟡", "⚪", "🔵"}:
+        live_score_raw += min(10.0, (perf_pct - 8.0) * 0.35)
 
     if status_icon == "🟢":
         live_score = _v2210_clip(live_score_raw, 75.0, 98.0)
@@ -5948,7 +6069,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     }
 
 
-def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=40):
+def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=40, watchlist_meta_by_ticker=None):
     rows = []
     errors = []
     unique = []
@@ -5956,6 +6077,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
         tt = str(t or "").strip().upper()
         if tt and tt not in unique:
             unique.append(tt)
+    meta_by_ticker = watchlist_meta_by_ticker or {}
     for ticker in unique[:int(max_items or 40)]:
         try:
             result = analyze_stock(
@@ -5969,13 +6091,13 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
                 strict_mode=True,
             )
             decision = build_professional_radar_decision_v18(result, style_name)
-            rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name))
+            rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name, watchlist_meta=meta_by_ticker.get(ticker, {})))
         except Exception as exc:
             errors.append({"Ticker": ticker, "Fehler": str(exc)[:180]})
     if rows:
         df = pd.DataFrame(rows).sort_values(["__prio", "__score", "Ticker"], ascending=[True, False, True]).drop(columns=["__prio", "__score"], errors="ignore").reset_index(drop=True)
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Ticker", "Name", "Kurs", "Startkurs", "Seit Aufnahme", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
@@ -19340,8 +19462,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.11")
-            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.12")
+            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
                 live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
@@ -19412,7 +19534,23 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     st.info("Diese Watchlist ist leer.")
                 else:
                     with st.spinner(f"Live-Watchlist wird geprüft ({min(len(current_tickers), 40)} Werte) ..."):
-                        live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40)
+                        current_watchlist_meta_by_ticker = {}
+                        try:
+                            if current_watchlist_df is not None and not current_watchlist_df.empty:
+                                for _, _row in current_watchlist_df.iterrows():
+                                    _tk = _v228_norm_watchlist_ticker(_row.get("Ticker"))
+                                    if _tk and _tk not in current_watchlist_meta_by_ticker:
+                                        current_watchlist_meta_by_ticker[_tk] = dict(_row)
+                        except Exception:
+                            current_watchlist_meta_by_ticker = {}
+                        try:
+                            for _item in _v228_pending_for_watchlist(selected_watchlist_name):
+                                _tk = _v228_norm_watchlist_ticker(_item.get("Ticker"))
+                                if _tk and _tk not in current_watchlist_meta_by_ticker:
+                                    current_watchlist_meta_by_ticker[_tk] = dict(_item)
+                        except Exception:
+                            pass
+                        live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40, watchlist_meta_by_ticker=current_watchlist_meta_by_ticker)
                     live_events_df = pd.DataFrame()
                     if not live_df.empty:
                         live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_watchlist_name, style_name=monitor_style)

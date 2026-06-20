@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.14"
+APP_VERSION = "v22.15"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5279,7 +5279,7 @@ def _v228_norm_watchlist_ticker(value):
     return txt.replace(" ", "")
 
 
-# ---------- v22.14: Watchlist Startkurs-Backfill ----------
+# ---------- v22.15: Watchlist Startkurs-Backfill ----------
 def _v2214_start_price_store_path():
     """Lokaler Sidecar-Speicher fuer Watchlist-Aufnahmekurse.
 
@@ -5537,7 +5537,7 @@ def queue_entries_to_watchlist_v228(watchlist_name, watchlist_type, entries, *, 
         if key in pending_keys:
             skipped_duplicate.append(ticker)
             continue
-        # v22.14: Startkurs sofort lokal erfassen, aber ohne zusaetzlichen Google-Sheets-Write.
+        # v22.15: Startkurs sofort lokal erfassen, aber ohne zusaetzlichen Google-Sheets-Write.
         start_price = _v2214_get_current_price_for_ticker(ticker)
         if start_price is not None:
             _v2214_set_start_price(watchlist_name, ticker, start_price, source=str(source or "Manuell"), added_at=now_txt)
@@ -6261,6 +6261,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Ticker": ticker,
         "Name": name,
         "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
+        "Startkurs": start_price_text,
+        "Seit Aufnahme": perf_text,
         "Grade": grade,
         "Radar-Bucket": bucket,
         "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
@@ -19586,7 +19588,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                 render_pending_watchlist_adds_v228(selected_watchlist_name=selected_watchlist_name)
 
-                # v22.14: Bestehende Watchlists koennen Startkurse lokal nachtragen.
+                # v22.15: Bestehende Watchlists koennen Startkurse lokal nachtragen.
                 with st.expander("Startkurse / Performance-Kontext", expanded=False):
                     st.caption("Startkurse werden lokal gespeichert und dienen nur dem Live-Monitor-Kontext 'Seit Aufnahme'. Google Sheets wird dabei nicht zusaetzlich belastet.")
                     start_meta_map_v2214 = _v2214_get_start_price_meta_map(selected_watchlist_name)
@@ -19687,7 +19689,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.14")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.15")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
@@ -19768,7 +19770,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         current_watchlist_meta_by_ticker[_tk] = dict(_row)
                         except Exception:
                             current_watchlist_meta_by_ticker = {}
-                        # v22.14: lokal gespeicherte Startkurse ergaenzen/ueberschreiben die Sheets-Metadaten.
+                        # v22.15: lokal gespeicherte Startkurse ergaenzen/ueberschreiben die Sheets-Metadaten.
                         try:
                             for _tk, _meta in _v2214_get_start_price_meta_map(selected_watchlist_name).items():
                                 if not _tk:

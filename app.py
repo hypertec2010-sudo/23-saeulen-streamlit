@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.9"
+APP_VERSION = "v22.10"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5787,9 +5787,74 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         reason = brake if brake and brake != "-" else "Bremse/Gate noch aktiv."
         monitor_action = "Nur beobachten; erst bei besserem Entry, Trigger oder geklärter Bremse neu prüfen."
 
+    # v22.10: Live-Score x/100 zusaetzlich zur Ampel.
+    # Ziel: "knapp gruen" von "sehr gruen" unterscheiden und Gelb/Gruen-Flackern
+    # sichtbar machen. Der Score nutzt dieselben Bausteine wie die Statuslogik und
+    # wird danach je Ampelbereich begrenzt, damit Farbe und Zahl konsistent bleiben.
+    def _v2210_clip(val, lo=0.0, hi=100.0):
+        try:
+            f = float(val)
+            if not np.isfinite(f) or pd.isna(f):
+                return lo
+            return max(lo, min(hi, f))
+        except Exception:
+            return lo
+
+    grade_component = {"A": 92.0, "B": 80.0, "C": 66.0, "D": 48.0, "E": 35.0, "F": 22.0, "G": 12.0}.get(grade, 50.0)
+    timing_component = _v2210_clip(timing_score_lm if timing_score_lm is not None else (82.0 if final_release_ok else 50.0))
+    conf_component = _v2210_clip(conf_score_lm if conf_score_lm is not None else (78.0 if final_release_ok else 50.0))
+    if crv_float is None:
+        crv_component = 58.0 if final_release_ok else 48.0
+    else:
+        # 1.0 ~ neutral/schwach, 1.5 ~ brauchbar, 2.0+ gut, 3.0+ sehr gut
+        crv_component = _v2210_clip(42.0 + (crv_float - 1.0) * 28.0, 25.0, 96.0)
+
+    trigger_component = 45.0
+    if bucket_active or wave_active:
+        trigger_component = 82.0
+    elif entry_reached:
+        trigger_component = 74.0
+    elif bucket_near:
+        trigger_component = 64.0
+    elif "CRV attraktiv" in alert_types:
+        trigger_component = 58.0
+    if trend_structure_ok and trend_timing_ok:
+        trigger_component = max(trigger_component, 78.0 if trend_not_too_extended else 66.0)
+
+    live_score_raw = (
+        0.26 * timing_component
+        + 0.22 * conf_component
+        + 0.20 * grade_component
+        + 0.17 * crv_component
+        + 0.15 * trigger_component
+    )
+    if bucket == "Warnsignale / meiden":
+        live_score_raw -= 8.0
+    if entry_hard_gate:
+        live_score_raw -= 25.0
+    if "Invalidierung gebrochen" in alert_types:
+        live_score_raw -= 45.0
+    if ma20_stretch_pct is not None and ma20_stretch_pct > 12.0:
+        live_score_raw -= min(16.0, (ma20_stretch_pct - 12.0) * 1.5)
+    if not final_release_ok and status_icon == "🟢":
+        live_score_raw -= 18.0
+
+    if status_icon == "🟢":
+        live_score = _v2210_clip(live_score_raw, 75.0, 98.0)
+    elif status_icon == "🟡":
+        live_score = _v2210_clip(live_score_raw, 50.0, 74.0)
+    elif status_icon == "🔵":
+        live_score = _v2210_clip(live_score_raw, 45.0, 66.0)
+    elif status_icon == "🔴":
+        live_score = _v2210_clip(live_score_raw, 0.0, 39.0)
+    else:
+        live_score = _v2210_clip(live_score_raw, 20.0, 58.0)
+    live_score_int = int(round(live_score))
+
     return {
         "Ampel": status_icon,
         "Status": status,
+        "Live-Score": f"{live_score_int}/100",
         "Ticker": ticker,
         "Name": name,
         "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
@@ -5803,6 +5868,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Nächste Handlung": monitor_action,
         "Letztes Update": get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S"),
         "__prio": priority,
+        "__score": live_score_int,
     }
 
 
@@ -5831,9 +5897,9 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
         except Exception as exc:
             errors.append({"Ticker": ticker, "Fehler": str(exc)[:180]})
     if rows:
-        df = pd.DataFrame(rows).sort_values(["__prio", "Ticker"]).drop(columns=["__prio"], errors="ignore").reset_index(drop=True)
+        df = pd.DataFrame(rows).sort_values(["__prio", "__score", "Ticker"], ascending=[True, False, True]).drop(columns=["__prio", "__score"], errors="ignore").reset_index(drop=True)
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Ticker", "Name", "Kurs", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
@@ -5984,6 +6050,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             "ampel": new_ampel,
             "status": new_status,
             "radar_bucket": str(row.get("Radar-Bucket") or ""),
+            "live_score": str(row.get("Live-Score") or ""),
             "grade": str(row.get("Grade") or ""),
             "crv": str(row.get("CRV") or ""),
             "price": row.get("Kurs"),
@@ -5998,6 +6065,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                 "Von": prev_label,
                 "Zu": f"{new_ampel} {new_status}".strip(),
                 "Kurs": row.get("Kurs"),
+                "Live-Score": row.get("Live-Score"),
                 "Grade": row.get("Grade"),
                 "Radar-Bucket": row.get("Radar-Bucket"),
                 "CRV": row.get("CRV"),
@@ -19196,8 +19264,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.9")
-            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v22.10")
+            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
             lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
             with lm1:
                 live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
@@ -19286,7 +19354,15 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         yellow_count = int((live_df["Ampel"] == "🟡").sum()) if "Ampel" in live_df.columns else 0
                         red_count = int((live_df["Ampel"] == "🔴").sum()) if "Ampel" in live_df.columns else 0
                         changed_count = int((live_df["Änderung"].astype(str).isin(["Neu", "Verbessert", "Verschlechtert", "Geändert"])).sum()) if "Änderung" in live_df.columns else 0
-                        st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
+                        score_txt = ""
+                        if "Live-Score" in live_df.columns:
+                            try:
+                                score_vals = live_df["Live-Score"].astype(str).str.extract(r"(\d+)")[0].dropna().astype(float)
+                                if not score_vals.empty:
+                                    score_txt = f" · Score Ø {score_vals.mean():.0f}/100"
+                            except Exception:
+                                score_txt = ""
+                        st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
                         if live_events_df is not None and not live_events_df.empty:
                             with st.expander("Statuswechsel-Historie dieser App-Session", expanded=bool(changed_count)):
                                 event_filter = st.selectbox("Historie anzeigen", ["Alle", "Nur verbessert", "Nur verschlechtert", "Nur neue/geänderte"], index=0, key="live_watchlist_history_filter_v220")

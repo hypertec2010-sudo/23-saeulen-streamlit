@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v22.17"
+APP_VERSION = "v23.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -18706,6 +18706,167 @@ def _legacy_analyze_stock(
     }
 
 
+# ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
+def _v230_safe_float(val, default=None):
+    try:
+        if val in [None, "", "-", "n/a", "nan"]:
+            return default
+        f = float(str(val).replace("%", "").replace(",", ".").strip())
+        if np.isfinite(f) and not pd.isna(f):
+            return f
+    except Exception:
+        pass
+    return default
+
+
+def _v230_price_text(val, digits=2):
+    f = _v230_safe_float(val, default=None)
+    if f is None:
+        return "n/a"
+    try:
+        return f"{f:.{int(digits)}f}"
+    except Exception:
+        return str(round(f, 2))
+
+
+def _v230_extract_position_inputs(result, style_name="Ausgewogen"):
+    """Robuste Entry/Stop/Ziel-Basis fuer den Positionsgroessen-Rechner.
+
+    Der Rechner soll keine neue Kaufempfehlung erzeugen, sondern aus einem bereits
+    interessanten Live-/Chart-Setup die Risiko- und Stueckzahlfrage beantworten.
+    """
+    r = result or {}
+    try:
+        decision = build_professional_radar_decision_v18(r, style_name)
+    except Exception:
+        decision = {}
+    try:
+        rr = build_radar_entry_rr_package_v182(r)
+    except Exception:
+        rr = {}
+
+    price = _v230_safe_float(rr.get("price"), default=None)
+    if price is None:
+        try:
+            price = _v230_safe_float(_v210_alert_price(r), default=None)
+        except Exception:
+            price = None
+    if price is None:
+        price = _v230_safe_float(r.get("price") or r.get("Aktueller_Kurs") or r.get("regularMarketPrice") or r.get("currentPrice"), default=None)
+
+    entry_zone = str(rr.get("entry_zone") or decision.get("entry_zone") or _radar_v182_entry_zone_text(r) or "-").strip()
+    try:
+        zone_low, zone_high = _radar_v182_parse_zone(entry_zone)
+    except Exception:
+        zone_low, zone_high = None, None
+
+    stop = _v230_safe_float(rr.get("stop"), default=None)
+    if stop is None:
+        try:
+            stop = _radar_v182_stop_value(r)
+        except Exception:
+            stop = None
+    stop = _v230_safe_float(stop, default=None)
+
+    target = _v230_safe_float(rr.get("tp1"), default=None)
+    target_source = str(rr.get("target_source") or "strukturelles Hauptziel").strip()
+    if target is None:
+        try:
+            target, target_source = _radar_v209_main_target_value(r, price=price)
+        except Exception:
+            target, target_source = None, target_source
+    target = _v230_safe_float(target, default=None)
+
+    # Default-Entry: aktueller Kurs, weil Positionsgroesse meist fuer eine jetzt
+    # gepruefte Order berechnet wird. Die Entry-Zone bleibt sichtbar und kann
+    # manuell uebersteuert werden.
+    entry_default = price
+    if entry_default is None and zone_high is not None:
+        entry_default = zone_high
+
+    status_hint = str(decision.get("bucket") or "-").strip()
+    grade = str(decision.get("grade") or "-").strip()
+    action = str(decision.get("next_step") or "-").strip()
+    crv = _v230_safe_float(rr.get("crv"), default=None)
+
+    return {
+        "price": price,
+        "entry_default": entry_default,
+        "entry_zone": entry_zone,
+        "zone_low": _v230_safe_float(zone_low, default=None),
+        "zone_high": _v230_safe_float(zone_high, default=None),
+        "stop": stop,
+        "target": target,
+        "target_source": target_source or "Ziel",
+        "bucket": status_hint,
+        "grade": grade,
+        "action": action,
+        "crv": crv,
+    }
+
+
+def _v230_calculate_position_size(entry, stop, target, account_size, risk_pct, max_position_pct=None):
+    entry = _v230_safe_float(entry, default=None)
+    stop = _v230_safe_float(stop, default=None)
+    target = _v230_safe_float(target, default=None)
+    account_size = _v230_safe_float(account_size, default=None)
+    risk_pct = _v230_safe_float(risk_pct, default=None)
+    max_position_pct = _v230_safe_float(max_position_pct, default=None)
+
+    if entry is None or stop is None or account_size is None or risk_pct is None:
+        return {"ok": False, "error": "Entry, Stop, Depotgroesse oder Risiko fehlen."}
+    if entry <= 0 or stop <= 0 or account_size <= 0 or risk_pct <= 0:
+        return {"ok": False, "error": "Entry, Stop, Depotgroesse und Risiko muessen groesser als 0 sein."}
+    unit_risk = entry - stop
+    if unit_risk <= 0:
+        return {"ok": False, "error": "Stop/Invalidierung liegt nicht unter dem Entry. Bitte Stop manuell pruefen."}
+
+    risk_amount = account_size * (risk_pct / 100.0)
+    shares_raw = risk_amount / unit_risk
+    shares_floor = int(max(0, np.floor(shares_raw)))
+    position_value = shares_floor * entry
+    actual_risk = shares_floor * unit_risk
+    actual_risk_pct = (actual_risk / account_size * 100.0) if account_size else None
+    stop_distance_pct = unit_risk / entry * 100.0
+
+    max_position_value = None
+    max_position_shares = None
+    capped = False
+    if max_position_pct is not None and max_position_pct > 0:
+        max_position_value = account_size * (max_position_pct / 100.0)
+        max_position_shares = int(max(0, np.floor(max_position_value / entry)))
+        if shares_floor > max_position_shares:
+            shares_floor = max_position_shares
+            position_value = shares_floor * entry
+            actual_risk = shares_floor * unit_risk
+            actual_risk_pct = (actual_risk / account_size * 100.0) if account_size else None
+            capped = True
+
+    reward = None
+    crv = None
+    if target is not None and target > entry:
+        reward = target - entry
+        crv = reward / unit_risk if unit_risk > 0 else None
+
+    return {
+        "ok": True,
+        "risk_amount": risk_amount,
+        "unit_risk": unit_risk,
+        "shares_raw": shares_raw,
+        "shares": shares_floor,
+        "position_value": position_value,
+        "actual_risk": actual_risk,
+        "actual_risk_pct": actual_risk_pct,
+        "stop_distance_pct": stop_distance_pct,
+        "target": target,
+        "reward": reward,
+        "crv": crv,
+        "max_position_value": max_position_value,
+        "max_position_shares": max_position_shares,
+        "capped": capped,
+    }
+
+
 # ---------- Main App Flow ----------
 logo_path = Path("a_logo_for_the_capital_hill_score_model_is_promi.png")
 
@@ -19969,6 +20130,120 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             except Exception:
                                 score_txt = ""
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
+
+                        # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.0", expanded=False):
+                            st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
+                            calc_df = live_df.copy()
+                            if not calc_df.empty and "Ampel" in calc_df.columns:
+                                preferred_mask = calc_df["Ampel"].isin(["🟢", "🟡"])
+                                if bool(preferred_mask.any()):
+                                    calc_df = calc_df[preferred_mask].copy()
+                            if calc_df.empty:
+                                st.info("Keine grünen oder gelben Live-Kandidaten für den Risiko-Rechner sichtbar. Filter anpassen oder Watchlist erneut prüfen.")
+                            else:
+                                def _v230_row_label(row):
+                                    tk = str(row.get("Ticker") or "-")
+                                    stx = str(row.get("Status") or "-")
+                                    score = str(row.get("Live-Score") or "-")
+                                    price_txt = str(row.get("Kurs") or "n/a")
+                                    return f"{tk} · {stx} · {score} · Kurs {price_txt}"
+                                calc_options = [_v230_row_label(row) for _, row in calc_df.iterrows()]
+                                csel1, csel2 = st.columns([1.5, 1.0])
+                                with csel1:
+                                    selected_calc_label = st.selectbox("Setup auswählen", calc_options, index=0, key="v230_risk_calc_selected_live_row")
+                                selected_calc_idx = calc_options.index(selected_calc_label)
+                                selected_calc_row = calc_df.iloc[selected_calc_idx].to_dict()
+                                selected_calc_ticker = str(selected_calc_row.get("Ticker") or "").strip().upper()
+                                with csel2:
+                                    risk_currency = st.text_input("Währung/Einheit", value=st.session_state.get("v230_risk_currency", "EUR"), key="v230_risk_currency_widget")
+                                    st.session_state.v230_risk_currency = risk_currency
+
+                                with st.spinner(f"Risiko-Basis für {selected_calc_ticker} wird berechnet ..."):
+                                    try:
+                                        risk_result = analyze_stock(
+                                            ticker=selected_calc_ticker,
+                                            horizon="Swing (1-4 Wochen)",
+                                            depot=10000,
+                                            risk_pct=1.0,
+                                            override=0.0,
+                                            buy_in_override=0.0,
+                                            smart_money_default=True,
+                                            strict_mode=True,
+                                        )
+                                        risk_inputs = _v230_extract_position_inputs(risk_result, style_name=monitor_style)
+                                        risk_error = None
+                                    except Exception as exc:
+                                        risk_inputs = {}
+                                        risk_error = str(exc)[:220]
+                                if risk_error:
+                                    st.warning(f"Risiko-Basis konnte nicht berechnet werden: {risk_error}")
+                                else:
+                                    st.markdown(
+                                        f"**{selected_calc_ticker}** · Status: **{selected_calc_row.get('Status', '-')}** · Live-Score: **{selected_calc_row.get('Live-Score', '-')}** · Radar-Bucket: **{selected_calc_row.get('Radar-Bucket', '-')}**"
+                                    )
+                                    st.caption(
+                                        f"Kurs {_v230_price_text(risk_inputs.get('price'))} · Entry-Zone {risk_inputs.get('entry_zone') or '-'} · Vorschlags-Stop {_v230_price_text(risk_inputs.get('stop'))} · Ziel {_v230_price_text(risk_inputs.get('target'))} ({risk_inputs.get('target_source') or '-'})"
+                                    )
+                                    rc1, rc2, rc3, rc4 = st.columns(4)
+                                    default_account = float(st.session_state.get("v230_account_size", 50000.0) or 50000.0)
+                                    default_risk_pct = float(st.session_state.get("v230_risk_pct", 0.5) or 0.5)
+                                    default_max_pos = float(st.session_state.get("v230_max_position_pct", 12.0) or 12.0)
+                                    with rc1:
+                                        account_size = st.number_input("Depotgröße", min_value=0.0, value=default_account, step=1000.0, key="v230_account_size_widget")
+                                        st.session_state.v230_account_size = account_size
+                                    with rc2:
+                                        risk_pct_input = st.number_input("Risiko pro Trade (%)", min_value=0.01, max_value=10.0, value=default_risk_pct, step=0.05, key="v230_risk_pct_widget")
+                                        st.session_state.v230_risk_pct = risk_pct_input
+                                    with rc3:
+                                        entry_default = _v230_safe_float(risk_inputs.get("entry_default"), default=0.0) or 0.0
+                                        entry_input = st.number_input("Geplanter Entry", min_value=0.0, value=float(round(entry_default, 4)), step=0.01, key="v230_entry_widget")
+                                    with rc4:
+                                        stop_default = _v230_safe_float(risk_inputs.get("stop"), default=0.0) or 0.0
+                                        stop_input = st.number_input("Stop / Invalidierung", min_value=0.0, value=float(round(stop_default, 4)), step=0.01, key="v230_stop_widget")
+
+                                    rc5, rc6, rc7 = st.columns([1.0, 1.0, 1.2])
+                                    with rc5:
+                                        target_default = _v230_safe_float(risk_inputs.get("target"), default=0.0) or 0.0
+                                        target_input = st.number_input("Ziel / Teilziel", min_value=0.0, value=float(round(target_default, 4)), step=0.01, key="v230_target_widget")
+                                    with rc6:
+                                        max_position_pct = st.number_input("Max. Positionsanteil (%)", min_value=0.0, max_value=100.0, value=default_max_pos, step=1.0, key="v230_max_position_pct_widget")
+                                        st.session_state.v230_max_position_pct = max_position_pct
+                                    with rc7:
+                                        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                                        use_current_as_entry = st.button("Aktuellen Kurs als Entry setzen", use_container_width=True, key="v230_use_current_price_btn")
+                                        if use_current_as_entry:
+                                            st.session_state.v230_entry_widget = float(round(_v230_safe_float(risk_inputs.get("price"), default=entry_input) or entry_input, 4))
+                                            st.rerun()
+
+                                    calc_pkg = _v230_calculate_position_size(entry_input, stop_input, target_input, account_size, risk_pct_input, max_position_pct=max_position_pct)
+                                    if not calc_pkg.get("ok"):
+                                        st.warning(calc_pkg.get("error") or "Positionsgröße nicht berechenbar.")
+                                    else:
+                                        m1, m2, m3, m4 = st.columns(4)
+                                        with m1:
+                                            st.metric("Stückzahl", f"{int(calc_pkg['shares'])}")
+                                        with m2:
+                                            st.metric("Positionswert", f"{calc_pkg['position_value']:,.0f} {risk_currency}".replace(",", "."))
+                                        with m3:
+                                            st.metric("Max. Risiko", f"{calc_pkg['actual_risk']:,.0f} {risk_currency}".replace(",", "."), delta=(f"{calc_pkg['actual_risk_pct']:.2f}% Depot" if calc_pkg.get('actual_risk_pct') is not None else None))
+                                        with m4:
+                                            crv_show = calc_pkg.get("crv")
+                                            st.metric("CRV auf Ziel", "n/a" if crv_show is None else f"{crv_show:.2f}")
+                                        if calc_pkg.get("capped"):
+                                            st.info("Positionsgröße wurde durch den maximalen Positionsanteil begrenzt.")
+                                        st.caption(
+                                            f"Risiko je Aktie: {calc_pkg['unit_risk']:.2f} · Stop-Abstand: {calc_pkg['stop_distance_pct']:.1f}% · rechnerische Stückzahl ohne Positionslimit: {calc_pkg['shares_raw']:.1f}"
+                                        )
+                                        if calc_pkg["shares"] <= 0:
+                                            st.warning("Bei diesen Parametern ergibt sich keine kaufbare Stückzahl. Risiko erhöhen, Stop enger planen oder kleinere Einheit prüfen.")
+                                        elif calc_pkg.get("stop_distance_pct", 0) > 18:
+                                            st.warning("Großer Stop-Abstand: Positionsgröße fällt klein aus. Prüfen, ob ein engerer technischer Stop oder ein Pullback sinnvoller ist.")
+                                        elif calc_pkg.get("crv") is not None and calc_pkg.get("crv") < 1.2:
+                                            st.warning("CRV auf das gewählte Ziel ist schwach. Ziel, Entry oder Stop erneut prüfen.")
+                                        else:
+                                            st.success("Risiko-Plan rechnerisch plausibel. Vor Umsetzung Setup, Liquidität und Stop-Regel final prüfen.")
+
                         if live_events_df is not None and not live_events_df.empty:
                             with st.expander("Statuswechsel-Historie dieser App-Session", expanded=bool(changed_count)):
                                 event_filter = st.selectbox("Historie anzeigen", ["Alle", "Nur verbessert", "Nur verschlechtert", "Nur neue/geänderte"], index=0, key="live_watchlist_history_filter_v220")

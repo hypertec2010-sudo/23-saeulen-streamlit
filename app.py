@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.0"
+APP_VERSION = "v23.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -20001,9 +20001,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v22.17")
-            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung.")
-            lm1, lm2, lm3, lm4 = st.columns([1.1, 1.2, 1.2, 1.0])
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.1")
+            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor verwendet dauerhaft den Prüfstil Charttechnik.")
+            lm1, lm2, lm3 = st.columns([1.1, 1.2, 1.4])
             with lm1:
                 live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
                 st.session_state.live_watchlist_monitor_enabled = live_monitor_enabled
@@ -20015,11 +20015,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 refresh_label = st.selectbox("Refresh", refresh_options, index=refresh_options.index(current_refresh), key="live_watchlist_refresh_interval_widget")
                 st.session_state.live_watchlist_refresh_interval = refresh_label
             with lm3:
-                style_options_monitor = ["Ausgewogen", "Leader", "Charttechnik", "Turnaround"]
-                monitor_style = st.selectbox("Prüfstil", style_options_monitor, index=0, key="live_watchlist_style_widget")
-            with lm4:
                 only_active = st.checkbox("Nur grün/gelb", value=bool(st.session_state.get("live_watchlist_only_active", False)), key="live_watchlist_only_active_widget")
                 st.session_state.live_watchlist_only_active = only_active
+                st.caption("Prüfstil: Charttechnik")
+            # v23.1: Der Live-Monitor ist ein charttechnischer Trigger-Monitor.
+            # Deshalb wird der Prüfstil dauerhaft auf Charttechnik gesetzt und nicht mehr
+            # als eigene Bedienoption angeboten.
+            monitor_style = "Charttechnik"
+            st.session_state.live_watchlist_style = monitor_style
 
             run_live_monitor = False
             lm_run1, lm_run2 = st.columns([1.0, 2.0])
@@ -20132,7 +20135,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.0", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.1", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:

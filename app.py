@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.1"
+APP_VERSION = "v23.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5511,7 +5511,41 @@ def _v2214_get_start_price_meta_map(watchlist_name):
     return out
 
 
-def backfill_watchlist_start_prices_v2214(watchlist_name, tickers, *, force=False, meta_by_ticker=None, prefer_historical=True):
+def _v232_is_current_baseline_source(source):
+    txt = str(source or "").strip().lower()
+    return any(x in txt for x in [
+        "backfill aktuell",
+        "session-baseline",
+        "baseline ab jetzt",
+        "aktueller kurs",
+        "current fallback",
+    ])
+
+
+def _v232_delete_current_baselines_for_watchlist(watchlist_name):
+    """Entfernt automatisch erzeugte Aktuell-Baselines, die wie echte Einstandskurse wirken koennen."""
+    wl = str(watchlist_name or "").strip()
+    if not wl:
+        return 0
+    store = _v2214_load_start_price_store()
+    if not isinstance(store, dict):
+        return 0
+    prefix = f"{wl}::".lower()
+    removed = 0
+    for key in list(store.keys()):
+        item = store.get(key)
+        if not str(key).lower().startswith(prefix) or not isinstance(item, dict):
+            continue
+        source = item.get("Startkurs_Quelle") or item.get("Start_Source") or item.get("Quelle")
+        if _v232_is_current_baseline_source(source):
+            store.pop(key, None)
+            removed += 1
+    if removed:
+        _v2214_save_start_price_store(store)
+    return removed
+
+
+def backfill_watchlist_start_prices_v2214(watchlist_name, tickers, *, force=False, meta_by_ticker=None, prefer_historical=True, allow_current_fallback=False):
     wl = str(watchlist_name or "").strip()
     added = 0
     skipped = 0
@@ -5542,9 +5576,12 @@ def backfill_watchlist_start_prices_v2214(watchlist_name, tickers, *, force=Fals
                 source = "Historischer Backfill"
                 historical += 1
 
-        if price is None:
+        # v23.2: Bei bestehenden Watchlist-Werten keinen aktuellen Kurs mehr automatisch
+        # als scheinbaren Einstand verwenden. Das erzeugte irrefuehrende Anzeigen wie
+        # Startkurs = aktueller Kurs und +0.0%. Aktuelle Baseline nur, wenn explizit erlaubt.
+        if price is None and allow_current_fallback:
             price = _v2214_get_current_price_for_ticker(tk)
-            source = "Backfill aktuell"
+            source = "Baseline ab jetzt"
             if price is not None:
                 current_fallback += 1
 
@@ -6141,14 +6178,21 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     if start_price is not None and price_float is not None and start_price > 0:
         perf_pct = (price_float / start_price - 1.0) * 100.0
 
-    if start_price is None:
+    # v23.2: Eine automatisch gesetzte "Baseline ab jetzt" ist kein echter Einstands-/
+    # Aufnahmekurs. Wenn sie exakt dem aktuellen Kurs entspricht, nicht als +0.0%-
+    # Performance ausgeben, weil das wie ein Fehler bzw. falscher Einstand wirkt.
+    is_current_baseline = _v232_is_current_baseline_source(start_price_source)
+    if start_price is None or (is_current_baseline and perf_pct is not None and abs(float(perf_pct)) < 0.05):
         start_price_text = "n/a"
+        perf_text = "n/a"
+        if is_current_baseline:
+            start_price_source = "Baseline ab jetzt"
     else:
         start_price_text = round(float(start_price), 4)
-    if perf_pct is None:
-        perf_text = "n/a"
-    else:
-        perf_text = f"{perf_pct:+.1f}%"
+        if perf_pct is None:
+            perf_text = "n/a"
+        else:
+            perf_text = f"{perf_pct:+.1f}%"
 
     ma20_stretch_pct = None
     if price_float is not None and ma20_val is not None and ma20_val > 0:
@@ -19862,10 +19906,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     start_meta_from_sheet_v2216[_tk] = dict(_row)
                     except Exception:
                         start_meta_from_sheet_v2216 = {}
-                    c_back1, c_back2, c_back3 = st.columns([1.0, 1.0, 1.4])
+                    c_back1, c_back2, c_back3, c_back4 = st.columns([1.0, 1.0, 1.0, 1.2])
                     with c_back1:
-                        if st.button("Fehlende Startkurse nachtragen", use_container_width=True, key="backfill_start_prices_v2214"):
-                            ok, msg = backfill_watchlist_start_prices_v2214(selected_watchlist_name, current_tickers, force=False, meta_by_ticker=start_meta_from_sheet_v2216, prefer_historical=True)
+                        if st.button("Historische Startkurse nachtragen", use_container_width=True, key="backfill_start_prices_v2214"):
+                            ok, msg = backfill_watchlist_start_prices_v2214(selected_watchlist_name, current_tickers, force=False, meta_by_ticker=start_meta_from_sheet_v2216, prefer_historical=True, allow_current_fallback=False)
                             if ok:
                                 st.success(msg)
                                 trigger_ui_refresh()
@@ -19873,14 +19917,19 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 st.warning(msg)
                     with c_back2:
                         if st.button("Historisch neu berechnen", use_container_width=True, key="recalc_start_prices_historical_v2216"):
-                            ok, msg = backfill_watchlist_start_prices_v2214(selected_watchlist_name, current_tickers, force=True, meta_by_ticker=start_meta_from_sheet_v2216, prefer_historical=True)
+                            ok, msg = backfill_watchlist_start_prices_v2214(selected_watchlist_name, current_tickers, force=True, meta_by_ticker=start_meta_from_sheet_v2216, prefer_historical=True, allow_current_fallback=False)
                             if ok:
                                 st.success(msg)
                                 trigger_ui_refresh()
                             else:
                                 st.warning(msg)
                     with c_back3:
-                        st.caption("Fehlende Startkurse werden bevorzugt historisch aus dem Aufnahmedatum berechnet. Wenn kein Aufnahmedatum existiert, wird der aktuelle Kurs nur als neue Baseline ab jetzt gesetzt. Für alte Watchlists ohne Aufnahmedatum bitte den Startkurs oder das Aufnahmedatum manuell setzen.")
+                        if st.button("Aktuelle Baselines löschen", use_container_width=True, key="delete_current_baselines_v232"):
+                            n = _v232_delete_current_baselines_for_watchlist(selected_watchlist_name)
+                            st.success(f"{n} aktuelle Baseline(s) gelöscht." if n else "Keine aktuellen Baselines gefunden.")
+                            trigger_ui_refresh()
+                    with c_back4:
+                        st.caption("v23.2: Bestehende Werte bekommen nicht mehr automatisch den aktuellen Kurs als Einstand. Wenn kein Aufnahmedatum existiert, bitte Startkurs/Datum manuell setzen. 'Aktuelle Baselines löschen' entfernt irreführende +0.0%-Einträge.")
 
                     st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
                     if current_tickers:
@@ -20001,7 +20050,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.1")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.2")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor verwendet dauerhaft den Prüfstil Charttechnik.")
             lm1, lm2, lm3 = st.columns([1.1, 1.2, 1.4])
             with lm1:
@@ -20018,7 +20067,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 only_active = st.checkbox("Nur grün/gelb", value=bool(st.session_state.get("live_watchlist_only_active", False)), key="live_watchlist_only_active_widget")
                 st.session_state.live_watchlist_only_active = only_active
                 st.caption("Prüfstil: Charttechnik")
-            # v23.1: Der Live-Monitor ist ein charttechnischer Trigger-Monitor.
+            # v23.2: Der Live-Monitor ist ein charttechnischer Trigger-Monitor.
             # Deshalb wird der Prüfstil dauerhaft auf Charttechnik gesetzt und nicht mehr
             # als eigene Bedienoption angeboten.
             monitor_style = "Charttechnik"
@@ -20135,7 +20184,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.1", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.2", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:

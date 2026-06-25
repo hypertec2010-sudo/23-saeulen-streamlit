@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.2"
+APP_VERSION = "v23.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6154,23 +6154,28 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         if start_price is not None and not start_price_source:
             start_price_source = "Chart-Historie"
 
-    # Wenn kein Aufnahmekurs rekonstruierbar ist, Session-Baseline setzen.
-    # Damit ist ab dem naechsten Refresh trotzdem eine echte Entwicklung sichtbar.
+    # v23.3: Im Live-Monitor KEINE automatische Session-Baseline aus dem aktuellen Kurs setzen.
+    # Sonst entstehen irrefuehrende Kombinationen wie Startkurs n/a / Seit Aufnahme n/a /
+    # Quelle "Baseline ab jetzt" oder Startkurs = aktueller Kurs = +0.0%.
+    # Startkurse duerfen hier nur aus echten Watchlist-Metadaten, manuellem Store
+    # oder historischem Backfill kommen. Neue Watchlist-Eintraege setzen ihren
+    # Startkurs beim Hinzufuegen; alte Werte muessen manuell/historisch nachgetragen werden.
     try:
         perf_state = st.session_state.get("live_watchlist_start_prices_v2212", {})
-        if not isinstance(perf_state, dict):
-            perf_state = {}
-        wl_key = str(meta.get("Watchlist_Name") or meta.get("watchlist_name") or "default").strip() or "default"
-        baseline_key = f"{wl_key}::{ticker}"
-        if start_price is None and baseline_key in perf_state:
-            start_price = _v2212_valid_price(perf_state.get(baseline_key))
-            if start_price is not None and not start_price_source:
-                start_price_source = "Session-Baseline"
-        if start_price is None and price_float is not None:
-            start_price = price_float
-            start_price_source = "Session-Baseline ab jetzt"
-            perf_state[baseline_key] = start_price
-            st.session_state.live_watchlist_start_prices_v2212 = perf_state
+        if isinstance(perf_state, dict):
+            wl_key = str(meta.get("Watchlist_Name") or meta.get("watchlist_name") or "default").strip() or "default"
+            baseline_key = f"{wl_key}::{ticker}"
+            stored_baseline = _v2212_valid_price(perf_state.get(baseline_key))
+            # Nur noch alte, echte Session-Werte verwenden, wenn sie NICHT exakt dem aktuellen Kurs
+            # entsprechen und damit plausibel eine vorherige Baseline darstellen.
+            if start_price is None and stored_baseline is not None and price_float is not None:
+                try:
+                    if abs(float(stored_baseline) - float(price_float)) / max(float(price_float), 1e-9) > 0.002:
+                        start_price = stored_baseline
+                        if not start_price_source:
+                            start_price_source = "Session-Baseline"
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -6185,8 +6190,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     if start_price is None or (is_current_baseline and perf_pct is not None and abs(float(perf_pct)) < 0.05):
         start_price_text = "n/a"
         perf_text = "n/a"
-        if is_current_baseline:
-            start_price_source = "Baseline ab jetzt"
+        # Wenn kein echter Startkurs angezeigt wird, darf auch keine scheinbare
+        # Quelle wie "Baseline ab jetzt" stehen. Quelle/Startkurs/Performance muessen konsistent sein.
+        start_price_source = "n/a"
     else:
         start_price_text = round(float(start_price), 4)
         if perf_pct is None:
@@ -6404,7 +6410,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
         "Startkurs": start_price_text,
         "Seit Aufnahme": perf_text,
-        "Startquelle": start_price_source or "n/a",
+        "Startquelle": "n/a" if str(start_price_text).lower() == "n/a" else (start_price_source or "n/a"),
         "Grade": grade,
         "Radar-Bucket": bucket,
         "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
@@ -19929,7 +19935,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             st.success(f"{n} aktuelle Baseline(s) gelöscht." if n else "Keine aktuellen Baselines gefunden.")
                             trigger_ui_refresh()
                     with c_back4:
-                        st.caption("v23.2: Bestehende Werte bekommen nicht mehr automatisch den aktuellen Kurs als Einstand. Wenn kein Aufnahmedatum existiert, bitte Startkurs/Datum manuell setzen. 'Aktuelle Baselines löschen' entfernt irreführende +0.0%-Einträge.")
+                        st.caption("v23.3: Der Live-Monitor setzt keinen aktuellen Kurs mehr automatisch als Baseline. Wenn kein Aufnahmedatum existiert, bitte Startkurs/Datum manuell setzen. 'Aktuelle Baselines löschen' entfernt irreführende +0.0%-Einträge.")
 
                     st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
                     if current_tickers:
@@ -20050,7 +20056,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.2")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.3")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor verwendet dauerhaft den Prüfstil Charttechnik.")
             lm1, lm2, lm3 = st.columns([1.1, 1.2, 1.4])
             with lm1:
@@ -20184,7 +20190,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.2", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.3", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:

@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.4"
+APP_VERSION = "v23.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5295,7 +5295,7 @@ def _v2214_start_price_store_path():
 
 
 def _v2214_load_start_price_store():
-    # v23.4: Store robust gegen Cloud-/Reload-Situationen.
+    # v23.5: Store robust gegen Cloud-/Reload-Situationen.
     # Primaer Sidecar-Datei, Fallback/Mirror in st.session_state.
     session_store = {}
     try:
@@ -5535,7 +5535,7 @@ def _v2214_get_start_price_meta_map(watchlist_name):
 
 def _v232_is_current_baseline_source(source):
     txt = str(source or "").strip().lower()
-    # v23.4: Manuell bestaetigte Baselines sind gueltige Startpunkte ab jetzt
+    # v23.5: Manuell bestaetigte Baselines sind gueltige Startpunkte ab jetzt
     # und duerfen im Live-Monitor angezeigt werden. Nur automatische aktuelle
     # Fallbacks gelten als irrefuehrend und werden ausgeblendet/loeschbar.
     if "manuell" in txt:
@@ -6220,7 +6220,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         if start_price is not None and not start_price_source:
             start_price_source = "Chart-Historie"
 
-    # v23.4: Im Live-Monitor KEINE automatische Session-Baseline aus dem aktuellen Kurs setzen.
+    # v23.5: Im Live-Monitor KEINE automatische Session-Baseline aus dem aktuellen Kurs setzen.
     # Sonst entstehen irrefuehrende Kombinationen wie Startkurs n/a / Seit Aufnahme n/a /
     # Quelle "Baseline ab jetzt" oder Startkurs = aktueller Kurs = +0.0%.
     # Startkurse duerfen hier nur aus echten Watchlist-Metadaten, manuellem Store
@@ -6518,7 +6518,19 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
         except Exception as exc:
             errors.append({"Ticker": ticker, "Fehler": str(exc)[:180]})
     if rows:
-        df = pd.DataFrame(rows).sort_values(["__prio", "__score", "Ticker"], ascending=[True, False, True]).drop(columns=["__prio", "__score"], errors="ignore").reset_index(drop=True)
+        df = pd.DataFrame(rows)
+        # v23.5: Anzeige-Sortierung im Live-Monitor nach Ampel, nicht nach interner
+        # Prioritaet. Gewuenschte Reihenfolge: gruen, gelb, weiss, rot.
+        # Blau wird als informativer Zwischenstatus nach gelb und vor weiss einsortiert.
+        def _v235_live_ampel_sort(val):
+            icon = str(val or "").strip()[:1]
+            return {"🟢": 0, "🟡": 1, "🔵": 2, "⚪": 3, "🔴": 4}.get(icon, 5)
+        df["__ampel_sort"] = df.get("Ampel", "").apply(_v235_live_ampel_sort)
+        df = (
+            df.sort_values(["__ampel_sort", "__score", "Ticker"], ascending=[True, False, True])
+              .drop(columns=["__prio", "__score", "__ampel_sort"], errors="ignore")
+              .reset_index(drop=True)
+        )
     else:
         df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Ticker", "Name", "Kurs", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
@@ -20009,7 +20021,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             else:
                                 st.warning(msg)
                     with c_back5:
-                        st.caption("v23.4: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
+                        st.caption("v23.5: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
 
                     st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
                     if current_tickers:
@@ -20130,7 +20142,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.4")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.5")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor verwendet dauerhaft den Prüfstil Charttechnik.")
             lm1, lm2, lm3 = st.columns([1.1, 1.2, 1.4])
             with lm1:
@@ -20264,7 +20276,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.4", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.5", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:

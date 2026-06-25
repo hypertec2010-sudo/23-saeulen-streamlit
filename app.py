@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.5"
+APP_VERSION = "v23.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5295,7 +5295,7 @@ def _v2214_start_price_store_path():
 
 
 def _v2214_load_start_price_store():
-    # v23.5: Store robust gegen Cloud-/Reload-Situationen.
+    # v23.6: Store robust gegen Cloud-/Reload-Situationen.
     # Primaer Sidecar-Datei, Fallback/Mirror in st.session_state.
     session_store = {}
     try:
@@ -5535,7 +5535,7 @@ def _v2214_get_start_price_meta_map(watchlist_name):
 
 def _v232_is_current_baseline_source(source):
     txt = str(source or "").strip().lower()
-    # v23.5: Manuell bestaetigte Baselines sind gueltige Startpunkte ab jetzt
+    # v23.6: Manuell bestaetigte Baselines sind gueltige Startpunkte ab jetzt
     # und duerfen im Live-Monitor angezeigt werden. Nur automatische aktuelle
     # Fallbacks gelten als irrefuehrend und werden ausgeblendet/loeschbar.
     if "manuell" in txt:
@@ -6220,7 +6220,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         if start_price is not None and not start_price_source:
             start_price_source = "Chart-Historie"
 
-    # v23.5: Im Live-Monitor KEINE automatische Session-Baseline aus dem aktuellen Kurs setzen.
+    # v23.6: Im Live-Monitor KEINE automatische Session-Baseline aus dem aktuellen Kurs setzen.
     # Sonst entstehen irrefuehrende Kombinationen wie Startkurs n/a / Seit Aufnahme n/a /
     # Quelle "Baseline ab jetzt" oder Startkurs = aktueller Kurs = +0.0%.
     # Startkurse duerfen hier nur aus echten Watchlist-Metadaten, manuellem Store
@@ -6455,16 +6455,59 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     if perf_pct is not None and perf_pct >= 12.0 and status_icon in {"🟡", "⚪", "🔵"}:
         live_score_raw += min(10.0, (perf_pct - 8.0) * 0.35)
 
-    if status_icon == "🟢":
-        live_score = _v2210_clip(live_score_raw, 75.0, 98.0)
-    elif status_icon == "🟡":
-        live_score = _v2210_clip(live_score_raw, 50.0, 74.0)
-    elif status_icon == "🔵":
-        live_score = _v2210_clip(live_score_raw, 45.0, 66.0)
-    elif status_icon == "🔴":
-        live_score = _v2210_clip(live_score_raw, 0.0, 39.0)
+    # v23.6: Score/Ampel-Alignment.
+    # Bisher wurde der numerische Score nachtraeglich an die vorab bestimmte Ampel
+    # geklemmt. Dadurch konnte 50/100 gelb sein, waehrend 58/100 weiss blieb.
+    # Jetzt ist der Rohscore zuerst massgeblich; harte Gruen-/Rot-Gates bleiben
+    # erhalten, aber Weiss/Gelb/Blau werden logisch an den Score angeglichen.
+    score_candidate = _v2210_clip(live_score_raw, 0.0, 100.0)
+
+    immutable_red = bool("Invalidierung gebrochen" in alert_types or (status_icon == "🔴" and (entry_hard_gate or bucket == "Warnsignale / meiden")))
+    immutable_green = bool(status_icon == "🟢")
+    weak_yellow_without_chart_trigger = bool(
+        status_icon == "🟡"
+        and score_candidate < 55.0
+        and not (bucket_near or entry_reached or wave_active or bucket_active)
+        and not (perf_pct is not None and perf_pct >= 6.0)
+        and status in {"Selektiv prüfen", "Nahe am Trigger"}
+    )
+
+    if immutable_red:
+        live_score = _v2210_clip(score_candidate, 0.0, 39.0)
+    elif immutable_green:
+        live_score = _v2210_clip(score_candidate, 75.0, 98.0)
     else:
-        live_score = _v2210_clip(live_score_raw, 20.0, 58.0)
+        live_score = _v2210_clip(score_candidate, 0.0, 74.0)
+
+        # Niedrige selektive Warnbucket-Faelle nicht kuenstlich gelb halten.
+        if weak_yellow_without_chart_trigger:
+            status_icon, status, priority = "⚪", "Beobachten / Vorsicht", 4
+            reason = "Score noch zu niedrig fuer gelb; Warn-/CRV-Kontext vorhanden, aber kein klarer chartnaher Trigger."
+            monitor_action = "Beobachten: erst bei verbessertem Charttrigger, Reclaim oder klarer Triggernaehe selektiv pruefen."
+
+        # Mittlere bis hohe Scores duerfen nicht weiss bleiben, wenn keine rote Bremse aktiv ist.
+        if status_icon == "⚪" and live_score >= 55.0:
+            status_icon, status, priority = "🟡", "Beobachten / nahe dran", 2
+            reason = "Live-Score liegt im gelben Bereich, aber ein klarer Kauftrigger fehlt noch."
+            monitor_action = "Nahe dran beobachten: Trigger-/Volumenbestätigung, Reclaim oder Pullback mit sauberem Stop abwarten."
+
+        # Blau war semantisch verwirrend: CRV ist Kontext, aber die Ampel soll nach
+        # Handlungsnaehe sortieren. Attraktives CRV ohne Trigger wird als Gelb gefuehrt.
+        if status_icon == "🔵" and live_score >= 55.0:
+            status_icon, status, priority = "🟡", "CRV attraktiv / Trigger offen", 2
+            reason = "CRV ist attraktiv und der Live-Score ist gelb, aber ein aktiver Charttrigger fehlt noch."
+            monitor_action = "CRV attraktiv, aber noch kein aktiver Kauftrigger. Entry/Trigger weiter beobachten."
+        elif status_icon == "🔵" and live_score < 55.0:
+            status_icon, status, priority = "⚪", "CRV beobachten", 4
+            reason = "CRV ist interessant, aber der charttechnische Live-Score reicht noch nicht fuer gelb."
+            monitor_action = "Beobachten: CRV bleibt interessant, aber erst bei Triggernaehe oder Chartfreigabe handeln."
+
+        # Nach einer Status-Anhebung/-Abstufung den Score in einen konsistenten Bereich ziehen.
+        if status_icon == "🟡":
+            live_score = _v2210_clip(live_score, 55.0, 74.0)
+        elif status_icon == "⚪":
+            live_score = _v2210_clip(live_score, 0.0, 54.0)
+
     live_score_int = int(round(live_score))
 
     return {
@@ -6519,7 +6562,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
             errors.append({"Ticker": ticker, "Fehler": str(exc)[:180]})
     if rows:
         df = pd.DataFrame(rows)
-        # v23.5: Anzeige-Sortierung im Live-Monitor nach Ampel, nicht nach interner
+        # v23.6: Anzeige-Sortierung im Live-Monitor nach Ampel, nicht nach interner
         # Prioritaet. Gewuenschte Reihenfolge: gruen, gelb, weiss, rot.
         # Blau wird als informativer Zwischenstatus nach gelb und vor weiss einsortiert.
         def _v235_live_ampel_sort(val):
@@ -20021,7 +20064,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             else:
                                 st.warning(msg)
                     with c_back5:
-                        st.caption("v23.5: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
+                        st.caption("v23.6: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
 
                     st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
                     if current_tickers:
@@ -20142,7 +20185,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.5")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.6")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor verwendet dauerhaft den Prüfstil Charttechnik.")
             lm1, lm2, lm3 = st.columns([1.1, 1.2, 1.4])
             with lm1:
@@ -20276,7 +20319,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.5", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.6", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:

@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.6"
+APP_VERSION = "v23.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6620,6 +6620,148 @@ def _v220_live_change_label(prev_ampel, prev_status, new_ampel, new_status):
         return "Verschlechtert"
     return "Geändert"
 
+def _v237_parse_live_score(value, default=0):
+    """Robustes Parsen von Live-Score-Werten wie '72/100'."""
+    try:
+        txt = str(value or "").strip().replace(",", ".")
+        if "/" in txt:
+            txt = txt.split("/", 1)[0]
+        f = float(txt)
+        if pd.isna(f) or not np.isfinite(f):
+            return default
+        return int(round(max(0, min(100, f))))
+    except Exception:
+        return default
+
+
+def _v237_set_live_row(row, *, ampel=None, status=None, stability=None, reason_prefix=None, action_prefix=None, prio=None):
+    """Kleine Hilfsfunktion fuer die Signal-Hysterese."""
+    if ampel is not None:
+        row["Ampel"] = ampel
+    if status is not None:
+        row["Status"] = status
+    if stability is not None:
+        row["Signal-Stabilität"] = stability
+    if prio is not None:
+        row["__prio"] = prio
+    if reason_prefix:
+        old_reason = str(row.get("Grund") or "").strip()
+        if old_reason and old_reason != "-" and reason_prefix not in old_reason:
+            row["Grund"] = f"{reason_prefix} {old_reason}"
+        else:
+            row["Grund"] = reason_prefix.rstrip()
+    if action_prefix:
+        old_action = str(row.get("Nächste Handlung") or "").strip()
+        if old_action and old_action != "-" and action_prefix not in old_action:
+            row["Nächste Handlung"] = f"{action_prefix} {old_action}"
+        else:
+            row["Nächste Handlung"] = action_prefix.rstrip()
+    return row
+
+
+def _v237_apply_live_signal_hysteresis(row, prev):
+    """Stabilisiert die Live-Ampel gegen Hin-und-her-Springen.
+
+    Ziel: kleine Score-/Trigger-Schwankungen duerfen nicht sofort Gruen/Gelb/Weiss
+    wechseln und damit Overtrading erzeugen. Rot/Invalidierung bleibt sofort wirksam.
+    """
+    row = row.copy()
+    raw_ampel = str(row.get("Ampel") or "").strip()
+    raw_status = str(row.get("Status") or "").strip()
+    score = _v237_parse_live_score(row.get("Live-Score"), default=0)
+    prev = prev if isinstance(prev, dict) else {}
+    prev_ampel = str(prev.get("ampel") or "").strip()
+    prev_status = str(prev.get("status") or "").strip()
+    prev_raw_ampel = str(prev.get("raw_ampel") or "").strip()
+    prev_score = _v237_parse_live_score(prev.get("live_score"), default=score)
+
+    # Default, falls nichts angepasst wird.
+    row["Signal-Stabilität"] = "Bestätigt" if prev_ampel == raw_ampel and prev_status == raw_status and prev_status else "Frisch"
+    row["__raw_ampel"] = raw_ampel
+    row["__raw_status"] = raw_status
+
+    # Harte rote Signale nicht weichzeichnen.
+    if raw_ampel == "🔴" or "invalid" in raw_status.lower() or "blockiert" in raw_status.lower() or "meiden" in raw_status.lower():
+        return _v237_set_live_row(row, stability="Defensiv", prio=5)
+
+    prev_was_green = prev_ampel == "🟢"
+    prev_was_yellow = prev_ampel == "🟡"
+    prev_was_white = prev_ampel == "⚪"
+
+    # Gruen werden: entweder sehr klarer Score oder zwei Checks hintereinander roh gruen.
+    # Erster knapper Gruen-Impuls wird als Gelb/Fast gruen gezeigt.
+    if raw_ampel == "🟢":
+        if prev_was_green or prev_raw_ampel == "🟢" or score >= 82:
+            return _v237_set_live_row(row, stability="Bestätigt", prio=0)
+        return _v237_set_live_row(
+            row,
+            ampel="🟡",
+            status="Fast grün / Bestätigung abwarten",
+            stability="Frisch",
+            reason_prefix="Hysterese: erstes/knappes grünes Signal wird erst nach Bestätigung voll grün.",
+            action_prefix="Nicht sofort aggressiv handeln; nächsten Check bzw. Triggerbestätigung abwarten.",
+            prio=2,
+        )
+
+    # Gruen halten: wenn ein bestehendes gruenes Signal nur leicht auf gelb/weiss faellt,
+    # nicht sofort rauswerfen. Erst bei klarer Verschlechterung unter ca. 68/100 abwerten.
+    if prev_was_green and raw_ampel in {"🟡", "🔵", "⚪"}:
+        if score >= 68 and prev_score >= 72:
+            return _v237_set_live_row(
+                row,
+                ampel="🟢",
+                status="Aktiv, aber wackelig",
+                stability="Wackelig",
+                reason_prefix="Hysterese: vorher grün und nur leicht abgeschwächt; kein hektisches Rein/Raus.",
+                action_prefix="Bestehende Idee prüfen/halten, aber neue Käufe defensiver planen.",
+                prio=0,
+            )
+        if score >= 58:
+            return _v237_set_live_row(
+                row,
+                ampel="🟡",
+                status="Signal abgeschwächt",
+                stability="Abgeschwächt",
+                reason_prefix="Hysterese: grünes Signal ist schwächer geworden, aber noch nicht klar gebrochen.",
+                action_prefix="Nicht hektisch drehen; Trigger, Stop und Volumen im nächsten Check bestätigen lassen.",
+                prio=2,
+            )
+
+    # Gelb werden: knappe gelbe Signale brauchen ebenfalls etwas Bestätigung.
+    if raw_ampel == "🟡":
+        if prev_was_yellow or prev_raw_ampel == "🟡" or score >= 62:
+            return _v237_set_live_row(row, stability="Bestätigt" if prev_was_yellow else "Frisch", prio=2)
+        if prev_was_white and score < 62:
+            return _v237_set_live_row(
+                row,
+                ampel="⚪",
+                status="Fast gelb / beobachten",
+                stability="Frisch",
+                reason_prefix="Hysterese: erstes knappes gelbes Signal, noch keine bestätigte Handlungsnähe.",
+                action_prefix="Weiter beobachten; erst bei zweitem Check oder stärkerem Score gelb behandeln.",
+                prio=4,
+            )
+
+    # Weiss werden: von Gelb nicht sofort auf Weiss kippen, solange Score noch in der Naehe ist.
+    if raw_ampel == "⚪" and prev_was_yellow and score >= 50:
+        return _v237_set_live_row(
+            row,
+            ampel="🟡",
+            status="Weiter beobachten / wackelig",
+            stability="Wackelig",
+            reason_prefix="Hysterese: vorher gelb, aktuell nur leicht schwächer; Signal noch nicht vollständig verwerfen.",
+            action_prefix="Keine neuen aggressiven Käufe; auf erneute Triggernähe oder klare Schwäche warten.",
+            prio=2,
+        )
+
+    # Blau wird im Live-Monitor nur als Kontext verstanden; nicht springen lassen.
+    if raw_ampel == "🔵":
+        if score >= 55:
+            return _v237_set_live_row(row, ampel="🟡", status="CRV attraktiv / Trigger offen", stability="Bestätigt" if prev_was_yellow else "Frisch", prio=2)
+        return _v237_set_live_row(row, ampel="⚪", status="CRV beobachten", stability="Frisch", prio=4)
+
+    return row
+
 
 def _v227_live_history_file_path():
     """Persistente Status-Historie fuer Live-Monitor-Reloads.
@@ -6702,6 +6844,8 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
     events = st.session_state.live_watchlist_status_events_v220
     now = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
     enriched = live_df.copy()
+    if "Signal-Stabilität" not in enriched.columns:
+        enriched["Signal-Stabilität"] = ""
     changes = []
     prev_labels = []
 
@@ -6715,8 +6859,15 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
         prev = state.get(key, {}) if isinstance(state.get(key, {}), dict) else {}
         prev_ampel = prev.get("ampel")
         prev_status = prev.get("status")
-        new_ampel = str(row.get("Ampel") or "").strip()
-        new_status = str(row.get("Status") or "").strip()
+        # v23.7: Hysterese vor der Statuswechsel-Bewertung anwenden.
+        # Dadurch werden kleine Score-/Trigger-Schwankungen nicht als harte
+        # Gruen/Gelb/Weiss-Wechsel angezeigt.
+        row2 = _v237_apply_live_signal_hysteresis(row, prev)
+        for col, val in row2.items():
+            enriched.at[idx, col] = val
+
+        new_ampel = str(row2.get("Ampel") or "").strip()
+        new_status = str(row2.get("Status") or "").strip()
         change = _v220_live_change_label(prev_ampel, prev_status, new_ampel, new_status)
         prev_label = "-" if prev_status is None else f"{prev_ampel} {prev_status}".strip()
         changes.append(change)
@@ -6725,13 +6876,16 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
         current_snapshot = {
             "ampel": new_ampel,
             "status": new_status,
-            "radar_bucket": str(row.get("Radar-Bucket") or ""),
-            "live_score": str(row.get("Live-Score") or ""),
-            "grade": str(row.get("Grade") or ""),
-            "crv": str(row.get("CRV") or ""),
-            "price": row.get("Kurs"),
+            "raw_ampel": str(row2.get("__raw_ampel") or str(row.get("Ampel") or "")),
+            "raw_status": str(row2.get("__raw_status") or str(row.get("Status") or "")),
+            "stability": str(row2.get("Signal-Stabilität") or ""),
+            "radar_bucket": str(row2.get("Radar-Bucket") or ""),
+            "live_score": str(row2.get("Live-Score") or ""),
+            "grade": str(row2.get("Grade") or ""),
+            "crv": str(row2.get("CRV") or ""),
+            "price": row2.get("Kurs"),
             "updated": now,
-            "reason": str(row.get("Grund") or ""),
+            "reason": str(row2.get("Grund") or ""),
         }
         if change != "Unverändert":
             events.append({
@@ -6740,16 +6894,26 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                 "Änderung": change,
                 "Von": prev_label,
                 "Zu": f"{new_ampel} {new_status}".strip(),
-                "Kurs": row.get("Kurs"),
-                "Live-Score": row.get("Live-Score"),
-                "Grade": row.get("Grade"),
-                "Radar-Bucket": row.get("Radar-Bucket"),
-                "CRV": row.get("CRV"),
-                "Grund": row.get("Grund"),
-                "Nächste Handlung": row.get("Nächste Handlung"),
+                "Kurs": row2.get("Kurs"),
+                "Live-Score": row2.get("Live-Score"),
+                "Grade": row2.get("Grade"),
+                "Radar-Bucket": row2.get("Radar-Bucket"),
+                "CRV": row2.get("CRV"),
+                "Signal-Stabilität": row2.get("Signal-Stabilität"),
+                "Grund": row2.get("Grund"),
+                "Nächste Handlung": row2.get("Nächste Handlung"),
             })
         state[key] = current_snapshot
 
+    # Interne Rohstatus-Spalten nicht anzeigen.
+    for _internal_col in ["__raw_ampel", "__raw_status"]:
+        if _internal_col in enriched.columns:
+            enriched = enriched.drop(columns=[_internal_col])
+    # Signal-Stabilität direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.
+    if "Signal-Stabilität" in enriched.columns:
+        col_vals = enriched.pop("Signal-Stabilität")
+        insert_pos = 2 if "Status" in enriched.columns else min(3, len(enriched.columns))
+        enriched.insert(insert_pos, "Signal-Stabilität", col_vals)
     enriched.insert(1, "Änderung", changes)
     enriched.insert(2, "Vorher", prev_labels)
     st.session_state.live_watchlist_status_state_v220 = state
@@ -20064,7 +20228,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             else:
                                 st.warning(msg)
                     with c_back5:
-                        st.caption("v23.6: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
+                        st.caption("v23.7: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
 
                     st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
                     if current_tickers:
@@ -20185,7 +20349,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.6")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.7")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor verwendet dauerhaft den Prüfstil Charttechnik.")
             lm1, lm2, lm3 = st.columns([1.1, 1.2, 1.4])
             with lm1:
@@ -20319,7 +20483,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.6", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.7", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:

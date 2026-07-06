@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.7"
+APP_VERSION = "v23.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6859,7 +6859,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
         prev = state.get(key, {}) if isinstance(state.get(key, {}), dict) else {}
         prev_ampel = prev.get("ampel")
         prev_status = prev.get("status")
-        # v23.7: Hysterese vor der Statuswechsel-Bewertung anwenden.
+        # v23.8: Hysterese vor der Statuswechsel-Bewertung anwenden.
         # Dadurch werden kleine Score-/Trigger-Schwankungen nicht als harte
         # Gruen/Gelb/Weiss-Wechsel angezeigt.
         row2 = _v237_apply_live_signal_hysteresis(row, prev)
@@ -6868,6 +6868,34 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
 
         new_ampel = str(row2.get("Ampel") or "").strip()
         new_status = str(row2.get("Status") or "").strip()
+
+        # v23.8: Stabilität nicht schon beim ersten gleich aussehenden Scan als
+        # "Bestätigt" behandeln. Alte persistierte States hatten noch keinen
+        # Confirmation-Counter; diese werden bewusst wie 0 Vorbestätigungen
+        # behandelt. Erst der zweite aufeinanderfolgende gleiche finale Status
+        # wird als bestätigt markiert.
+        try:
+            prev_confirmations = int(prev.get("confirmations") or 0)
+        except Exception:
+            prev_confirmations = 0
+        same_final_signal = bool(prev_ampel == new_ampel and prev_status == new_status and prev_status)
+        confirmations = (prev_confirmations + 1) if same_final_signal else 1
+
+        current_stability = str(row2.get("Signal-Stabilität") or "").strip()
+        if new_ampel == "🔴" or current_stability == "Defensiv":
+            current_stability = "Defensiv"
+        elif current_stability in {"Wackelig", "Abgeschwächt"}:
+            # Diese Zustände sind bewusst warnender als eine reine Bestätigung.
+            pass
+        elif confirmations >= 2:
+            current_stability = "Bestätigt"
+        else:
+            current_stability = "Frisch"
+        row2["Signal-Stabilität"] = current_stability
+        row2["Bestätigungen"] = f"{confirmations}x"
+        enriched.at[idx, "Signal-Stabilität"] = current_stability
+        enriched.at[idx, "Bestätigungen"] = f"{confirmations}x"
+
         change = _v220_live_change_label(prev_ampel, prev_status, new_ampel, new_status)
         prev_label = "-" if prev_status is None else f"{prev_ampel} {prev_status}".strip()
         changes.append(change)
@@ -6878,7 +6906,8 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             "status": new_status,
             "raw_ampel": str(row2.get("__raw_ampel") or str(row.get("Ampel") or "")),
             "raw_status": str(row2.get("__raw_status") or str(row.get("Status") or "")),
-            "stability": str(row2.get("Signal-Stabilität") or ""),
+            "stability": current_stability,
+            "confirmations": confirmations,
             "radar_bucket": str(row2.get("Radar-Bucket") or ""),
             "live_score": str(row2.get("Live-Score") or ""),
             "grade": str(row2.get("Grade") or ""),
@@ -6900,6 +6929,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                 "Radar-Bucket": row2.get("Radar-Bucket"),
                 "CRV": row2.get("CRV"),
                 "Signal-Stabilität": row2.get("Signal-Stabilität"),
+                "Bestätigungen": row2.get("Bestätigungen"),
                 "Grund": row2.get("Grund"),
                 "Nächste Handlung": row2.get("Nächste Handlung"),
             })
@@ -6909,11 +6939,15 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
     for _internal_col in ["__raw_ampel", "__raw_status"]:
         if _internal_col in enriched.columns:
             enriched = enriched.drop(columns=[_internal_col])
-    # Signal-Stabilität direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.
+    # Signal-Stabilität und Bestätigungen direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.
     if "Signal-Stabilität" in enriched.columns:
         col_vals = enriched.pop("Signal-Stabilität")
         insert_pos = 2 if "Status" in enriched.columns else min(3, len(enriched.columns))
         enriched.insert(insert_pos, "Signal-Stabilität", col_vals)
+    if "Bestätigungen" in enriched.columns:
+        col_vals = enriched.pop("Bestätigungen")
+        insert_pos = 3 if "Signal-Stabilität" in enriched.columns else (2 if "Status" in enriched.columns else min(4, len(enriched.columns)))
+        enriched.insert(insert_pos, "Bestätigungen", col_vals)
     enriched.insert(1, "Änderung", changes)
     enriched.insert(2, "Vorher", prev_labels)
     st.session_state.live_watchlist_status_state_v220 = state
@@ -20228,7 +20262,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             else:
                                 st.warning(msg)
                     with c_back5:
-                        st.caption("v23.7: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
+                        st.caption("v23.8: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
 
                     st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
                     if current_tickers:
@@ -20349,7 +20383,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.7")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.8")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor verwendet dauerhaft den Prüfstil Charttechnik.")
             lm1, lm2, lm3 = st.columns([1.1, 1.2, 1.4])
             with lm1:
@@ -20483,7 +20517,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.7", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.8", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:

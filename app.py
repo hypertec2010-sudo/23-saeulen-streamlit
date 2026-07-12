@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.13"
+APP_VERSION = "v24.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6016,7 +6016,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     """
     r = result or {}
     d = decision or build_professional_radar_decision_v18(r, style_name)
-    # v23.13: live_short_term muss im Scope der Status-/Scorefunktion definiert sein.
+    # v24.0: live_short_term muss im Scope der Status-/Scorefunktion definiert sein.
     # In v23.11 wurde die Variable zwar spaeter verwendet, aber nicht gesetzt; dadurch
     # brachen nahezu alle Watchlist-Ticker mit NameError ab.
     live_horizon_text = str(live_horizon or "").strip().lower()
@@ -6357,7 +6357,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             or (timing_score_lm is not None and timing_score_lm >= 74 and (conf_score_lm is None or conf_score_lm >= 68))
         )
     ):
-        # v23.13: Kurzfrist-/Trading-Modus nicht durch die breite Swing-Freigabe
+        # v24.0: Kurzfrist-/Trading-Modus nicht durch die breite Swing-Freigabe
         # blockieren lassen. Wenn Trendstruktur, Timing/Konfluenz und ein operativer
         # Trigger-/Trendfolge-Kontext passen, darf der Live-Monitor gruen werden,
         # auch wenn die laengerfristige Sofortanalyse noch weiche Text-Hinweise enthaelt.
@@ -6625,7 +6625,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
     meta_by_ticker = watchlist_meta_by_ticker or {}
     for ticker in unique[:int(max_items or 40)]:
         try:
-            # v23.13: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
+            # v24.0: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
             # Horizon-Werte. v23.9 uebergab hier "Kurzfrist (1-7 Tage)" und
             # dadurch brachen viele/alle Ticker ab -> leere Live-Watchlist.
             # Kurzfrist wird deshalb als Live-Monitor-Modus in der Status-/Scorelogik
@@ -6776,7 +6776,7 @@ def _v237_apply_live_signal_hysteresis(row, prev):
     # Gruen werden: entweder sehr klarer Score oder zwei Checks hintereinander roh gruen.
     # Erster knapper Gruen-Impuls wird als Gelb/Fast gruen gezeigt.
     if raw_ampel == "🟢":
-        # v23.13: Sehr klare Kurzfrist-Signale sollen nicht komplett gelb versteckt
+        # v24.0: Sehr klare Kurzfrist-Signale sollen nicht komplett gelb versteckt
         # werden. Knappe Gruensignale brauchen weiter Bestaetigung, aber ab ca. 78/100
         # darf Gruen sofort sichtbar sein.
         if prev_was_green or prev_raw_ampel == "🟢" or score >= 78:
@@ -6850,6 +6850,59 @@ def _v237_apply_live_signal_hysteresis(row, prev):
 
     return row
 
+
+
+
+def _v240_live_trade_state(row):
+    """v24.0: Operative Trade-State-Machine fuer kurzfristiges Trading.
+
+    Die Ampel bleibt die schnelle Farbe, der Trade-State beschreibt den Workflow:
+    Beobachten -> Vorbereiten -> Armed/Bereit -> Trigger aktiv -> Abgeschwaecht/Invalidiert.
+    Ein echter "Trade aktiv" wird bewusst noch nicht automatisch gesetzt, weil dafuer
+    ein dokumentierter Einstieg/Positions-Tracker noetig ist.
+    """
+    try:
+        ampel = str(row.get("Ampel") or "").strip()
+        status = str(row.get("Status") or "").strip()
+        stability = str(row.get("Signal-Stabilität") or row.get("Signal-Stabilitaet") or "").strip()
+        reason = str(row.get("Grund") or "").strip()
+        action = str(row.get("Nächste Handlung") or row.get("Naechste Handlung") or "").strip()
+        score = _v237_parse_live_score(row.get("Live-Score"), default=0)
+        try:
+            conf_txt = str(row.get("Bestätigungen") or "1x").lower().replace("x", "").strip()
+            confirmations = int(float(conf_txt)) if conf_txt else 1
+        except Exception:
+            confirmations = 1
+        low = " ".join([status, stability, reason, action]).lower()
+
+        if ampel == "🔴" or any(x in low for x in ["invalidiert", "meiden", "blockiert", "kein kauf"]):
+            return "Invalidiert / kein Trade", "Kein neuer Trade. These, Trigger und Invalidierung zuerst neu prüfen."
+
+        if "abgeschw" in low:
+            return "Abgeschwächt", "Signal hat nachgelassen: keine aggressiven Neueinstiege; Stop/Trigger erneut prüfen."
+        if "wackelig" in low:
+            return "Aktiv, aber wackelig", "Signal ist noch nicht stabil: Positionsgröße defensiv und nächsten Check abwarten."
+
+        if ampel == "🟢":
+            if confirmations >= 2 and stability == "Bestätigt":
+                return "Trigger aktiv", "Trade planbar: Entry, Stop, Risiko und Stückzahl festlegen."
+            if score >= 82:
+                return "Armed / bereit", "Sehr starkes frisches Signal: Entry/Stop jetzt konkret planen, aber Ausführung sauber bestätigen."
+            return "Armed / Bestätigung offen", "Grünes Signal ist frisch: nicht blind hinterherlaufen; Bestätigung/Volumen und Stop prüfen."
+
+        if ampel == "🟡":
+            if "fast gr" in low:
+                return "Fast armed", "Noch nicht voll aktiv: nächsten Check bzw. Triggerbestätigung abwarten."
+            if any(x in low for x in ["nahe", "trigger offen", "crv attraktiv", "selektiv", "pullback", "vorbereiten"]):
+                return "Vorbereiten", "Setup vorbereiten: Alarm-/Triggerlevel, Stop und Risikoplan festlegen; noch kein Vollsignal."
+            return "Beobachten+", "Interessant, aber noch nicht aktiv genug."
+
+        if ampel == "🔵":
+            return "CRV-Kontext", "Chance/Risiko beobachten, aber erst bei Charttrigger handeln."
+
+        return "Beobachten", "Kein kurzfristiger Trade-State. Weiter beobachten."
+    except Exception:
+        return "Beobachten", "Trade-State konnte nicht eindeutig bestimmt werden."
 
 def _v227_live_history_file_path():
     """Persistente Status-Historie fuer Live-Monitor-Reloads.
@@ -6981,8 +7034,18 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             current_stability = "Frisch"
         row2["Signal-Stabilität"] = current_stability
         row2["Bestätigungen"] = f"{confirmations}x"
+
+        # v24.0: Aus der finalen Ampel + Stabilitaet einen operativen Trade-State ableiten.
+        # Das reduziert Overtrading: Gruen ist nicht automatisch "rein", sondern ein
+        # Workflow-Zustand wie Armed, Trigger aktiv oder wackelig.
+        trade_state, trade_action = _v240_live_trade_state(row2)
+        row2["Trade-State"] = trade_state
+        row2["Trade-Aktion"] = trade_action
+
         enriched.at[idx, "Signal-Stabilität"] = current_stability
         enriched.at[idx, "Bestätigungen"] = f"{confirmations}x"
+        enriched.at[idx, "Trade-State"] = trade_state
+        enriched.at[idx, "Trade-Aktion"] = trade_action
 
         change = _v220_live_change_label(prev_ampel, prev_status, new_ampel, new_status)
         prev_label = "-" if prev_status is None else f"{prev_ampel} {prev_status}".strip()
@@ -7003,6 +7066,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             "price": row2.get("Kurs"),
             "updated": now,
             "reason": str(row2.get("Grund") or ""),
+            "trade_state": str(row2.get("Trade-State") or ""),
         }
         if change != "Unverändert":
             events.append({
@@ -7018,6 +7082,8 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                 "CRV": row2.get("CRV"),
                 "Signal-Stabilität": row2.get("Signal-Stabilität"),
                 "Bestätigungen": row2.get("Bestätigungen"),
+                "Trade-State": row2.get("Trade-State"),
+                "Trade-Aktion": row2.get("Trade-Aktion"),
                 "Grund": row2.get("Grund"),
                 "Nächste Handlung": row2.get("Nächste Handlung"),
             })
@@ -7036,6 +7102,14 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
         col_vals = enriched.pop("Bestätigungen")
         insert_pos = 3 if "Signal-Stabilität" in enriched.columns else (2 if "Status" in enriched.columns else min(4, len(enriched.columns)))
         enriched.insert(insert_pos, "Bestätigungen", col_vals)
+    if "Trade-State" in enriched.columns:
+        col_vals = enriched.pop("Trade-State")
+        insert_pos = 4 if "Bestätigungen" in enriched.columns else (3 if "Signal-Stabilität" in enriched.columns else min(5, len(enriched.columns)))
+        enriched.insert(insert_pos, "Trade-State", col_vals)
+    if "Trade-Aktion" in enriched.columns:
+        col_vals = enriched.pop("Trade-Aktion")
+        insert_pos = 5 if "Trade-State" in enriched.columns else min(6, len(enriched.columns))
+        enriched.insert(insert_pos, "Trade-Aktion", col_vals)
     enriched.insert(1, "Änderung", changes)
     enriched.insert(2, "Vorher", prev_labels)
     st.session_state.live_watchlist_status_state_v220 = state
@@ -16420,7 +16494,7 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
         if val:
             return shorten_text(val, max_len)
 
-    # v15.23.13: Letzter Fallback für Radar-Snapshots/Abschnitte ohne Result-Objekt.
+    # v15.24.0: Letzter Fallback für Radar-Snapshots/Abschnitte ohne Result-Objekt.
     # Yahoo-Suche liefert für reine Ticker oft shortname/longname; das verhindert
     # insbesondere im Abschnitt "Jetzt spannend" die Anzeige Ticker = Name.
     if ticker:
@@ -20471,7 +20545,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.13")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v24.0")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -20623,7 +20697,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.13", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.0", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -20654,7 +20728,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     try:
                                         risk_result = analyze_stock(
                                             ticker=selected_calc_ticker,
-                                            # v23.13: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
+                                            # v24.0: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
                                             # der gewaehlte Live-Horizont beeinflusst Status/Score, nicht den
                                             # unsupported Core-Horizon-Parameter.
                                             horizon="Swing (1-4 Wochen)",

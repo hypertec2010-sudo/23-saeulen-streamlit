@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.12"
+APP_VERSION = "v23.13"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6016,7 +6016,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     """
     r = result or {}
     d = decision or build_professional_radar_decision_v18(r, style_name)
-    # v23.12: live_short_term muss im Scope der Status-/Scorefunktion definiert sein.
+    # v23.13: live_short_term muss im Scope der Status-/Scorefunktion definiert sein.
     # In v23.11 wurde die Variable zwar spaeter verwendet, aber nicht gesetzt; dadurch
     # brachen nahezu alle Watchlist-Ticker mit NameError ab.
     live_horizon_text = str(live_horizon or "").strip().lower()
@@ -6342,6 +6342,28 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         status_icon, status, priority = "🔴", "Setup blockiert", 1
         reason = brake if brake and brake != "-" else "Hartes Einstiegsgate aktiv."
         monitor_action = "Kein Kauf: Einstiegsgate zuerst klären."
+    elif (
+        live_short_term
+        and trend_quality_ok
+        and trend_structure_ok
+        and trend_timing_ok
+        and trend_not_too_extended
+        and not entry_hard_gate
+        and "Invalidierung gebrochen" not in alert_types
+        and (
+            bucket_active
+            or wave_active
+            or entry_reached
+            or (timing_score_lm is not None and timing_score_lm >= 74 and (conf_score_lm is None or conf_score_lm >= 68))
+        )
+    ):
+        # v23.13: Kurzfrist-/Trading-Modus nicht durch die breite Swing-Freigabe
+        # blockieren lassen. Wenn Trendstruktur, Timing/Konfluenz und ein operativer
+        # Trigger-/Trendfolge-Kontext passen, darf der Live-Monitor gruen werden,
+        # auch wenn die laengerfristige Sofortanalyse noch weiche Text-Hinweise enthaelt.
+        status_icon, status, priority = "🟢", "Kurzfrist-Trigger aktiv", 0
+        reason = "Kurzfrist-Setup ist charttechnisch aktiv: Trendstruktur, Timing/Konfluenz und Trigger-/Trendfolge-Kontext passen." + trend_reason_tail
+        monitor_action = "Kurzfrist aktiv. Entry/Breakout nur mit klarer Invalidierung, Positionsgröße und Stop-Plan handeln."
     elif (bucket_active or entry_reached or wave_active) and not final_release_ok:
         status_icon, status, priority = "🟡", "Trigger offen / Abwarten", 2
         reason = "Sofortanalyse bestätigt Grün noch nicht" + (f": {final_blocker_text}." if final_blocker_text else ".")
@@ -6603,7 +6625,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
     meta_by_ticker = watchlist_meta_by_ticker or {}
     for ticker in unique[:int(max_items or 40)]:
         try:
-            # v23.12: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
+            # v23.13: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
             # Horizon-Werte. v23.9 uebergab hier "Kurzfrist (1-7 Tage)" und
             # dadurch brachen viele/alle Ticker ab -> leere Live-Watchlist.
             # Kurzfrist wird deshalb als Live-Monitor-Modus in der Status-/Scorelogik
@@ -6754,8 +6776,11 @@ def _v237_apply_live_signal_hysteresis(row, prev):
     # Gruen werden: entweder sehr klarer Score oder zwei Checks hintereinander roh gruen.
     # Erster knapper Gruen-Impuls wird als Gelb/Fast gruen gezeigt.
     if raw_ampel == "🟢":
-        if prev_was_green or prev_raw_ampel == "🟢" or score >= 82:
-            return _v237_set_live_row(row, stability="Bestätigt", prio=0)
+        # v23.13: Sehr klare Kurzfrist-Signale sollen nicht komplett gelb versteckt
+        # werden. Knappe Gruensignale brauchen weiter Bestaetigung, aber ab ca. 78/100
+        # darf Gruen sofort sichtbar sein.
+        if prev_was_green or prev_raw_ampel == "🟢" or score >= 78:
+            return _v237_set_live_row(row, stability="Bestätigt" if (prev_was_green or prev_raw_ampel == "🟢") else "Frisch", prio=0)
         return _v237_set_live_row(
             row,
             ampel="🟡",
@@ -20446,7 +20471,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.12")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.13")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -20598,7 +20623,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.12", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.13", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -20629,7 +20654,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     try:
                                         risk_result = analyze_stock(
                                             ticker=selected_calc_ticker,
-                                            # v23.12: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
+                                            # v23.13: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
                                             # der gewaehlte Live-Horizont beeinflusst Status/Score, nicht den
                                             # unsupported Core-Horizon-Parameter.
                                             horizon="Swing (1-4 Wochen)",

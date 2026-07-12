@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.8"
+APP_VERSION = "v23.9"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3169,6 +3169,14 @@ def restore_live_monitor_workspace_from_query_v226():
             if refresh_param in refresh_map:
                 st.session_state.live_watchlist_refresh_interval = refresh_map[refresh_param]
                 st.session_state.live_watchlist_refresh_interval_widget = refresh_map[refresh_param]
+            live_horizon_param = str(qp.get("live_horizon", "")).strip().lower()
+            horizon_map = {
+                "short": "Kurzfrist / Trading",
+                "swing": "Swing / 1-4 Wochen",
+            }
+            if live_horizon_param in horizon_map:
+                st.session_state.live_watchlist_horizon = horizon_map[live_horizon_param]
+                st.session_state.live_watchlist_horizon_widget = horizon_map[live_horizon_param]
     except Exception:
         pass
 
@@ -6001,7 +6009,7 @@ def _v214_monitor_final_release_check(result, decision=None):
 
     return len(clean) == 0, clean[:4]
 
-def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None):
+def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None, live_horizon="Swing / 1-4 Wochen"):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
 
     Läuft nur in der geöffneten App und nutzt dieselben Bausteine wie Radar und Setup-Alerts.
@@ -6428,15 +6436,39 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     elif trend_structure_ok:
         trend_component = 58.0
 
-    live_score_raw = (
-        0.30 * trigger_component
-        + 0.24 * timing_component
-        + 0.20 * conf_component
-        + 0.14 * chart_component
-        + 0.06 * trend_component
-        + 0.04 * crv_component
-        + 0.02 * grade_component
-    )
+    # v23.9: Short-Term-Live-Engine.
+    # Im Kurzfrist-/Trading-Modus wird der Score noch staerker an operativer
+    # Chart-Handlungsreife ausgerichtet. Swing bleibt als bisheriger Modus erhalten.
+    if live_short_term:
+        live_score_raw = (
+            0.34 * trigger_component
+            + 0.26 * timing_component
+            + 0.18 * conf_component
+            + 0.14 * chart_component
+            + 0.05 * trend_component
+            + 0.02 * crv_component
+            + 0.01 * grade_component
+        )
+        # Kurzfristige Trading-Risiken: kein frischer Trigger, schwaches Timing
+        # oder Chart-Abwarten duerfen deutlich bremsen.
+        if trigger_component < 58.0 and not trend_structure_ok:
+            live_score_raw -= 8.0
+        if timing_component < 45.0:
+            live_score_raw -= 10.0
+        if conf_component < 50.0:
+            live_score_raw -= 6.0
+        if any(t in chart_text_lm for t in ["abwarten", "noch nicht", "nicht reif", "fehlt"]):
+            live_score_raw -= 8.0
+    else:
+        live_score_raw = (
+            0.30 * trigger_component
+            + 0.24 * timing_component
+            + 0.20 * conf_component
+            + 0.14 * chart_component
+            + 0.06 * trend_component
+            + 0.04 * crv_component
+            + 0.02 * grade_component
+        )
 
     # Abzuege nur fuer chart-/entry-relevante Bremsen. Fundamentale Hinweise bleiben
     # in der Warnhinweis-Spalte sichtbar, zaehlen hier aber nicht als harter Score-Abzug.
@@ -6471,6 +6503,21 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         and not (perf_pct is not None and perf_pct >= 6.0)
         and status in {"Selektiv prüfen", "Nahe am Trigger"}
     )
+
+    if live_short_term:
+        # Kurzfrist-Modus: Gruen darf nur dann bleiben, wenn der Trade wirklich
+        # operativ planbar ist. Sonst wird auf Gelb zurueckgestuft.
+        has_short_term_trigger = bool(bucket_active or wave_active or entry_reached or (trend_structure_ok and trend_timing_ok and trend_not_too_extended))
+        if status_icon == "🟢" and not has_short_term_trigger:
+            status_icon, status, priority = "🟡", "Setup interessant / Trigger prüfen", 2
+            reason = "Kurzfrist-Modus: Qualität reicht nicht; es fehlt ein klarer aktueller Charttrigger."
+            monitor_action = "Kurzfrist nur vorbereiten: Trigger, Volumenbestaetigung und engen Stop abwarten."
+            immutable_green = False
+        # Sehr schwache Kurzfrist-Konfluenz soll auch bei guter Aktie nicht gelb bleiben.
+        if status_icon in {"🟡", "🔵"} and timing_component < 42.0 and conf_component < 48.0 and not entry_reached:
+            status_icon, status, priority = "⚪", "Kein kurzfristiger Trigger", 4
+            reason = "Kurzfrist-Modus: Timing/Konfluenz reichen aktuell nicht fuer einen Trading-Trigger."
+            monitor_action = "Kein kurzfristiger Trade: erst bei Reclaim, Breakout oder klarer Entry-Naehe neu prüfen."
 
     if immutable_red:
         live_score = _v2210_clip(score_candidate, 0.0, 39.0)
@@ -6514,6 +6561,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Ampel": status_icon,
         "Status": status,
         "Live-Score": f"{live_score_int}/100",
+        "Live-Horizont": "Kurzfrist" if live_short_term else "Swing",
         "Ticker": ticker,
         "Name": name,
         "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
@@ -6535,7 +6583,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     }
 
 
-def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=40, watchlist_meta_by_ticker=None):
+def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=40, watchlist_meta_by_ticker=None, live_horizon="Swing / 1-4 Wochen"):
     rows = []
     errors = []
     unique = []
@@ -6546,9 +6594,10 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
     meta_by_ticker = watchlist_meta_by_ticker or {}
     for ticker in unique[:int(max_items or 40)]:
         try:
+            analysis_horizon = "Kurzfrist (1-7 Tage)" if str(live_horizon or "").lower().startswith("kurzfrist") else "Swing (1-4 Wochen)"
             result = analyze_stock(
                 ticker=ticker,
-                horizon="Swing (1-4 Wochen)",
+                horizon=analysis_horizon,
                 depot=10000,
                 risk_pct=1.0,
                 override=0.0,
@@ -6557,7 +6606,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
                 strict_mode=True,
             )
             decision = build_professional_radar_decision_v18(result, style_name)
-            rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name, watchlist_meta=meta_by_ticker.get(ticker, {})))
+            rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name, watchlist_meta=meta_by_ticker.get(ticker, {}), live_horizon=live_horizon))
         except Exception as exc:
             errors.append({"Ticker": ticker, "Fehler": str(exc)[:180]})
     if rows:
@@ -6575,7 +6624,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Ticker", "Name", "Kurs", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
@@ -20262,7 +20311,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             else:
                                 st.warning(msg)
                     with c_back5:
-                        st.caption("v23.8: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
+                        st.caption("v23.9: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
 
                     st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
                     if current_tickers:
@@ -20383,9 +20432,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.8")
-            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor verwendet dauerhaft den Prüfstil Charttechnik.")
-            lm1, lm2, lm3 = st.columns([1.1, 1.2, 1.4])
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.9")
+            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
+            lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
                 live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
                 st.session_state.live_watchlist_monitor_enabled = live_monitor_enabled
@@ -20397,12 +20446,18 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 refresh_label = st.selectbox("Refresh", refresh_options, index=refresh_options.index(current_refresh), key="live_watchlist_refresh_interval_widget")
                 st.session_state.live_watchlist_refresh_interval = refresh_label
             with lm3:
+                horizon_options = ["Kurzfrist / Trading", "Swing / 1-4 Wochen"]
+                current_live_horizon = st.session_state.get("live_watchlist_horizon", "Kurzfrist / Trading")
+                if current_live_horizon not in horizon_options:
+                    current_live_horizon = "Kurzfrist / Trading"
+                live_monitor_horizon = st.selectbox("Live-Zeithorizont", horizon_options, index=horizon_options.index(current_live_horizon), key="live_watchlist_horizon_widget")
+                st.session_state.live_watchlist_horizon = live_monitor_horizon
+            with lm4:
                 only_active = st.checkbox("Nur grün/gelb", value=bool(st.session_state.get("live_watchlist_only_active", False)), key="live_watchlist_only_active_widget")
                 st.session_state.live_watchlist_only_active = only_active
                 st.caption("Prüfstil: Charttechnik")
-            # v23.2: Der Live-Monitor ist ein charttechnischer Trigger-Monitor.
-            # Deshalb wird der Prüfstil dauerhaft auf Charttechnik gesetzt und nicht mehr
-            # als eigene Bedienoption angeboten.
+            # v23.9: Pruefstil bleibt Charttechnik, aber der Live-Zeithorizont ist explizit waählbar.
+            # Kurzfrist / Trading nutzt die neue Short-Term-Live-Engine; Swing bleibt als bisheriger Modus erhalten.
             monitor_style = "Charttechnik"
             st.session_state.live_watchlist_style = monitor_style
 
@@ -20416,12 +20471,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 if live_monitor_enabled:
                     interval_ms = {"15 Minuten": 15 * 60 * 1000, "30 Minuten": 30 * 60 * 1000, "60 Minuten": 60 * 60 * 1000}.get(refresh_label, 30 * 60 * 1000)
                     refresh_minutes = {"15 Minuten": "15", "30 Minuten": "30", "60 Minuten": "60"}.get(refresh_label, "30")
+                    live_horizon_param = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
                     # v22.7: Reload-Ziel in der URL speichern, sonst startet Streamlit Cloud
                     # nach einem Browser-Reload gelegentlich wieder im Startmenue.
                     try:
                         st.query_params["workspace"] = "Watchlisten"
                         st.query_params["live_monitor"] = "1"
                         st.query_params["refresh"] = refresh_minutes
+                        st.query_params["live_horizon"] = live_horizon_param
                     except Exception:
                         pass
                     st.info(f"Live-Monitor aktiv: automatische Aktualisierung alle {refresh_label}, solange diese App-Seite geöffnet ist. Die Watchlisten-Ansicht wird nach dem Reload wiederhergestellt.")
@@ -20434,6 +20491,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 url.searchParams.set('workspace', 'Watchlisten');
                                 url.searchParams.set('live_monitor', '1');
                                 url.searchParams.set('refresh', '{refresh_minutes}');
+                                url.searchParams.set('live_horizon', '{live_horizon_param}');
                                 window.parent.location.replace(url.toString());
                             }} catch (e) {{
                                 window.parent.location.reload();
@@ -20450,6 +20508,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         if str(st.query_params.get("live_monitor", "")) in {"1", "true", "True"}:
                             st.query_params.pop("live_monitor", None)
                             st.query_params.pop("refresh", None)
+                            st.query_params.pop("live_horizon", None)
                     except Exception:
                         pass
 
@@ -20488,10 +20547,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     current_watchlist_meta_by_ticker[_tk] = merged
                         except Exception:
                             pass
-                        live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40, watchlist_meta_by_ticker=current_watchlist_meta_by_ticker)
+                        live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40, watchlist_meta_by_ticker=current_watchlist_meta_by_ticker, live_horizon=live_monitor_horizon)
                     live_events_df = pd.DataFrame()
                     if not live_df.empty:
-                        live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_watchlist_name, style_name=monitor_style)
+                        live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_watchlist_name, style_name=f"{monitor_style} | {live_monitor_horizon}")
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty:
@@ -20517,7 +20576,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.8", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.9", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -20548,7 +20607,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     try:
                                         risk_result = analyze_stock(
                                             ticker=selected_calc_ticker,
-                                            horizon="Swing (1-4 Wochen)",
+                                            horizon=("Kurzfrist (1-7 Tage)" if str(st.session_state.get("live_watchlist_horizon", "Kurzfrist / Trading")).startswith("Kurzfrist") else "Swing (1-4 Wochen)"),
                                             depot=10000,
                                             risk_pct=1.0,
                                             override=0.0,

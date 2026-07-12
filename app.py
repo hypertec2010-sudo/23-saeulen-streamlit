@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.3"
+APP_VERSION = "v24.4"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -19400,6 +19400,152 @@ def _v230_calculate_position_size(entry, stop, target, account_size, risk_pct, m
     }
 
 
+# ---------- v24.4: Positions-/Exit-Monitor ----------
+def _v244_position_store_key(watchlist_name=""):
+    try:
+        wl = str(watchlist_name or "Standard").strip() or "Standard"
+    except Exception:
+        wl = "Standard"
+    return f"v244_open_positions::{wl}"
+
+
+def _v244_get_positions(watchlist_name=""):
+    key = _v244_position_store_key(watchlist_name)
+    try:
+        data = st.session_state.get(key, {})
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {}
+
+
+def _v244_save_positions(watchlist_name, positions):
+    key = _v244_position_store_key(watchlist_name)
+    try:
+        st.session_state[key] = positions if isinstance(positions, dict) else {}
+    except Exception:
+        pass
+
+
+def _v244_row_price(row):
+    try:
+        return _v230_safe_float(row.get("Kurs"), default=None)
+    except Exception:
+        return None
+
+
+def _v244_calc_trade_state(pos, live_row=None):
+    pos = pos or {}
+    live_row = live_row or {}
+    entry = _v230_safe_float(pos.get("entry"), default=None)
+    stop = _v230_safe_float(pos.get("stop"), default=None)
+    target = _v230_safe_float(pos.get("target"), default=None)
+    shares = _v230_safe_float(pos.get("shares"), default=0) or 0
+    current = _v244_row_price(live_row)
+    if current is None:
+        current = _v230_safe_float(pos.get("last_price"), default=None)
+    unit_risk = None
+    r_mult = None
+    pnl = None
+    pnl_pct = None
+    if entry is not None and stop is not None and entry > stop and current is not None:
+        unit_risk = entry - stop
+        r_mult = (current - entry) / unit_risk if unit_risk > 0 else None
+        pnl = (current - entry) * shares if shares else None
+        pnl_pct = (current / entry - 1.0) * 100.0 if entry else None
+    elif entry is not None and current is not None:
+        pnl = (current - entry) * shares if shares else None
+        pnl_pct = (current / entry - 1.0) * 100.0 if entry else None
+
+    ampel = "⚪"
+    status = "Unvollständig"
+    action = "Entry, Stop und Stückzahl ergänzen."
+    stop_hint = "-"
+    if current is not None and stop is not None and current <= stop:
+        ampel = "🔴"
+        status = "Stop / Invalidierung erreicht"
+        action = "Sofort prüfen: Stop-Regel, Exit oder These neu bewerten."
+        stop_hint = "Stop ausgelöst oder unterschritten."
+    elif r_mult is None:
+        ampel = "⚪"
+        status = "Nicht berechenbar"
+        action = "Für R-Multiple werden Entry und Stop benötigt."
+    elif r_mult >= 2.0:
+        ampel = "🟢"
+        status = "2R+ erreicht"
+        action = "Teilgewinn/Trailing-Stop prüfen; Restposition laufen lassen, solange Trend hält."
+        stop_hint = "Stop mindestens auf Gewinnschutz/Struktur nachziehen prüfen."
+    elif r_mult >= 1.0:
+        ampel = "🟢"
+        status = "1R erreicht"
+        action = "Break-even-Stop oder Teilgewinn prüfen; Risiko aus dem Trade nehmen."
+        stop_hint = "Stop auf Einstand oder unter kurzfristige Struktur prüfen."
+    elif r_mult >= 0.25:
+        ampel = "🟡"
+        status = "Positiv, noch <1R"
+        action = "Laufen lassen; Stop nicht zu früh nachziehen, Trigger/Trend beobachten."
+        stop_hint = "Original-Stop oder enger Strukturstop je nach Setup."
+    elif r_mult > -0.5:
+        ampel = "⚪"
+        status = "Nahe Entry"
+        action = "Noch keine Management-Aktion; Stop-Regel einhalten."
+        stop_hint = "Plan-Stop beibehalten."
+    else:
+        ampel = "🟡"
+        status = "Unter Druck"
+        action = "Positionsgröße/Stop-Regel prüfen; kein Nachkaufen ohne neuen Trigger."
+        stop_hint = "Stop/Invalidierung eng beobachten."
+
+    if target is not None and current is not None and current >= target and target > entry:
+        status = status + " · Ziel erreicht"
+        action = "Ziel/Teilziel erreicht: Teilgewinn oder Trailing-Plan prüfen."
+
+    return {
+        "Ampel": ampel,
+        "Status": status,
+        "Aktion": action,
+        "Stop-Hinweis": stop_hint,
+        "Aktueller Kurs": current,
+        "R-Multiple": r_mult,
+        "P/L": pnl,
+        "P/L %": pnl_pct,
+        "Risiko je Aktie": unit_risk,
+    }
+
+
+def _v244_positions_dataframe(positions, live_df=None):
+    rows = []
+    live_map = {}
+    try:
+        if live_df is not None and not live_df.empty and "Ticker" in live_df.columns:
+            for _, row in live_df.iterrows():
+                live_map[str(row.get("Ticker") or "").strip().upper()] = row.to_dict()
+    except Exception:
+        live_map = {}
+    for tk, pos in (positions or {}).items():
+        ticker = str(tk or pos.get("ticker") or "").strip().upper()
+        live_row = live_map.get(ticker, {})
+        calc = _v244_calc_trade_state(pos, live_row)
+        rows.append({
+            "Ampel": calc.get("Ampel"),
+            "Ticker": ticker,
+            "Name": pos.get("name") or live_row.get("Name") or ticker,
+            "Aktueller Kurs": _v230_price_text(calc.get("Aktueller Kurs")),
+            "Entry": _v230_price_text(pos.get("entry")),
+            "Stop": _v230_price_text(pos.get("stop")),
+            "Stück": int(_v230_safe_float(pos.get("shares"), default=0) or 0),
+            "R": "n/a" if calc.get("R-Multiple") is None else f"{calc.get('R-Multiple'):.2f}R",
+            "P/L": "n/a" if calc.get("P/L") is None else f"{calc.get('P/L'):.0f}",
+            "P/L %": "n/a" if calc.get("P/L %") is None else f"{calc.get('P/L %'):.1f}%",
+            "Trade-Status": calc.get("Status"),
+            "Aktion": calc.get("Aktion"),
+            "Stop-Hinweis": calc.get("Stop-Hinweis"),
+            "Erfasst": pos.get("created_at") or "-",
+        })
+    return pd.DataFrame(rows)
+
+
 # ---------- Main App Flow ----------
 logo_path = Path("a_logo_for_the_capital_hill_score_model_is_promi.png")
 
@@ -20547,7 +20693,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v24.3")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v24.4")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -20740,7 +20886,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.3", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.4", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -20854,6 +21000,101 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.warning("CRV auf das gewählte Ziel ist schwach. Ziel, Entry oder Stop erneut prüfen.")
                                         else:
                                             st.success("Risiko-Plan rechnerisch plausibel. Vor Umsetzung Setup, Liquidität und Stop-Regel final prüfen.")
+
+                        # ---------- v24.4: Positions-/Exit-Monitor ----------
+                        with st.expander("Positions-/Exit-Monitor v24.4", expanded=False):
+                            st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch.")
+                            positions = _v244_get_positions(selected_watchlist_name)
+                            pos_df = _v244_positions_dataframe(positions, live_df)
+                            if pos_df.empty:
+                                st.info("Noch keine aktiven Positionen erfasst. Unten ein Live-Signal auswählen und Entry/Stop/Stückzahl speichern.")
+                            else:
+                                st.dataframe(pos_df, hide_index=True, use_container_width=True, height=min(420, 42 * len(pos_df) + 55))
+
+                            add_df = live_df.copy()
+                            if not add_df.empty and "Ampel" in add_df.columns:
+                                preferred = add_df[add_df["Ampel"].isin(["🟢", "🟡"])].copy()
+                                if not preferred.empty:
+                                    add_df = preferred
+                            if add_df.empty or "Ticker" not in add_df.columns:
+                                st.info("Keine Live-Zeilen zum Anlegen einer Position verfügbar.")
+                            else:
+                                def _v244_label(row):
+                                    return f"{row.get('Ticker','-')} · {row.get('Status','-')} · {row.get('Live-Score','-')} · Kurs {row.get('Kurs','n/a')}"
+                                add_options = [_v244_label(row) for _, row in add_df.iterrows()]
+                                a1, a2 = st.columns([1.4, 1.0])
+                                with a1:
+                                    selected_pos_label = st.selectbox("Position aus Live-Signal anlegen/aktualisieren", add_options, index=0, key="v244_position_select_row")
+                                selected_pos_row = add_df.iloc[add_options.index(selected_pos_label)].to_dict()
+                                pos_ticker = str(selected_pos_row.get("Ticker") or "").strip().upper()
+                                pos_name = str(selected_pos_row.get("Name") or pos_ticker).strip()
+                                default_price = _v244_row_price(selected_pos_row) or 0.0
+                                # Fuer Stop/Ziel Defaults die vorhandene Risiko-Funktion wiederverwenden.
+                                pos_defaults = {}
+                                try:
+                                    pos_result = analyze_stock(
+                                        ticker=pos_ticker,
+                                        horizon="Swing (1-4 Wochen)",
+                                        depot=10000,
+                                        risk_pct=1.0,
+                                        override=0.0,
+                                        buy_in_override=0.0,
+                                        smart_money_default=True,
+                                        strict_mode=True,
+                                    )
+                                    pos_defaults = _v230_extract_position_inputs(pos_result, style_name=monitor_style)
+                                except Exception:
+                                    pos_defaults = {}
+                                old_pos = positions.get(pos_ticker, {}) if isinstance(positions, dict) else {}
+                                d_entry = _v230_safe_float(old_pos.get("entry"), default=None)
+                                if d_entry is None:
+                                    d_entry = _v230_safe_float(pos_defaults.get("entry_default"), default=default_price) or default_price
+                                d_stop = _v230_safe_float(old_pos.get("stop"), default=None)
+                                if d_stop is None:
+                                    d_stop = _v230_safe_float(pos_defaults.get("stop"), default=0.0) or 0.0
+                                d_target = _v230_safe_float(old_pos.get("target"), default=None)
+                                if d_target is None:
+                                    d_target = _v230_safe_float(pos_defaults.get("target"), default=0.0) or 0.0
+                                d_shares = int(_v230_safe_float(old_pos.get("shares"), default=0) or 0)
+                                with a2:
+                                    st.caption(f"Auswahl: **{pos_ticker}** · {pos_name}")
+                                    st.caption(f"Live-Kurs: {_v230_price_text(default_price)} · Stop-Vorschlag: {_v230_price_text(d_stop)}")
+                                p1, p2, p3, p4 = st.columns(4)
+                                with p1:
+                                    entry_v = st.number_input("Entry", min_value=0.0, value=float(round(d_entry or 0.0, 4)), step=0.01, key=f"v244_entry_{pos_ticker}")
+                                with p2:
+                                    stop_v = st.number_input("Stop", min_value=0.0, value=float(round(d_stop or 0.0, 4)), step=0.01, key=f"v244_stop_{pos_ticker}")
+                                with p3:
+                                    target_v = st.number_input("Ziel/Teilziel", min_value=0.0, value=float(round(d_target or 0.0, 4)), step=0.01, key=f"v244_target_{pos_ticker}")
+                                with p4:
+                                    shares_v = st.number_input("Stückzahl", min_value=0, value=int(d_shares), step=1, key=f"v244_shares_{pos_ticker}")
+                                b1, b2, b3 = st.columns([1.0, 1.0, 1.0])
+                                with b1:
+                                    if st.button("Position speichern/aktualisieren", use_container_width=True, key=f"v244_save_{pos_ticker}"):
+                                        positions[pos_ticker] = {
+                                            "ticker": pos_ticker,
+                                            "name": pos_name,
+                                            "entry": float(entry_v or 0.0),
+                                            "stop": float(stop_v or 0.0),
+                                            "target": float(target_v or 0.0),
+                                            "shares": int(shares_v or 0),
+                                            "created_at": old_pos.get("created_at") or get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
+                                            "last_price": default_price,
+                                        }
+                                        _v244_save_positions(selected_watchlist_name, positions)
+                                        st.success(f"Position {pos_ticker} gespeichert.")
+                                        st.rerun()
+                                with b2:
+                                    if st.button("Aktuellen Kurs als Entry", use_container_width=True, key=f"v244_current_entry_{pos_ticker}"):
+                                        st.session_state[f"v244_entry_{pos_ticker}"] = float(round(default_price or 0.0, 4))
+                                        st.rerun()
+                                with b3:
+                                    if pos_ticker in positions and st.button("Position löschen", use_container_width=True, key=f"v244_delete_{pos_ticker}"):
+                                        positions.pop(pos_ticker, None)
+                                        _v244_save_positions(selected_watchlist_name, positions)
+                                        st.warning(f"Position {pos_ticker} gelöscht.")
+                                        st.rerun()
+
 
                         if live_events_df is not None and not live_events_df.empty:
                             with st.expander("Statuswechsel-Historie dieser App-Session", expanded=bool(changed_count)):

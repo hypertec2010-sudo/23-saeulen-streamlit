@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.4"
+APP_VERSION = "v24.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -19400,7 +19400,7 @@ def _v230_calculate_position_size(entry, stop, target, account_size, risk_pct, m
     }
 
 
-# ---------- v24.4: Positions-/Exit-Monitor ----------
+# ---------- v24.5: Positions-/Exit-Monitor mit Persistenz ----------
 def _v244_position_store_key(watchlist_name=""):
     try:
         wl = str(watchlist_name or "Standard").strip() or "Standard"
@@ -19409,8 +19409,87 @@ def _v244_position_store_key(watchlist_name=""):
     return f"v244_open_positions::{wl}"
 
 
+def _v245_positions_store_path():
+    """Lokaler Sidecar-Speicher fuer offene Positionen.
+
+    Dieser Speicher entkoppelt den Positions-/Exit-Monitor von der Streamlit-Session.
+    Auf lokalem Betrieb oder persistentem App-Speicher bleiben Positionen nach Reload
+    erhalten. Auf kurzlebigen Cloud-Dateisystemen dient st.session_state weiterhin als
+    Fallback fuer die laufende Session.
+    """
+    try:
+        base_dir = Path(__file__).resolve().parent
+        return base_dir / ".live_monitor_positions_v245.json"
+    except Exception:
+        return Path("/tmp/.live_monitor_positions_v245.json")
+
+
+def _v245_safe_json_load(path):
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+def _v245_load_all_positions():
+    file_store = _v245_safe_json_load(_v245_positions_store_path())
+    session_store = {}
+    try:
+        session_store = st.session_state.get("v245_persistent_positions_store", {})
+        if not isinstance(session_store, dict):
+            session_store = {}
+    except Exception:
+        session_store = {}
+
+    merged = dict(file_store)
+    # Session kann neuere Aenderungen enthalten, Datei kann Persistenz enthalten.
+    try:
+        for k, v in session_store.items():
+            if isinstance(v, dict):
+                merged[k] = v
+    except Exception:
+        pass
+    try:
+        st.session_state.v245_persistent_positions_store = merged
+    except Exception:
+        pass
+    return merged
+
+
+def _v245_save_all_positions(store):
+    store = store if isinstance(store, dict) else {}
+    try:
+        st.session_state.v245_persistent_positions_store = store
+    except Exception:
+        pass
+    try:
+        path = _v245_positions_store_path()
+        path.write_text(json.dumps(store, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
 def _v244_get_positions(watchlist_name=""):
     key = _v244_position_store_key(watchlist_name)
+    # v24.5: zuerst persistenten Gesamtstore laden.
+    try:
+        all_pos = _v245_load_all_positions()
+        data = all_pos.get(key, {})
+        if isinstance(data, dict):
+            # Session-Key fuer Rueckwaertskompatibilitaet spiegeln.
+            try:
+                st.session_state[key] = data
+            except Exception:
+                pass
+            return data
+    except Exception:
+        pass
+    # Fallback v24.4: nur Session.
     try:
         data = st.session_state.get(key, {})
         if isinstance(data, dict):
@@ -19422,8 +19501,29 @@ def _v244_get_positions(watchlist_name=""):
 
 def _v244_save_positions(watchlist_name, positions):
     key = _v244_position_store_key(watchlist_name)
+    positions = positions if isinstance(positions, dict) else {}
     try:
-        st.session_state[key] = positions if isinstance(positions, dict) else {}
+        st.session_state[key] = positions
+    except Exception:
+        pass
+    try:
+        all_pos = _v245_load_all_positions()
+        all_pos[key] = positions
+        _v245_save_all_positions(all_pos)
+    except Exception:
+        pass
+
+
+def _v245_delete_positions_for_watchlist(watchlist_name):
+    key = _v244_position_store_key(watchlist_name)
+    try:
+        st.session_state[key] = {}
+    except Exception:
+        pass
+    try:
+        all_pos = _v245_load_all_positions()
+        all_pos.pop(key, None)
+        _v245_save_all_positions(all_pos)
     except Exception:
         pass
 
@@ -21002,9 +21102,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.success("Risiko-Plan rechnerisch plausibel. Vor Umsetzung Setup, Liquidität und Stop-Regel final prüfen.")
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
-                        with st.expander("Positions-/Exit-Monitor v24.4", expanded=False):
-                            st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch.")
+                        with st.expander("Positions-/Exit-Monitor v24.5", expanded=False):
+                            st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
                             positions = _v244_get_positions(selected_watchlist_name)
+                            pc1, pc2 = st.columns([0.72, 0.28])
+                            with pc1:
+                                st.markdown('<div class="compact-help">Positionsspeicher: lokal je Watchlist. Änderungen werden beim Speichern/Löschen direkt persistiert.</div>', unsafe_allow_html=True)
+                            with pc2:
+                                if positions and st.button("Alle Positionen dieser Watchlist löschen", use_container_width=True, key="v245_clear_positions_for_watchlist"):
+                                    _v245_delete_positions_for_watchlist(selected_watchlist_name)
+                                    positions = {}
+                                    st.warning("Alle gespeicherten Positionen dieser Watchlist wurden gelöscht.")
                             pos_df = _v244_positions_dataframe(positions, live_df)
                             if pos_df.empty:
                                 st.info("Noch keine aktiven Positionen erfasst. Unten ein Live-Signal auswählen und Entry/Stop/Stückzahl speichern.")

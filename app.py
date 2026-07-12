@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.1"
+APP_VERSION = "v24.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -20547,7 +20547,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v24.1")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v24.2")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -20683,30 +20683,30 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
                             if bool(override_mask.any()):
                                 st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
-                        # v24.1: Operative Haupttabelle verschlanken.
-                        # Die vollstaendige Diagnose bleibt in einem Expander sichtbar,
-                        # aber die Hauptansicht zeigt nur die trading-relevanten Spalten.
+                        # v24.2: Kompakte operative Haupttabelle.
+                        # Lange Diagnose-/Handlungstexte und Zeitstempel werden nur noch
+                        # im Detail-Expander gezeigt, damit die Hauptansicht als
+                        # kurzfristiges Trading-Dashboard lesbar bleibt.
                         main_cols = [
                             "Ampel", "Änderung", "Trade-State", "Trade-Aktion",
                             "Status", "Signal-Stabilität", "Bestätigungen",
                             "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs",
                             "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis",
-                            "Grund", "Nächste Handlung", "Letztes Update",
                         ]
                         optional_cols = [c for c in main_cols if c in live_df.columns]
                         live_display_df = live_df[optional_cols].copy() if optional_cols else live_df.copy()
                         # Sehr lange Textspalten in der Hauptansicht leicht kuerzen, damit
                         # die Tabelle wie ein Live-Trading-Dashboard lesbar bleibt.
-                        def _v241_clip_cell(x, max_len=160):
+                        def _v242_clip_cell(x, max_len=72):
                             try:
                                 txt = str(x or "")
                                 return txt if len(txt) <= max_len else txt[:max_len - 1] + "…"
                             except Exception:
                                 return x
-                        for _col in ["Trade-Aktion", "Grund", "Nächste Handlung"]:
+                        for _col in ["Trade-Aktion", "Setup-Alert", "Warnhinweis"]:
                             if _col in live_display_df.columns:
-                                live_display_df[_col] = live_display_df[_col].apply(_v241_clip_cell)
-                        st.dataframe(live_display_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(live_display_df) + 55))
+                                live_display_df[_col] = live_display_df[_col].apply(_v242_clip_cell)
+                        st.dataframe(live_display_df, hide_index=True, use_container_width=True, height=min(520, 42 * len(live_display_df) + 55))
                         with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
                             detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
                             st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
@@ -20725,7 +20725,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.1", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.2", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:

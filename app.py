@@ -6594,7 +6594,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
     meta_by_ticker = watchlist_meta_by_ticker or {}
     for ticker in unique[:int(max_items or 40)]:
         try:
-            # v23.10: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
+            # v23.11: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
             # Horizon-Werte. v23.9 uebergab hier "Kurzfrist (1-7 Tage)" und
             # dadurch brachen viele/alle Ticker ab -> leere Live-Watchlist.
             # Kurzfrist wird deshalb als Live-Monitor-Modus in der Status-/Scorelogik
@@ -20437,7 +20437,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.10")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.11")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -20560,10 +20560,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty:
                         st.info("Aktuell keine grünen oder gelben Trigger in dieser Watchlist." if only_active else "Keine Live-Watchlist-Ergebnisse verfügbar.")
-                        if live_errors:
-                            st.warning(f"{len(live_errors)} Ticker konnten nicht geprüft werden. Details anzeigen, um Daten-/Tickerfehler zu sehen.")
+                        try:
+                            _live_errors_df = live_errors if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
+                        except Exception:
+                            _live_errors_df = pd.DataFrame()
+                        if _live_errors_df is not None and not _live_errors_df.empty:
+                            st.warning(f"{len(_live_errors_df)} Ticker konnten nicht geprüft werden. Details anzeigen, um Daten-/Tickerfehler zu sehen.")
                             with st.expander("Live-Monitor Fehlerdetails", expanded=False):
-                                st.dataframe(pd.DataFrame(live_errors), hide_index=True, use_container_width=True)
+                                st.dataframe(_live_errors_df, hide_index=True, use_container_width=True)
                     else:
                         if "Radar-Bucket" in live_df.columns and "Status" in live_df.columns:
                             override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
@@ -20585,7 +20589,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.10", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.11", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -20616,7 +20620,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     try:
                                         risk_result = analyze_stock(
                                             ticker=selected_calc_ticker,
-                                            # v23.10: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
+                                            # v23.11: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
                                             # der gewaehlte Live-Horizont beeinflusst Status/Score, nicht den
                                             # unsupported Core-Horizon-Parameter.
                                             horizon="Swing (1-4 Wochen)",
@@ -20714,9 +20718,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 if st.button("Status-Historie zurücksetzen", key="reset_live_watchlist_history_v220"):
                                     reset_live_watchlist_status_history_v227()
                                     st.rerun()
-                    if live_errors is not None and not live_errors.empty:
+                    try:
+                        _live_errors_df_bottom = live_errors if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
+                    except Exception:
+                        _live_errors_df_bottom = pd.DataFrame()
+                    if _live_errors_df_bottom is not None and not _live_errors_df_bottom.empty:
                         with st.expander("Nicht prüfbare Watchlist-Werte", expanded=False):
-                            st.dataframe(live_errors, hide_index=True, use_container_width=True)
+                            st.dataframe(_live_errors_df_bottom, hide_index=True, use_container_width=True)
 
 # ---------- Analyse-Steuerung im Hauptbereich ----------
 if workspace_mode:

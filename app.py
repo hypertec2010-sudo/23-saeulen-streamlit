@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v23.9"
+APP_VERSION = "v23.12"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6016,6 +6016,15 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     """
     r = result or {}
     d = decision or build_professional_radar_decision_v18(r, style_name)
+    # v23.12: live_short_term muss im Scope der Status-/Scorefunktion definiert sein.
+    # In v23.11 wurde die Variable zwar spaeter verwendet, aber nicht gesetzt; dadurch
+    # brachen nahezu alle Watchlist-Ticker mit NameError ab.
+    live_horizon_text = str(live_horizon or "").strip().lower()
+    live_short_term = bool(
+        live_horizon_text.startswith("kurzfrist")
+        or "trading" in live_horizon_text
+        or "short" in live_horizon_text
+    )
     ticker = str(r.get("ticker") or r.get("Ticker") or "").strip().upper()
     # v22.2: In der Live-Watchlist nicht den Ticker als Namen anzeigen.
     # analyze_stock liefert die Firmendaten meist im Result-/info-Objekt; der robuste
@@ -6594,7 +6603,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
     meta_by_ticker = watchlist_meta_by_ticker or {}
     for ticker in unique[:int(max_items or 40)]:
         try:
-            # v23.11: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
+            # v23.12: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
             # Horizon-Werte. v23.9 uebergab hier "Kurzfrist (1-7 Tage)" und
             # dadurch brachen viele/alle Ticker ab -> leere Live-Watchlist.
             # Kurzfrist wird deshalb als Live-Monitor-Modus in der Status-/Scorelogik
@@ -20437,7 +20446,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v23.11")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v23.12")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -20589,7 +20598,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.11", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v23.12", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -20620,7 +20629,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     try:
                                         risk_result = analyze_stock(
                                             ticker=selected_calc_ticker,
-                                            # v23.11: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
+                                            # v23.12: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
                                             # der gewaehlte Live-Horizont beeinflusst Status/Score, nicht den
                                             # unsupported Core-Horizon-Parameter.
                                             horizon="Swing (1-4 Wochen)",

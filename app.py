@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.7"
+APP_VERSION = "v24.8"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -20793,7 +20793,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v24.7")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v24.8")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -21047,7 +21047,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.7", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.8", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -21107,19 +21107,40 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 if risk_error:
                                     st.warning(f"Risiko-Basis konnte nicht berechnet werden: {risk_error}")
                                 else:
+                                    # v24.8: Der Risiko-Rechner darf beim Wechsel des Tickerauswahlfeldes
+                                    # keine alten Entry-/Stop-/Ziel-Widgetwerte eines anderen Tickers behalten.
+                                    # Daher werden die Widget-Keys tickerbezogen geführt. Außerdem hat der
+                                    # aktuelle Live-Monitor-Kurs Vorrang vor einem ggf. gecachten Analysepreis.
+                                    live_row_price_v248 = _v230_safe_float(selected_calc_row.get("Kurs"), default=None)
+                                    if live_row_price_v248 is not None and live_row_price_v248 > 0:
+                                        risk_inputs["price"] = live_row_price_v248
+                                        risk_inputs["entry_default"] = live_row_price_v248
+
+                                    ticker_key_v248 = re.sub(r"[^A-Za-z0-9_]+", "_", selected_calc_ticker or "UNKNOWN")
+                                    entry_widget_key_v248 = f"v230_entry_widget_{ticker_key_v248}"
+                                    stop_widget_key_v248 = f"v230_stop_widget_{ticker_key_v248}"
+                                    target_widget_key_v248 = f"v230_target_widget_{ticker_key_v248}"
+                                    current_btn_key_v248 = f"v230_use_current_price_btn_{ticker_key_v248}"
+
                                     st.markdown(
                                         f"**{selected_calc_ticker}** · Status: **{selected_calc_row.get('Status', '-')}** · Live-Score: **{selected_calc_row.get('Live-Score', '-')}** · Radar-Bucket: **{selected_calc_row.get('Radar-Bucket', '-')}**"
                                     )
                                     st.caption(
-                                        f"Kurs {_v230_price_text(risk_inputs.get('price'))} · Entry-Zone {risk_inputs.get('entry_zone') or '-'} · Vorschlags-Stop {_v230_price_text(risk_inputs.get('stop'))} · Ziel {_v230_price_text(risk_inputs.get('target'))} ({risk_inputs.get('target_source') or '-'})"
+                                        f"Live-Kurs {_v230_price_text(risk_inputs.get('price'))} · Entry-Zone {risk_inputs.get('entry_zone') or '-'} · Vorschlags-Stop {_v230_price_text(risk_inputs.get('stop'))} · Ziel {_v230_price_text(risk_inputs.get('target'))} ({risk_inputs.get('target_source') or '-'})"
                                     )
-                                    # v24.7: Widget-State-Fix. Streamlit erlaubt nicht, einen Widget-Key
-                                    # nach dem Erzeugen des Widgets im selben Run zu setzen. Deshalb wird
-                                    # ein geplanter Entry-Override vor der number_input-Erstellung uebernommen.
-                                    _pending_entry_override_v247 = st.session_state.pop("v247_pending_entry_override", None)
-                                    if _pending_entry_override_v247 is not None:
+
+                                    # v24.8: Pending-Override nur auf denselben Ticker anwenden und vor
+                                    # der Widget-Erstellung setzen.
+                                    _pending_entry_override_v248 = st.session_state.pop("v247_pending_entry_override", None)
+                                    if isinstance(_pending_entry_override_v248, dict):
+                                        if str(_pending_entry_override_v248.get("ticker") or "").upper() == selected_calc_ticker:
+                                            try:
+                                                st.session_state[entry_widget_key_v248] = float(round(float(_pending_entry_override_v248.get("value")), 4))
+                                            except Exception:
+                                                pass
+                                    elif _pending_entry_override_v248 is not None:
                                         try:
-                                            st.session_state["v230_entry_widget"] = float(round(float(_pending_entry_override_v247), 4))
+                                            st.session_state[entry_widget_key_v248] = float(round(float(_pending_entry_override_v248), 4))
                                         except Exception:
                                             pass
 
@@ -21135,26 +21156,28 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         st.session_state.v230_risk_pct = risk_pct_input
                                     with rc3:
                                         entry_default = _v230_safe_float(risk_inputs.get("entry_default"), default=0.0) or 0.0
-                                        entry_input = st.number_input("Geplanter Entry", min_value=0.0, value=float(round(entry_default, 4)), step=0.01, key="v230_entry_widget")
+                                        entry_input = st.number_input("Geplanter Entry", min_value=0.0, value=float(round(entry_default, 4)), step=0.01, key=entry_widget_key_v248)
                                     with rc4:
                                         stop_default = _v230_safe_float(risk_inputs.get("stop"), default=0.0) or 0.0
-                                        stop_input = st.number_input("Stop / Invalidierung", min_value=0.0, value=float(round(stop_default, 4)), step=0.01, key="v230_stop_widget")
+                                        stop_input = st.number_input("Stop / Invalidierung", min_value=0.0, value=float(round(stop_default, 4)), step=0.01, key=stop_widget_key_v248)
 
                                     rc5, rc6, rc7 = st.columns([1.0, 1.0, 1.2])
                                     with rc5:
                                         target_default = _v230_safe_float(risk_inputs.get("target"), default=0.0) or 0.0
-                                        target_input = st.number_input("Ziel / Teilziel", min_value=0.0, value=float(round(target_default, 4)), step=0.01, key="v230_target_widget")
+                                        target_input = st.number_input("Ziel / Teilziel", min_value=0.0, value=float(round(target_default, 4)), step=0.01, key=target_widget_key_v248)
                                     with rc6:
                                         max_position_pct = st.number_input("Max. Positionsanteil (%)", min_value=0.0, max_value=100.0, value=default_max_pos, step=1.0, key="v230_max_position_pct_widget")
                                         st.session_state.v230_max_position_pct = max_position_pct
                                     with rc7:
                                         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-                                        use_current_as_entry = st.button("Aktuellen Kurs als Entry setzen", use_container_width=True, key="v230_use_current_price_btn")
+                                        use_current_as_entry = st.button("Aktuellen Kurs als Entry setzen", use_container_width=True, key=current_btn_key_v248)
                                         if use_current_as_entry:
-                                            # v24.7: Nicht direkt den Widget-Key setzen, da das Widget
-                                            # in diesem Run bereits erstellt wurde. Override fuer den
-                                            # naechsten Run vormerken.
-                                            st.session_state["v247_pending_entry_override"] = float(round(_v230_safe_float(risk_inputs.get("price"), default=entry_input) or entry_input, 4))
+                                            # Nicht direkt den Widget-Key nach der Widget-Erstellung setzen.
+                                            # Stattdessen tickerbezogen fuer den naechsten Run vormerken.
+                                            st.session_state["v247_pending_entry_override"] = {
+                                                "ticker": selected_calc_ticker,
+                                                "value": float(round(_v230_safe_float(risk_inputs.get("price"), default=entry_input) or entry_input, 4)),
+                                            }
                                             st.rerun()
 
                                     calc_pkg = _v230_calculate_position_size(entry_input, stop_input, target_input, account_size, risk_pct_input, max_position_pct=max_position_pct)

@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.11"
+APP_VERSION = "v24.12"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6170,6 +6170,82 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     )
     price_float = _v229_num_any(price)
 
+    # v24.12: ATR-basierte Volatilität für den Live-Screener.
+    # ATR in % ist für kurzfristige Trades aussagekräftiger als eine abstrakte
+    # annualisierte Volatilität, weil sie die typische tägliche Handelsspanne
+    # relativ zum aktuellen Kurs zeigt.
+    def _v2412_atr_pct(src, current_price=None):
+        rr = src or {}
+        direct_keys = [
+            "atr_pct", "ATR_pct", "ATR_Pct", "atr_percent", "ATR_Percent",
+            "ATR in %", "ATR%", "volatility_atr_pct"
+        ]
+        for key in direct_keys:
+            try:
+                val = rr.get(key)
+                if val in [None, "", "-", "n/a", "nan"]:
+                    continue
+                f = float(str(val).replace(",", ".").replace("%", "").strip())
+                if np.isfinite(f) and not pd.isna(f) and f >= 0:
+                    return f
+            except Exception:
+                pass
+
+        # Fallback: ATR-Wert durch aktuellen Kurs teilen.
+        atr_abs = None
+        for key in ["atr", "ATR", "atr14", "ATR14"]:
+            try:
+                val = rr.get(key)
+                if val in [None, "", "-", "n/a", "nan"]:
+                    continue
+                f = float(str(val).replace(",", "."))
+                if np.isfinite(f) and not pd.isna(f) and f > 0:
+                    atr_abs = f
+                    break
+            except Exception:
+                pass
+        if atr_abs is not None and current_price is not None and current_price > 0:
+            return atr_abs / current_price * 100.0
+
+        # Letzter Fallback: ATR(14) direkt aus OHLC-Daten berechnen.
+        try:
+            dfv = rr.get("df")
+            if isinstance(dfv, pd.DataFrame) and not dfv.empty:
+                high_col = next((c for c in ["High", "high"] if c in dfv.columns), None)
+                low_col = next((c for c in ["Low", "low"] if c in dfv.columns), None)
+                close_col = next((c for c in ["Close", "close", "Adj Close", "Adj_Close"] if c in dfv.columns), None)
+                if high_col and low_col and close_col:
+                    tmp = dfv[[high_col, low_col, close_col]].copy()
+                    for c in [high_col, low_col, close_col]:
+                        tmp[c] = pd.to_numeric(tmp[c], errors="coerce")
+                    tmp = tmp.dropna()
+                    if len(tmp) >= 15:
+                        prev_close = tmp[close_col].shift(1)
+                        tr = pd.concat([
+                            (tmp[high_col] - tmp[low_col]).abs(),
+                            (tmp[high_col] - prev_close).abs(),
+                            (tmp[low_col] - prev_close).abs(),
+                        ], axis=1).max(axis=1)
+                        atr14 = tr.rolling(14, min_periods=14).mean().iloc[-1]
+                        last_close = tmp[close_col].iloc[-1]
+                        if pd.notna(atr14) and pd.notna(last_close) and last_close > 0:
+                            return float(atr14 / last_close * 100.0)
+        except Exception:
+            pass
+        return None
+
+    atr_pct_live = _v2412_atr_pct(r, price_float)
+    if atr_pct_live is None:
+        volatility_text = "n/a"
+    elif atr_pct_live < 2.8:
+        volatility_text = f"{atr_pct_live:.1f}% · niedrig"
+    elif atr_pct_live < 5.5:
+        volatility_text = f"{atr_pct_live:.1f}% · normal"
+    elif atr_pct_live < 8.0:
+        volatility_text = f"{atr_pct_live:.1f}% · erhöht"
+    else:
+        volatility_text = f"{atr_pct_live:.1f}% · hoch"
+
     # v22.13: Performance-Kontext seit Watchlist-Aufnahme.
     # Der Live-Score bleibt ein aktueller Chart-/Trigger-Score, aber stark gelaufene
     # Watchlist-Werte sollen sichtbar sein, auch wenn aktuell kein frischer Entry aktiv ist.
@@ -6604,6 +6680,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Ticker": ticker,
         "Name": name,
         "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
+        "Volatilität": volatility_text,
+        "ATR-%": None if atr_pct_live is None else round(float(atr_pct_live), 2),
         "Startkurs": start_price_text,
         "Seit Aufnahme": perf_text,
         "Startquelle": "n/a" if str(start_price_text).lower() == "n/a" else (start_price_source or "n/a"),
@@ -6668,7 +6746,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
@@ -20844,7 +20922,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v24.11")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v24.12")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -21058,12 +21136,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
                                 if bool(override_mask.any()):
                                     st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
+                            st.caption("Volatilität = ATR(14) in % des Kurses: typische tägliche Handelsspanne; höher bedeutet größere Chancen, aber auch größere Stop-/Positionsrisiken.")
                             # v24.3: Lesbare operative Haupttabelle.
                             # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Ticker", "Name", "Kurs", "Live-Score",
+                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Live-Score",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung",
                             ]
@@ -21116,7 +21195,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
                         with wl_tab_risk:
-                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.11")
+                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.12")
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -21287,7 +21366,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         with wl_tab_positions:
-                            st.markdown("### Positions-/Exit-Monitor v24.11")
+                            st.markdown("### Positions-/Exit-Monitor v24.12")
                             st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])

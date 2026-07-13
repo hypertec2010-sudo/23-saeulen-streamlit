@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.6"
+APP_VERSION = "v24.7"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -20793,7 +20793,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v24.6")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v24.7")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -21047,7 +21047,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.6", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.7", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -21113,6 +21113,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption(
                                         f"Kurs {_v230_price_text(risk_inputs.get('price'))} · Entry-Zone {risk_inputs.get('entry_zone') or '-'} · Vorschlags-Stop {_v230_price_text(risk_inputs.get('stop'))} · Ziel {_v230_price_text(risk_inputs.get('target'))} ({risk_inputs.get('target_source') or '-'})"
                                     )
+                                    # v24.7: Widget-State-Fix. Streamlit erlaubt nicht, einen Widget-Key
+                                    # nach dem Erzeugen des Widgets im selben Run zu setzen. Deshalb wird
+                                    # ein geplanter Entry-Override vor der number_input-Erstellung uebernommen.
+                                    _pending_entry_override_v247 = st.session_state.pop("v247_pending_entry_override", None)
+                                    if _pending_entry_override_v247 is not None:
+                                        try:
+                                            st.session_state["v230_entry_widget"] = float(round(float(_pending_entry_override_v247), 4))
+                                        except Exception:
+                                            pass
+
                                     rc1, rc2, rc3, rc4 = st.columns(4)
                                     default_account = float(st.session_state.get("v230_account_size", 50000.0) or 50000.0)
                                     default_risk_pct = float(st.session_state.get("v230_risk_pct", 0.5) or 0.5)
@@ -21141,7 +21151,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
                                         use_current_as_entry = st.button("Aktuellen Kurs als Entry setzen", use_container_width=True, key="v230_use_current_price_btn")
                                         if use_current_as_entry:
-                                            st.session_state.v230_entry_widget = float(round(_v230_safe_float(risk_inputs.get("price"), default=entry_input) or entry_input, 4))
+                                            # v24.7: Nicht direkt den Widget-Key setzen, da das Widget
+                                            # in diesem Run bereits erstellt wurde. Override fuer den
+                                            # naechsten Run vormerken.
+                                            st.session_state["v247_pending_entry_override"] = float(round(_v230_safe_float(risk_inputs.get("price"), default=entry_input) or entry_input, 4))
                                             st.rerun()
 
                                     calc_pkg = _v230_calculate_position_size(entry_input, stop_input, target_input, account_size, risk_pct_input, max_position_pct=max_position_pct)

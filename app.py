@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.5"
+APP_VERSION = "v24.6"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -20793,7 +20793,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v24.4")
+            st.markdown("### Live-Watchlist / Trigger-Monitor v24.6")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -20823,10 +20823,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             st.session_state.live_watchlist_style = monitor_style
 
             run_live_monitor = False
+            manual_live_run_v246 = False
             lm_run1, lm_run2 = st.columns([1.0, 2.0])
             with lm_run1:
                 if st.button("Jetzt prüfen", use_container_width=True, key="run_live_watchlist_monitor_now"):
                     run_live_monitor = True
+                    manual_live_run_v246 = True
                     st.session_state.live_watchlist_last_manual_run = datetime.now().isoformat()
             with lm_run2:
                 if live_monitor_enabled:
@@ -20862,7 +20864,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         """,
                         height=0,
                     )
-                    run_live_monitor = True
+                    # v24.6: Nicht bei jeder Widget-Aenderung sofort den kompletten
+                    # Screener neu starten. Bei aktivem Live-Monitor wird nur dann neu
+                    # gescannt, wenn der Cache fehlt oder das Refresh-Intervall abgelaufen ist.
+                    pass
                 else:
                     # Wenn der Monitor ausgeschaltet wird, URL-Refreshmarker entfernen.
                     try:
@@ -20873,45 +20878,101 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     except Exception:
                         pass
 
-            if run_live_monitor:
+            # v24.6: Live-Monitor-Scan-Cache.
+            # Streamlit fuehrt das Skript bei jeder Auswahl neu aus. Ohne Cache startet
+            # der komplette Watchlist-Screener auch dann neu, wenn man nur im
+            # Risiko-/Positionsgroessen-Rechner einen Wert auswaehlt. Der Cache ist
+            # an Watchlist, Tickerliste, Horizont und Stil gebunden und wird erst nach
+            # Ablauf des eingestellten Refresh-Intervalls oder per "Jetzt pruefen" neu gebaut.
+            try:
+                refresh_minutes_v246 = int(str(refresh_label).split()[0])
+            except Exception:
+                refresh_minutes_v246 = 30
+            live_cache_key_v246 = {
+                "watchlist": str(selected_watchlist_name or ""),
+                "tickers": tuple([str(t).strip().upper() for t in (current_tickers or [])]),
+                "style": str(monitor_style or ""),
+                "horizon": str(live_monitor_horizon or ""),
+            }
+            live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
+            cache_ok_v246 = False
+            cache_stale_v246 = True
+            try:
+                cache_ok_v246 = bool(live_cache_v246) and live_cache_v246.get("key") == live_cache_key_v246 and isinstance(live_cache_v246.get("live_df"), pd.DataFrame)
+                cache_ts_v246 = datetime.fromisoformat(str(live_cache_v246.get("ts"))) if cache_ok_v246 else None
+                if cache_ts_v246 is not None:
+                    cache_stale_v246 = (datetime.now() - cache_ts_v246).total_seconds() >= refresh_minutes_v246 * 60
+            except Exception:
+                cache_ok_v246 = False
+                cache_stale_v246 = True
+            live_should_scan_v246 = bool(manual_live_run_v246 or run_live_monitor or (live_monitor_enabled and (not cache_ok_v246 or cache_stale_v246)))
+            show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246)
+
+            if show_live_monitor_v246:
                 if not current_tickers:
                     st.info("Diese Watchlist ist leer.")
                 else:
-                    with st.spinner(f"Live-Watchlist wird geprüft ({min(len(current_tickers), 40)} Werte) ..."):
-                        current_watchlist_meta_by_ticker = {}
-                        try:
-                            if current_watchlist_df is not None and not current_watchlist_df.empty:
-                                for _, _row in current_watchlist_df.iterrows():
-                                    _tk = _v228_norm_watchlist_ticker(_row.get("Ticker"))
-                                    if _tk and _tk not in current_watchlist_meta_by_ticker:
-                                        current_watchlist_meta_by_ticker[_tk] = dict(_row)
-                        except Exception:
+                    if live_should_scan_v246:
+                        with st.spinner(f"Live-Watchlist wird geprüft ({min(len(current_tickers), 40)} Werte) ..."):
                             current_watchlist_meta_by_ticker = {}
-                        # v22.17: lokal gespeicherte Startkurse ergaenzen/ueberschreiben die Sheets-Metadaten.
-                        try:
-                            for _tk, _meta in _v2214_get_start_price_meta_map(selected_watchlist_name).items():
-                                if not _tk:
-                                    continue
-                                base = current_watchlist_meta_by_ticker.get(_tk, {})
-                                merged = dict(base)
-                                merged.update(dict(_meta))
-                                current_watchlist_meta_by_ticker[_tk] = merged
-                        except Exception:
-                            pass
-                        try:
-                            for _item in _v228_pending_for_watchlist(selected_watchlist_name):
-                                _tk = _v228_norm_watchlist_ticker(_item.get("Ticker"))
-                                if _tk:
+                            try:
+                                if current_watchlist_df is not None and not current_watchlist_df.empty:
+                                    for _, _row in current_watchlist_df.iterrows():
+                                        _tk = _v228_norm_watchlist_ticker(_row.get("Ticker"))
+                                        if _tk and _tk not in current_watchlist_meta_by_ticker:
+                                            current_watchlist_meta_by_ticker[_tk] = dict(_row)
+                            except Exception:
+                                current_watchlist_meta_by_ticker = {}
+                            # v22.17: lokal gespeicherte Startkurse ergaenzen/ueberschreiben die Sheets-Metadaten.
+                            try:
+                                for _tk, _meta in _v2214_get_start_price_meta_map(selected_watchlist_name).items():
+                                    if not _tk:
+                                        continue
                                     base = current_watchlist_meta_by_ticker.get(_tk, {})
                                     merged = dict(base)
-                                    merged.update(dict(_item))
+                                    merged.update(dict(_meta))
                                     current_watchlist_meta_by_ticker[_tk] = merged
+                            except Exception:
+                                pass
+                            try:
+                                for _item in _v228_pending_for_watchlist(selected_watchlist_name):
+                                    _tk = _v228_norm_watchlist_ticker(_item.get("Ticker"))
+                                    if _tk:
+                                        base = current_watchlist_meta_by_ticker.get(_tk, {})
+                                        merged = dict(base)
+                                        merged.update(dict(_item))
+                                        current_watchlist_meta_by_ticker[_tk] = merged
+                            except Exception:
+                                pass
+                            live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40, watchlist_meta_by_ticker=current_watchlist_meta_by_ticker, live_horizon=live_monitor_horizon)
+                        live_events_df = pd.DataFrame()
+                        if not live_df.empty:
+                            live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_watchlist_name, style_name=f"{monitor_style} | {live_monitor_horizon}")
+                        try:
+                            live_errors_cache_v246 = live_errors.copy() if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
                         except Exception:
-                            pass
-                        live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40, watchlist_meta_by_ticker=current_watchlist_meta_by_ticker, live_horizon=live_monitor_horizon)
-                    live_events_df = pd.DataFrame()
-                    if not live_df.empty:
-                        live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_watchlist_name, style_name=f"{monitor_style} | {live_monitor_horizon}")
+                            live_errors_cache_v246 = pd.DataFrame()
+                        st.session_state["v246_live_monitor_cache"] = {
+                            "key": live_cache_key_v246,
+                            "ts": datetime.now().isoformat(),
+                            "live_df": live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame(),
+                            "live_errors": live_errors_cache_v246,
+                        }
+                    else:
+                        try:
+                            live_df = live_cache_v246.get("live_df", pd.DataFrame()).copy()
+                        except Exception:
+                            live_df = pd.DataFrame()
+                        try:
+                            live_errors = live_cache_v246.get("live_errors", pd.DataFrame()).copy()
+                        except Exception:
+                            live_errors = pd.DataFrame()
+                        live_events_df = pd.DataFrame()
+                        try:
+                            cache_ts_txt_v246 = datetime.fromisoformat(str(live_cache_v246.get("ts"))).strftime("%d.%m.%Y %H:%M:%S")
+                            st.caption(f"Zwischengespeicherte Live-Ergebnisse vom {cache_ts_txt_v246}. Neuer Scan erst nach Refresh-Intervall oder per 'Jetzt prüfen'.")
+                        except Exception:
+                            st.caption("Zwischengespeicherte Live-Ergebnisse. Neuer Scan erst nach Refresh-Intervall oder per 'Jetzt prüfen'.")
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty:
@@ -20986,7 +21047,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.4", expanded=False):
+                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.6", expanded=False):
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -21013,26 +21074,36 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     risk_currency = st.text_input("Währung/Einheit", value=st.session_state.get("v230_risk_currency", "EUR"), key="v230_risk_currency_widget")
                                     st.session_state.v230_risk_currency = risk_currency
 
-                                with st.spinner(f"Risiko-Basis für {selected_calc_ticker} wird berechnet ..."):
-                                    try:
-                                        risk_result = analyze_stock(
-                                            ticker=selected_calc_ticker,
-                                            # v24.0: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
-                                            # der gewaehlte Live-Horizont beeinflusst Status/Score, nicht den
-                                            # unsupported Core-Horizon-Parameter.
-                                            horizon="Swing (1-4 Wochen)",
-                                            depot=10000,
-                                            risk_pct=1.0,
-                                            override=0.0,
-                                            buy_in_override=0.0,
-                                            smart_money_default=True,
-                                            strict_mode=True,
-                                        )
-                                        risk_inputs = _v230_extract_position_inputs(risk_result, style_name=monitor_style)
-                                        risk_error = None
-                                    except Exception as exc:
-                                        risk_inputs = {}
-                                        risk_error = str(exc)[:220]
+                                # v24.6: Risiko-Basis je Ticker cachen. Die Auswahl im Rechner
+                                # darf nicht immer wieder eine komplette Einzelanalyse starten.
+                                risk_cache_key_v246 = f"{selected_calc_ticker}|{monitor_style}|Swing (1-4 Wochen)"
+                                risk_cache_store_v246 = st.session_state.get("v246_risk_basis_cache", {})
+                                if risk_cache_key_v246 in risk_cache_store_v246:
+                                    risk_inputs = dict(risk_cache_store_v246.get(risk_cache_key_v246) or {})
+                                    risk_error = None
+                                else:
+                                    with st.spinner(f"Risiko-Basis für {selected_calc_ticker} wird berechnet ..."):
+                                        try:
+                                            risk_result = analyze_stock(
+                                                ticker=selected_calc_ticker,
+                                                # v24.0: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
+                                                # der gewaehlte Live-Horizont beeinflusst Status/Score, nicht den
+                                                # unsupported Core-Horizon-Parameter.
+                                                horizon="Swing (1-4 Wochen)",
+                                                depot=10000,
+                                                risk_pct=1.0,
+                                                override=0.0,
+                                                buy_in_override=0.0,
+                                                smart_money_default=True,
+                                                strict_mode=True,
+                                            )
+                                            risk_inputs = _v230_extract_position_inputs(risk_result, style_name=monitor_style)
+                                            risk_cache_store_v246[risk_cache_key_v246] = dict(risk_inputs)
+                                            st.session_state["v246_risk_basis_cache"] = risk_cache_store_v246
+                                            risk_error = None
+                                        except Exception as exc:
+                                            risk_inputs = {}
+                                            risk_error = str(exc)[:220]
                                 if risk_error:
                                     st.warning(f"Risiko-Basis konnte nicht berechnet werden: {risk_error}")
                                 else:

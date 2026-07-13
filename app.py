@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.10"
+APP_VERSION = "v24.11"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3158,15 +3158,22 @@ def restore_live_monitor_workspace_from_query_v226():
         live_param = str(qp.get("live_monitor", "")).lower()
         workspace_param = str(qp.get("workspace", ""))
         if live_param in {"1", "true", "yes", "on"}:
+            # v24.11: Query-Parameter nur beim ersten Laden/Browser-Reload als
+            # Wiederherstellung nutzen. Wenn wir sie bei jedem Streamlit-Rerun
+            # erneut in die Widget-Keys schreiben, springt die Refresh-Auswahl
+            # nach einer manuellen Änderung wieder auf den alten URL-Wert
+            # zurück, meist 30 Minuten.
+            first_query_restore = not bool(st.session_state.get("_v2411_live_query_restore_done", False))
             if workspace_param.lower() in {"watchlisten", "watchlist", "watchlists"}:
                 st.session_state.workspace_mode = "Watchlisten"
             elif workspace_param.lower() in {"positionen", "positions"}:
                 st.session_state.workspace_mode = "Positionen"
-            st.session_state.live_watchlist_monitor_enabled = True
-            st.session_state.live_watchlist_monitor_enabled_widget = True
+            if first_query_restore or "live_watchlist_monitor_enabled" not in st.session_state:
+                st.session_state.live_watchlist_monitor_enabled = True
+                st.session_state.live_watchlist_monitor_enabled_widget = True
             refresh_param = str(qp.get("refresh", ""))
             refresh_map = {"15": "15 Minuten", "30": "30 Minuten", "60": "60 Minuten"}
-            if refresh_param in refresh_map:
+            if refresh_param in refresh_map and (first_query_restore or "live_watchlist_refresh_interval" not in st.session_state):
                 st.session_state.live_watchlist_refresh_interval = refresh_map[refresh_param]
                 st.session_state.live_watchlist_refresh_interval_widget = refresh_map[refresh_param]
             live_horizon_param = str(qp.get("live_horizon", "")).strip().lower()
@@ -3174,9 +3181,10 @@ def restore_live_monitor_workspace_from_query_v226():
                 "short": "Kurzfrist / Trading",
                 "swing": "Swing / 1-4 Wochen",
             }
-            if live_horizon_param in horizon_map:
+            if live_horizon_param in horizon_map and (first_query_restore or "live_watchlist_horizon" not in st.session_state):
                 st.session_state.live_watchlist_horizon = horizon_map[live_horizon_param]
                 st.session_state.live_watchlist_horizon_widget = horizon_map[live_horizon_param]
+            st.session_state._v2411_live_query_restore_done = True
     except Exception:
         pass
 
@@ -20836,7 +20844,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v24.10")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v24.11")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -20849,6 +20857,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     current_refresh = "30 Minuten"
                 refresh_label = st.selectbox("Refresh", refresh_options, index=refresh_options.index(current_refresh), key="live_watchlist_refresh_interval_widget")
                 st.session_state.live_watchlist_refresh_interval = refresh_label
+                # v24.11: Die manuelle Auswahl sofort in der URL spiegeln, damit
+                # der naechste Browser-Refresh nicht wieder den alten Wert nutzt.
+                try:
+                    if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
+                        st.query_params["refresh"] = str(refresh_label).split()[0]
+                except Exception:
+                    pass
             with lm3:
                 horizon_options = ["Kurzfrist / Trading", "Swing / 1-4 Wochen"]
                 current_live_horizon = st.session_state.get("live_watchlist_horizon", "Kurzfrist / Trading")
@@ -20856,6 +20871,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     current_live_horizon = "Kurzfrist / Trading"
                 live_monitor_horizon = st.selectbox("Live-Zeithorizont", horizon_options, index=horizon_options.index(current_live_horizon), key="live_watchlist_horizon_widget")
                 st.session_state.live_watchlist_horizon = live_monitor_horizon
+                try:
+                    if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
+                        st.query_params["live_horizon"] = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
+                except Exception:
+                    pass
             with lm4:
                 only_active = st.checkbox("Nur grün/gelb", value=bool(st.session_state.get("live_watchlist_only_active", False)), key="live_watchlist_only_active_widget")
                 st.session_state.live_watchlist_only_active = only_active
@@ -21096,7 +21116,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
                         with wl_tab_risk:
-                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.10")
+                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.11")
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -21267,7 +21287,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         with wl_tab_positions:
-                            st.markdown("### Positions-/Exit-Monitor v24.10")
+                            st.markdown("### Positions-/Exit-Monitor v24.11")
                             st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])

@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.8"
+APP_VERSION = "v24.9"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -20793,7 +20793,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trigger-Monitor v24.8")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v24.9")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -20986,68 +20986,74 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             with st.expander("Live-Monitor Fehlerdetails", expanded=False):
                                 st.dataframe(_live_errors_df, hide_index=True, use_container_width=True)
                     else:
-                        if "Radar-Bucket" in live_df.columns and "Status" in live_df.columns:
-                            override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
-                            if bool(override_mask.any()):
-                                st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
-                        # v24.3: Lesbare operative Haupttabelle.
-                        # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
-                        # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
-                        # scrollen, um den Unternehmensnamen zu sehen.
-                        main_cols = [
-                            "Ampel", "Ticker", "Name", "Kurs", "Live-Score",
-                            "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
-                            "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung",
-                        ]
-                        optional_cols = [c for c in main_cols if c in live_df.columns]
-                        live_display_df = live_df[optional_cols].copy() if optional_cols else live_df.copy()
+                        # v24.9: Watchlist-Trading-Cockpit in klare Arbeitsbereiche trennen.
+                        wl_tab_live, wl_tab_risk, wl_tab_positions, wl_tab_history = st.tabs([
+                            "📡 Live-Screener", "📐 Risiko-Rechner", "📌 Positionen / Exit", "🧾 Historie & Details"
+                        ])
+                        with wl_tab_live:
+                            if "Radar-Bucket" in live_df.columns and "Status" in live_df.columns:
+                                override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
+                                if bool(override_mask.any()):
+                                    st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
+                            # v24.3: Lesbare operative Haupttabelle.
+                            # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
+                            # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
+                            # scrollen, um den Unternehmensnamen zu sehen.
+                            main_cols = [
+                                "Ampel", "Ticker", "Name", "Kurs", "Live-Score",
+                                "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
+                                "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung",
+                            ]
+                            optional_cols = [c for c in main_cols if c in live_df.columns]
+                            live_display_df = live_df[optional_cols].copy() if optional_cols else live_df.copy()
 
-                        def _v243_clean_cell(x):
-                            try:
-                                txt = str(x or "").strip()
-                                if txt.lower() in {"none", "nan"}:
+                            def _v243_clean_cell(x):
+                                try:
+                                    txt = str(x or "").strip()
+                                    if txt.lower() in {"none", "nan"}:
+                                        return "-"
+                                    # Sicherheitsnetz gegen interne Streamlit-/Tabellenartefakte.
+                                    if "column index out of bounds" in txt.lower():
+                                        return "-"
+                                    return txt
+                                except Exception:
                                     return "-"
-                                # Sicherheitsnetz gegen interne Streamlit-/Tabellenartefakte.
-                                if "column index out of bounds" in txt.lower():
-                                    return "-"
-                                return txt
-                            except Exception:
-                                return "-"
 
-                        def _v243_clip_cell(x, max_len=46):
-                            txt = _v243_clean_cell(x)
-                            return txt if len(txt) <= max_len else txt[:max_len - 1] + "…"
+                            def _v243_clip_cell(x, max_len=46):
+                                txt = _v243_clean_cell(x)
+                                return txt if len(txt) <= max_len else txt[:max_len - 1] + "…"
 
-                        for _col in live_display_df.columns:
-                            live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)
-                        for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24}.items():
-                            if _col in live_display_df.columns:
-                                live_display_df[_col] = live_display_df[_col].apply(lambda x, m=_max: _v243_clip_cell(x, m))
+                            for _col in live_display_df.columns:
+                                live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)
+                            for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24}.items():
+                                if _col in live_display_df.columns:
+                                    live_display_df[_col] = live_display_df[_col].apply(lambda x, m=_max: _v243_clip_cell(x, m))
 
-                        st.dataframe(live_display_df, hide_index=True, use_container_width=True, height=min(520, 42 * len(live_display_df) + 55))
-                        with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
-                            detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
-                            try:
-                                detail_df = detail_df.applymap(lambda x: "-" if "column index out of bounds" in str(x).lower() else x)
-                            except Exception:
-                                pass
-                            st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
-                        green_count = int((live_df["Ampel"] == "🟢").sum()) if "Ampel" in live_df.columns else 0
-                        yellow_count = int((live_df["Ampel"] == "🟡").sum()) if "Ampel" in live_df.columns else 0
-                        red_count = int((live_df["Ampel"] == "🔴").sum()) if "Ampel" in live_df.columns else 0
-                        changed_count = int((live_df["Änderung"].astype(str).isin(["Neu", "Verbessert", "Verschlechtert", "Geändert"])).sum()) if "Änderung" in live_df.columns else 0
-                        score_txt = ""
-                        if "Live-Score" in live_df.columns:
-                            try:
-                                score_vals = live_df["Live-Score"].astype(str).str.extract(r"(\d+)")[0].dropna().astype(float)
-                                if not score_vals.empty:
-                                    score_txt = f" · Score Ø {score_vals.mean():.0f}/100"
-                            except Exception:
-                                score_txt = ""
-                        st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
+                            st.dataframe(live_display_df, hide_index=True, use_container_width=True, height=min(520, 42 * len(live_display_df) + 55))
+                            with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
+                                detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
+                                try:
+                                    detail_df = detail_df.applymap(lambda x: "-" if "column index out of bounds" in str(x).lower() else x)
+                                except Exception:
+                                    pass
+                                st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
+                            green_count = int((live_df["Ampel"] == "🟢").sum()) if "Ampel" in live_df.columns else 0
+                            yellow_count = int((live_df["Ampel"] == "🟡").sum()) if "Ampel" in live_df.columns else 0
+                            red_count = int((live_df["Ampel"] == "🔴").sum()) if "Ampel" in live_df.columns else 0
+                            changed_count = int((live_df["Änderung"].astype(str).isin(["Neu", "Verbessert", "Verschlechtert", "Geändert"])).sum()) if "Änderung" in live_df.columns else 0
+                            score_txt = ""
+                            if "Live-Score" in live_df.columns:
+                                try:
+                                    score_vals = live_df["Live-Score"].astype(str).str.extract(r"(\d+)")[0].dropna().astype(float)
+                                    if not score_vals.empty:
+                                        score_txt = f" · Score Ø {score_vals.mean():.0f}/100"
+                                except Exception:
+                                    score_txt = ""
+                            st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with st.expander("Risiko-/Positionsgrößen-Rechner v24.8", expanded=False):
+                        with wl_tab_risk:
+                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.9")
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -21209,7 +21215,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.success("Risiko-Plan rechnerisch plausibel. Vor Umsetzung Setup, Liquidität und Stop-Regel final prüfen.")
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
-                        with st.expander("Positions-/Exit-Monitor v24.5", expanded=False):
+                        with wl_tab_positions:
+                            st.markdown("### Positions-/Exit-Monitor v24.9")
                             st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])
@@ -21312,7 +21319,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
                         if live_events_df is not None and not live_events_df.empty:
-                            with st.expander("Statuswechsel-Historie dieser App-Session", expanded=bool(changed_count)):
+                            with wl_tab_history:
+                                st.markdown("### Statuswechsel-Historie")
                                 event_filter = st.selectbox("Historie anzeigen", ["Alle", "Nur verbessert", "Nur verschlechtert", "Nur neue/geänderte"], index=0, key="live_watchlist_history_filter_v220")
                                 hist_df = live_events_df.copy()
                                 if event_filter == "Nur verbessert":

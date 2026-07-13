@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.9"
+APP_VERSION = "v24.10"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -19262,6 +19262,49 @@ def _v230_price_text(val, digits=2):
         return str(round(f, 2))
 
 
+
+
+def _v2410_infer_quote_currency(ticker, row=None, result=None, fallback="USD"):
+    """Quote-Waehrung fuer Live-/Risiko-Rechner robust ableiten.
+
+    Der Risiko-Rechner rechnet in der Kurswaehrung des ausgewaehlten Titels.
+    US-Ticker sollen daher USD zeigen, europaeische Suffixe typischerweise EUR usw.
+    """
+    tk = str(ticker or "").strip().upper()
+    sources = []
+    for obj in (row, result):
+        if isinstance(obj, dict):
+            sources.append(obj)
+            info = obj.get("info")
+            if isinstance(info, dict):
+                sources.append(info)
+    for obj in sources:
+        for key in ("currency", "Waehrung", "Währung", "quoteCurrency", "financialCurrency"):
+            val = obj.get(key)
+            if val is not None and str(val).strip() and str(val).strip().lower() not in {"nan", "none", "-", "n/a"}:
+                return str(val).strip().upper()
+    # Suffix-basierte Fallbacks. Yahoo-Suffixe sind fuer den Risiko-Rechner
+    # ausreichend, falls die Analyse kein currency-Feld liefert.
+    if tk.endswith((".DE", ".F", ".BE", ".DU", ".HM", ".HA", ".MU", ".SG", ".MI", ".PA", ".AS", ".MC", ".LS", ".VI", ".BR", ".HE", ".IR", ".AT", ".OL")):
+        return "EUR"
+    if tk.endswith(".L"):
+        return "GBP"
+    if tk.endswith(".SW"):
+        return "CHF"
+    if tk.endswith(".ST"):
+        return "SEK"
+    if tk.endswith(".CO"):
+        return "DKK"
+    if tk.endswith(".TO") or tk.endswith(".V"):
+        return "CAD"
+    if tk.endswith(".AX"):
+        return "AUD"
+    if tk.endswith(".HK"):
+        return "HKD"
+    if tk.endswith(".T"):
+        return "JPY"
+    return str(fallback or "USD").upper()
+
 def _v230_extract_position_inputs(result, style_name="Ausgewogen"):
     """Robuste Entry/Stop/Ziel-Basis fuer den Positionsgroessen-Rechner.
 
@@ -20793,7 +20836,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v24.9")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v24.10")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -21053,7 +21096,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
                         with wl_tab_risk:
-                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.9")
+                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.10")
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -21077,8 +21120,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 selected_calc_row = calc_df.iloc[selected_calc_idx].to_dict()
                                 selected_calc_ticker = str(selected_calc_row.get("Ticker") or "").strip().upper()
                                 with csel2:
-                                    risk_currency = st.text_input("Währung/Einheit", value=st.session_state.get("v230_risk_currency", "EUR"), key="v230_risk_currency_widget")
-                                    st.session_state.v230_risk_currency = risk_currency
+                                    # v24.10: Waehrung nicht global auf EUR festhalten.
+                                    # Die Einheit wird je Ticker aus der Kurswaehrung abgeleitet
+                                    # und tickerbezogen gespeichert, damit US-Werte USD anzeigen.
+                                    default_risk_currency_v2410 = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, fallback="USD")
+                                    currency_key_v2410 = f"v230_risk_currency_widget_{re.sub(r'[^A-Za-z0-9_]+', '_', selected_calc_ticker or 'UNKNOWN')}"
+                                    risk_currency = st.text_input("Währung/Einheit", value=st.session_state.get(currency_key_v2410, default_risk_currency_v2410), key=currency_key_v2410)
+                                    risk_currency = str(risk_currency or default_risk_currency_v2410 or "USD").strip().upper()
 
                                 # v24.6: Risiko-Basis je Ticker cachen. Die Auswahl im Rechner
                                 # darf nicht immer wieder eine komplette Einzelanalyse starten.
@@ -21104,6 +21152,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 strict_mode=True,
                                             )
                                             risk_inputs = _v230_extract_position_inputs(risk_result, style_name=monitor_style)
+                                            risk_inputs["currency"] = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, risk_result, fallback=default_risk_currency_v2410)
                                             risk_cache_store_v246[risk_cache_key_v246] = dict(risk_inputs)
                                             st.session_state["v246_risk_basis_cache"] = risk_cache_store_v246
                                             risk_error = None
@@ -21113,6 +21162,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 if risk_error:
                                     st.warning(f"Risiko-Basis konnte nicht berechnet werden: {risk_error}")
                                 else:
+                                    # Falls die Risiko-Basis eine genauere Waehrung liefert, hat sie Vorrang.
+                                    risk_currency = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, risk_inputs, fallback=risk_currency)
                                     # v24.8: Der Risiko-Rechner darf beim Wechsel des Tickerauswahlfeldes
                                     # keine alten Entry-/Stop-/Ziel-Widgetwerte eines anderen Tickers behalten.
                                     # Daher werden die Widget-Keys tickerbezogen geführt. Außerdem hat der
@@ -21216,7 +21267,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         with wl_tab_positions:
-                            st.markdown("### Positions-/Exit-Monitor v24.9")
+                            st.markdown("### Positions-/Exit-Monitor v24.10")
                             st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])

@@ -406,6 +406,40 @@ def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, s
         )
     return postprocess_asset_mode_v1534(result, ticker=ticker, requested=_asset_mode_setting_v1534())
 
+
+# ---------- v24.14: gestufter Analyse-Cache ----------
+@st.cache_data(ttl=15 * 60, show_spinner=False)
+def analyze_stock_live_cached_v2414(
+    ticker, horizon, depot, risk_pct, override, buy_in_override,
+    smart_money_default, strict_mode, market_bucket
+):
+    """Kurzlebiger Cache fuer operative Live-/Trading-Analysen.
+
+    ``market_bucket`` wechselt alle 15 Minuten. Dadurch werden dieselben
+    Ticker/Horizonte zwischen Cockpit-Bereichen wiederverwendet, ohne dass
+    kurzfristige Marktdaten laenger als sinnvoll festgehalten werden.
+    Langsamere Teilquellen behalten weiterhin ihre eigenen laengeren
+    ``st.cache_data``-TTLs (z. B. Sektor-/Marktkontext und Unternehmensdaten).
+    """
+    return analyze_stock(
+        ticker=ticker,
+        horizon=horizon,
+        depot=depot,
+        risk_pct=risk_pct,
+        override=override,
+        buy_in_override=buy_in_override,
+        smart_money_default=smart_money_default,
+        strict_mode=strict_mode,
+    )
+
+
+def _v2414_market_bucket(minutes=15):
+    try:
+        mins = max(1, int(minutes))
+    except Exception:
+        mins = 15
+    return int(datetime.now().timestamp() // (mins * 60))
+
 try:
     import telegram_utils as _telegram_utils
 except Exception:
@@ -2662,7 +2696,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.13"
+APP_VERSION = "v24.14"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6170,7 +6204,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     )
     price_float = _v229_num_any(price)
 
-    # v24.13: ATR-basierte Volatilität für den Live-Screener.
+    # v24.14: ATR-basierte Volatilität für den Live-Screener.
     # ATR in % ist für kurzfristige Trades aussagekräftiger als eine abstrakte
     # annualisierte Volatilität, weil sie die typische tägliche Handelsspanne
     # relativ zum aktuellen Kurs zeigt.
@@ -6717,7 +6751,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
             # Kurzfrist wird deshalb als Live-Monitor-Modus in der Status-/Scorelogik
             # angewendet, die robuste technische Datenbasis bleibt Swing.
             analysis_horizon = "Swing (1-4 Wochen)"
-            result = analyze_stock(
+            result = analyze_stock_live_cached_v2414(
                 ticker=ticker,
                 horizon=analysis_horizon,
                 depot=10000,
@@ -6726,6 +6760,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
                 buy_in_override=0.0,
                 smart_money_default=True,
                 strict_mode=True,
+                market_bucket=_v2414_market_bucket(15),
             )
             decision = build_professional_radar_decision_v18(result, style_name)
             rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name, watchlist_meta=meta_by_ticker.get(ticker, {}), live_horizon=live_horizon))
@@ -20922,8 +20957,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v24.13")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v24.14")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
+            st.caption("Performance v24.14: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
                 live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
@@ -21127,7 +21163,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             with st.expander("Live-Monitor Fehlerdetails", expanded=False):
                                 st.dataframe(_live_errors_df, hide_index=True, use_container_width=True)
                     else:
-                        # v24.13: Nur den aktiven Cockpit-Bereich rendern.
+                        # v24.14: Nur den aktiven Cockpit-Bereich rendern.
                         # Anders als st.tabs fuehrt diese Navigation nicht den Code aller
                         # Bereiche bei jedem Widget-Rerun aus. Risiko-/Positions-Eingaben
                         # starten dadurch keine teuren Analysen aus anderen Bereichen.
@@ -21212,7 +21248,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
                         elif cockpit_area == "📐 Risiko-Rechner":
-                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.13")
+                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.14")
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -21383,7 +21419,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         elif cockpit_area == "📌 Positionen / Exit":
-                            st.markdown("### Positions-/Exit-Monitor v24.13")
+                            st.markdown("### Positions-/Exit-Monitor v24.14")
                             st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])

@@ -2662,7 +2662,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.12"
+APP_VERSION = "v24.13"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -6170,7 +6170,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     )
     price_float = _v229_num_any(price)
 
-    # v24.12: ATR-basierte Volatilität für den Live-Screener.
+    # v24.13: ATR-basierte Volatilität für den Live-Screener.
     # ATR in % ist für kurzfristige Trades aussagekräftiger als eine abstrakte
     # annualisierte Volatilität, weil sie die typische tägliche Handelsspanne
     # relativ zum aktuellen Kurs zeigt.
@@ -20922,7 +20922,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v24.12")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v24.13")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
@@ -21127,11 +21127,28 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             with st.expander("Live-Monitor Fehlerdetails", expanded=False):
                                 st.dataframe(_live_errors_df, hide_index=True, use_container_width=True)
                     else:
-                        # v24.9: Watchlist-Trading-Cockpit in klare Arbeitsbereiche trennen.
-                        wl_tab_live, wl_tab_risk, wl_tab_positions, wl_tab_history = st.tabs([
-                            "📡 Live-Screener", "📐 Risiko-Rechner", "📌 Positionen / Exit", "🧾 Historie & Details"
-                        ])
-                        with wl_tab_live:
+                        # v24.13: Nur den aktiven Cockpit-Bereich rendern.
+                        # Anders als st.tabs fuehrt diese Navigation nicht den Code aller
+                        # Bereiche bei jedem Widget-Rerun aus. Risiko-/Positions-Eingaben
+                        # starten dadurch keine teuren Analysen aus anderen Bereichen.
+                        cockpit_options = [
+                            "📡 Live-Screener", "📐 Risiko-Rechner",
+                            "📌 Positionen / Exit", "🧾 Historie & Details",
+                        ]
+                        current_cockpit = st.session_state.get("watchlist_cockpit_area_v2413", cockpit_options[0])
+                        if current_cockpit not in cockpit_options:
+                            current_cockpit = cockpit_options[0]
+                        cockpit_area = st.radio(
+                            "Trading-Cockpit",
+                            cockpit_options,
+                            index=cockpit_options.index(current_cockpit),
+                            horizontal=True,
+                            key="watchlist_cockpit_area_v2413",
+                            label_visibility="collapsed",
+                        )
+                        st.caption("Nur der gewählte Arbeitsbereich wird ausgeführt; der letzte Live-Scan bleibt im Cache.")
+
+                        if cockpit_area == "📡 Live-Screener":
                             if "Radar-Bucket" in live_df.columns and "Status" in live_df.columns:
                                 override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
                                 if bool(override_mask.any()):
@@ -21194,8 +21211,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-                        with wl_tab_risk:
-                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.12")
+                        elif cockpit_area == "📐 Risiko-Rechner":
+                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.13")
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -21365,8 +21382,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.success("Risiko-Plan rechnerisch plausibel. Vor Umsetzung Setup, Liquidität und Stop-Regel final prüfen.")
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
-                        with wl_tab_positions:
-                            st.markdown("### Positions-/Exit-Monitor v24.12")
+                        elif cockpit_area == "📌 Positionen / Exit":
+                            st.markdown("### Positions-/Exit-Monitor v24.13")
                             st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])
@@ -21468,9 +21485,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         st.rerun()
 
 
-                        if live_events_df is not None and not live_events_df.empty:
-                            with wl_tab_history:
-                                st.markdown("### Statuswechsel-Historie")
+                        elif cockpit_area == "🧾 Historie & Details":
+                            st.markdown("### Historie & Details")
+                            if live_events_df is not None and not live_events_df.empty:
+                                st.markdown("#### Statuswechsel-Historie")
                                 event_filter = st.selectbox("Historie anzeigen", ["Alle", "Nur verbessert", "Nur verschlechtert", "Nur neue/geänderte"], index=0, key="live_watchlist_history_filter_v220")
                                 hist_df = live_events_df.copy()
                                 if event_filter == "Nur verbessert":
@@ -21483,6 +21501,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 if st.button("Status-Historie zurücksetzen", key="reset_live_watchlist_history_v220"):
                                     reset_live_watchlist_status_history_v227()
                                     st.rerun()
+                            else:
+                                st.info("Noch keine Statuswechsel-Historie vorhanden. Nach weiteren Prüfungen erscheinen hier Änderungen.")
+                            with st.expander("Vollständige Live-Diagnose", expanded=False):
+                                detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
+                                st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
                     try:
                         _live_errors_df_bottom = live_errors if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
                     except Exception:

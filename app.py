@@ -7208,6 +7208,30 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                 "Grund": row2.get("Grund"),
                 "Nächste Handlung": row2.get("Nächste Handlung"),
             })
+        # v24.16: Statuswechsel dauerhaft als Event protokollieren.
+        if change != "Unverändert":
+            event_type = "Statuswechsel"
+            if new_ampel == "🟢" and prev_ampel != "🟢":
+                event_type = "Neues Grünsignal"
+            elif new_ampel == "🔴":
+                event_type = "Invalidierung / Rot"
+            elif change == "Verbessert":
+                event_type = "Signal verbessert"
+            elif change == "Verschlechtert":
+                event_type = "Signal verschlechtert"
+            _v2416_log_event(
+                event_type=event_type,
+                ticker=ticker,
+                watchlist_name=watchlist_name,
+                source="Live-Screener",
+                status=f"{new_ampel} {new_status}".strip(),
+                price=row2.get("Kurs"),
+                score=row2.get("Live-Score"),
+                trade_state=row2.get("Trade-State"),
+                details=str(row2.get("Grund") or row2.get("Nächste Handlung") or ""),
+                payload={"Vorher": prev_label, "Änderung": change, "CRV": row2.get("CRV")},
+                signature=f"{prev_ampel}|{prev_status}->{new_ampel}|{new_status}|{row2.get('Trade-State')}",
+            )
         state[key] = current_snapshot
 
     # Interne Roh-/Sortier-Spalten nicht anzeigen.
@@ -19778,7 +19802,7 @@ def _v244_calc_trade_state(pos, live_row=None):
     }
 
 
-def _v244_positions_dataframe(positions, live_df=None):
+def _v244_positions_dataframe(positions, live_df=None, watchlist_name=""):
     rows = []
     live_map = {}
     try:
@@ -19791,6 +19815,34 @@ def _v244_positions_dataframe(positions, live_df=None):
         ticker = str(tk or pos.get("ticker") or "").strip().upper()
         live_row = live_map.get(ticker, {})
         calc = _v244_calc_trade_state(pos, live_row)
+        # v24.16: Management-Meilensteine dedupliziert protokollieren.
+        trade_status = str(calc.get("Status") or "")
+        milestone = None
+        if "Stop / Invalidierung erreicht" in trade_status:
+            milestone = "Stop / Invalidierung erreicht"
+        elif "2R+ erreicht" in trade_status:
+            milestone = "2R erreicht"
+        elif "1R erreicht" in trade_status:
+            milestone = "1R erreicht"
+        elif "Ziel erreicht" in trade_status:
+            milestone = "Ziel erreicht"
+        if milestone:
+            _v2416_log_event(
+                event_type=milestone,
+                ticker=ticker,
+                watchlist_name=watchlist_name,
+                source="Positions-/Exit-Monitor",
+                status=trade_status,
+                price=calc.get("Aktueller Kurs"),
+                trade_state=trade_status,
+                details=str(calc.get("Aktion") or ""),
+                payload={
+                    "Entry": pos.get("entry"), "Stop": pos.get("stop"),
+                    "Ziel": pos.get("target"), "Stück": pos.get("shares"),
+                    "R-Multiple": calc.get("R-Multiple"), "P/L %": calc.get("P/L %"),
+                },
+                signature=f"{milestone}|{trade_status}",
+            )
         rows.append({
             "Ampel": calc.get("Ampel"),
             "Ticker": ticker,
@@ -19808,6 +19860,120 @@ def _v244_positions_dataframe(positions, live_df=None):
             "Erfasst": pos.get("created_at") or "-",
         })
     return pd.DataFrame(rows)
+
+
+# ---------- v24.16: Persistenter Signal-/Trade-Event-Log ----------
+def _v2416_event_store_path():
+    try:
+        return Path(__file__).resolve().parent / ".signal_trade_event_log_v2416.json"
+    except Exception:
+        return Path("/tmp/.signal_trade_event_log_v2416.json")
+
+
+def _v2416_load_event_store():
+    path = _v2416_event_store_path()
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                data.setdefault("events", [])
+                data.setdefault("last_signatures", {})
+                return data
+    except Exception:
+        pass
+    try:
+        data = st.session_state.get("v2416_event_store", {})
+        if isinstance(data, dict):
+            data.setdefault("events", [])
+            data.setdefault("last_signatures", {})
+            return data
+    except Exception:
+        pass
+    return {"events": [], "last_signatures": {}}
+
+
+def _v2416_save_event_store(store):
+    store = store if isinstance(store, dict) else {"events": [], "last_signatures": {}}
+    store["events"] = list(store.get("events") or [])[-3000:]
+    store["last_signatures"] = dict(store.get("last_signatures") or {})
+    try:
+        st.session_state.v2416_event_store = store
+    except Exception:
+        pass
+    try:
+        _v2416_event_store_path().write_text(
+            json.dumps(store, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _v2416_log_event(*, event_type, ticker, watchlist_name="", source="", status="", price=None,
+                     score=None, trade_state="", details="", payload=None, signature=None):
+    """Schreibt ein dedupliziertes Signal-/Trade-Ereignis.
+
+    Gleiche Signaturen werden nicht bei jedem Streamlit-Rerun erneut protokolliert.
+    Erst eine echte Status-/Schwellenänderung erzeugt einen neuen Eintrag.
+    """
+    ticker = str(ticker or "").strip().upper()
+    event_type = str(event_type or "").strip()
+    if not ticker or not event_type:
+        return False
+    store = _v2416_load_event_store()
+    events = list(store.get("events") or [])
+    last = dict(store.get("last_signatures") or {})
+    dedupe_key = f"{watchlist_name or 'default'}::{ticker}::{event_type}"
+    sig = str(signature if signature is not None else f"{status}|{trade_state}|{price}|{score}|{details}")
+    if last.get(dedupe_key) == sig:
+        return False
+    now = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
+    event = {
+        "Zeit": now,
+        "Watchlist": watchlist_name or "default",
+        "Ticker": ticker,
+        "Ereignis": event_type,
+        "Quelle": source or "-",
+        "Status": status or "-",
+        "Trade-State": trade_state or "-",
+        "Kurs": price,
+        "Live-Score": score,
+        "Details": details or "-",
+    }
+    if isinstance(payload, dict):
+        for k, v in payload.items():
+            if k not in event:
+                event[k] = v
+    events.append(event)
+    last[dedupe_key] = sig
+    store["events"] = events[-3000:]
+    store["last_signatures"] = last
+    _v2416_save_event_store(store)
+    return True
+
+
+def _v2416_events_dataframe(watchlist_name=None):
+    store = _v2416_load_event_store()
+    df = pd.DataFrame(store.get("events") or [])
+    if df.empty:
+        return df
+    if watchlist_name:
+        df = df[df.get("Watchlist", "").astype(str) == str(watchlist_name)]
+    return df.iloc[::-1].reset_index(drop=True)
+
+
+def _v2416_reset_events(watchlist_name=None):
+    store = _v2416_load_event_store()
+    if not watchlist_name:
+        store = {"events": [], "last_signatures": {}}
+    else:
+        wl = str(watchlist_name)
+        store["events"] = [e for e in (store.get("events") or []) if str(e.get("Watchlist")) != wl]
+        store["last_signatures"] = {
+            k: v for k, v in dict(store.get("last_signatures") or {}).items()
+            if not str(k).startswith(f"{wl}::")
+        }
+    _v2416_save_event_store(store)
 
 
 # ---------- Main App Flow ----------
@@ -20957,9 +21123,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v24.15")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v24.16")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
-            st.caption("Performance v24.15: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
+            st.caption("Performance v24.16: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
                 live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
@@ -21023,7 +21189,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         pass
                     st.info(f"Live-Monitor aktiv: native Aktualisierung alle {refresh_label}, solange der Bereich Live-Screener geöffnet ist. Kein Browser-Reload; Risiko- und Positionsdaten bleiben erhalten.")
 
-                    # v24.15: Nativer Streamlit-Refresh statt Browser-/JavaScript-Reload.
+                    # v24.16: Nativer Streamlit-Refresh statt Browser-/JavaScript-Reload.
                     # Das Fragment prueft nur im aktiven Live-Screener-Bereich zyklisch,
                     # ob das Intervall abgelaufen ist, und startet dann einen normalen
                     # Streamlit-App-Rerun. Session-State und Cockpit-Auswahl bleiben erhalten.
@@ -21438,7 +21604,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _v245_delete_positions_for_watchlist(selected_watchlist_name)
                                     positions = {}
                                     st.warning("Alle gespeicherten Positionen dieser Watchlist wurden gelöscht.")
-                            pos_df = _v244_positions_dataframe(positions, live_df)
+                            pos_df = _v244_positions_dataframe(positions, live_df, selected_watchlist_name)
                             if pos_df.empty:
                                 st.info("Noch keine aktiven Positionen erfasst. Unten ein Live-Signal auswählen und Entry/Stop/Stückzahl speichern.")
                             else:
@@ -21515,6 +21681,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             "last_price": default_price,
                                         }
                                         _v244_save_positions(selected_watchlist_name, positions)
+                                        _v2416_log_event(
+                                            event_type="Position gespeichert" if old_pos else "Position angelegt",
+                                            ticker=pos_ticker,
+                                            watchlist_name=selected_watchlist_name,
+                                            source="Positions-/Exit-Monitor",
+                                            status="Offene Position",
+                                            price=default_price,
+                                            details=f"Entry {entry_v:.4f} · Stop {stop_v:.4f} · Ziel {target_v:.4f} · Stück {int(shares_v or 0)}",
+                                            payload={"Entry": entry_v, "Stop": stop_v, "Ziel": target_v, "Stück": int(shares_v or 0)},
+                                            signature=f"{entry_v:.4f}|{stop_v:.4f}|{target_v:.4f}|{int(shares_v or 0)}",
+                                        )
                                         st.success(f"Position {pos_ticker} gespeichert.")
                                         st.rerun()
                                 with b2:
@@ -21523,8 +21700,19 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         st.rerun()
                                 with b3:
                                     if pos_ticker in positions and st.button("Position löschen", use_container_width=True, key=f"v244_delete_{pos_ticker}"):
-                                        positions.pop(pos_ticker, None)
+                                        deleted_pos = positions.pop(pos_ticker, None)
                                         _v244_save_positions(selected_watchlist_name, positions)
+                                        _v2416_log_event(
+                                            event_type="Position gelöscht",
+                                            ticker=pos_ticker,
+                                            watchlist_name=selected_watchlist_name,
+                                            source="Positions-/Exit-Monitor",
+                                            status="Position entfernt",
+                                            price=default_price,
+                                            details="Position wurde manuell aus dem Monitor gelöscht.",
+                                            payload=deleted_pos if isinstance(deleted_pos, dict) else {},
+                                            signature=f"deleted|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
+                                        )
                                         st.warning(f"Position {pos_ticker} gelöscht.")
                                         st.rerun()
 
@@ -21547,6 +21735,25 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.rerun()
                             else:
                                 st.info("Noch keine Statuswechsel-Historie vorhanden. Nach weiteren Prüfungen erscheinen hier Änderungen.")
+                            st.markdown("#### Signal-/Trade-Event-Log v24.16")
+                            event_log_df_v2416 = _v2416_events_dataframe(selected_watchlist_name)
+                            if event_log_df_v2416 is not None and not event_log_df_v2416.empty:
+                                ev_types = ["Alle"] + sorted(event_log_df_v2416["Ereignis"].dropna().astype(str).unique().tolist())
+                                ev_filter = st.selectbox("Event-Typ", ev_types, index=0, key="v2416_event_type_filter")
+                                ev_view = event_log_df_v2416.copy()
+                                if ev_filter != "Alle":
+                                    ev_view = ev_view[ev_view["Ereignis"].astype(str) == ev_filter]
+                                st.dataframe(ev_view.head(300), hide_index=True, use_container_width=True, height=min(520, 42 * len(ev_view.head(300)) + 55))
+                                csv_v2416 = ev_view.to_csv(index=False).encode("utf-8-sig")
+                                e1, e2 = st.columns([1.0, 1.0])
+                                with e1:
+                                    st.download_button("Event-Log als CSV", data=csv_v2416, file_name="signal_trade_event_log.csv", mime="text/csv", use_container_width=True)
+                                with e2:
+                                    if st.button("Event-Log dieser Watchlist löschen", key="v2416_reset_event_log", use_container_width=True):
+                                        _v2416_reset_events(selected_watchlist_name)
+                                        st.rerun()
+                            else:
+                                st.info("Noch keine dauerhaften Signal-/Trade-Ereignisse vorhanden. Neue Statuswechsel sowie 1R/2R-/Stop-Ereignisse erscheinen hier.")
                             with st.expander("Vollständige Live-Diagnose", expanded=False):
                                 detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
                                 st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))

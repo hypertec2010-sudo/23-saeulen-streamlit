@@ -20957,9 +20957,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v24.14")
-            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh lädt die Seite in festen Abständen neu. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
-            st.caption("Performance v24.14: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v24.15")
+            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
+            st.caption("Performance v24.15: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
                 live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
@@ -21021,30 +21021,37 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.query_params["live_horizon"] = live_horizon_param
                     except Exception:
                         pass
-                    st.info(f"Live-Monitor aktiv: automatische Aktualisierung alle {refresh_label}, solange diese App-Seite geöffnet ist. Die Watchlisten-Ansicht wird nach dem Reload wiederhergestellt.")
-                    components.html(
-                        f"""
-                        <script>
-                        setTimeout(function() {{
-                            try {{
-                                var url = new URL(window.parent.location.href);
-                                url.searchParams.set('workspace', 'Watchlisten');
-                                url.searchParams.set('live_monitor', '1');
-                                url.searchParams.set('refresh', '{refresh_minutes}');
-                                url.searchParams.set('live_horizon', '{live_horizon_param}');
-                                window.parent.location.replace(url.toString());
-                            }} catch (e) {{
-                                window.parent.location.reload();
-                            }}
-                        }}, {int(interval_ms)});
-                        </script>
-                        """,
-                        height=0,
-                    )
-                    # v24.6: Nicht bei jeder Widget-Aenderung sofort den kompletten
-                    # Screener neu starten. Bei aktivem Live-Monitor wird nur dann neu
-                    # gescannt, wenn der Cache fehlt oder das Refresh-Intervall abgelaufen ist.
-                    pass
+                    st.info(f"Live-Monitor aktiv: native Aktualisierung alle {refresh_label}, solange der Bereich Live-Screener geöffnet ist. Kein Browser-Reload; Risiko- und Positionsdaten bleiben erhalten.")
+
+                    # v24.15: Nativer Streamlit-Refresh statt Browser-/JavaScript-Reload.
+                    # Das Fragment prueft nur im aktiven Live-Screener-Bereich zyklisch,
+                    # ob das Intervall abgelaufen ist, und startet dann einen normalen
+                    # Streamlit-App-Rerun. Session-State und Cockpit-Auswahl bleiben erhalten.
+                    _native_refresh_seconds_v2415 = max(60, int(interval_ms / 1000))
+
+                    @st.fragment(run_every=_native_refresh_seconds_v2415)
+                    def _native_live_screener_refresh_v2415():
+                        _active_area = str(st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener"))
+                        _enabled = bool(st.session_state.get("live_watchlist_monitor_enabled", False))
+                        _now = datetime.now()
+                        _last_raw = st.session_state.get("v2415_native_live_refresh_ts")
+                        try:
+                            _last = datetime.fromisoformat(str(_last_raw)) if _last_raw else None
+                        except Exception:
+                            _last = None
+
+                        # Beim ersten Rendern nur den Startzeitpunkt setzen; nicht sofort neu laden.
+                        if _last is None:
+                            st.session_state.v2415_native_live_refresh_ts = _now.isoformat()
+                            return
+
+                        _elapsed = (_now - _last).total_seconds()
+                        if _enabled and _active_area == "📡 Live-Screener" and _elapsed >= (_native_refresh_seconds_v2415 - 2):
+                            st.session_state.v2415_native_live_refresh_ts = _now.isoformat()
+                            st.session_state.v2415_native_refresh_due = True
+                            st.rerun(scope="app")
+
+                    _native_live_screener_refresh_v2415()
                 else:
                     # Wenn der Monitor ausgeschaltet wird, URL-Refreshmarker entfernen.
                     try:
@@ -21082,7 +21089,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             except Exception:
                 cache_ok_v246 = False
                 cache_stale_v246 = True
-            live_should_scan_v246 = bool(manual_live_run_v246 or run_live_monitor or (live_monitor_enabled and (not cache_ok_v246 or cache_stale_v246)))
+            native_refresh_due_v2415 = bool(st.session_state.pop("v2415_native_refresh_due", False))
+            live_should_scan_v246 = bool(manual_live_run_v246 or run_live_monitor or native_refresh_due_v2415 or (live_monitor_enabled and (not cache_ok_v246 or cache_stale_v246)))
             show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246)
 
             if show_live_monitor_v246:

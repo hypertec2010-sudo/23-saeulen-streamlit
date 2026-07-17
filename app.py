@@ -2696,7 +2696,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v25.4"
+APP_VERSION = "v25.5"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -3198,10 +3198,16 @@ def restore_live_monitor_workspace_from_query_v226():
             # nach einer manuellen Änderung wieder auf den alten URL-Wert
             # zurück, meist 30 Minuten.
             first_query_restore = not bool(st.session_state.get("_v2411_live_query_restore_done", False))
-            if workspace_param.lower() in {"watchlisten", "watchlist", "watchlists"}:
-                st.session_state.workspace_mode = "Watchlisten"
-            elif workspace_param.lower() in {"positionen", "positions"}:
-                st.session_state.workspace_mode = "Positionen"
+            # v25.5: Den Workspace nur beim einmaligen Query-Restore setzen.
+            # Zuvor wurde der URL-Wert bei jedem Rerun erneut angewendet. Dadurch
+            # sprang der Kandidaten-Radar nach dem Start wieder auf Watchlisten /
+            # Live-Screener, sobald noch live_monitor=1&workspace=Watchlisten in
+            # der URL stand.
+            if first_query_restore:
+                if workspace_param.lower() in {"watchlisten", "watchlist", "watchlists"}:
+                    st.session_state.workspace_mode = "Watchlisten"
+                elif workspace_param.lower() in {"positionen", "positions"}:
+                    st.session_state.workspace_mode = "Positionen"
             if first_query_restore or "live_watchlist_monitor_enabled" not in st.session_state:
                 st.session_state.live_watchlist_monitor_enabled = True
                 st.session_state.live_watchlist_monitor_enabled_widget = True
@@ -17186,6 +17192,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# v25.5: Beim Wechsel in einen anderen Hauptarbeitsbereich alte Live-Monitor-
+# Query-Parameter entfernen. Sonst kann ein spaeterer Browser-Rerun den alten
+# Watchlisten-Workspace wiederherstellen und den Radar scheinbar zum Screener
+# zurueckspringen lassen.
+def _clear_live_monitor_navigation_query_v255():
+    try:
+        for _key in ("workspace", "live_monitor", "refresh", "live_horizon"):
+            if _key in st.query_params:
+                del st.query_params[_key]
+    except Exception:
+        pass
+
 # v15.24.5: Einstieg bleibt sichtbar, Landing-/Workspace-Text entfernt.
 st.markdown("""<div class="landing-cards-wrap compact-entry-buttons">""", unsafe_allow_html=True)
 wc1, wc2, wc3, wc4 = st.columns(4)
@@ -17195,6 +17213,7 @@ with wc1:
         use_container_width=True,
         key="workspace_analysis_btn"
     ):
+        _clear_live_monitor_navigation_query_v255()
         st.session_state.workspace_mode = "Sofortanalyse"
 with wc2:
     if st.button(
@@ -17202,6 +17221,7 @@ with wc2:
         use_container_width=True,
         key="workspace_watchlist_btn"
     ):
+        _clear_live_monitor_navigation_query_v255()
         st.session_state.workspace_mode = "Watchlisten"
 with wc3:
     if st.button(
@@ -17209,6 +17229,7 @@ with wc3:
         use_container_width=True,
         key="workspace_position_btn"
     ):
+        _clear_live_monitor_navigation_query_v255()
         st.session_state.workspace_mode = "Positionen"
 with wc4:
     if st.button(
@@ -17216,6 +17237,7 @@ with wc4:
         use_container_width=True,
         key="workspace_candidate_radar_btn"
     ):
+        _clear_live_monitor_navigation_query_v255()
         st.session_state.workspace_mode = "Kandidaten-Radar"
 
 st.markdown("""</div>""", unsafe_allow_html=True)

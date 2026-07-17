@@ -7208,7 +7208,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                 "Grund": row2.get("Grund"),
                 "Nächste Handlung": row2.get("Nächste Handlung"),
             })
-        # v24.17: Statuswechsel dauerhaft als Event protokollieren.
+        # v25.0: Statuswechsel dauerhaft als Event protokollieren.
         if change != "Unverändert":
             event_type = "Statuswechsel"
             if new_ampel == "🟢" and prev_ampel != "🟢":
@@ -19384,597 +19384,58 @@ def _legacy_analyze_stock(
     }
 
 
-# ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
-def _v230_safe_float(val, default=None):
-    try:
-        if val in [None, "", "-", "n/a", "nan"]:
-            return default
-        f = float(str(val).replace("%", "").replace(",", ".").strip())
-        if np.isfinite(f) and not pd.isna(f):
-            return f
-    except Exception:
-        pass
-    return default
-
-
-def _v230_price_text(val, digits=2):
-    f = _v230_safe_float(val, default=None)
-    if f is None:
-        return "n/a"
-    try:
-        return f"{f:.{int(digits)}f}"
-    except Exception:
-        return str(round(f, 2))
-
-
-
-
-def _v2410_infer_quote_currency(ticker, row=None, result=None, fallback="USD"):
-    """Quote-Waehrung fuer Live-/Risiko-Rechner robust ableiten.
-
-    Der Risiko-Rechner rechnet in der Kurswaehrung des ausgewaehlten Titels.
-    US-Ticker sollen daher USD zeigen, europaeische Suffixe typischerweise EUR usw.
-    """
-    tk = str(ticker or "").strip().upper()
-    sources = []
-    for obj in (row, result):
-        if isinstance(obj, dict):
-            sources.append(obj)
-            info = obj.get("info")
-            if isinstance(info, dict):
-                sources.append(info)
-    for obj in sources:
-        for key in ("currency", "Waehrung", "Währung", "quoteCurrency", "financialCurrency"):
-            val = obj.get(key)
-            if val is not None and str(val).strip() and str(val).strip().lower() not in {"nan", "none", "-", "n/a"}:
-                return str(val).strip().upper()
-    # Suffix-basierte Fallbacks. Yahoo-Suffixe sind fuer den Risiko-Rechner
-    # ausreichend, falls die Analyse kein currency-Feld liefert.
-    if tk.endswith((".DE", ".F", ".BE", ".DU", ".HM", ".HA", ".MU", ".SG", ".MI", ".PA", ".AS", ".MC", ".LS", ".VI", ".BR", ".HE", ".IR", ".AT", ".OL")):
-        return "EUR"
-    if tk.endswith(".L"):
-        return "GBP"
-    if tk.endswith(".SW"):
-        return "CHF"
-    if tk.endswith(".ST"):
-        return "SEK"
-    if tk.endswith(".CO"):
-        return "DKK"
-    if tk.endswith(".TO") or tk.endswith(".V"):
-        return "CAD"
-    if tk.endswith(".AX"):
-        return "AUD"
-    if tk.endswith(".HK"):
-        return "HKD"
-    if tk.endswith(".T"):
-        return "JPY"
-    return str(fallback or "USD").upper()
-
-def _v230_extract_position_inputs(result, style_name="Ausgewogen"):
-    """Robuste Entry/Stop/Ziel-Basis fuer den Positionsgroessen-Rechner.
-
-    Der Rechner soll keine neue Kaufempfehlung erzeugen, sondern aus einem bereits
-    interessanten Live-/Chart-Setup die Risiko- und Stueckzahlfrage beantworten.
-    """
-    r = result or {}
-    try:
-        decision = build_professional_radar_decision_v18(r, style_name)
-    except Exception:
-        decision = {}
-    try:
-        rr = build_radar_entry_rr_package_v182(r)
-    except Exception:
-        rr = {}
-
-    price = _v230_safe_float(rr.get("price"), default=None)
-    if price is None:
-        try:
-            price = _v230_safe_float(_v210_alert_price(r), default=None)
-        except Exception:
-            price = None
-    if price is None:
-        price = _v230_safe_float(r.get("price") or r.get("Aktueller_Kurs") or r.get("regularMarketPrice") or r.get("currentPrice"), default=None)
-
-    entry_zone = str(rr.get("entry_zone") or decision.get("entry_zone") or _radar_v182_entry_zone_text(r) or "-").strip()
-    try:
-        zone_low, zone_high = _radar_v182_parse_zone(entry_zone)
-    except Exception:
-        zone_low, zone_high = None, None
-
-    stop = _v230_safe_float(rr.get("stop"), default=None)
-    if stop is None:
-        try:
-            stop = _radar_v182_stop_value(r)
-        except Exception:
-            stop = None
-    stop = _v230_safe_float(stop, default=None)
-
-    target = _v230_safe_float(rr.get("tp1"), default=None)
-    target_source = str(rr.get("target_source") or "strukturelles Hauptziel").strip()
-    if target is None:
-        try:
-            target, target_source = _radar_v209_main_target_value(r, price=price)
-        except Exception:
-            target, target_source = None, target_source
-    target = _v230_safe_float(target, default=None)
-
-    # Default-Entry: aktueller Kurs, weil Positionsgroesse meist fuer eine jetzt
-    # gepruefte Order berechnet wird. Die Entry-Zone bleibt sichtbar und kann
-    # manuell uebersteuert werden.
-    entry_default = price
-    if entry_default is None and zone_high is not None:
-        entry_default = zone_high
-
-    status_hint = str(decision.get("bucket") or "-").strip()
-    grade = str(decision.get("grade") or "-").strip()
-    action = str(decision.get("next_step") or "-").strip()
-    crv = _v230_safe_float(rr.get("crv"), default=None)
-
-    return {
-        "price": price,
-        "entry_default": entry_default,
-        "entry_zone": entry_zone,
-        "zone_low": _v230_safe_float(zone_low, default=None),
-        "zone_high": _v230_safe_float(zone_high, default=None),
-        "stop": stop,
-        "target": target,
-        "target_source": target_source or "Ziel",
-        "bucket": status_hint,
-        "grade": grade,
-        "action": action,
-        "crv": crv,
-    }
-
-
-def _v230_calculate_position_size(entry, stop, target, account_size, risk_pct, max_position_pct=None):
-    entry = _v230_safe_float(entry, default=None)
-    stop = _v230_safe_float(stop, default=None)
-    target = _v230_safe_float(target, default=None)
-    account_size = _v230_safe_float(account_size, default=None)
-    risk_pct = _v230_safe_float(risk_pct, default=None)
-    max_position_pct = _v230_safe_float(max_position_pct, default=None)
-
-    if entry is None or stop is None or account_size is None or risk_pct is None:
-        return {"ok": False, "error": "Entry, Stop, Depotgroesse oder Risiko fehlen."}
-    if entry <= 0 or stop <= 0 or account_size <= 0 or risk_pct <= 0:
-        return {"ok": False, "error": "Entry, Stop, Depotgroesse und Risiko muessen groesser als 0 sein."}
-    unit_risk = entry - stop
-    if unit_risk <= 0:
-        return {"ok": False, "error": "Stop/Invalidierung liegt nicht unter dem Entry. Bitte Stop manuell pruefen."}
-
-    risk_amount = account_size * (risk_pct / 100.0)
-    shares_raw = risk_amount / unit_risk
-    shares_floor = int(max(0, np.floor(shares_raw)))
-    position_value = shares_floor * entry
-    actual_risk = shares_floor * unit_risk
-    actual_risk_pct = (actual_risk / account_size * 100.0) if account_size else None
-    stop_distance_pct = unit_risk / entry * 100.0
-
-    max_position_value = None
-    max_position_shares = None
-    capped = False
-    if max_position_pct is not None and max_position_pct > 0:
-        max_position_value = account_size * (max_position_pct / 100.0)
-        max_position_shares = int(max(0, np.floor(max_position_value / entry)))
-        if shares_floor > max_position_shares:
-            shares_floor = max_position_shares
-            position_value = shares_floor * entry
-            actual_risk = shares_floor * unit_risk
-            actual_risk_pct = (actual_risk / account_size * 100.0) if account_size else None
-            capped = True
-
-    reward = None
-    crv = None
-    if target is not None and target > entry:
-        reward = target - entry
-        crv = reward / unit_risk if unit_risk > 0 else None
-
-    return {
-        "ok": True,
-        "risk_amount": risk_amount,
-        "unit_risk": unit_risk,
-        "shares_raw": shares_raw,
-        "shares": shares_floor,
-        "position_value": position_value,
-        "actual_risk": actual_risk,
-        "actual_risk_pct": actual_risk_pct,
-        "stop_distance_pct": stop_distance_pct,
-        "target": target,
-        "reward": reward,
-        "crv": crv,
-        "max_position_value": max_position_value,
-        "max_position_shares": max_position_shares,
-        "capped": capped,
-    }
-
-
-# ---------- v24.5: Positions-/Exit-Monitor mit Persistenz ----------
-def _v244_position_store_key(watchlist_name=""):
-    try:
-        wl = str(watchlist_name or "Standard").strip() or "Standard"
-    except Exception:
-        wl = "Standard"
-    return f"v244_open_positions::{wl}"
-
-
-def _v245_positions_store_path():
-    """Lokaler Sidecar-Speicher fuer offene Positionen.
-
-    Dieser Speicher entkoppelt den Positions-/Exit-Monitor von der Streamlit-Session.
-    Auf lokalem Betrieb oder persistentem App-Speicher bleiben Positionen nach Reload
-    erhalten. Auf kurzlebigen Cloud-Dateisystemen dient st.session_state weiterhin als
-    Fallback fuer die laufende Session.
-    """
-    try:
-        base_dir = Path(__file__).resolve().parent
-        return base_dir / ".live_monitor_positions_v245.json"
-    except Exception:
-        return Path("/tmp/.live_monitor_positions_v245.json")
-
-
-def _v245_safe_json_load(path):
-    try:
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                return data
-    except Exception:
-        pass
-    return {}
-
-
-def _v245_load_all_positions():
-    file_store = _v245_safe_json_load(_v245_positions_store_path())
-    session_store = {}
-    try:
-        session_store = st.session_state.get("v245_persistent_positions_store", {})
-        if not isinstance(session_store, dict):
-            session_store = {}
-    except Exception:
-        session_store = {}
-
-    merged = dict(file_store)
-    # Session kann neuere Aenderungen enthalten, Datei kann Persistenz enthalten.
-    try:
-        for k, v in session_store.items():
-            if isinstance(v, dict):
-                merged[k] = v
-    except Exception:
-        pass
-    try:
-        st.session_state.v245_persistent_positions_store = merged
-    except Exception:
-        pass
-    return merged
-
-
-def _v245_save_all_positions(store):
-    store = store if isinstance(store, dict) else {}
-    try:
-        st.session_state.v245_persistent_positions_store = store
-    except Exception:
-        pass
-    try:
-        path = _v245_positions_store_path()
-        path.write_text(json.dumps(store, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-        return True
-    except Exception:
-        return False
-
-
-def _v244_get_positions(watchlist_name=""):
-    key = _v244_position_store_key(watchlist_name)
-    # v24.5: zuerst persistenten Gesamtstore laden.
-    try:
-        all_pos = _v245_load_all_positions()
-        data = all_pos.get(key, {})
-        if isinstance(data, dict):
-            # Session-Key fuer Rueckwaertskompatibilitaet spiegeln.
-            try:
-                st.session_state[key] = data
-            except Exception:
-                pass
-            return data
-    except Exception:
-        pass
-    # Fallback v24.4: nur Session.
-    try:
-        data = st.session_state.get(key, {})
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
-    return {}
-
-
-def _v244_save_positions(watchlist_name, positions):
-    key = _v244_position_store_key(watchlist_name)
-    positions = positions if isinstance(positions, dict) else {}
-    try:
-        st.session_state[key] = positions
-    except Exception:
-        pass
-    try:
-        all_pos = _v245_load_all_positions()
-        all_pos[key] = positions
-        _v245_save_all_positions(all_pos)
-    except Exception:
-        pass
-
-
-def _v245_delete_positions_for_watchlist(watchlist_name):
-    key = _v244_position_store_key(watchlist_name)
-    try:
-        st.session_state[key] = {}
-    except Exception:
-        pass
-    try:
-        all_pos = _v245_load_all_positions()
-        all_pos.pop(key, None)
-        _v245_save_all_positions(all_pos)
-    except Exception:
-        pass
-
-
-def _v244_row_price(row):
-    try:
-        return _v230_safe_float(row.get("Kurs"), default=None)
-    except Exception:
-        return None
-
-
-def _v244_calc_trade_state(pos, live_row=None):
-    pos = pos or {}
-    live_row = live_row or {}
-    entry = _v230_safe_float(pos.get("entry"), default=None)
-    stop = _v230_safe_float(pos.get("stop"), default=None)
-    target = _v230_safe_float(pos.get("target"), default=None)
-    shares = _v230_safe_float(pos.get("shares"), default=0) or 0
-    current = _v244_row_price(live_row)
-    if current is None:
-        current = _v230_safe_float(pos.get("last_price"), default=None)
-    unit_risk = None
-    r_mult = None
-    pnl = None
-    pnl_pct = None
-    if entry is not None and stop is not None and entry > stop and current is not None:
-        unit_risk = entry - stop
-        r_mult = (current - entry) / unit_risk if unit_risk > 0 else None
-        pnl = (current - entry) * shares if shares else None
-        pnl_pct = (current / entry - 1.0) * 100.0 if entry else None
-    elif entry is not None and current is not None:
-        pnl = (current - entry) * shares if shares else None
-        pnl_pct = (current / entry - 1.0) * 100.0 if entry else None
-
-    ampel = "⚪"
-    status = "Unvollständig"
-    action = "Entry, Stop und Stückzahl ergänzen."
-    stop_hint = "-"
-    if current is not None and stop is not None and current <= stop:
-        ampel = "🔴"
-        status = "Stop / Invalidierung erreicht"
-        action = "Sofort prüfen: Stop-Regel, Exit oder These neu bewerten."
-        stop_hint = "Stop ausgelöst oder unterschritten."
-    elif r_mult is None:
-        ampel = "⚪"
-        status = "Nicht berechenbar"
-        action = "Für R-Multiple werden Entry und Stop benötigt."
-    elif r_mult >= 2.0:
-        ampel = "🟢"
-        status = "2R+ erreicht"
-        action = "Teilgewinn/Trailing-Stop prüfen; Restposition laufen lassen, solange Trend hält."
-        stop_hint = "Stop mindestens auf Gewinnschutz/Struktur nachziehen prüfen."
-    elif r_mult >= 1.0:
-        ampel = "🟢"
-        status = "1R erreicht"
-        action = "Break-even-Stop oder Teilgewinn prüfen; Risiko aus dem Trade nehmen."
-        stop_hint = "Stop auf Einstand oder unter kurzfristige Struktur prüfen."
-    elif r_mult >= 0.25:
-        ampel = "🟡"
-        status = "Positiv, noch <1R"
-        action = "Laufen lassen; Stop nicht zu früh nachziehen, Trigger/Trend beobachten."
-        stop_hint = "Original-Stop oder enger Strukturstop je nach Setup."
-    elif r_mult > -0.5:
-        ampel = "⚪"
-        status = "Nahe Entry"
-        action = "Noch keine Management-Aktion; Stop-Regel einhalten."
-        stop_hint = "Plan-Stop beibehalten."
-    else:
-        ampel = "🟡"
-        status = "Unter Druck"
-        action = "Positionsgröße/Stop-Regel prüfen; kein Nachkaufen ohne neuen Trigger."
-        stop_hint = "Stop/Invalidierung eng beobachten."
-
-    if target is not None and current is not None and current >= target and target > entry:
-        status = status + " · Ziel erreicht"
-        action = "Ziel/Teilziel erreicht: Teilgewinn oder Trailing-Plan prüfen."
-
-    return {
-        "Ampel": ampel,
-        "Status": status,
-        "Aktion": action,
-        "Stop-Hinweis": stop_hint,
-        "Aktueller Kurs": current,
-        "R-Multiple": r_mult,
-        "P/L": pnl,
-        "P/L %": pnl_pct,
-        "Risiko je Aktie": unit_risk,
-    }
-
-
-def _v244_positions_dataframe(positions, live_df=None, watchlist_name=""):
-    rows = []
-    live_map = {}
-    try:
-        if live_df is not None and not live_df.empty and "Ticker" in live_df.columns:
-            for _, row in live_df.iterrows():
-                live_map[str(row.get("Ticker") or "").strip().upper()] = row.to_dict()
-    except Exception:
-        live_map = {}
-    for tk, pos in (positions or {}).items():
-        ticker = str(tk or pos.get("ticker") or "").strip().upper()
-        live_row = live_map.get(ticker, {})
-        calc = _v244_calc_trade_state(pos, live_row)
-        # v24.17: Management-Meilensteine dedupliziert protokollieren.
-        trade_status = str(calc.get("Status") or "")
-        milestone = None
-        if "Stop / Invalidierung erreicht" in trade_status:
-            milestone = "Stop / Invalidierung erreicht"
-        elif "2R+ erreicht" in trade_status:
-            milestone = "2R erreicht"
-        elif "1R erreicht" in trade_status:
-            milestone = "1R erreicht"
-        elif "Ziel erreicht" in trade_status:
-            milestone = "Ziel erreicht"
-        if milestone:
-            _v2416_log_event(
-                event_type=milestone,
-                ticker=ticker,
-                watchlist_name=watchlist_name,
-                source="Positions-/Exit-Monitor",
-                status=trade_status,
-                price=calc.get("Aktueller Kurs"),
-                trade_state=trade_status,
-                details=str(calc.get("Aktion") or ""),
-                payload={
-                    "Entry": pos.get("entry"), "Stop": pos.get("stop"),
-                    "Ziel": pos.get("target"), "Stück": pos.get("shares"),
-                    "R-Multiple": calc.get("R-Multiple"), "P/L %": calc.get("P/L %"),
-                },
-                signature=f"{milestone}|{trade_status}",
-            )
-        rows.append({
-            "Ampel": calc.get("Ampel"),
-            "Ticker": ticker,
-            "Name": pos.get("name") or live_row.get("Name") or ticker,
-            "Aktueller Kurs": _v230_price_text(calc.get("Aktueller Kurs")),
-            "Entry": _v230_price_text(pos.get("entry")),
-            "Stop": _v230_price_text(pos.get("stop")),
-            "Stück": int(_v230_safe_float(pos.get("shares"), default=0) or 0),
-            "R": "n/a" if calc.get("R-Multiple") is None else f"{calc.get('R-Multiple'):.2f}R",
-            "P/L": "n/a" if calc.get("P/L") is None else f"{calc.get('P/L'):.0f}",
-            "P/L %": "n/a" if calc.get("P/L %") is None else f"{calc.get('P/L %'):.1f}%",
-            "Trade-Status": calc.get("Status"),
-            "Aktion": calc.get("Aktion"),
-            "Stop-Hinweis": calc.get("Stop-Hinweis"),
-            "Erfasst": pos.get("created_at") or "-",
-        })
-    return pd.DataFrame(rows)
-
-
-# ---------- v24.17: Persistenter Signal-/Trade-Event-Log ----------
-def _v2416_event_store_path():
-    try:
-        return Path(__file__).resolve().parent / ".signal_trade_event_log_v2416.json"
-    except Exception:
-        return Path("/tmp/.signal_trade_event_log_v2416.json")
-
-
-def _v2416_load_event_store():
-    path = _v2416_event_store_path()
-    try:
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                data.setdefault("events", [])
-                data.setdefault("last_signatures", {})
-                return data
-    except Exception:
-        pass
-    try:
-        data = st.session_state.get("v2416_event_store", {})
-        if isinstance(data, dict):
-            data.setdefault("events", [])
-            data.setdefault("last_signatures", {})
-            return data
-    except Exception:
-        pass
-    return {"events": [], "last_signatures": {}}
-
-
-def _v2416_save_event_store(store):
-    store = store if isinstance(store, dict) else {"events": [], "last_signatures": {}}
-    store["events"] = list(store.get("events") or [])[-3000:]
-    store["last_signatures"] = dict(store.get("last_signatures") or {})
-    try:
-        st.session_state.v2416_event_store = store
-    except Exception:
-        pass
-    try:
-        _v2416_event_store_path().write_text(
-            json.dumps(store, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
-        )
-        return True
-    except Exception:
-        return False
-
-
-def _v2416_log_event(*, event_type, ticker, watchlist_name="", source="", status="", price=None,
-                     score=None, trade_state="", details="", payload=None, signature=None):
-    """Schreibt ein dedupliziertes Signal-/Trade-Ereignis.
-
-    Gleiche Signaturen werden nicht bei jedem Streamlit-Rerun erneut protokolliert.
-    Erst eine echte Status-/Schwellenänderung erzeugt einen neuen Eintrag.
-    """
-    ticker = str(ticker or "").strip().upper()
-    event_type = str(event_type or "").strip()
-    if not ticker or not event_type:
-        return False
-    store = _v2416_load_event_store()
-    events = list(store.get("events") or [])
-    last = dict(store.get("last_signatures") or {})
-    dedupe_key = f"{watchlist_name or 'default'}::{ticker}::{event_type}"
-    sig = str(signature if signature is not None else f"{status}|{trade_state}|{price}|{score}|{details}")
-    if last.get(dedupe_key) == sig:
-        return False
-    now = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
-    event = {
-        "Zeit": now,
-        "Watchlist": watchlist_name or "default",
-        "Ticker": ticker,
-        "Ereignis": event_type,
-        "Quelle": source or "-",
-        "Status": status or "-",
-        "Trade-State": trade_state or "-",
-        "Kurs": price,
-        "Live-Score": score,
-        "Details": details or "-",
-    }
-    if isinstance(payload, dict):
-        for k, v in payload.items():
-            if k not in event:
-                event[k] = v
-    events.append(event)
-    last[dedupe_key] = sig
-    store["events"] = events[-3000:]
-    store["last_signatures"] = last
-    _v2416_save_event_store(store)
-    return True
-
-
-def _v2416_events_dataframe(watchlist_name=None):
-    store = _v2416_load_event_store()
-    df = pd.DataFrame(store.get("events") or [])
-    if df.empty:
-        return df
-    if watchlist_name:
-        df = df[df.get("Watchlist", "").astype(str) == str(watchlist_name)]
-    return df.iloc[::-1].reset_index(drop=True)
-
-
-def _v2416_reset_events(watchlist_name=None):
-    store = _v2416_load_event_store()
-    if not watchlist_name:
-        store = {"events": [], "last_signatures": {}}
-    else:
-        wl = str(watchlist_name)
-        store["events"] = [e for e in (store.get("events") or []) if str(e.get("Watchlist")) != wl]
-        store["last_signatures"] = {
-            k: v for k, v in dict(store.get("last_signatures") or {}).items()
-            if not str(k).startswith(f"{wl}::")
-        }
-    _v2416_save_event_store(store)
-
+# ---------- v25.0: Modularisierung Phase 1 ----------
+# Risiko-Rechner, Positions-/Exit-Monitor und Event-Log leben nun in eigenen
+# Modulen. Die öffentlichen Funktionsnamen bleiben kompatibel, damit die UI
+# und bestehende gespeicherte Daten unverändert weiterarbeiten.
+from modules import risk_calculator as _risk_module
+from modules import event_log as _event_module
+from modules import position_monitor as _position_module
+
+_risk_module.configure_context(
+    build_professional_radar_decision_v18=build_professional_radar_decision_v18,
+    build_radar_entry_rr_package_v182=build_radar_entry_rr_package_v182,
+    _v210_alert_price=_v210_alert_price,
+    _radar_v182_entry_zone_text=_radar_v182_entry_zone_text,
+    _radar_v182_parse_zone=_radar_v182_parse_zone,
+    _radar_v182_stop_value=_radar_v182_stop_value,
+    _radar_v209_main_target_value=_radar_v209_main_target_value,
+)
+
+_v230_safe_float = _risk_module._v230_safe_float
+_v230_price_text = _risk_module._v230_price_text
+_v2410_infer_quote_currency = _risk_module._v2410_infer_quote_currency
+_v230_extract_position_inputs = _risk_module._v230_extract_position_inputs
+_v230_calculate_position_size = _risk_module._v230_calculate_position_size
+
+_event_module.configure_context(
+    base_dir=Path(__file__).resolve().parent,
+    time_provider=get_current_berlin_time,
+)
+_v2416_event_store_path = _event_module._v2416_event_store_path
+_v2416_load_event_store = _event_module._v2416_load_event_store
+_v2416_save_event_store = _event_module._v2416_save_event_store
+_v2416_log_event = _event_module._v2416_log_event
+_v2416_events_dataframe = _event_module._v2416_events_dataframe
+_v2416_reset_events = _event_module._v2416_reset_events
+
+_position_module.configure_context(
+    base_dir=Path(__file__).resolve().parent,
+    event_logger=_v2416_log_event,
+    safe_float=_v230_safe_float,
+    price_text=_v230_price_text,
+)
+_v244_position_store_key = _position_module._v244_position_store_key
+_v245_positions_store_path = _position_module._v245_positions_store_path
+_v245_safe_json_load = _position_module._v245_safe_json_load
+_v245_load_all_positions = _position_module._v245_load_all_positions
+_v245_save_all_positions = _position_module._v245_save_all_positions
+_v244_get_positions = _position_module._v244_get_positions
+_v244_save_positions = _position_module._v244_save_positions
+_v245_delete_positions_for_watchlist = _position_module._v245_delete_positions_for_watchlist
+_v244_row_price = _position_module._v244_row_price
+_v244_calc_trade_state = _position_module._v244_calc_trade_state
+_v244_positions_dataframe = _position_module._v244_positions_dataframe
 
 # ---------- Main App Flow ----------
 logo_path = Path("a_logo_for_the_capital_hill_score_model_is_promi.png")
@@ -21123,9 +20584,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v24.17")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v25.0")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
-            st.caption("Performance v24.17: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
+            st.caption("Performance v25.0: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
                 live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
@@ -21189,7 +20650,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         pass
                     st.info(f"Live-Monitor aktiv: native Aktualisierung alle {refresh_label}, solange der Bereich Live-Screener geöffnet ist. Kein Browser-Reload; Risiko- und Positionsdaten bleiben erhalten.")
 
-                    # v24.17: Nativer Streamlit-Refresh statt Browser-/JavaScript-Reload.
+                    # v25.0: Nativer Streamlit-Refresh statt Browser-/JavaScript-Reload.
                     # Das Fragment prueft nur im aktiven Live-Screener-Bereich zyklisch,
                     # ob das Intervall abgelaufen ist, und startet dann einen normalen
                     # Streamlit-App-Rerun. Session-State und Cockpit-Auswahl bleiben erhalten.
@@ -21593,7 +21054,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         elif cockpit_area == "📌 Positionen / Exit":
-                            st.markdown("### Positions-/Exit-Monitor v24.17")
+                            st.markdown("### Positions-/Exit-Monitor v25.0")
                             st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])
@@ -21773,7 +21234,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.rerun()
                             else:
                                 st.info("Noch keine Statuswechsel-Historie vorhanden. Nach weiteren Prüfungen erscheinen hier Änderungen.")
-                            st.markdown("#### Signal-/Trade-Event-Log v24.17")
+                            st.markdown("#### Signal-/Trade-Event-Log v25.0")
                             event_log_df_v2416 = _v2416_events_dataframe(selected_watchlist_name)
                             if event_log_df_v2416 is not None and not event_log_df_v2416.empty:
                                 ev_types = ["Alle"] + sorted(event_log_df_v2416["Ereignis"].dropna().astype(str).unique().tolist())

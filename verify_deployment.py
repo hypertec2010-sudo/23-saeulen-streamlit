@@ -1,18 +1,12 @@
 from pathlib import Path
 import py_compile
-
-root = Path(__file__).resolve().parent
 required = [
-    root / "app.py",
-    root / "modules" / "__init__.py",
-    root / "modules" / "risk_calculator.py",
-    root / "modules" / "position_monitor.py",
-    root / "modules" / "event_log.py",
-]
-missing = [str(p.relative_to(root)) for p in required if not p.exists()]
-if missing:
-    raise SystemExit("Fehlende Dateien: " + ", ".join(missing))
-for path in required:
-    if path.suffix == ".py":
-        py_compile.compile(str(path), doraise=True)
-print("Deployment-Struktur und Python-Syntax sind in Ordnung.")
+"app.py", "modules/__init__.py", "modules/risk_calculator.py",
+"modules/position_monitor.py", "modules/event_log.py", "modules/live_monitor.py",
+"modules/watchlist_storage.py", "modules/chart_overlays.py",
+"modules/radar_view.py", "modules/analysis_view.py"]
+missing=[p for p in required if not Path(p).exists()]
+if missing: raise SystemExit(f"Fehlende Dateien: {missing}")
+for p in required:
+    if p.endswith('.py'): py_compile.compile(p,doraise=True)
+print("Deployment-Struktur und Syntax OK")

@@ -32,3 +32,7 @@ Zusaetzliche Module:
 - `modules/watchlist_storage.py`: Startkurse, Batch-Queue und Watchlist-Speicherung
 
 Beim GitHub-Upload muss weiterhin der komplette Ordner `modules/` neben `app.py` liegen.
+
+
+## v25.4 Modularisierung Phase 3
+Neu: `chart_overlays.py`, `radar_view.py`, `analysis_view.py`. Den kompletten Ordner `modules/` zusammen mit `app.py` deployen.

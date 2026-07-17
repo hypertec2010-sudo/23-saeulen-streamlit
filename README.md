@@ -22,3 +22,13 @@ Lokaler Start:
 ```bash
 streamlit run app.py
 ```
+
+
+## v25.2 – Modularisierung Phase 2
+
+Zusaetzliche Module:
+
+- `modules/live_monitor.py`: Live-Screener, Ampellogik, Hysterese, Trade-State und Statushistorie
+- `modules/watchlist_storage.py`: Startkurse, Batch-Queue und Watchlist-Speicherung
+
+Beim GitHub-Upload muss weiterhin der komplette Ordner `modules/` neben `app.py` liegen.

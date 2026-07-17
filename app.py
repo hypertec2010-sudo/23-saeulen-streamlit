@@ -2696,7 +2696,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v24.14"
+APP_VERSION = "v25.2"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5321,12 +5321,7 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
 
 
 # ---------- v22.8: Watchlist Add Queue / Batch Save ----------
-def _v228_norm_watchlist_ticker(value):
-    try:
-        txt = str(value or "").strip().upper()
-    except Exception:
-        return ""
-    return txt.replace(" ", "")
+# v25.2: _v228_norm_watchlist_ticker nach modules/ ausgelagert.
 
 
 # ---------- v22.17: Watchlist Startkurs-Backfill ----------
@@ -5399,10 +5394,7 @@ def _v2214_valid_price(value):
     return None
 
 
-def _v2214_watchlist_key(watchlist_name, ticker):
-    wl = str(watchlist_name or "default").strip() or "default"
-    tk = _v228_norm_watchlist_ticker(ticker)
-    return f"{wl}::{tk}"
+# v25.2: _v2214_watchlist_key nach modules/ ausgelagert.
 
 
 def _v2214_get_current_price_for_ticker(ticker):
@@ -5536,51 +5528,10 @@ def _v2216_get_historical_price_for_ticker(ticker, added_at=None):
     return None
 
 
-def _v2214_set_start_price(watchlist_name, ticker, price=None, *, source="Backfill", added_at=None, force=False):
-    wl = str(watchlist_name or "").strip()
-    tk = _v228_norm_watchlist_ticker(ticker)
-    if not wl or not tk:
-        return False
-    store = _v2214_load_start_price_store()
-    key = _v2214_watchlist_key(wl, tk)
-    existing = store.get(key) if isinstance(store.get(key), dict) else {}
-    if existing and _v2214_valid_price(existing.get("Startkurs")) is not None and not force:
-        return True
-    price = _v2214_valid_price(price)
-    if price is None:
-        price = _v2214_get_current_price_for_ticker(tk)
-    if price is None:
-        return False
-    try:
-        now_txt = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
-    except Exception:
-        now_txt = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    store[key] = {
-        "Watchlist_Name": wl,
-        "Ticker": tk,
-        "Startkurs": round(float(price), 4),
-        "Start_Price": round(float(price), 4),
-        "Added_At": added_at or existing.get("Added_At") or now_txt,
-        "Startkurs_Quelle": str(source or "Backfill"),
-        "Startkurs_Gesetzt_Am": now_txt,
-    }
-    return _v2214_save_start_price_store(store)
+# v25.2: _v2214_set_start_price nach modules/ ausgelagert.
 
 
-def _v2214_get_start_price_meta_map(watchlist_name):
-    wl = str(watchlist_name or "").strip()
-    out = {}
-    if not wl:
-        return out
-    store = _v2214_load_start_price_store()
-    prefix = f"{wl}::".lower()
-    for key, item in (store or {}).items():
-        if not str(key).lower().startswith(prefix) or not isinstance(item, dict):
-            continue
-        tk = _v228_norm_watchlist_ticker(item.get("Ticker") or str(key).split("::")[-1])
-        if tk:
-            out[tk] = dict(item)
-    return out
+# v25.2: _v2214_get_start_price_meta_map nach modules/ ausgelagert.
 
 
 def _v232_is_current_baseline_source(source):
@@ -5599,311 +5550,34 @@ def _v232_is_current_baseline_source(source):
     ])
 
 
-def _v232_delete_current_baselines_for_watchlist(watchlist_name):
-    """Entfernt automatisch erzeugte Aktuell-Baselines, die wie echte Einstandskurse wirken koennen."""
-    wl = str(watchlist_name or "").strip()
-    if not wl:
-        return 0
-    store = _v2214_load_start_price_store()
-    if not isinstance(store, dict):
-        return 0
-    prefix = f"{wl}::".lower()
-    removed = 0
-    for key in list(store.keys()):
-        item = store.get(key)
-        if not str(key).lower().startswith(prefix) or not isinstance(item, dict):
-            continue
-        source = item.get("Startkurs_Quelle") or item.get("Start_Source") or item.get("Quelle")
-        if _v232_is_current_baseline_source(source):
-            store.pop(key, None)
-            removed += 1
-    if removed:
-        _v2214_save_start_price_store(store)
-    return removed
+# v25.2: _v232_delete_current_baselines_for_watchlist nach modules/ ausgelagert.
 
 
-def _v234_set_current_baselines_for_missing(watchlist_name, tickers):
-    """Setzt bewusst eine Baseline ab jetzt fuer fehlende Startkurse.
-
-    Wichtig: Das passiert nur auf Button-Klick, nicht automatisch im Live-Monitor.
-    Damit wird klar: alte Performance ist unbekannt, ab jetzt wird sauber verfolgt.
-    """
-    wl = str(watchlist_name or "").strip()
-    if not wl:
-        return False, "Keine Watchlist ausgewaehlt."
-    meta_map = _v2214_get_start_price_meta_map(wl)
-    added, skipped, failed = 0, 0, []
-    try:
-        now_txt = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
-    except Exception:
-        now_txt = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    for raw in tickers or []:
-        tk = _v228_norm_watchlist_ticker(raw)
-        if not tk:
-            continue
-        existing = meta_map.get(tk, {}) if isinstance(meta_map, dict) else {}
-        if _v2214_valid_price(existing.get("Startkurs")) is not None:
-            skipped += 1
-            continue
-        px = _v2214_get_current_price_for_ticker(tk)
-        if px is None:
-            failed.append(tk)
-            continue
-        if _v2214_set_start_price(wl, tk, px, source="Baseline ab jetzt (manuell)", added_at=now_txt, force=True):
-            added += 1
-        else:
-            failed.append(tk)
-    msg = f"{added} Baseline(s) ab jetzt gesetzt"
-    if skipped:
-        msg += f" · {skipped} bereits mit Startkurs"
-    if failed:
-        msg += f" · nicht abrufbar: {', '.join(failed[:8])}{' ...' if len(failed) > 8 else ''}"
-    return added > 0, msg
+# v25.2: _v234_set_current_baselines_for_missing nach modules/ ausgelagert.
 
 
-def backfill_watchlist_start_prices_v2214(watchlist_name, tickers, *, force=False, meta_by_ticker=None, prefer_historical=True, allow_current_fallback=False):
-    wl = str(watchlist_name or "").strip()
-    added = 0
-    skipped = 0
-    historical = 0
-    current_fallback = 0
-    failed = []
-    store = _v2214_load_start_price_store()
-    meta_by_ticker = meta_by_ticker if isinstance(meta_by_ticker, dict) else {}
-
-    for raw in tickers or []:
-        tk = _v228_norm_watchlist_ticker(raw)
-        if not tk:
-            continue
-        key = _v2214_watchlist_key(wl, tk)
-        existing = store.get(key) if isinstance(store.get(key), dict) else {}
-        if existing and _v2214_valid_price(existing.get("Startkurs")) is not None and not force:
-            skipped += 1
-            continue
-
-        meta = meta_by_ticker.get(tk, {}) if isinstance(meta_by_ticker.get(tk, {}), dict) else {}
-        added_at = _v2216_get_added_at_from_meta(meta) or existing.get("Added_At")
-        price = None
-        source = "Backfill aktuell"
-
-        if prefer_historical and added_at:
-            price = _v2216_get_historical_price_for_ticker(tk, added_at)
-            if price is not None:
-                source = "Historischer Backfill"
-                historical += 1
-
-        # v23.2: Bei bestehenden Watchlist-Werten keinen aktuellen Kurs mehr automatisch
-        # als scheinbaren Einstand verwenden. Das erzeugte irrefuehrende Anzeigen wie
-        # Startkurs = aktueller Kurs und +0.0%. Aktuelle Baseline nur, wenn explizit erlaubt.
-        if price is None and allow_current_fallback:
-            price = _v2214_get_current_price_for_ticker(tk)
-            source = "Baseline ab jetzt"
-            if price is not None:
-                current_fallback += 1
-
-        if price is None:
-            failed.append(tk)
-            continue
-        if _v2214_set_start_price(wl, tk, price, source=source, added_at=added_at, force=force):
-            added += 1
-        else:
-            failed.append(tk)
-
-    msg = f"{added} Startkurs(e) nachgetragen"
-    if historical:
-        msg += f" · {historical} historisch"
-    if current_fallback:
-        msg += f" · {current_fallback} mit aktuellem Kurs"
-    if skipped:
-        msg += f" · {skipped} bereits vorhanden"
-    if failed:
-        msg += f" · nicht abrufbar: {', '.join(failed[:8])}{' ...' if len(failed) > 8 else ''}"
-    return added > 0 or skipped > 0, msg
+# v25.2: backfill_watchlist_start_prices_v2214 nach modules/ ausgelagert.
 
 
-def _v228_get_pending_watchlist_adds():
-    pending = st.session_state.get("pending_watchlist_adds_v228", [])
-    if not isinstance(pending, list):
-        pending = []
-        st.session_state.pending_watchlist_adds_v228 = pending
-    return pending
+# v25.2: _v228_get_pending_watchlist_adds nach modules/ ausgelagert.
 
 
-def _v228_pending_for_watchlist(watchlist_name):
-    name_l = str(watchlist_name or "").strip().lower()
-    out = []
-    for item in _v228_get_pending_watchlist_adds():
-        if str(item.get("Watchlist_Name", "")).strip().lower() == name_l:
-            out.append(item)
-    return out
+# v25.2: _v228_pending_for_watchlist nach modules/ ausgelagert.
 
 
-def _v228_pending_tickers_for_watchlist(watchlist_name):
-    return [_v228_norm_watchlist_ticker(x.get("Ticker")) for x in _v228_pending_for_watchlist(watchlist_name) if _v228_norm_watchlist_ticker(x.get("Ticker"))]
+# v25.2: _v228_pending_tickers_for_watchlist nach modules/ ausgelagert.
 
 
-def queue_entries_to_watchlist_v228(watchlist_name, watchlist_type, entries, *, source="Manuell", check_frequency="4x täglich", existing_tickers=None):
-    """Sammelt Watchlist-Aenderungen lokal, ohne Google Sheets sofort zu beschreiben."""
-    watchlist_name = str(watchlist_name or "").strip()
-    watchlist_type = str(watchlist_type or "Watchlist").strip() or "Watchlist"
-    check_frequency = str(check_frequency or "4x täglich").strip() or "4x täglich"
-    if not watchlist_name:
-        return False, "Bitte zuerst eine Ziel-Watchlist auswaehlen."
-    if entries is None:
-        entries = []
-    if isinstance(entries, str):
-        entries = [entries]
-
-    existing = {_v228_norm_watchlist_ticker(x) for x in (existing_tickers or []) if _v228_norm_watchlist_ticker(x)}
-    pending = _v228_get_pending_watchlist_adds()
-    pending_keys = {
-        (str(x.get("Watchlist_Name", "")).strip().lower(), _v228_norm_watchlist_ticker(x.get("Ticker")))
-        for x in pending
-    }
-
-    added = []
-    skipped_existing = []
-    skipped_duplicate = []
-    try:
-        now_txt = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
-    except Exception:
-        now_txt = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    for raw in entries:
-        ticker = _v228_norm_watchlist_ticker(raw)
-        if not ticker:
-            continue
-        key = (watchlist_name.lower(), ticker)
-        if ticker in existing:
-            skipped_existing.append(ticker)
-            continue
-        if key in pending_keys:
-            skipped_duplicate.append(ticker)
-            continue
-        # v22.17: Startkurs sofort lokal erfassen, aber ohne zusaetzlichen Google-Sheets-Write.
-        start_price = _v2214_get_current_price_for_ticker(ticker)
-        if start_price is not None:
-            _v2214_set_start_price(watchlist_name, ticker, start_price, source=str(source or "Manuell"), added_at=now_txt)
-        pending.append({
-            "Watchlist_Name": watchlist_name,
-            "Watchlist_Type": watchlist_type,
-            "Ticker": ticker,
-            "Quelle": str(source or "Manuell"),
-            "Check_Frequency": check_frequency,
-            "Vorgemerkt_Am": now_txt,
-            "Added_At": now_txt,
-            "Startkurs": round(float(start_price), 4) if start_price is not None else "n/a",
-            "Start_Price": round(float(start_price), 4) if start_price is not None else "n/a",
-        })
-        pending_keys.add(key)
-        added.append(ticker)
-
-    st.session_state.pending_watchlist_adds_v228 = pending
-    parts = []
-    if added:
-        parts.append(f"{len(added)} Wert(e) vorgemerkt: {', '.join(added[:8])}{' ...' if len(added) > 8 else ''}")
-    if skipped_existing:
-        parts.append(f"bereits vorhanden: {len(skipped_existing)}")
-    if skipped_duplicate:
-        parts.append(f"bereits vorgemerkt: {len(skipped_duplicate)}")
-    if not parts:
-        return False, "Keine neuen Werte zum Vormerken erkannt."
-    return True, " · ".join(parts)
+# v25.2: queue_entries_to_watchlist_v228 nach modules/ ausgelagert.
 
 
-def save_pending_watchlist_adds_v228(*, watchlist_name=None):
-    """Speichert vorgemerkte Eintraege gebuendelt. Pro Watchlist entsteht nur ein Sheets-Write."""
-    pending = _v228_get_pending_watchlist_adds()
-    if not pending:
-        return False, "Keine ausstehenden Watchlist-Aenderungen vorhanden."
-    target_l = str(watchlist_name or "").strip().lower()
-    to_save = []
-    keep = []
-    for item in pending:
-        if target_l and str(item.get("Watchlist_Name", "")).strip().lower() != target_l:
-            keep.append(item)
-        else:
-            to_save.append(item)
-    if not to_save:
-        return False, "Fuer diese Watchlist gibt es keine ausstehenden Aenderungen."
-
-    grouped = {}
-    for item in to_save:
-        wl = str(item.get("Watchlist_Name", "")).strip()
-        wt = str(item.get("Watchlist_Type", "Watchlist")).strip() or "Watchlist"
-        freq = str(item.get("Check_Frequency", "4x täglich")).strip() or "4x täglich"
-        ticker = _v228_norm_watchlist_ticker(item.get("Ticker"))
-        if not wl or not ticker:
-            continue
-        grouped.setdefault((wl, wt, freq), set()).add(ticker)
-
-    ok_all = True
-    messages = []
-    saved_keys = set()
-    for (wl, wt, freq), tickers in grouped.items():
-        tickers_list = sorted(tickers)
-        ok, msg = add_entries_to_watchlist(wl, wt, tickers_list, check_frequency=freq)
-        if ok:
-            saved_keys.update((wl.lower(), t) for t in tickers_list)
-            messages.append(f"{wl}: {len(tickers_list)} Wert(e) gespeichert")
-        else:
-            ok_all = False
-            messages.append(f"{wl}: Fehler - {msg}")
-
-    new_pending = []
-    for item in keep + to_save:
-        wl = str(item.get("Watchlist_Name", "")).strip().lower()
-        tk = _v228_norm_watchlist_ticker(item.get("Ticker"))
-        if (wl, tk) not in saved_keys:
-            new_pending.append(item)
-    st.session_state.pending_watchlist_adds_v228 = new_pending
-    return ok_all, " · ".join(messages) if messages else "Keine gueltigen Aenderungen gespeichert."
+# v25.2: save_pending_watchlist_adds_v228 nach modules/ ausgelagert.
 
 
-def clear_pending_watchlist_adds_v228(*, watchlist_name=None):
-    pending = _v228_get_pending_watchlist_adds()
-    target_l = str(watchlist_name or "").strip().lower()
-    if not target_l:
-        n = len(pending)
-        st.session_state.pending_watchlist_adds_v228 = []
-        return n
-    keep = [x for x in pending if str(x.get("Watchlist_Name", "")).strip().lower() != target_l]
-    removed = len(pending) - len(keep)
-    st.session_state.pending_watchlist_adds_v228 = keep
-    return removed
+# v25.2: clear_pending_watchlist_adds_v228 nach modules/ ausgelagert.
 
 
-def render_pending_watchlist_adds_v228(*, selected_watchlist_name=None):
-    pending = _v228_get_pending_watchlist_adds()
-    if not pending:
-        return
-    df = pd.DataFrame(pending)
-    if selected_watchlist_name:
-        view_df = df[df["Watchlist_Name"].astype(str).str.strip().str.lower() == str(selected_watchlist_name).strip().lower()].copy()
-    else:
-        view_df = df.copy()
-    if view_df.empty:
-        return
-    st.markdown("**Ausstehende Watchlist-Aenderungen**")
-    st.caption("Diese Werte sind sofort lokal nutzbar, werden aber erst mit 'Aenderungen speichern' gebuendelt in Google Sheets geschrieben.")
-    cols = [c for c in ["Watchlist_Name", "Ticker", "Startkurs", "Quelle", "Vorgemerkt_Am"] if c in view_df.columns]
-    st.dataframe(view_df[cols], hide_index=True, use_container_width=True, height=min(260, 42 * len(view_df) + 50))
-    b1, b2, b3 = st.columns([1.1, 1.0, 1.2])
-    safe_key = re.sub(r"[^A-Za-z0-9_]+", "_", str(selected_watchlist_name or "all"))
-    with b1:
-        if st.button("Aenderungen speichern", use_container_width=True, key=f"save_pending_watchlist_adds_v228_{safe_key}"):
-            ok, msg = save_pending_watchlist_adds_v228(watchlist_name=selected_watchlist_name)
-            if ok:
-                st.success(msg)
-                trigger_ui_refresh()
-            else:
-                st.error(msg)
-    with b2:
-        if st.button("Queue leeren", use_container_width=True, key=f"clear_pending_watchlist_adds_v228_{safe_key}"):
-            n = clear_pending_watchlist_adds_v228(watchlist_name=selected_watchlist_name)
-            st.info(f"{n} vorgemerkte Aenderung(en) geloescht.")
-            trigger_ui_refresh()
-    with b3:
-        st.caption(f"Ausstehend: {len(view_df)}")
+# v25.2: render_pending_watchlist_adds_v228 nach modules/ ausgelagert.
 
 # ---------- v22.1: Live-Watchlist / Trigger-Monitor mit Statuswechsel-Historie ----------
 
@@ -6051,1222 +5725,46 @@ def _v214_monitor_final_release_check(result, decision=None):
 
     return len(clean) == 0, clean[:4]
 
-def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None, live_horizon="Swing / 1-4 Wochen"):
-    """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
-
-    Läuft nur in der geöffneten App und nutzt dieselben Bausteine wie Radar und Setup-Alerts.
-    """
-    r = result or {}
-    d = decision or build_professional_radar_decision_v18(r, style_name)
-    # v24.0: live_short_term muss im Scope der Status-/Scorefunktion definiert sein.
-    # In v23.11 wurde die Variable zwar spaeter verwendet, aber nicht gesetzt; dadurch
-    # brachen nahezu alle Watchlist-Ticker mit NameError ab.
-    live_horizon_text = str(live_horizon or "").strip().lower()
-    live_short_term = bool(
-        live_horizon_text.startswith("kurzfrist")
-        or "trading" in live_horizon_text
-        or "short" in live_horizon_text
-    )
-    ticker = str(r.get("ticker") or r.get("Ticker") or "").strip().upper()
-    # v22.2: In der Live-Watchlist nicht den Ticker als Namen anzeigen.
-    # analyze_stock liefert die Firmendaten meist im Result-/info-Objekt; der robuste
-    # Radar-Name-Resolver vermeidet Fallbacks wie Name = Ticker.
-    try:
-        name = radar_company_display_name_v15237(r, ticker, 36)
-    except Exception:
-        name = str(r.get("company_name") or r.get("longName") or r.get("shortName") or r.get("name") or r.get("Name") or ticker or "-").strip()
-        if name.strip().upper() == ticker:
-            name = str((r.get("info", {}) or {}).get("longName") or (r.get("info", {}) or {}).get("shortName") or ticker).strip()
-    price = _v210_alert_price(r)
-    bucket = str(d.get("bucket") or "-").strip()
-    grade = str(d.get("grade") or "-").strip().upper()
-    crv = d.get("crv")
-    try:
-        if crv in {"", "-", "n/a", None}:
-            crv_float = None
-        else:
-            crv_float = float(str(crv).replace(",", "."))
-    except Exception:
-        crv_float = None
-
-    alerts = build_setup_alerts_v210(r, style_name=style_name, decision=d)
-    alert_types = [str(a.get("Alert-Typ") or "") for a in alerts]
-    alert_text = " · ".join(alert_types[:2]) if alert_types else "-"
-
-    gate = str(d.get("gate_reasons") or "")
-    gate_low = gate.lower().strip()
-    hard_gate = bool(gate_low and gate_low not in {"keine harten gates", "keine harten gate", "-", "nan", "none"})
-
-    # v22.1: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
-    # Sie ist Positions-/Stop-Risikohinweis, aber kein Einstiegsgate. Rot bleibt nur
-    # bei echter Invalidierung oder einem nicht-exitbezogenen harten Gate.
-    exit_gate_terms = [
-        "exit", "schutz", "stop prüfen", "stop pruefen", "gewinnschutz",
-        "tactical", "de-risk", "derisk", "teilverkauf", "risikoabbau"
-    ]
-    non_entry_exit_gate = bool(hard_gate and gate_low and any(t in gate_low for t in exit_gate_terms))
-
-    # v22.11: Der Live-Monitor ist ein kurzfristiger Chart-Trigger-Monitor.
-    # Fundamentale Warnungen wie Cashflow/Bilanz/Profitabilitaet sollen sichtbar
-    # bleiben, aber nicht als hartes charttechnisches Einstiegsgate zaehlen.
-    fundamental_gate_terms = [
-        "cashflow", "cash flow", "free cash", "fcf", "bilanz", "liquiditaet",
-        "liquidität", "verschuld", "debt", "verwässer", "verwaesser",
-        "profitabil", "marge", "margen", "earnings", "guidance", "umsatz",
-        "bewertung", "valuation", "fundamental", "qualität", "qualitaet"
-    ]
-    non_entry_fundamental_gate = bool(hard_gate and gate_low and any(t in gate_low for t in fundamental_gate_terms))
-    entry_hard_gate = bool(hard_gate and not non_entry_exit_gate and not non_entry_fundamental_gate)
-
-    def _v2211_fundamental_warning_text(src):
-        rr = src or {}
-        candidates = []
-        for key in [
-            "top_red_flag", "red_flags", "red_flag", "fundamental_warning",
-            "fundamental_red_flags", "quality_red_flags", "risk_flags"
-        ]:
-            val = rr.get(key)
-            if isinstance(val, (list, tuple)):
-                candidates.extend([str(x) for x in val if str(x or '').strip()])
-            elif val not in [None, "", "-", "nan"]:
-                candidates.append(str(val))
-        for item in rr.get("red_flag_items", []) or []:
-            if isinstance(item, dict):
-                txt = item.get("text") or item.get("label") or item.get("reason") or item.get("title")
-            else:
-                txt = item
-            if txt not in [None, "", "-", "nan"]:
-                candidates.append(str(txt))
-        # Auch ein Gate kann fundamental sein und soll dann nur als Warnhinweis erscheinen.
-        if non_entry_fundamental_gate and gate:
-            candidates.append(str(gate))
-        cleaned = []
-        seen = set()
-        for txt in candidates:
-            low = txt.lower()
-            if not any(t in low for t in fundamental_gate_terms):
-                continue
-            short = shorten_text(txt, 90) if 'shorten_text' in globals() else txt[:90]
-            if short.lower() in seen:
-                continue
-            seen.add(short.lower())
-            cleaned.append(short)
-        return "-" if not cleaned else "⚠️ " + " · ".join(cleaned[:2])
-
-    fundamental_warning = _v2211_fundamental_warning_text(r)
-    wave_dist = _v210_alert_num(d.get("wave_trigger_distance_pct"), default=None)
-    entry_distance = _v210_alert_num(d.get("entry_distance_pct"), default=None)
-    next_step = str(d.get("next_step") or "-").strip()
-    brake = str(d.get("brake") or "-").strip()
-
-    # v22.1: Gruen muss mit der Sofortanalyse konsistent sein.
-    # Entry/Wave allein reicht nicht, wenn Timing, valides Setup oder finaler Trigger noch bremsen.
-    status_icon = "⚪"
-    status = "Beobachten"
-    priority = 4
-    reason = "Noch kein aktiver Trigger."
-    monitor_action = next_step
-
-    grade_ok = grade in {"A", "B", "C"}
-    crv_ok = crv_float is not None and crv_float >= 1.5
-    entry_reached = "Entry-Zone erreicht" in alert_types
-    wave_active = "Wave-Trigger aktiv" in alert_types
-    bucket_active = bucket == "Jetzt prüfbar" or "Bucket: Jetzt prüfbar" in alert_types
-    bucket_near = bucket == "Nahe am Trigger" or "Wave-Trigger nahe" in alert_types
-    final_release_ok, final_blockers = _v214_monitor_final_release_check(r, d)
-    final_blocker_text = "; ".join(final_blockers)
-
-    # v22.9: Trendfolge-Gruen getrennt von Pullback-/Entry-Zonen bewerten.
-    # Leader/Momentum-Aktien duerfen nicht nur deshalb blockiert werden, weil der
-    # Kurs weit ueber einer alten Pullback-Entry-Zone liegt. Entscheidend ist dann
-    # Trend-/Timing-Qualitaet plus kontrollierbare Ueberdehnung zum MA20.
-    def _v229_num_any(*vals, default=None):
-        for v in vals:
-            try:
-                if v in {None, "", "-", "n/a", "nan"}:
-                    continue
-                f = float(str(v).replace(",", "."))
-                if np.isfinite(f) and not pd.isna(f) and f > 0:
-                    return f
-            except Exception:
-                continue
-        return default
-
-    info_obj = r.get("info") if isinstance(r.get("info"), dict) else {}
-    fast_info_obj = r.get("fast_info") if isinstance(r.get("fast_info"), dict) else {}
-    ma20_val = _v229_num_any(
-        r.get("ma20"), r.get("MA20"), r.get("SMA20"), r.get("EMA20"),
-        r.get("ma_20"), r.get("sma_20"), info_obj.get("fiftyDayAverage")
-    )
-    ma50_val = _v229_num_any(
-        r.get("ma50"), r.get("MA50"), r.get("SMA50"), r.get("EMA50"),
-        r.get("ma_50"), r.get("sma_50"), info_obj.get("fiftyDayAverage")
-    )
-    price_float = _v229_num_any(price)
-
-    # v24.14: ATR-basierte Volatilität für den Live-Screener.
-    # ATR in % ist für kurzfristige Trades aussagekräftiger als eine abstrakte
-    # annualisierte Volatilität, weil sie die typische tägliche Handelsspanne
-    # relativ zum aktuellen Kurs zeigt.
-    def _v2412_atr_pct(src, current_price=None):
-        rr = src or {}
-        direct_keys = [
-            "atr_pct", "ATR_pct", "ATR_Pct", "atr_percent", "ATR_Percent",
-            "ATR in %", "ATR%", "volatility_atr_pct"
-        ]
-        for key in direct_keys:
-            try:
-                val = rr.get(key)
-                if val in [None, "", "-", "n/a", "nan"]:
-                    continue
-                f = float(str(val).replace(",", ".").replace("%", "").strip())
-                if np.isfinite(f) and not pd.isna(f) and f >= 0:
-                    return f
-            except Exception:
-                pass
-
-        # Fallback: ATR-Wert durch aktuellen Kurs teilen.
-        atr_abs = None
-        for key in ["atr", "ATR", "atr14", "ATR14"]:
-            try:
-                val = rr.get(key)
-                if val in [None, "", "-", "n/a", "nan"]:
-                    continue
-                f = float(str(val).replace(",", "."))
-                if np.isfinite(f) and not pd.isna(f) and f > 0:
-                    atr_abs = f
-                    break
-            except Exception:
-                pass
-        if atr_abs is not None and current_price is not None and current_price > 0:
-            return atr_abs / current_price * 100.0
-
-        # Letzter Fallback: ATR(14) direkt aus OHLC-Daten berechnen.
-        try:
-            dfv = rr.get("df")
-            if isinstance(dfv, pd.DataFrame) and not dfv.empty:
-                high_col = next((c for c in ["High", "high"] if c in dfv.columns), None)
-                low_col = next((c for c in ["Low", "low"] if c in dfv.columns), None)
-                close_col = next((c for c in ["Close", "close", "Adj Close", "Adj_Close"] if c in dfv.columns), None)
-                if high_col and low_col and close_col:
-                    tmp = dfv[[high_col, low_col, close_col]].copy()
-                    for c in [high_col, low_col, close_col]:
-                        tmp[c] = pd.to_numeric(tmp[c], errors="coerce")
-                    tmp = tmp.dropna()
-                    if len(tmp) >= 15:
-                        prev_close = tmp[close_col].shift(1)
-                        tr = pd.concat([
-                            (tmp[high_col] - tmp[low_col]).abs(),
-                            (tmp[high_col] - prev_close).abs(),
-                            (tmp[low_col] - prev_close).abs(),
-                        ], axis=1).max(axis=1)
-                        atr14 = tr.rolling(14, min_periods=14).mean().iloc[-1]
-                        last_close = tmp[close_col].iloc[-1]
-                        if pd.notna(atr14) and pd.notna(last_close) and last_close > 0:
-                            return float(atr14 / last_close * 100.0)
-        except Exception:
-            pass
-        return None
-
-    atr_pct_live = _v2412_atr_pct(r, price_float)
-    if atr_pct_live is None:
-        volatility_text = "n/a"
-    elif atr_pct_live < 2.8:
-        volatility_text = f"{atr_pct_live:.1f}% · niedrig"
-    elif atr_pct_live < 5.5:
-        volatility_text = f"{atr_pct_live:.1f}% · normal"
-    elif atr_pct_live < 8.0:
-        volatility_text = f"{atr_pct_live:.1f}% · erhöht"
-    else:
-        volatility_text = f"{atr_pct_live:.1f}% · hoch"
-
-    # v22.13: Performance-Kontext seit Watchlist-Aufnahme.
-    # Der Live-Score bleibt ein aktueller Chart-/Trigger-Score, aber stark gelaufene
-    # Watchlist-Werte sollen sichtbar sein, auch wenn aktuell kein frischer Entry aktiv ist.
-    def _v2212_parse_dt(val):
-        if val in [None, "", "-", "nan"]:
-            return None
-        try:
-            return pd.to_datetime(val, dayfirst=True, errors="coerce")
-        except Exception:
-            return None
-
-    def _v2212_valid_price(val):
-        try:
-            if val in [None, "", "-", "n/a", "nan"]:
-                return None
-            f = float(str(val).replace(",", "."))
-            if np.isfinite(f) and not pd.isna(f) and f > 0:
-                return f
-        except Exception:
-            pass
-        return None
-
-    def _v2212_chart_start_price(src, added_dt):
-        df0 = src.get("df") if isinstance(src, dict) else None
-        if df0 is None or not isinstance(df0, pd.DataFrame) or df0.empty:
-            return None
-        close_col = None
-        for c in ["Close", "close", "Adj Close", "Adj_Close"]:
-            if c in df0.columns:
-                close_col = c
-                break
-        if close_col is None:
-            return None
-        try:
-            tmp = df0.copy()
-            if "Date" in tmp.columns:
-                tmp["__date"] = pd.to_datetime(tmp["Date"], errors="coerce")
-            else:
-                tmp["__date"] = pd.to_datetime(tmp.index, errors="coerce")
-            tmp = tmp.dropna(subset=["__date", close_col]).sort_values("__date")
-            if tmp.empty:
-                return None
-            if added_dt is not None and not pd.isna(added_dt):
-                # Ersten Schlusskurs am/ab Aufnahmedatum nutzen; wenn zu neu, letzten davor.
-                after = tmp[tmp["__date"] >= added_dt]
-                if not after.empty:
-                    return _v2212_valid_price(after.iloc[0][close_col])
-                before = tmp[tmp["__date"] <= added_dt]
-                if not before.empty:
-                    return _v2212_valid_price(before.iloc[-1][close_col])
-            return None
-        except Exception:
-            return None
-
-    meta = watchlist_meta if isinstance(watchlist_meta, dict) else {}
-    start_date_raw = None
-    for k in ["Added_At", "added_at", "Vorgemerkt_Am", "Created_At", "created_at", "Aufnahme", "Aufnahmedatum"]:
-        if str(meta.get(k, "")).strip() not in {"", "-", "nan", "None"}:
-            start_date_raw = meta.get(k)
-            break
-    added_dt = _v2212_parse_dt(start_date_raw)
-
-    start_price = None
-    start_price_source = str(meta.get("Startkurs_Quelle") or meta.get("Start_Source") or meta.get("Quelle") or "").strip()
-    for k in ["Startkurs", "Start_Kurs", "Start_Price", "start_price", "Added_Price", "Einstand", "Einstandskurs"]:
-        start_price = _v2212_valid_price(meta.get(k))
-        if start_price is not None:
-            if not start_price_source:
-                start_price_source = k
-            break
-    if start_price is None:
-        start_price = _v2212_chart_start_price(r, added_dt)
-        if start_price is not None and not start_price_source:
-            start_price_source = "Chart-Historie"
-
-    # v23.6: Im Live-Monitor KEINE automatische Session-Baseline aus dem aktuellen Kurs setzen.
-    # Sonst entstehen irrefuehrende Kombinationen wie Startkurs n/a / Seit Aufnahme n/a /
-    # Quelle "Baseline ab jetzt" oder Startkurs = aktueller Kurs = +0.0%.
-    # Startkurse duerfen hier nur aus echten Watchlist-Metadaten, manuellem Store
-    # oder historischem Backfill kommen. Neue Watchlist-Eintraege setzen ihren
-    # Startkurs beim Hinzufuegen; alte Werte muessen manuell/historisch nachgetragen werden.
-    try:
-        perf_state = st.session_state.get("live_watchlist_start_prices_v2212", {})
-        if isinstance(perf_state, dict):
-            wl_key = str(meta.get("Watchlist_Name") or meta.get("watchlist_name") or "default").strip() or "default"
-            baseline_key = f"{wl_key}::{ticker}"
-            stored_baseline = _v2212_valid_price(perf_state.get(baseline_key))
-            # Nur noch alte, echte Session-Werte verwenden, wenn sie NICHT exakt dem aktuellen Kurs
-            # entsprechen und damit plausibel eine vorherige Baseline darstellen.
-            if start_price is None and stored_baseline is not None and price_float is not None:
-                try:
-                    if abs(float(stored_baseline) - float(price_float)) / max(float(price_float), 1e-9) > 0.002:
-                        start_price = stored_baseline
-                        if not start_price_source:
-                            start_price_source = "Session-Baseline"
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    perf_pct = None
-    if start_price is not None and price_float is not None and start_price > 0:
-        perf_pct = (price_float / start_price - 1.0) * 100.0
-
-    # v23.2: Eine automatisch gesetzte "Baseline ab jetzt" ist kein echter Einstands-/
-    # Aufnahmekurs. Wenn sie exakt dem aktuellen Kurs entspricht, nicht als +0.0%-
-    # Performance ausgeben, weil das wie ein Fehler bzw. falscher Einstand wirkt.
-    is_current_baseline = _v232_is_current_baseline_source(start_price_source)
-    if start_price is None or (is_current_baseline and perf_pct is not None and abs(float(perf_pct)) < 0.05):
-        start_price_text = "n/a"
-        perf_text = "n/a"
-        # Wenn kein echter Startkurs angezeigt wird, darf auch keine scheinbare
-        # Quelle wie "Baseline ab jetzt" stehen. Quelle/Startkurs/Performance muessen konsistent sein.
-        start_price_source = "n/a"
-    else:
-        start_price_text = round(float(start_price), 4)
-        if perf_pct is None:
-            perf_text = "n/a"
-        else:
-            perf_text = f"{perf_pct:+.1f}%"
-
-    ma20_stretch_pct = None
-    if price_float is not None and ma20_val is not None and ma20_val > 0:
-        ma20_stretch_pct = (price_float / ma20_val - 1.0) * 100.0
-
-    timing_pkg_lm = r.get("timing_action_confidence_pkg") if isinstance(r.get("timing_action_confidence_pkg"), dict) else {}
-    conf_pkg_lm = r.get("trigger_confluence_pkg") if isinstance(r.get("trigger_confluence_pkg"), dict) else {}
-    timing_score_lm = _v210_alert_num(timing_pkg_lm.get("score"), default=None)
-    conf_score_lm = _v210_alert_num(conf_pkg_lm.get("score"), default=None)
-    chart_pkg_lm = r.get("charttechnik_setup_pkg") if isinstance(r.get("charttechnik_setup_pkg"), dict) else {}
-    chart_score_lm = _v210_alert_num(chart_pkg_lm.get("score"), default=None)
-    chart_text_lm = " ".join([
-        str(chart_pkg_lm.get("label") or ""),
-        str(chart_pkg_lm.get("summary") or ""),
-        str(chart_pkg_lm.get("trigger") or ""),
-        str(chart_pkg_lm.get("invalid") or ""),
-    ]).lower()
-
-    trend_structure_ok = bool(
-        price_float is not None
-        and ma20_val is not None
-        and price_float > ma20_val
-        and (ma50_val is None or ma20_val >= ma50_val)
-    )
-    trend_timing_ok = bool((timing_score_lm is None or timing_score_lm >= 70) and (conf_score_lm is None or conf_score_lm >= 65))
-    trend_not_too_extended = bool(ma20_stretch_pct is None or ma20_stretch_pct <= 12.0)
-    trend_extended_but_interesting = bool(ma20_stretch_pct is not None and 12.0 < ma20_stretch_pct <= 20.0)
-    trend_quality_ok = grade in {"A", "B"} and (crv_float is None or crv_float >= 1.3)
-    trend_reason_tail = ""
-    if ma20_stretch_pct is not None:
-        trend_reason_tail = f" Abstand zu MA20 ca. {ma20_stretch_pct:.1f}%."
-
-    if "Invalidierung gebrochen" in alert_types:
-        status_icon, status, priority = "🔴", "Invalidiert / meiden", 1
-        reason = "Invalidierung aktiv."
-        monitor_action = "Kein Kauf: These/Setup zuerst neu prüfen; Stop-/Invalidierungsbruch beachten."
-    elif bucket == "Warnsignale / meiden" and grade in {"A", "B"} and crv_ok:
-        # v22.1: Warnbucket ist nur ein Diagnose-/Vorsichtssignal, wenn Grade A/B und CRV passen.
-        # entry_hard_gate wird hier bewusst nicht mehr als Ausschluss verwendet,
-        # weil es in MRVL-artigen Fällen aus Exit-/Schutz-/Warntexten entstehen kann.
-        # Rot bleibt nur fuer echte Invalidierung oder fehlende Qualitaets-/CRV-Entlastung.
-        status_icon, status, priority = "🟡", "Selektiv prüfen", 2
-        if final_release_ok:
-            reason = "Sofortanalyse/Freigabe ist konstruktiv; Radar-Bucket bzw. Exit-/Schutzhinweise verlangen nur defensive Ausführung."
-            monitor_action = "Selektiv prüfen: Einstieg ist grundsätzlich möglich; Positionsgröße defensiv wählen und Stop/Invalidierung sauber festlegen."
-        else:
-            reason = "Radar-Bucket warnt, aber Grade und CRV entlasten; kein roter Status ohne echte Invalidierung."
-            monitor_action = "Selektiv prüfen: Warnbucket-Grund kontrollieren, Stop/Invalidierung festlegen und nur mit defensiver Positionsgröße handeln."
-    elif bucket == "Warnsignale / meiden" and not final_release_ok:
-        status_icon, status, priority = "🔴", "Warnsignal / meiden", 1
-        reason = "Radar-Bucket warnt und es gibt keine ausreichende Qualitäts-/CRV-Entlastung."
-        monitor_action = "Kein Kauf: Bremse zuerst klären und Sofortanalyse erneut prüfen."
-    elif bucket == "Warnsignale / meiden" and final_release_ok:
-        status_icon, status, priority = "🟡", "Selektiv prüfen", 2
-        reason = "Sofortanalyse gibt den Einstieg frei, aber der Radar-Bucket enthält noch Warnhinweise."
-        monitor_action = "Selektiv prüfen: Einstieg ist freigegeben, aber Positionsgröße defensiv wählen und Stop/Invalidierung eng beachten."
-    elif entry_hard_gate:
-        status_icon, status, priority = "🔴", "Setup blockiert", 1
-        reason = brake if brake and brake != "-" else "Hartes Einstiegsgate aktiv."
-        monitor_action = "Kein Kauf: Einstiegsgate zuerst klären."
-    elif (
-        live_short_term
-        and trend_quality_ok
-        and trend_structure_ok
-        and trend_timing_ok
-        and trend_not_too_extended
-        and not entry_hard_gate
-        and "Invalidierung gebrochen" not in alert_types
-        and (
-            bucket_active
-            or wave_active
-            or entry_reached
-            or (timing_score_lm is not None and timing_score_lm >= 74 and (conf_score_lm is None or conf_score_lm >= 68))
-        )
-    ):
-        # v24.0: Kurzfrist-/Trading-Modus nicht durch die breite Swing-Freigabe
-        # blockieren lassen. Wenn Trendstruktur, Timing/Konfluenz und ein operativer
-        # Trigger-/Trendfolge-Kontext passen, darf der Live-Monitor gruen werden,
-        # auch wenn die laengerfristige Sofortanalyse noch weiche Text-Hinweise enthaelt.
-        status_icon, status, priority = "🟢", "Kurzfrist-Trigger aktiv", 0
-        reason = "Kurzfrist-Setup ist charttechnisch aktiv: Trendstruktur, Timing/Konfluenz und Trigger-/Trendfolge-Kontext passen." + trend_reason_tail
-        monitor_action = "Kurzfrist aktiv. Entry/Breakout nur mit klarer Invalidierung, Positionsgröße und Stop-Plan handeln."
-    elif (bucket_active or entry_reached or wave_active) and not final_release_ok:
-        status_icon, status, priority = "🟡", "Trigger offen / Abwarten", 2
-        reason = "Sofortanalyse bestätigt Grün noch nicht" + (f": {final_blocker_text}." if final_blocker_text else ".")
-        monitor_action = "Noch kein grünes Kaufsignal: erst finale Trigger-/Timing-Bestätigung abwarten. Risiko/Stückzahl erst festlegen, wenn die Sofortanalyse den Einstieg freigibt."
-    elif final_release_ok and trend_quality_ok and trend_structure_ok and trend_timing_ok and trend_not_too_extended:
-        status_icon, status, priority = "🟢", "Trendfolge aktiv", 0
-        reason = "Trendfolge-Setup ist aktiv: Kurs hält oberhalb MA20, MA20 liegt über/nahe MA50 und Timing/Konfluenz passen." + trend_reason_tail
-        monitor_action = "Trendfolge aktiv. Nicht auf alte Entry-Zone fixieren; Positionsgröße über Abstand zu MA20/Stop begrenzen und nur mit klarer Invalidierung handeln."
-    elif final_release_ok and trend_quality_ok and trend_structure_ok and trend_timing_ok and trend_extended_but_interesting:
-        status_icon, status, priority = "🟡", "Trend stark / Pullback bevorzugt", 2
-        reason = "Trend und Timing sind stark, aber der Kurs ist bereits deutlich über MA20 gelaufen." + trend_reason_tail
-        monitor_action = "Trend bleibt interessant, aber kein aggressives Hinterherlaufen: kleine Startposition nur bei engem Risiko-Plan oder Pullback/neue Base abwarten."
-    elif bucket_active and final_release_ok and grade_ok and (crv_ok or "CRV attraktiv" in alert_types):
-        status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
-        reason = "Setup ist operativ aktiv: Bucket ist Jetzt prüfbar und CRV ist attraktiv."
-        monitor_action = "Setup aktiv. Jetzt Risiko pro Trade, Stückzahl und Stop/Invalidierung festlegen."
-    elif wave_active and final_release_ok and grade_ok and crv_ok and bucket in {"Jetzt prüfbar", "Nahe am Trigger"}:
-        status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
-        reason = "Wave-Trigger ist aktiv und CRV/Setup passen."
-        monitor_action = "Setup aktiv. Jetzt Risiko pro Trade, Stückzahl und Stop/Invalidierung festlegen."
-    elif entry_reached and final_release_ok and grade_ok and crv_ok and bucket == "Jetzt prüfbar":
-        status_icon, status, priority = "🟢", "Kauftrigger aktiv", 0
-        reason = "Entry-Zone ist erreicht, Bucket ist aktiv und CRV ist attraktiv."
-        monitor_action = "Setup aktiv. Jetzt Risiko pro Trade, Stückzahl und Stop/Invalidierung festlegen."
-    elif entry_reached and grade_ok and crv_ok and bucket == "Nahe am Trigger":
-        status_icon, status, priority = "🟡", "Entry erreicht, Trigger offen", 2
-        reason = "Entry-Zone ist erreicht und CRV attraktiv, aber finale Trigger-/Volumenbestätigung fehlt noch."
-        monitor_action = "Entry-Zone erreicht; finale Trigger-/Volumenbestätigung abwarten. Noch nicht wie ein grünes Kaufsignal behandeln."
-    elif bucket_near:
-        status_icon, status, priority = "🟡", "Nahe am Trigger", 2
-        reason = "Setup ist interessant, Aktivierung fehlt noch."
-        monitor_action = "Nahe am Trigger: finale Aktivierung/Reclaim/Volumenbestätigung abwarten."
-    elif "CRV attraktiv" in alert_types or (crv_float is not None and crv_float >= 1.8 and bucket in {"Nahe am Trigger", "Starke Watchlist"}):
-        status_icon, status, priority = "🔵", "CRV attraktiv", 3
-        reason = "Chance/Risiko ist interessant, aber Entry/Trigger ist noch nicht aktiv."
-        monitor_action = "CRV attraktiv, aber noch kein aktiver Kauftrigger. Entry/Trigger weiter beobachten."
-    elif bucket in {"Pullback bevorzugt / nicht hinterherlaufen", "Später beobachten"}:
-        status_icon, status, priority = "⚪", "Nur beobachten", 5
-        reason = brake if brake and brake != "-" else "Bremse/Gate noch aktiv."
-        monitor_action = "Nur beobachten; erst bei besserem Entry, Trigger oder geklärter Bremse neu prüfen."
-
-    # v22.13: Starke Watchlist-Performance sichtbar machen.
-    # Das ist KEIN automatisches Kaufsignal. Es verhindert nur, dass ein +20%-Lauf
-    # als irrelevanter weisser Wert wirkt, wenn aktuell kein frischer Entry erkannt wird.
-    if (perf_pct is not None and perf_pct >= 12.0 and status_icon in {"⚪", "🔵"}
-            and "Invalidierung gebrochen" not in alert_types and not entry_hard_gate):
-        status_icon, status, priority = "🟡", "Läuft stark / Einstieg offen", 2
-        reason = f"Seit Watchlist-Aufnahme {perf_pct:+.1f}% gelaufen; aktuell aber noch kein sauberer frischer Einstiegstrigger."
-        monitor_action = "Trend/Performance anerkennen, aber Neueinstieg nur bei frischem Trigger, Pullback oder neuer Base planen."
-    elif (perf_pct is not None and perf_pct >= 6.0 and status_icon == "⚪" and trend_structure_ok
-            and "Invalidierung gebrochen" not in alert_types and not entry_hard_gate):
-        status_icon, status, priority = "🟡", "Läuft positiv / Trigger offen", 2
-        reason = f"Seit Watchlist-Aufnahme {perf_pct:+.1f}% im Plus; Trend positiv, frischer Einstiegstrigger noch offen."
-        monitor_action = "Weiter beobachten: positive Entwicklung, aber Kauf erst bei klarem Trigger oder kontrollierbarem Pullback."
-
-    # v22.11: Chart-Weighted Live-Score x/100.
-    # Der Live-Monitor bewertet kurzfristige charttechnische Handlungsreife.
-    # Fundamental-/Qualitaets-Red-Flags werden separat als Warnhinweis gezeigt,
-    # aber nicht mehr stark in den Live-Score oder die Ampel eingerechnet.
-    def _v2210_clip(val, lo=0.0, hi=100.0):
-        try:
-            f = float(val)
-            if not np.isfinite(f) or pd.isna(f):
-                return lo
-            return max(lo, min(hi, f))
-        except Exception:
-            return lo
-
-    grade_component = {"A": 92.0, "B": 80.0, "C": 66.0, "D": 48.0, "E": 35.0, "F": 22.0, "G": 12.0}.get(grade, 50.0)
-    timing_component = _v2210_clip(timing_score_lm if timing_score_lm is not None else (82.0 if final_release_ok else 50.0))
-    conf_component = _v2210_clip(conf_score_lm if conf_score_lm is not None else (78.0 if final_release_ok else 50.0))
-    chart_component = _v2210_clip(chart_score_lm if chart_score_lm is not None else (72.0 if final_release_ok else 48.0))
-    if any(t in chart_text_lm for t in ["abwarten", "noch nicht", "kein", "fehlt", "nicht reif"]):
-        chart_component = min(chart_component, 54.0)
-    if any(t in chart_text_lm for t in ["reclaim", "breakout", "ausbruch", "trigger", "entry-zone", "stabilisierung", "bullische reaktion"]):
-        chart_component = max(chart_component, 62.0)
-
-    if crv_float is None:
-        crv_component = 56.0 if final_release_ok else 48.0
-    else:
-        # CRV ist wichtig, aber fuer den Live-Monitor nur Nebenfilter.
-        crv_component = _v2210_clip(44.0 + (crv_float - 1.0) * 22.0, 25.0, 92.0)
-
-    trigger_component = 42.0
-    if bucket_active or wave_active:
-        trigger_component = 86.0
-    elif entry_reached:
-        trigger_component = 76.0
-    elif bucket_near:
-        trigger_component = 64.0
-    elif "CRV attraktiv" in alert_types:
-        trigger_component = 54.0
-    if trend_structure_ok and trend_timing_ok:
-        trigger_component = max(trigger_component, 82.0 if trend_not_too_extended else 66.0)
-
-    trend_component = 50.0
-    if trend_structure_ok and trend_timing_ok and trend_not_too_extended:
-        trend_component = 82.0
-    elif trend_structure_ok and trend_timing_ok:
-        trend_component = 66.0
-    elif trend_structure_ok:
-        trend_component = 58.0
-
-    # v23.9: Short-Term-Live-Engine.
-    # Im Kurzfrist-/Trading-Modus wird der Score noch staerker an operativer
-    # Chart-Handlungsreife ausgerichtet. Swing bleibt als bisheriger Modus erhalten.
-    if live_short_term:
-        live_score_raw = (
-            0.34 * trigger_component
-            + 0.26 * timing_component
-            + 0.18 * conf_component
-            + 0.14 * chart_component
-            + 0.05 * trend_component
-            + 0.02 * crv_component
-            + 0.01 * grade_component
-        )
-        # Kurzfristige Trading-Risiken: kein frischer Trigger, schwaches Timing
-        # oder Chart-Abwarten duerfen deutlich bremsen.
-        if trigger_component < 58.0 and not trend_structure_ok:
-            live_score_raw -= 8.0
-        if timing_component < 45.0:
-            live_score_raw -= 10.0
-        if conf_component < 50.0:
-            live_score_raw -= 6.0
-        if any(t in chart_text_lm for t in ["abwarten", "noch nicht", "nicht reif", "fehlt"]):
-            live_score_raw -= 8.0
-    else:
-        live_score_raw = (
-            0.30 * trigger_component
-            + 0.24 * timing_component
-            + 0.20 * conf_component
-            + 0.14 * chart_component
-            + 0.06 * trend_component
-            + 0.04 * crv_component
-            + 0.02 * grade_component
-        )
-
-    # Abzuege nur fuer chart-/entry-relevante Bremsen. Fundamentale Hinweise bleiben
-    # in der Warnhinweis-Spalte sichtbar, zaehlen hier aber nicht als harter Score-Abzug.
-    if bucket == "Warnsignale / meiden" and not (grade in {"A", "B"} and crv_ok):
-        live_score_raw -= 6.0
-    if entry_hard_gate:
-        live_score_raw -= 24.0
-    if "Invalidierung gebrochen" in alert_types:
-        live_score_raw -= 45.0
-    if ma20_stretch_pct is not None and ma20_stretch_pct > 12.0:
-        live_score_raw -= min(18.0, (ma20_stretch_pct - 12.0) * 1.6)
-    if not final_release_ok and status_icon == "🟢":
-        live_score_raw -= 18.0
-    # Performance seit Aufnahme ist Kontext, kein primaerer Entry-Trigger:
-    # leichter Bonus fuer starke Entwicklung, aber nur bis gelb/stabil, nicht automatisch gruen.
-    if perf_pct is not None and perf_pct >= 12.0 and status_icon in {"🟡", "⚪", "🔵"}:
-        live_score_raw += min(10.0, (perf_pct - 8.0) * 0.35)
-
-    # v23.6: Score/Ampel-Alignment.
-    # Bisher wurde der numerische Score nachtraeglich an die vorab bestimmte Ampel
-    # geklemmt. Dadurch konnte 50/100 gelb sein, waehrend 58/100 weiss blieb.
-    # Jetzt ist der Rohscore zuerst massgeblich; harte Gruen-/Rot-Gates bleiben
-    # erhalten, aber Weiss/Gelb/Blau werden logisch an den Score angeglichen.
-    score_candidate = _v2210_clip(live_score_raw, 0.0, 100.0)
-
-    immutable_red = bool("Invalidierung gebrochen" in alert_types or (status_icon == "🔴" and (entry_hard_gate or bucket == "Warnsignale / meiden")))
-    immutable_green = bool(status_icon == "🟢")
-    weak_yellow_without_chart_trigger = bool(
-        status_icon == "🟡"
-        and score_candidate < 55.0
-        and not (bucket_near or entry_reached or wave_active or bucket_active)
-        and not (perf_pct is not None and perf_pct >= 6.0)
-        and status in {"Selektiv prüfen", "Nahe am Trigger"}
-    )
-
-    if live_short_term:
-        # Kurzfrist-Modus: Gruen darf nur dann bleiben, wenn der Trade wirklich
-        # operativ planbar ist. Sonst wird auf Gelb zurueckgestuft.
-        has_short_term_trigger = bool(bucket_active or wave_active or entry_reached or (trend_structure_ok and trend_timing_ok and trend_not_too_extended))
-        if status_icon == "🟢" and not has_short_term_trigger:
-            status_icon, status, priority = "🟡", "Setup interessant / Trigger prüfen", 2
-            reason = "Kurzfrist-Modus: Qualität reicht nicht; es fehlt ein klarer aktueller Charttrigger."
-            monitor_action = "Kurzfrist nur vorbereiten: Trigger, Volumenbestaetigung und engen Stop abwarten."
-            immutable_green = False
-        # Sehr schwache Kurzfrist-Konfluenz soll auch bei guter Aktie nicht gelb bleiben.
-        if status_icon in {"🟡", "🔵"} and timing_component < 42.0 and conf_component < 48.0 and not entry_reached:
-            status_icon, status, priority = "⚪", "Kein kurzfristiger Trigger", 4
-            reason = "Kurzfrist-Modus: Timing/Konfluenz reichen aktuell nicht fuer einen Trading-Trigger."
-            monitor_action = "Kein kurzfristiger Trade: erst bei Reclaim, Breakout oder klarer Entry-Naehe neu prüfen."
-
-    if immutable_red:
-        live_score = _v2210_clip(score_candidate, 0.0, 39.0)
-    elif immutable_green:
-        live_score = _v2210_clip(score_candidate, 75.0, 98.0)
-    else:
-        live_score = _v2210_clip(score_candidate, 0.0, 74.0)
-
-        # Niedrige selektive Warnbucket-Faelle nicht kuenstlich gelb halten.
-        if weak_yellow_without_chart_trigger:
-            status_icon, status, priority = "⚪", "Beobachten / Vorsicht", 4
-            reason = "Score noch zu niedrig fuer gelb; Warn-/CRV-Kontext vorhanden, aber kein klarer chartnaher Trigger."
-            monitor_action = "Beobachten: erst bei verbessertem Charttrigger, Reclaim oder klarer Triggernaehe selektiv pruefen."
-
-        # Mittlere bis hohe Scores duerfen nicht weiss bleiben, wenn keine rote Bremse aktiv ist.
-        if status_icon == "⚪" and live_score >= 55.0:
-            status_icon, status, priority = "🟡", "Beobachten / nahe dran", 2
-            reason = "Live-Score liegt im gelben Bereich, aber ein klarer Kauftrigger fehlt noch."
-            monitor_action = "Nahe dran beobachten: Trigger-/Volumenbestätigung, Reclaim oder Pullback mit sauberem Stop abwarten."
-
-        # Blau war semantisch verwirrend: CRV ist Kontext, aber die Ampel soll nach
-        # Handlungsnaehe sortieren. Attraktives CRV ohne Trigger wird als Gelb gefuehrt.
-        if status_icon == "🔵" and live_score >= 55.0:
-            status_icon, status, priority = "🟡", "CRV attraktiv / Trigger offen", 2
-            reason = "CRV ist attraktiv und der Live-Score ist gelb, aber ein aktiver Charttrigger fehlt noch."
-            monitor_action = "CRV attraktiv, aber noch kein aktiver Kauftrigger. Entry/Trigger weiter beobachten."
-        elif status_icon == "🔵" and live_score < 55.0:
-            status_icon, status, priority = "⚪", "CRV beobachten", 4
-            reason = "CRV ist interessant, aber der charttechnische Live-Score reicht noch nicht fuer gelb."
-            monitor_action = "Beobachten: CRV bleibt interessant, aber erst bei Triggernaehe oder Chartfreigabe handeln."
-
-        # Nach einer Status-Anhebung/-Abstufung den Score in einen konsistenten Bereich ziehen.
-        if status_icon == "🟡":
-            live_score = _v2210_clip(live_score, 55.0, 74.0)
-        elif status_icon == "⚪":
-            live_score = _v2210_clip(live_score, 0.0, 54.0)
-
-    live_score_int = int(round(live_score))
-
-    return {
-        "Ampel": status_icon,
-        "Status": status,
-        "Live-Score": f"{live_score_int}/100",
-        "Live-Horizont": "Kurzfrist" if live_short_term else "Swing",
-        "Ticker": ticker,
-        "Name": name,
-        "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
-        "Volatilität": volatility_text,
-        "ATR-%": None if atr_pct_live is None else round(float(atr_pct_live), 2),
-        "Startkurs": start_price_text,
-        "Seit Aufnahme": perf_text,
-        "Startquelle": "n/a" if str(start_price_text).lower() == "n/a" else (start_price_source or "n/a"),
-        "Grade": grade,
-        "Radar-Bucket": bucket,
-        "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
-        "Entry-Abstand": d.get("entry_distance_text") or ("n/a" if entry_distance is None else f"{entry_distance:+.1f}%"),
-        "Wann aktiv?": d.get("wave_trigger") or "-",
-        "Setup-Alert": alert_text,
-        "Warnhinweis": fundamental_warning,
-        "Grund": reason,
-        "Nächste Handlung": monitor_action,
-        "Letztes Update": get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S"),
-        "__prio": priority,
-        "__score": live_score_int,
-    }
+# v25.2: _v212_monitor_status_from_decision nach modules/ ausgelagert.
 
 
-def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=40, watchlist_meta_by_ticker=None, live_horizon="Swing / 1-4 Wochen"):
-    rows = []
-    errors = []
-    unique = []
-    for t in tickers or []:
-        tt = str(t or "").strip().upper()
-        if tt and tt not in unique:
-            unique.append(tt)
-    meta_by_ticker = watchlist_meta_by_ticker or {}
-    for ticker in unique[:int(max_items or 40)]:
-        try:
-            # v24.0: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
-            # Horizon-Werte. v23.9 uebergab hier "Kurzfrist (1-7 Tage)" und
-            # dadurch brachen viele/alle Ticker ab -> leere Live-Watchlist.
-            # Kurzfrist wird deshalb als Live-Monitor-Modus in der Status-/Scorelogik
-            # angewendet, die robuste technische Datenbasis bleibt Swing.
-            analysis_horizon = "Swing (1-4 Wochen)"
-            result = analyze_stock_live_cached_v2414(
-                ticker=ticker,
-                horizon=analysis_horizon,
-                depot=10000,
-                risk_pct=1.0,
-                override=0.0,
-                buy_in_override=0.0,
-                smart_money_default=True,
-                strict_mode=True,
-                market_bucket=_v2414_market_bucket(15),
-            )
-            decision = build_professional_radar_decision_v18(result, style_name)
-            rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name, watchlist_meta=meta_by_ticker.get(ticker, {}), live_horizon=live_horizon))
-        except Exception as exc:
-            errors.append({"Ticker": ticker, "Fehler": str(exc)[:180]})
-    if rows:
-        df = pd.DataFrame(rows)
-        # v23.6: Anzeige-Sortierung im Live-Monitor nach Ampel, nicht nach interner
-        # Prioritaet. Gewuenschte Reihenfolge: gruen, gelb, weiss, rot.
-        # Blau wird als informativer Zwischenstatus nach gelb und vor weiss einsortiert.
-        def _v235_live_ampel_sort(val):
-            icon = str(val or "").strip()[:1]
-            return {"🟢": 0, "🟡": 1, "🔵": 2, "⚪": 3, "🔴": 4}.get(icon, 5)
-        df["__ampel_sort"] = df.get("Ampel", "").apply(_v235_live_ampel_sort)
-        df = (
-            df.sort_values(["__ampel_sort", "__score", "Ticker"], ascending=[True, False, True])
-              .drop(columns=["__prio", "__score", "__ampel_sort"], errors="ignore")
-              .reset_index(drop=True)
-        )
-    else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
-    # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
-    # doch NaN erzeugt, sauber als n/a ausgeben.
-    if not df.empty and "Kurs" in df.columns:
-        df["Kurs"] = df["Kurs"].apply(lambda x: "n/a" if pd.isna(x) else x)
-    return df, pd.DataFrame(errors)
+# v25.2: build_live_watchlist_monitor_v212 nach modules/ ausgelagert.
 
 
 
 # ---------- v22.7: Live-Watchlist Preis-/Name-Fix ----------
 
-def _v220_live_status_rank(ampel, status):
-    """Ordnet Live-Status fuer Verbesserungs-/Verschlechterungslogik.
-    Niedriger = handlungsnaeher/positiver, hoeher = defensiver.
-    """
-    a = str(ampel or "").strip()
-    stx = str(status or "").strip().lower()
-    if a == "🟢" or "kauftrigger" in stx:
-        return 0
-    if a == "🟡" or "selektiv" in stx or "nahe" in stx or "trigger offen" in stx or "entry erreicht" in stx:
-        return 1
-    if a == "🔵" or "crv" in stx:
-        return 2
-    if a == "⚪" or "beobachten" in stx:
-        return 3
-    if a == "🔴" or "invalid" in stx or "meiden" in stx or "blockiert" in stx:
-        return 4
-    return 3
+# v25.2: _v220_live_status_rank nach modules/ ausgelagert.
 
 
-def _v220_live_change_label(prev_ampel, prev_status, new_ampel, new_status):
-    if prev_status is None:
-        return "Neu"
-    prev_key = f"{prev_ampel} {prev_status}".strip()
-    new_key = f"{new_ampel} {new_status}".strip()
-    if prev_key == new_key:
-        return "Unverändert"
-    old_rank = _v220_live_status_rank(prev_ampel, prev_status)
-    new_rank = _v220_live_status_rank(new_ampel, new_status)
-    if new_rank < old_rank:
-        return "Verbessert"
-    if new_rank > old_rank:
-        return "Verschlechtert"
-    return "Geändert"
+# v25.2: _v220_live_change_label nach modules/ ausgelagert.
 
-def _v237_parse_live_score(value, default=0):
-    """Robustes Parsen von Live-Score-Werten wie '72/100'."""
-    try:
-        txt = str(value or "").strip().replace(",", ".")
-        if "/" in txt:
-            txt = txt.split("/", 1)[0]
-        f = float(txt)
-        if pd.isna(f) or not np.isfinite(f):
-            return default
-        return int(round(max(0, min(100, f))))
-    except Exception:
-        return default
+# v25.2: _v237_parse_live_score nach modules/ ausgelagert.
 
 
-def _v237_set_live_row(row, *, ampel=None, status=None, stability=None, reason_prefix=None, action_prefix=None, prio=None):
-    """Kleine Hilfsfunktion fuer die Signal-Hysterese."""
-    if ampel is not None:
-        row["Ampel"] = ampel
-    if status is not None:
-        row["Status"] = status
-    if stability is not None:
-        row["Signal-Stabilität"] = stability
-    if prio is not None:
-        row["__prio"] = prio
-    if reason_prefix:
-        old_reason = str(row.get("Grund") or "").strip()
-        if old_reason and old_reason != "-" and reason_prefix not in old_reason:
-            row["Grund"] = f"{reason_prefix} {old_reason}"
-        else:
-            row["Grund"] = reason_prefix.rstrip()
-    if action_prefix:
-        old_action = str(row.get("Nächste Handlung") or "").strip()
-        if old_action and old_action != "-" and action_prefix not in old_action:
-            row["Nächste Handlung"] = f"{action_prefix} {old_action}"
-        else:
-            row["Nächste Handlung"] = action_prefix.rstrip()
-    return row
+# v25.2: _v237_set_live_row nach modules/ ausgelagert.
 
 
-def _v237_apply_live_signal_hysteresis(row, prev):
-    """Stabilisiert die Live-Ampel gegen Hin-und-her-Springen.
-
-    Ziel: kleine Score-/Trigger-Schwankungen duerfen nicht sofort Gruen/Gelb/Weiss
-    wechseln und damit Overtrading erzeugen. Rot/Invalidierung bleibt sofort wirksam.
-    """
-    row = row.copy()
-    raw_ampel = str(row.get("Ampel") or "").strip()
-    raw_status = str(row.get("Status") or "").strip()
-    score = _v237_parse_live_score(row.get("Live-Score"), default=0)
-    prev = prev if isinstance(prev, dict) else {}
-    prev_ampel = str(prev.get("ampel") or "").strip()
-    prev_status = str(prev.get("status") or "").strip()
-    prev_raw_ampel = str(prev.get("raw_ampel") or "").strip()
-    prev_score = _v237_parse_live_score(prev.get("live_score"), default=score)
-
-    # Default, falls nichts angepasst wird.
-    row["Signal-Stabilität"] = "Bestätigt" if prev_ampel == raw_ampel and prev_status == raw_status and prev_status else "Frisch"
-    row["__raw_ampel"] = raw_ampel
-    row["__raw_status"] = raw_status
-
-    # Harte rote Signale nicht weichzeichnen.
-    if raw_ampel == "🔴" or "invalid" in raw_status.lower() or "blockiert" in raw_status.lower() or "meiden" in raw_status.lower():
-        return _v237_set_live_row(row, stability="Defensiv", prio=5)
-
-    prev_was_green = prev_ampel == "🟢"
-    prev_was_yellow = prev_ampel == "🟡"
-    prev_was_white = prev_ampel == "⚪"
-
-    # Gruen werden: entweder sehr klarer Score oder zwei Checks hintereinander roh gruen.
-    # Erster knapper Gruen-Impuls wird als Gelb/Fast gruen gezeigt.
-    if raw_ampel == "🟢":
-        # v24.0: Sehr klare Kurzfrist-Signale sollen nicht komplett gelb versteckt
-        # werden. Knappe Gruensignale brauchen weiter Bestaetigung, aber ab ca. 78/100
-        # darf Gruen sofort sichtbar sein.
-        if prev_was_green or prev_raw_ampel == "🟢" or score >= 78:
-            return _v237_set_live_row(row, stability="Bestätigt" if (prev_was_green or prev_raw_ampel == "🟢") else "Frisch", prio=0)
-        return _v237_set_live_row(
-            row,
-            ampel="🟡",
-            status="Fast grün / Bestätigung abwarten",
-            stability="Frisch",
-            reason_prefix="Hysterese: erstes/knappes grünes Signal wird erst nach Bestätigung voll grün.",
-            action_prefix="Nicht sofort aggressiv handeln; nächsten Check bzw. Triggerbestätigung abwarten.",
-            prio=2,
-        )
-
-    # Gruen halten: wenn ein bestehendes gruenes Signal nur leicht auf gelb/weiss faellt,
-    # nicht sofort rauswerfen. Erst bei klarer Verschlechterung unter ca. 68/100 abwerten.
-    if prev_was_green and raw_ampel in {"🟡", "🔵", "⚪"}:
-        if score >= 68 and prev_score >= 72:
-            return _v237_set_live_row(
-                row,
-                ampel="🟢",
-                status="Aktiv, aber wackelig",
-                stability="Wackelig",
-                reason_prefix="Hysterese: vorher grün und nur leicht abgeschwächt; kein hektisches Rein/Raus.",
-                action_prefix="Bestehende Idee prüfen/halten, aber neue Käufe defensiver planen.",
-                prio=0,
-            )
-        if score >= 58:
-            return _v237_set_live_row(
-                row,
-                ampel="🟡",
-                status="Signal abgeschwächt",
-                stability="Abgeschwächt",
-                reason_prefix="Hysterese: grünes Signal ist schwächer geworden, aber noch nicht klar gebrochen.",
-                action_prefix="Nicht hektisch drehen; Trigger, Stop und Volumen im nächsten Check bestätigen lassen.",
-                prio=2,
-            )
-
-    # Gelb werden: knappe gelbe Signale brauchen ebenfalls etwas Bestätigung.
-    if raw_ampel == "🟡":
-        if prev_was_yellow or prev_raw_ampel == "🟡" or score >= 62:
-            return _v237_set_live_row(row, stability="Bestätigt" if prev_was_yellow else "Frisch", prio=2)
-        if prev_was_white and score < 62:
-            return _v237_set_live_row(
-                row,
-                ampel="⚪",
-                status="Fast gelb / beobachten",
-                stability="Frisch",
-                reason_prefix="Hysterese: erstes knappes gelbes Signal, noch keine bestätigte Handlungsnähe.",
-                action_prefix="Weiter beobachten; erst bei zweitem Check oder stärkerem Score gelb behandeln.",
-                prio=4,
-            )
-
-    # Weiss werden: von Gelb nicht sofort auf Weiss kippen, solange Score noch in der Naehe ist.
-    if raw_ampel == "⚪" and prev_was_yellow and score >= 50:
-        return _v237_set_live_row(
-            row,
-            ampel="🟡",
-            status="Weiter beobachten / wackelig",
-            stability="Wackelig",
-            reason_prefix="Hysterese: vorher gelb, aktuell nur leicht schwächer; Signal noch nicht vollständig verwerfen.",
-            action_prefix="Keine neuen aggressiven Käufe; auf erneute Triggernähe oder klare Schwäche warten.",
-            prio=2,
-        )
-
-    # Blau wird im Live-Monitor nur als Kontext verstanden; nicht springen lassen.
-    if raw_ampel == "🔵":
-        if score >= 55:
-            return _v237_set_live_row(row, ampel="🟡", status="CRV attraktiv / Trigger offen", stability="Bestätigt" if prev_was_yellow else "Frisch", prio=2)
-        return _v237_set_live_row(row, ampel="⚪", status="CRV beobachten", stability="Frisch", prio=4)
-
-    return row
+# v25.2: _v237_apply_live_signal_hysteresis nach modules/ ausgelagert.
 
 
 
 
-def _v240_live_trade_state(row):
-    """v24.0: Operative Trade-State-Machine fuer kurzfristiges Trading.
+# v25.2: _v240_live_trade_state nach modules/ ausgelagert.
 
-    Die Ampel bleibt die schnelle Farbe, der Trade-State beschreibt den Workflow:
-    Beobachten -> Vorbereiten -> Armed/Bereit -> Trigger aktiv -> Abgeschwaecht/Invalidiert.
-    Ein echter "Trade aktiv" wird bewusst noch nicht automatisch gesetzt, weil dafuer
-    ein dokumentierter Einstieg/Positions-Tracker noetig ist.
-    """
-    try:
-        ampel = str(row.get("Ampel") or "").strip()
-        status = str(row.get("Status") or "").strip()
-        stability = str(row.get("Signal-Stabilität") or row.get("Signal-Stabilitaet") or "").strip()
-        reason = str(row.get("Grund") or "").strip()
-        action = str(row.get("Nächste Handlung") or row.get("Naechste Handlung") or "").strip()
-        score = _v237_parse_live_score(row.get("Live-Score"), default=0)
-        try:
-            conf_txt = str(row.get("Bestätigungen") or "1x").lower().replace("x", "").strip()
-            confirmations = int(float(conf_txt)) if conf_txt else 1
-        except Exception:
-            confirmations = 1
-        low = " ".join([status, stability, reason, action]).lower()
-
-        if ampel == "🔴" or any(x in low for x in ["invalidiert", "meiden", "blockiert", "kein kauf"]):
-            return "Invalidiert / kein Trade", "Kein neuer Trade. These, Trigger und Invalidierung zuerst neu prüfen."
-
-        if "abgeschw" in low:
-            return "Abgeschwächt", "Signal hat nachgelassen: keine aggressiven Neueinstiege; Stop/Trigger erneut prüfen."
-        if "wackelig" in low:
-            return "Aktiv, aber wackelig", "Signal ist noch nicht stabil: Positionsgröße defensiv und nächsten Check abwarten."
-
-        if ampel == "🟢":
-            if confirmations >= 2 and stability == "Bestätigt":
-                return "Trigger aktiv", "Trade planbar: Entry, Stop, Risiko und Stückzahl festlegen."
-            if score >= 82:
-                return "Armed / bereit", "Sehr starkes frisches Signal: Entry/Stop jetzt konkret planen, aber Ausführung sauber bestätigen."
-            return "Armed / Bestätigung offen", "Grünes Signal ist frisch: nicht blind hinterherlaufen; Bestätigung/Volumen und Stop prüfen."
-
-        if ampel == "🟡":
-            if "fast gr" in low:
-                return "Fast armed", "Noch nicht voll aktiv: nächsten Check bzw. Triggerbestätigung abwarten."
-            if any(x in low for x in ["nahe", "trigger offen", "crv attraktiv", "selektiv", "pullback", "vorbereiten"]):
-                return "Vorbereiten", "Setup vorbereiten: Alarm-/Triggerlevel, Stop und Risikoplan festlegen; noch kein Vollsignal."
-            return "Beobachten+", "Interessant, aber noch nicht aktiv genug."
-
-        if ampel == "🔵":
-            return "CRV-Kontext", "Chance/Risiko beobachten, aber erst bei Charttrigger handeln."
-
-        return "Beobachten", "Kein kurzfristiger Trade-State. Weiter beobachten."
-    except Exception:
-        return "Beobachten", "Trade-State konnte nicht eindeutig bestimmt werden."
-
-def _v227_live_history_file_path():
-    """Persistente Status-Historie fuer Live-Monitor-Reloads.
-
-    Der Auto-Refresh kann auf Streamlit Cloud eine neue Session erzeugen. Deshalb reicht
-    st.session_state allein nicht: ohne persistente Ablage wuerde jeder Refresh wieder
-    als "Neu" erscheinen. Die Datei liegt bewusst lokal zur App/Instanz und wird nur
-    fuer den geoeffneten Live-Monitor genutzt.
-    """
-    try:
-        base_dir = Path(os.environ.get("LIVE_WATCHLIST_HISTORY_DIR", "."))
-        if not base_dir.is_absolute():
-            base_dir = Path.cwd() / base_dir
-        base_dir.mkdir(parents=True, exist_ok=True)
-        return base_dir / ".live_watchlist_status_history_v227.json"
-    except Exception:
-        try:
-            return Path("/tmp/.live_watchlist_status_history_v227.json")
-        except Exception:
-            return None
+# v25.2: _v227_live_history_file_path nach modules/ ausgelagert.
 
 
-def _v227_load_persistent_live_history():
-    path = _v227_live_history_file_path()
-    if path is None or not path.exists():
-        return {}, []
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        state = payload.get("state", {}) if isinstance(payload, dict) else {}
-        events = payload.get("events", []) if isinstance(payload, dict) else []
-        if not isinstance(state, dict):
-            state = {}
-        if not isinstance(events, list):
-            events = []
-        return state, events[-500:]
-    except Exception:
-        return {}, []
+# v25.2: _v227_load_persistent_live_history nach modules/ ausgelagert.
 
 
-def _v227_save_persistent_live_history(state, events):
-    path = _v227_live_history_file_path()
-    if path is None:
-        return
-    try:
-        payload = {"state": state if isinstance(state, dict) else {}, "events": (events or [])[-500:]}
-        path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
-    except Exception:
-        pass
+# v25.2: _v227_save_persistent_live_history nach modules/ ausgelagert.
 
 
-def reset_live_watchlist_status_history_v227():
-    st.session_state.live_watchlist_status_state_v220 = {}
-    st.session_state.live_watchlist_status_events_v220 = []
-    path = _v227_live_history_file_path()
-    try:
-        if path is not None and path.exists():
-            path.unlink()
-    except Exception:
-        pass
+# v25.2: reset_live_watchlist_status_history_v227 nach modules/ ausgelagert.
 
 
-def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", style_name=""):
-    """Ergaenzt Live-Watchlist um Statuswechsel und schreibt Session-Historie.
-
-    v22.7: Die Historie wird zusaetzlich lokal persistiert, damit ein Auto-Refresh
-    nicht wieder alle Zeilen als "Neu" markiert.
-    """
-    if live_df is None or live_df.empty:
-        return live_df, pd.DataFrame()
-
-    # Session-State initialisieren; falls durch Browser-/Streamlit-Reload leer,
-    # aus der persistenten Datei laden.
-    persistent_state, persistent_events = _v227_load_persistent_live_history()
-    if "live_watchlist_status_state_v220" not in st.session_state or not isinstance(st.session_state.get("live_watchlist_status_state_v220"), dict) or not st.session_state.get("live_watchlist_status_state_v220"):
-        st.session_state.live_watchlist_status_state_v220 = persistent_state
-    if "live_watchlist_status_events_v220" not in st.session_state or not isinstance(st.session_state.get("live_watchlist_status_events_v220"), list) or not st.session_state.get("live_watchlist_status_events_v220"):
-        st.session_state.live_watchlist_status_events_v220 = persistent_events
-
-    state = st.session_state.live_watchlist_status_state_v220
-    events = st.session_state.live_watchlist_status_events_v220
-    now = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
-    enriched = live_df.copy()
-    if "Signal-Stabilität" not in enriched.columns:
-        enriched["Signal-Stabilität"] = ""
-    changes = []
-    prev_labels = []
-
-    for idx, row in enriched.iterrows():
-        ticker = str(row.get("Ticker") or "").strip().upper()
-        if not ticker:
-            changes.append("-")
-            prev_labels.append("-")
-            continue
-        key = f"{watchlist_name or 'default'}::{style_name or ''}::{ticker}"
-        prev = state.get(key, {}) if isinstance(state.get(key, {}), dict) else {}
-        prev_ampel = prev.get("ampel")
-        prev_status = prev.get("status")
-        # v23.8: Hysterese vor der Statuswechsel-Bewertung anwenden.
-        # Dadurch werden kleine Score-/Trigger-Schwankungen nicht als harte
-        # Gruen/Gelb/Weiss-Wechsel angezeigt.
-        row2 = _v237_apply_live_signal_hysteresis(row, prev)
-        for col, val in row2.items():
-            enriched.at[idx, col] = val
-
-        new_ampel = str(row2.get("Ampel") or "").strip()
-        new_status = str(row2.get("Status") or "").strip()
-
-        # v23.8: Stabilität nicht schon beim ersten gleich aussehenden Scan als
-        # "Bestätigt" behandeln. Alte persistierte States hatten noch keinen
-        # Confirmation-Counter; diese werden bewusst wie 0 Vorbestätigungen
-        # behandelt. Erst der zweite aufeinanderfolgende gleiche finale Status
-        # wird als bestätigt markiert.
-        try:
-            prev_confirmations = int(prev.get("confirmations") or 0)
-        except Exception:
-            prev_confirmations = 0
-        same_final_signal = bool(prev_ampel == new_ampel and prev_status == new_status and prev_status)
-        confirmations = (prev_confirmations + 1) if same_final_signal else 1
-
-        current_stability = str(row2.get("Signal-Stabilität") or "").strip()
-        if new_ampel == "🔴" or current_stability == "Defensiv":
-            current_stability = "Defensiv"
-        elif current_stability in {"Wackelig", "Abgeschwächt"}:
-            # Diese Zustände sind bewusst warnender als eine reine Bestätigung.
-            pass
-        elif confirmations >= 2:
-            current_stability = "Bestätigt"
-        else:
-            current_stability = "Frisch"
-        row2["Signal-Stabilität"] = current_stability
-        row2["Bestätigungen"] = f"{confirmations}x"
-
-        # v24.0: Aus der finalen Ampel + Stabilitaet einen operativen Trade-State ableiten.
-        # Das reduziert Overtrading: Gruen ist nicht automatisch "rein", sondern ein
-        # Workflow-Zustand wie Armed, Trigger aktiv oder wackelig.
-        trade_state, trade_action = _v240_live_trade_state(row2)
-        row2["Trade-State"] = trade_state
-        row2["Trade-Aktion"] = trade_action
-
-        enriched.at[idx, "Signal-Stabilität"] = current_stability
-        enriched.at[idx, "Bestätigungen"] = f"{confirmations}x"
-        enriched.at[idx, "Trade-State"] = trade_state
-        enriched.at[idx, "Trade-Aktion"] = trade_action
-
-        change = _v220_live_change_label(prev_ampel, prev_status, new_ampel, new_status)
-        prev_label = "-" if prev_status is None else f"{prev_ampel} {prev_status}".strip()
-        changes.append(change)
-        prev_labels.append(prev_label)
-
-        current_snapshot = {
-            "ampel": new_ampel,
-            "status": new_status,
-            "raw_ampel": str(row2.get("__raw_ampel") or str(row.get("Ampel") or "")),
-            "raw_status": str(row2.get("__raw_status") or str(row.get("Status") or "")),
-            "stability": current_stability,
-            "confirmations": confirmations,
-            "radar_bucket": str(row2.get("Radar-Bucket") or ""),
-            "live_score": str(row2.get("Live-Score") or ""),
-            "grade": str(row2.get("Grade") or ""),
-            "crv": str(row2.get("CRV") or ""),
-            "price": row2.get("Kurs"),
-            "updated": now,
-            "reason": str(row2.get("Grund") or ""),
-            "trade_state": str(row2.get("Trade-State") or ""),
-        }
-        if change != "Unverändert":
-            events.append({
-                "Zeit": now,
-                "Ticker": ticker,
-                "Änderung": change,
-                "Von": prev_label,
-                "Zu": f"{new_ampel} {new_status}".strip(),
-                "Kurs": row2.get("Kurs"),
-                "Live-Score": row2.get("Live-Score"),
-                "Grade": row2.get("Grade"),
-                "Radar-Bucket": row2.get("Radar-Bucket"),
-                "CRV": row2.get("CRV"),
-                "Signal-Stabilität": row2.get("Signal-Stabilität"),
-                "Bestätigungen": row2.get("Bestätigungen"),
-                "Trade-State": row2.get("Trade-State"),
-                "Trade-Aktion": row2.get("Trade-Aktion"),
-                "Grund": row2.get("Grund"),
-                "Nächste Handlung": row2.get("Nächste Handlung"),
-            })
-        # v25.1: Statuswechsel dauerhaft als Event protokollieren.
-        if change != "Unverändert":
-            event_type = "Statuswechsel"
-            if new_ampel == "🟢" and prev_ampel != "🟢":
-                event_type = "Neues Grünsignal"
-            elif new_ampel == "🔴":
-                event_type = "Invalidierung / Rot"
-            elif change == "Verbessert":
-                event_type = "Signal verbessert"
-            elif change == "Verschlechtert":
-                event_type = "Signal verschlechtert"
-            _v2416_log_event(
-                event_type=event_type,
-                ticker=ticker,
-                watchlist_name=watchlist_name,
-                source="Live-Screener",
-                status=f"{new_ampel} {new_status}".strip(),
-                price=row2.get("Kurs"),
-                score=row2.get("Live-Score"),
-                trade_state=row2.get("Trade-State"),
-                details=str(row2.get("Grund") or row2.get("Nächste Handlung") or ""),
-                payload={"Vorher": prev_label, "Änderung": change, "CRV": row2.get("CRV")},
-                signature=f"{prev_ampel}|{prev_status}->{new_ampel}|{new_status}|{row2.get('Trade-State')}",
-            )
-        state[key] = current_snapshot
-
-    # Interne Roh-/Sortier-Spalten nicht anzeigen.
-    # v24.1: Hysterese kann __prio temporaer wieder einfuegen; solche
-    # Hilfsspalten duerfen nicht in der Live-Monitor-Tabelle landen.
-    for _internal_col in [c for c in enriched.columns if str(c).startswith("__")]:
-        if _internal_col in enriched.columns:
-            enriched = enriched.drop(columns=[_internal_col])
-    # Signal-Stabilität und Bestätigungen direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.
-    if "Signal-Stabilität" in enriched.columns:
-        col_vals = enriched.pop("Signal-Stabilität")
-        insert_pos = 2 if "Status" in enriched.columns else min(3, len(enriched.columns))
-        enriched.insert(insert_pos, "Signal-Stabilität", col_vals)
-    if "Bestätigungen" in enriched.columns:
-        col_vals = enriched.pop("Bestätigungen")
-        insert_pos = 3 if "Signal-Stabilität" in enriched.columns else (2 if "Status" in enriched.columns else min(4, len(enriched.columns)))
-        enriched.insert(insert_pos, "Bestätigungen", col_vals)
-    if "Trade-State" in enriched.columns:
-        col_vals = enriched.pop("Trade-State")
-        insert_pos = 4 if "Bestätigungen" in enriched.columns else (3 if "Signal-Stabilität" in enriched.columns else min(5, len(enriched.columns)))
-        enriched.insert(insert_pos, "Trade-State", col_vals)
-    if "Trade-Aktion" in enriched.columns:
-        col_vals = enriched.pop("Trade-Aktion")
-        insert_pos = 5 if "Trade-State" in enriched.columns else min(6, len(enriched.columns))
-        enriched.insert(insert_pos, "Trade-Aktion", col_vals)
-    enriched.insert(1, "Änderung", changes)
-    enriched.insert(2, "Vorher", prev_labels)
-    st.session_state.live_watchlist_status_state_v220 = state
-    st.session_state.live_watchlist_status_events_v220 = events[-500:]
-    _v227_save_persistent_live_history(st.session_state.live_watchlist_status_state_v220, st.session_state.live_watchlist_status_events_v220)
-
-    events_df = pd.DataFrame(st.session_state.live_watchlist_status_events_v220)
-    if not events_df.empty:
-        events_df = events_df.iloc[::-1].reset_index(drop=True)
-    return enriched, events_df
+# v25.2: apply_live_watchlist_status_history_v220 nach modules/ ausgelagert.
 
 def radar_reason_professional_v1521(result, style_name_local):
     if str(style_name_local or "") == "Charttechnik":
@@ -19384,35 +17882,39 @@ def _legacy_analyze_stock(
     }
 
 
-# ---------- v25.1: Modularisierung Phase 1 – Deployment-Fix ----------
+# ---------- v25.2: Modularisierung Phase 2 – Live/Watchlist ----------
 # Die Module muessen als Ordner "modules" direkt neben app.py liegen.
 # Der App-Ordner wird explizit in sys.path aufgenommen, damit die Imports auch
 # bei abweichendem Streamlit-Startverzeichnis stabil funktionieren.
 import sys as _sys
 from pathlib import Path as _ModulePath
 
-_APP_DIR_V251 = _ModulePath(__file__).resolve().parent
-if str(_APP_DIR_V251) not in _sys.path:
-    _sys.path.insert(0, str(_APP_DIR_V251))
+_APP_DIR_V252 = _ModulePath(__file__).resolve().parent
+if str(_APP_DIR_V252) not in _sys.path:
+    _sys.path.insert(0, str(_APP_DIR_V252))
 
-_MODULE_DIR_V251 = _APP_DIR_V251 / "modules"
-_REQUIRED_MODULE_FILES_V251 = (
-    _MODULE_DIR_V251 / "__init__.py",
-    _MODULE_DIR_V251 / "risk_calculator.py",
-    _MODULE_DIR_V251 / "event_log.py",
-    _MODULE_DIR_V251 / "position_monitor.py",
+_MODULE_DIR_V252 = _APP_DIR_V252 / "modules"
+_REQUIRED_MODULE_FILES_V252 = (
+    _MODULE_DIR_V252 / "__init__.py",
+    _MODULE_DIR_V252 / "risk_calculator.py",
+    _MODULE_DIR_V252 / "event_log.py",
+    _MODULE_DIR_V252 / "position_monitor.py",
+    _MODULE_DIR_V252 / "live_monitor.py",
+    _MODULE_DIR_V252 / "watchlist_storage.py",
 )
-_missing_module_files_v251 = [str(x.relative_to(_APP_DIR_V251)) for x in _REQUIRED_MODULE_FILES_V251 if not x.exists()]
-if _missing_module_files_v251:
+_missing_module_files_v252 = [str(x.relative_to(_APP_DIR_V252)) for x in _REQUIRED_MODULE_FILES_V252 if not x.exists()]
+if _missing_module_files_v252:
     raise ModuleNotFoundError(
         "Modulare App unvollstaendig bereitgestellt. Lade neben app.py auch den kompletten "
         "Ordner 'modules/' in dasselbe Repository-Verzeichnis hoch. Fehlend: "
-        + ", ".join(_missing_module_files_v251)
+        + ", ".join(_missing_module_files_v252)
     )
 
 from modules import risk_calculator as _risk_module
 from modules import event_log as _event_module
 from modules import position_monitor as _position_module
+from modules import live_monitor as _live_module
+from modules import watchlist_storage as _watchlist_module
 
 _risk_module.configure_context(
     build_professional_radar_decision_v18=build_professional_radar_decision_v18,
@@ -19458,6 +17960,71 @@ _v245_delete_positions_for_watchlist = _position_module._v245_delete_positions_f
 _v244_row_price = _position_module._v244_row_price
 _v244_calc_trade_state = _position_module._v244_calc_trade_state
 _v244_positions_dataframe = _position_module._v244_positions_dataframe
+
+# v25.2: Live-Monitor-Modul konfigurieren
+_live_module.configure_context(
+    _v210_alert_num=_v210_alert_num,
+    _v210_alert_price=_v210_alert_price,
+    _v214_monitor_final_release_check=_v214_monitor_final_release_check,
+    _v2210_clip=_v2210_clip,
+    _v2211_fundamental_warning_text=_v2211_fundamental_warning_text,
+    _v2212_chart_start_price=_v2212_chart_start_price,
+    _v2212_parse_dt=_v2212_parse_dt,
+    _v2212_valid_price=_v2212_valid_price,
+    _v229_num_any=_v229_num_any,
+    _v232_is_current_baseline_source=_v232_is_current_baseline_source,
+    _v2412_atr_pct=_v2412_atr_pct,
+    build_professional_radar_decision_v18=build_professional_radar_decision_v18,
+    build_setup_alerts_v210=build_setup_alerts_v210,
+    get_current_berlin_time=get_current_berlin_time,
+    radar_company_display_name_v15237=radar_company_display_name_v15237,
+    shorten_text=shorten_text,
+    analyze_stock_live_cached_v2414=analyze_stock_live_cached_v2414,
+    _v235_live_ampel_sort=_v235_live_ampel_sort,
+    _v2414_market_bucket=_v2414_market_bucket,
+    _v2416_log_event=_v2416_log_event,
+)
+_v212_monitor_status_from_decision = _live_module._v212_monitor_status_from_decision
+build_live_watchlist_monitor_v212 = _live_module.build_live_watchlist_monitor_v212
+_v220_live_status_rank = _live_module._v220_live_status_rank
+_v220_live_change_label = _live_module._v220_live_change_label
+_v237_parse_live_score = _live_module._v237_parse_live_score
+_v237_set_live_row = _live_module._v237_set_live_row
+_v237_apply_live_signal_hysteresis = _live_module._v237_apply_live_signal_hysteresis
+_v240_live_trade_state = _live_module._v240_live_trade_state
+_v227_live_history_file_path = _live_module._v227_live_history_file_path
+_v227_load_persistent_live_history = _live_module._v227_load_persistent_live_history
+_v227_save_persistent_live_history = _live_module._v227_save_persistent_live_history
+reset_live_watchlist_status_history_v227 = _live_module.reset_live_watchlist_status_history_v227
+apply_live_watchlist_status_history_v220 = _live_module.apply_live_watchlist_status_history_v220
+
+# v25.2: Watchlist-Speicher/Queue-Modul konfigurieren
+_watchlist_module.configure_context(
+    _v2214_get_current_price_for_ticker=_v2214_get_current_price_for_ticker,
+    _v2214_load_start_price_store=_v2214_load_start_price_store,
+    _v2214_save_start_price_store=_v2214_save_start_price_store,
+    _v2214_valid_price=_v2214_valid_price,
+    _v2216_get_added_at_from_meta=_v2216_get_added_at_from_meta,
+    _v2216_get_historical_price_for_ticker=_v2216_get_historical_price_for_ticker,
+    _v232_is_current_baseline_source=_v232_is_current_baseline_source,
+    get_current_berlin_time=get_current_berlin_time,
+    add_entries_to_watchlist=add_entries_to_watchlist,
+    trigger_ui_refresh=trigger_ui_refresh,
+)
+_v228_norm_watchlist_ticker = _watchlist_module._v228_norm_watchlist_ticker
+_v2214_watchlist_key = _watchlist_module._v2214_watchlist_key
+_v2214_set_start_price = _watchlist_module._v2214_set_start_price
+_v2214_get_start_price_meta_map = _watchlist_module._v2214_get_start_price_meta_map
+_v232_delete_current_baselines_for_watchlist = _watchlist_module._v232_delete_current_baselines_for_watchlist
+_v234_set_current_baselines_for_missing = _watchlist_module._v234_set_current_baselines_for_missing
+backfill_watchlist_start_prices_v2214 = _watchlist_module.backfill_watchlist_start_prices_v2214
+_v228_get_pending_watchlist_adds = _watchlist_module._v228_get_pending_watchlist_adds
+_v228_pending_for_watchlist = _watchlist_module._v228_pending_for_watchlist
+_v228_pending_tickers_for_watchlist = _watchlist_module._v228_pending_tickers_for_watchlist
+queue_entries_to_watchlist_v228 = _watchlist_module.queue_entries_to_watchlist_v228
+save_pending_watchlist_adds_v228 = _watchlist_module.save_pending_watchlist_adds_v228
+clear_pending_watchlist_adds_v228 = _watchlist_module.clear_pending_watchlist_adds_v228
+render_pending_watchlist_adds_v228 = _watchlist_module.render_pending_watchlist_adds_v228
 
 # ---------- Main App Flow ----------
 logo_path = Path("a_logo_for_the_capital_hill_score_model_is_promi.png")

@@ -2696,7 +2696,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v25.2"
+APP_VERSION = "v25.3"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5321,7 +5321,7 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
 
 
 # ---------- v22.8: Watchlist Add Queue / Batch Save ----------
-# v25.2: _v228_norm_watchlist_ticker nach modules/ ausgelagert.
+# v25.3: _v228_norm_watchlist_ticker nach modules/ ausgelagert.
 
 
 # ---------- v22.17: Watchlist Startkurs-Backfill ----------
@@ -5394,7 +5394,7 @@ def _v2214_valid_price(value):
     return None
 
 
-# v25.2: _v2214_watchlist_key nach modules/ ausgelagert.
+# v25.3: _v2214_watchlist_key nach modules/ ausgelagert.
 
 
 def _v2214_get_current_price_for_ticker(ticker):
@@ -5528,10 +5528,10 @@ def _v2216_get_historical_price_for_ticker(ticker, added_at=None):
     return None
 
 
-# v25.2: _v2214_set_start_price nach modules/ ausgelagert.
+# v25.3: _v2214_set_start_price nach modules/ ausgelagert.
 
 
-# v25.2: _v2214_get_start_price_meta_map nach modules/ ausgelagert.
+# v25.3: _v2214_get_start_price_meta_map nach modules/ ausgelagert.
 
 
 def _v232_is_current_baseline_source(source):
@@ -5550,34 +5550,34 @@ def _v232_is_current_baseline_source(source):
     ])
 
 
-# v25.2: _v232_delete_current_baselines_for_watchlist nach modules/ ausgelagert.
+# v25.3: _v232_delete_current_baselines_for_watchlist nach modules/ ausgelagert.
 
 
-# v25.2: _v234_set_current_baselines_for_missing nach modules/ ausgelagert.
+# v25.3: _v234_set_current_baselines_for_missing nach modules/ ausgelagert.
 
 
-# v25.2: backfill_watchlist_start_prices_v2214 nach modules/ ausgelagert.
+# v25.3: backfill_watchlist_start_prices_v2214 nach modules/ ausgelagert.
 
 
-# v25.2: _v228_get_pending_watchlist_adds nach modules/ ausgelagert.
+# v25.3: _v228_get_pending_watchlist_adds nach modules/ ausgelagert.
 
 
-# v25.2: _v228_pending_for_watchlist nach modules/ ausgelagert.
+# v25.3: _v228_pending_for_watchlist nach modules/ ausgelagert.
 
 
-# v25.2: _v228_pending_tickers_for_watchlist nach modules/ ausgelagert.
+# v25.3: _v228_pending_tickers_for_watchlist nach modules/ ausgelagert.
 
 
-# v25.2: queue_entries_to_watchlist_v228 nach modules/ ausgelagert.
+# v25.3: queue_entries_to_watchlist_v228 nach modules/ ausgelagert.
 
 
-# v25.2: save_pending_watchlist_adds_v228 nach modules/ ausgelagert.
+# v25.3: save_pending_watchlist_adds_v228 nach modules/ ausgelagert.
 
 
-# v25.2: clear_pending_watchlist_adds_v228 nach modules/ ausgelagert.
+# v25.3: clear_pending_watchlist_adds_v228 nach modules/ ausgelagert.
 
 
-# v25.2: render_pending_watchlist_adds_v228 nach modules/ ausgelagert.
+# v25.3: render_pending_watchlist_adds_v228 nach modules/ ausgelagert.
 
 # ---------- v22.1: Live-Watchlist / Trigger-Monitor mit Statuswechsel-Historie ----------
 
@@ -5725,46 +5725,46 @@ def _v214_monitor_final_release_check(result, decision=None):
 
     return len(clean) == 0, clean[:4]
 
-# v25.2: _v212_monitor_status_from_decision nach modules/ ausgelagert.
+# v25.3: _v212_monitor_status_from_decision nach modules/ ausgelagert.
 
 
-# v25.2: build_live_watchlist_monitor_v212 nach modules/ ausgelagert.
+# v25.3: build_live_watchlist_monitor_v212 nach modules/ ausgelagert.
 
 
 
 # ---------- v22.7: Live-Watchlist Preis-/Name-Fix ----------
 
-# v25.2: _v220_live_status_rank nach modules/ ausgelagert.
+# v25.3: _v220_live_status_rank nach modules/ ausgelagert.
 
 
-# v25.2: _v220_live_change_label nach modules/ ausgelagert.
+# v25.3: _v220_live_change_label nach modules/ ausgelagert.
 
-# v25.2: _v237_parse_live_score nach modules/ ausgelagert.
-
-
-# v25.2: _v237_set_live_row nach modules/ ausgelagert.
+# v25.3: _v237_parse_live_score nach modules/ ausgelagert.
 
 
-# v25.2: _v237_apply_live_signal_hysteresis nach modules/ ausgelagert.
+# v25.3: _v237_set_live_row nach modules/ ausgelagert.
+
+
+# v25.3: _v237_apply_live_signal_hysteresis nach modules/ ausgelagert.
 
 
 
 
-# v25.2: _v240_live_trade_state nach modules/ ausgelagert.
+# v25.3: _v240_live_trade_state nach modules/ ausgelagert.
 
-# v25.2: _v227_live_history_file_path nach modules/ ausgelagert.
-
-
-# v25.2: _v227_load_persistent_live_history nach modules/ ausgelagert.
+# v25.3: _v227_live_history_file_path nach modules/ ausgelagert.
 
 
-# v25.2: _v227_save_persistent_live_history nach modules/ ausgelagert.
+# v25.3: _v227_load_persistent_live_history nach modules/ ausgelagert.
 
 
-# v25.2: reset_live_watchlist_status_history_v227 nach modules/ ausgelagert.
+# v25.3: _v227_save_persistent_live_history nach modules/ ausgelagert.
 
 
-# v25.2: apply_live_watchlist_status_history_v220 nach modules/ ausgelagert.
+# v25.3: reset_live_watchlist_status_history_v227 nach modules/ ausgelagert.
+
+
+# v25.3: apply_live_watchlist_status_history_v220 nach modules/ ausgelagert.
 
 def radar_reason_professional_v1521(result, style_name_local):
     if str(style_name_local or "") == "Charttechnik":
@@ -17882,7 +17882,7 @@ def _legacy_analyze_stock(
     }
 
 
-# ---------- v25.2: Modularisierung Phase 2 – Live/Watchlist ----------
+# ---------- v25.3: Modularisierung Phase 2 – Live/Watchlist ----------
 # Die Module muessen als Ordner "modules" direkt neben app.py liegen.
 # Der App-Ordner wird explizit in sys.path aufgenommen, damit die Imports auch
 # bei abweichendem Streamlit-Startverzeichnis stabil funktionieren.
@@ -17961,26 +17961,18 @@ _v244_row_price = _position_module._v244_row_price
 _v244_calc_trade_state = _position_module._v244_calc_trade_state
 _v244_positions_dataframe = _position_module._v244_positions_dataframe
 
-# v25.2: Live-Monitor-Modul konfigurieren
+# v25.3: Live-Monitor-Modul konfigurieren
 _live_module.configure_context(
     _v210_alert_num=_v210_alert_num,
     _v210_alert_price=_v210_alert_price,
     _v214_monitor_final_release_check=_v214_monitor_final_release_check,
-    _v2210_clip=_v2210_clip,
-    _v2211_fundamental_warning_text=_v2211_fundamental_warning_text,
-    _v2212_chart_start_price=_v2212_chart_start_price,
-    _v2212_parse_dt=_v2212_parse_dt,
-    _v2212_valid_price=_v2212_valid_price,
-    _v229_num_any=_v229_num_any,
     _v232_is_current_baseline_source=_v232_is_current_baseline_source,
-    _v2412_atr_pct=_v2412_atr_pct,
     build_professional_radar_decision_v18=build_professional_radar_decision_v18,
     build_setup_alerts_v210=build_setup_alerts_v210,
     get_current_berlin_time=get_current_berlin_time,
     radar_company_display_name_v15237=radar_company_display_name_v15237,
     shorten_text=shorten_text,
     analyze_stock_live_cached_v2414=analyze_stock_live_cached_v2414,
-    _v235_live_ampel_sort=_v235_live_ampel_sort,
     _v2414_market_bucket=_v2414_market_bucket,
     _v2416_log_event=_v2416_log_event,
 )
@@ -17998,7 +17990,7 @@ _v227_save_persistent_live_history = _live_module._v227_save_persistent_live_his
 reset_live_watchlist_status_history_v227 = _live_module.reset_live_watchlist_status_history_v227
 apply_live_watchlist_status_history_v220 = _live_module.apply_live_watchlist_status_history_v220
 
-# v25.2: Watchlist-Speicher/Queue-Modul konfigurieren
+# v25.3: Watchlist-Speicher/Queue-Modul konfigurieren
 _watchlist_module.configure_context(
     _v2214_get_current_price_for_ticker=_v2214_get_current_price_for_ticker,
     _v2214_load_start_price_store=_v2214_load_start_price_store,

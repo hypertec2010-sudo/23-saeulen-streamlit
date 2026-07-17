@@ -7208,7 +7208,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                 "Grund": row2.get("Grund"),
                 "Nächste Handlung": row2.get("Nächste Handlung"),
             })
-        # v25.0: Statuswechsel dauerhaft als Event protokollieren.
+        # v25.1: Statuswechsel dauerhaft als Event protokollieren.
         if change != "Unverändert":
             event_type = "Statuswechsel"
             if new_ampel == "🟢" and prev_ampel != "🟢":
@@ -19384,10 +19384,32 @@ def _legacy_analyze_stock(
     }
 
 
-# ---------- v25.0: Modularisierung Phase 1 ----------
-# Risiko-Rechner, Positions-/Exit-Monitor und Event-Log leben nun in eigenen
-# Modulen. Die öffentlichen Funktionsnamen bleiben kompatibel, damit die UI
-# und bestehende gespeicherte Daten unverändert weiterarbeiten.
+# ---------- v25.1: Modularisierung Phase 1 – Deployment-Fix ----------
+# Die Module muessen als Ordner "modules" direkt neben app.py liegen.
+# Der App-Ordner wird explizit in sys.path aufgenommen, damit die Imports auch
+# bei abweichendem Streamlit-Startverzeichnis stabil funktionieren.
+import sys as _sys
+from pathlib import Path as _ModulePath
+
+_APP_DIR_V251 = _ModulePath(__file__).resolve().parent
+if str(_APP_DIR_V251) not in _sys.path:
+    _sys.path.insert(0, str(_APP_DIR_V251))
+
+_MODULE_DIR_V251 = _APP_DIR_V251 / "modules"
+_REQUIRED_MODULE_FILES_V251 = (
+    _MODULE_DIR_V251 / "__init__.py",
+    _MODULE_DIR_V251 / "risk_calculator.py",
+    _MODULE_DIR_V251 / "event_log.py",
+    _MODULE_DIR_V251 / "position_monitor.py",
+)
+_missing_module_files_v251 = [str(x.relative_to(_APP_DIR_V251)) for x in _REQUIRED_MODULE_FILES_V251 if not x.exists()]
+if _missing_module_files_v251:
+    raise ModuleNotFoundError(
+        "Modulare App unvollstaendig bereitgestellt. Lade neben app.py auch den kompletten "
+        "Ordner 'modules/' in dasselbe Repository-Verzeichnis hoch. Fehlend: "
+        + ", ".join(_missing_module_files_v251)
+    )
+
 from modules import risk_calculator as _risk_module
 from modules import event_log as _event_module
 from modules import position_monitor as _position_module
@@ -20584,9 +20606,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v25.0")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v25.1")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
-            st.caption("Performance v25.0: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
+            st.caption("Performance v25.1: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
             lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
             with lm1:
                 live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
@@ -20650,7 +20672,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         pass
                     st.info(f"Live-Monitor aktiv: native Aktualisierung alle {refresh_label}, solange der Bereich Live-Screener geöffnet ist. Kein Browser-Reload; Risiko- und Positionsdaten bleiben erhalten.")
 
-                    # v25.0: Nativer Streamlit-Refresh statt Browser-/JavaScript-Reload.
+                    # v25.1: Nativer Streamlit-Refresh statt Browser-/JavaScript-Reload.
                     # Das Fragment prueft nur im aktiven Live-Screener-Bereich zyklisch,
                     # ob das Intervall abgelaufen ist, und startet dann einen normalen
                     # Streamlit-App-Rerun. Session-State und Cockpit-Auswahl bleiben erhalten.
@@ -21054,7 +21076,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         elif cockpit_area == "📌 Positionen / Exit":
-                            st.markdown("### Positions-/Exit-Monitor v25.0")
+                            st.markdown("### Positions-/Exit-Monitor v25.1")
                             st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])
@@ -21234,7 +21256,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.rerun()
                             else:
                                 st.info("Noch keine Statuswechsel-Historie vorhanden. Nach weiteren Prüfungen erscheinen hier Änderungen.")
-                            st.markdown("#### Signal-/Trade-Event-Log v25.0")
+                            st.markdown("#### Signal-/Trade-Event-Log v25.1")
                             event_log_df_v2416 = _v2416_events_dataframe(selected_watchlist_name)
                             if event_log_df_v2416 is not None and not event_log_df_v2416.empty:
                                 ev_types = ["Alle"] + sorted(event_log_df_v2416["Ereignis"].dropna().astype(str).unique().tolist())

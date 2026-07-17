@@ -1,16 +1,24 @@
-# 23-Saeulen-Modell v4.1 – Streamlit App
+# Capital Hill Score Modell v25.1 – Modular Deployment-Fix
 
-Interaktive Aktienanalyse nach dem 23-Saeulen-Modell v4.1.
+## Wichtig für Streamlit Cloud
 
-## Dateien
+Nicht nur `app.py` hochladen. Im GitHub-Repository müssen diese Dateien auf derselben Ebene liegen:
 
-- `app.py` – Streamlit-App
-- `requirements.txt` – Python-Abhaengigkeiten
-- `ANLEITUNG_GITHUB_STREAMLIT.md` – Schritt-fuer-Schritt Anleitung
-- `.gitignore` – sinnvolle Git-Ausschluesse
+```text
+app.py
+modules/
+  __init__.py
+  risk_calculator.py
+  position_monitor.py
+  event_log.py
+```
 
-## Lokal starten
+Am einfachsten den Inhalt dieses ZIPs vollständig in das Repository entpacken und committen.
+
+Startdatei in Streamlit Cloud: `app.py`
+
+Lokaler Start:
 
 ```bash
-pip install -r requirements.txt
 streamlit run app.py
+```

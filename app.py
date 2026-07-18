@@ -172,6 +172,11 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 from analysis_core import analyze_stock as _core_analyze_stock
+from modules import analysis_engine as _analysis_engine
+from modules import cache_layer as _cache_layer
+from modules import market_data as _market_data_module
+from modules import ticker_resolver as _ticker_resolver_module
+from modules import scoring_engine as _scoring_engine_module
 import yfinance as yf
 from plotly.subplots import make_subplots
 import logging_utils as _logging_utils
@@ -366,62 +371,8 @@ def postprocess_asset_mode_v1534(result, ticker=None, requested="Auto"):
     return result
 
 def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, smart_money_default, strict_mode):
-    """Core-Analyse mit robustem Fallback fuer Ticker mit lueckenhaften/inkonsistenten Daten.
-
-    Einige Small-/Micro-Cap-Ticker liefern ueber Yahoo/yfinance Kennzahlen als Text
-    statt als Zahl. In der ausgelagerten Core-Engine kann daraus ein TypeError wie
-    "'>' not supported between instances of 'str' and 'int'" entstehen. Fuer solche
-    Faelle nutzen wir die lokale Legacy-Engine als robusteren Fallback, damit die App
-    nicht komplett abbricht.
-    """
-    try:
-        result = _core_analyze_stock(
-            ticker=ticker,
-            horizon=horizon,
-            depot=depot,
-            risk_pct=risk_pct,
-            override=override,
-            buy_in_override=buy_in_override,
-            smart_money_default=smart_money_default,
-            strict_mode=strict_mode,
-        )
-    except TypeError as e:
-        msg = str(e)
-        if "not supported between instances" not in msg:
-            raise
-        # v17.2.7: Fallback fuer z. B. POET / Small-Caps mit stringartigen Fundamentaldaten.
-        result = _legacy_analyze_stock(
-            ticker=ticker,
-            horizon=horizon,
-            depot=depot,
-            risk_pct=risk_pct,
-            override=override,
-            buy_in_override=buy_in_override,
-            smart_money_default=smart_money_default,
-            strict_mode=strict_mode,
-        )
-        result["Analyse_Hinweis"] = (
-            "Fallback-Analyse genutzt: Datenanbieter lieferte einzelne Kennzahlen in uneinheitlichem Format; "
-            "fundamentale Detailwerte vorsichtig interpretieren."
-        )
-    return postprocess_asset_mode_v1534(result, ticker=ticker, requested=_asset_mode_setting_v1534())
-
-
-# ---------- v24.14: gestufter Analyse-Cache ----------
-@st.cache_data(ttl=15 * 60, show_spinner=False)
-def analyze_stock_live_cached_v2414(
-    ticker, horizon, depot, risk_pct, override, buy_in_override,
-    smart_money_default, strict_mode, market_bucket
-):
-    """Kurzlebiger Cache fuer operative Live-/Trading-Analysen.
-
-    ``market_bucket`` wechselt alle 15 Minuten. Dadurch werden dieselben
-    Ticker/Horizonte zwischen Cockpit-Bereichen wiederverwendet, ohne dass
-    kurzfristige Marktdaten laenger als sinnvoll festgehalten werden.
-    Langsamere Teilquellen behalten weiterhin ihre eigenen laengeren
-    ``st.cache_data``-TTLs (z. B. Sektor-/Marktkontext und Unternehmensdaten).
-    """
-    return analyze_stock(
+    """Zentrale Analyse über das ausgelagerte v26-Analyse-Facade."""
+    return _analysis_engine.analyze_stock(
         ticker=ticker,
         horizon=horizon,
         depot=depot,
@@ -430,15 +381,21 @@ def analyze_stock_live_cached_v2414(
         buy_in_override=buy_in_override,
         smart_money_default=smart_money_default,
         strict_mode=strict_mode,
+        core_engine=_core_analyze_stock,
+        legacy_engine=_legacy_analyze_stock,
+        asset_mode=_asset_mode_setting_v1534(),
     )
 
 
+# ---------- v26.0: zentrale Cache-Schicht ----------
+analyze_stock_live_cached_v2414 = _cache_layer.make_cached_analyzer(
+    st, analyze_stock, ttl_seconds=15 * 60
+)
+
+
 def _v2414_market_bucket(minutes=15):
-    try:
-        mins = max(1, int(minutes))
-    except Exception:
-        mins = 15
-    return int(datetime.now().timestamp() // (mins * 60))
+    return _cache_layer.market_bucket(minutes)
+
 
 try:
     import telegram_utils as _telegram_utils
@@ -2696,7 +2653,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v25.6"
+APP_VERSION = "v26.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",

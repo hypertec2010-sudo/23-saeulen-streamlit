@@ -32,7 +32,8 @@ REQUIRED_FILES = [
     "modules/watchlist_storage.py",
     "modules/chart_overlays.py",
     "modules/radar_view.py",
-    "modules/analysis_view.py",
+    "modules/analysis_view.py", "modules/analysis_engine.py", "modules/cache_layer.py",
+    "modules/market_data.py", "modules/ticker_resolver.py", "modules/scoring_engine.py",
 ]
 
 
@@ -60,6 +61,11 @@ def import_modules():
         "modules.chart_overlays",
         "modules.radar_view",
         "modules.analysis_view",
+        "modules.analysis_engine",
+        "modules.cache_layer",
+        "modules.market_data",
+        "modules.ticker_resolver",
+        "modules.scoring_engine",
     ]
     return {name: importlib.import_module(name) for name in names}
 
@@ -149,10 +155,33 @@ def test_radar_view(mod) -> None:
 
 def test_navigation_guards() -> None:
     source = (ROOT / "app.py").read_text(encoding="utf-8")
-    check("v25.5" in source or "v25.6" in source, "Radar-Navigationsfix fehlt in app.py")
+    check("v26.0" in source, "v26.0 Versionsstand fehlt in app.py")
     check("query" in source.lower() and "workspace" in source.lower(), "Workspace-Query-State nicht auffindbar")
     check("modules" in source and "radar_view" in source, "Radar-Modul ist nicht integriert")
     check("modules" in source and "live_monitor" in source, "Live-Monitor-Modul ist nicht integriert")
+
+
+
+def test_phase4_modules(mods) -> None:
+    cache = mods["modules.cache_layer"]
+    market = mods["modules.market_data"]
+    resolver = mods["modules.ticker_resolver"]
+    scoring = mods["modules.scoring_engine"]
+    analysis = mods["modules.analysis_engine"]
+    check(cache.market_bucket(15) >= 0, "Cache-Bucket fehlerhaft")
+    check(market.finite_positive(float("nan")) is None, "NaN-Filter fehlerhaft")
+    check(abs(market.atr_percent(2, 100) - 2.0) < 1e-9, "ATR-Prozent fehlerhaft")
+    check(resolver.normalize_ticker(" aapl ") == "AAPL", "Ticker-Normalisierung fehlerhaft")
+    check("SAP.DE" in resolver.candidate_variants("SAP"), "Ticker-Varianten fehlerhaft")
+    check(scoring.clip_score(120) == 100.0, "Score-Clipping fehlerhaft")
+    check(abs(scoring.weighted_score([(80, 3), (50, 1)]) - 72.5) < 1e-9, "Gewichteter Score fehlerhaft")
+    result = analysis.analyze_stock(
+        ticker="AAPL", horizon="Test", depot=10000, risk_pct=1, override=None,
+        buy_in_override=None, smart_money_default=None, strict_mode=False,
+        core_engine=lambda **kwargs: {"ticker": kwargs["ticker"], "info": {"quoteType": "EQUITY"}},
+        legacy_engine=lambda **kwargs: {}, asset_mode="Auto",
+    )
+    check(result.get("Asset_Typ") == "Aktie", "Analyse-Facade Asset-Typ fehlerhaft")
 
 
 def main() -> None:
@@ -163,8 +192,9 @@ def main() -> None:
     test_position_monitor(mods["modules.position_monitor"])
     test_event_log(mods["modules.event_log"])
     test_radar_view(mods["modules.radar_view"])
+    test_phase4_modules(mods)
     test_navigation_guards()
-    print("v25.6 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v26.0 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

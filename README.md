@@ -36,3 +36,21 @@ Beim GitHub-Upload muss weiterhin der komplette Ordner `modules/` neben `app.py`
 
 ## v25.4 Modularisierung Phase 3
 Neu: `chart_overlays.py`, `radar_view.py`, `analysis_view.py`. Den kompletten Ordner `modules/` zusammen mit `app.py` deployen.
+
+## v25.6 Stabilitaets- und Regressionstest
+
+Vor dem Deployment kann lokal geprueft werden:
+
+```bash
+python verify_deployment.py
+```
+
+Die Pruefung umfasst:
+
+- Vollstaendigkeit und Syntax aller Module
+- Import aller ausgelagerten Komponenten
+- Risiko-/Positionsgroessenberechnung und Waehrungserkennung
+- Live-Ampel, Hysterese und Trade-State
+- Stop-/1R-Erkennung im Positionsmonitor
+- persistenter und deduplizierter Event-Log
+- grundlegende Radar-/Workspace-Integration

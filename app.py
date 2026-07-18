@@ -170,8 +170,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from analysis_core import analyze_stock as _core_analyze_stock
-from modules.decision_engine import attach_decision
+from modules import analysis_engine as _analysis_engine
+from modules import cache_layer as _cache_layer
+from modules import market_data as _market_data_module
+from modules import ticker_resolver as _ticker_resolver_module
+from modules import scoring_engine as _scoring_engine_module
 import yfinance as yf
 from plotly.subplots import make_subplots
 import logging_utils as _logging_utils
@@ -366,48 +371,31 @@ def postprocess_asset_mode_v1534(result, ticker=None, requested="Auto"):
     return result
 
 def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, smart_money_default, strict_mode):
-    """Core-Analyse mit robustem Fallback fuer Ticker mit lueckenhaften/inkonsistenten Daten.
+    """Zentrale Analyse über das ausgelagerte v26-Analyse-Facade."""
+    return _analysis_engine.analyze_stock(
+        ticker=ticker,
+        horizon=horizon,
+        depot=depot,
+        risk_pct=risk_pct,
+        override=override,
+        buy_in_override=buy_in_override,
+        smart_money_default=smart_money_default,
+        strict_mode=strict_mode,
+        core_engine=_core_analyze_stock,
+        legacy_engine=_legacy_analyze_stock,
+        asset_mode=_asset_mode_setting_v1534(),
+    )
 
-    Einige Small-/Micro-Cap-Ticker liefern ueber Yahoo/yfinance Kennzahlen als Text
-    statt als Zahl. In der ausgelagerten Core-Engine kann daraus ein TypeError wie
-    "'>' not supported between instances of 'str' and 'int'" entstehen. Fuer solche
-    Faelle nutzen wir die lokale Legacy-Engine als robusteren Fallback, damit die App
-    nicht komplett abbricht.
-    """
-    try:
-        result = _core_analyze_stock(
-            ticker=ticker,
-            horizon=horizon,
-            depot=depot,
-            risk_pct=risk_pct,
-            override=override,
-            buy_in_override=buy_in_override,
-            smart_money_default=smart_money_default,
-            strict_mode=strict_mode,
-        )
-    except TypeError as e:
-        msg = str(e)
-        if "not supported between instances" not in msg:
-            raise
-        # v17.2.7: Fallback fuer z. B. POET / Small-Caps mit stringartigen Fundamentaldaten.
-        result = _legacy_analyze_stock(
-            ticker=ticker,
-            horizon=horizon,
-            depot=depot,
-            risk_pct=risk_pct,
-            override=override,
-            buy_in_override=buy_in_override,
-            smart_money_default=smart_money_default,
-            strict_mode=strict_mode,
-        )
-        result["Analyse_Hinweis"] = (
-            "Fallback-Analyse genutzt: Datenanbieter lieferte einzelne Kennzahlen in uneinheitlichem Format; "
-            "fundamentale Detailwerte vorsichtig interpretieren."
-        )
-    result = postprocess_asset_mode_v1534(result, ticker=ticker, requested=_asset_mode_setting_v1534())
-    # v27.1: Canonical decision contract. Legacy fields/UI remain untouched for
-    # a safe, incremental migration of Radar, Screener and Single Analysis.
-    return attach_decision(result, position_mode=bool(buy_in_override and buy_in_override > 0))
+
+# ---------- v26.0: zentrale Cache-Schicht ----------
+analyze_stock_live_cached_v2414 = _cache_layer.make_cached_analyzer(
+    st, analyze_stock, ttl_seconds=15 * 60
+)
+
+
+def _v2414_market_bucket(minutes=15):
+    return _cache_layer.market_bucket(minutes)
+
 
 try:
     import telegram_utils as _telegram_utils
@@ -2439,7 +2427,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
     regime_adjustment_export = _export_first_non_empty((result or {}).get("regime_adjustment_score"), radar_regime_adjustment(result or {}) if isinstance(result, dict) else "", default="n/a")
 
     result_fields = {
-        "Export_Version": "v17.13.2",
+        "Export_Version": "v22.1",
         "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
@@ -2468,6 +2456,17 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
         "Struktur_Trigger_Score": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_score"),
         "Struktur_Trigger_Text": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_text"),
         "Struktur_Trigger_Handlung": ((result or {}).get("wave_structure_pkg") or {}).get("confirmation_action"),
+        "Wellenanalyse_Phase": ((result or {}).get("wave_structure_pkg") or {}).get("wave_phase"),
+        "Wellenanalyse_Sequenz": ((result or {}).get("wave_structure_pkg") or {}).get("wave_sequence"),
+        "Wellenanalyse_Trigger": ((result or {}).get("wave_structure_pkg") or {}).get("wave_trigger"),
+        "Wellenanalyse_Invalidierung": ((result or {}).get("wave_structure_pkg") or {}).get("wave_invalidation"),
+        "Wellenanalyse_Zielzone": ((result or {}).get("wave_structure_pkg") or {}).get("wave_target_zone"),
+        "Wellenanalyse_Qualitaet": ((result or {}).get("wave_structure_pkg") or {}).get("wave_quality_label"),
+        "MTF_Label": ((result or {}).get("multi_timeframe_pkg") or {}).get("label"),
+        "MTF_Score": ((result or {}).get("multi_timeframe_pkg") or {}).get("score"),
+        "MTF_Summary": ((result or {}).get("multi_timeframe_pkg") or {}).get("summary"),
+        "MTF_Handlung": ((result or {}).get("multi_timeframe_pkg") or {}).get("action"),
+        "MTF_Konflikt": ((result or {}).get("multi_timeframe_pkg") or {}).get("conflict"),
         "Fibonacci_Label": ((result or {}).get("fibonacci_context_pkg") or {}).get("label"),
         "Fibonacci_Phase": ((result or {}).get("fibonacci_context_pkg") or {}).get("phase"),
         "Fibonacci_Zusammenfassung": ((result or {}).get("fibonacci_context_pkg") or {}).get("summary"),
@@ -2654,7 +2653,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v17.13.2"
+APP_VERSION = "v26.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -2700,6 +2699,44 @@ def _v176_level_price_text(structures=None, price=None, ccy=''):
         return ''
 
 
+def _v176_entry_zone_invalid_text(entry_zone='-', current_price=None, structures=None, ccy='', prefer_entry=False):
+    """Robuste Invalidierung fuer Entry-/Reclaim-Setups.
+
+    Fix v17.13.3: Bei Reclaim-/Turnaround-Setups darf die Invalidierung nicht
+    versehentlich eine darueberliegende aktive S/R-Zone verwenden. Wenn eine
+    konkrete Entry-Zone existiert, ist fuer diese Setup-Familie der Bruch der
+    Entry-/Reclaim-Zone die fachlich passendere Invalidierung.
+    """
+    ez = _v176_clean_text(entry_zone, '-')
+    support_txt = _v176_level_price_text(structures, current_price, ccy)
+    if ez == '-':
+        return support_txt or 'Bruch der relevanten Support-/Trigger-Zone.'
+
+    ez_low, ez_high = _parse_entry_zone_bounds_v1524_12(ez)
+    suffix = f" {ccy}" if str(ccy or '').strip() and str(ccy or '').strip() not in ez else ''
+    entry_invalid = f"Bruch der Reclaim-/Entry-Zone bei {ez}{suffix}"
+
+    if prefer_entry:
+        return entry_invalid
+
+    try:
+        zones = ((structures or {}).get('active_zones') or []) + ((structures or {}).get('supports') or [])
+        mids = []
+        for z in zones:
+            try:
+                mids.append(float(z.get('mid', np.nan)))
+            except Exception:
+                pass
+        # Wenn die ausgewaehlte S/R-Zone oberhalb der Entry-Zone liegt, ist sie
+        # keine sinnvolle Long-Invalidierung fuer den Reclaim an der Entry-Zone.
+        if ez_high is not None and any(pd.notna(m) and m > ez_high * 1.01 for m in mids):
+            return entry_invalid
+    except Exception:
+        pass
+
+    return support_txt or entry_invalid
+
+
 def build_action_clarity_v176(result, *, final_action_label='-', entry_zone='-', current_price=None,
                               valid_trade_setup=False, timing_confidence_pkg=None,
                               fomo_pkg=None, structures=None, ccy=''):
@@ -2724,7 +2761,7 @@ def build_action_clarity_v176(result, *, final_action_label='-', entry_zone='-',
     summary = 'Aktuell kein sauber aktivierter Einstieg.'
     now = 'Nicht erzwingen; erst bei klarer Trigger-/Zonenbestaetigung aktiv werden.'
     trigger = 'Klarer kurzfristiger Trigger oder Stabilisierung in der relevanten Zone.'
-    invalid = support_txt or 'Bruch der relevanten Support-/Trigger-Zone.'
+    invalid = _v176_entry_zone_invalid_text(ez, current_price, structures, ccy, prefer_entry=False)
 
     if not valid_trade_setup:
         label = 'Kein aktives Setup'
@@ -2744,11 +2781,26 @@ def build_action_clarity_v176(result, *, final_action_label='-', entry_zone='-',
             now = 'Ausfuehrung nur mit passender Positionsgroesse und klarer Invalidierung pruefen.'
             trigger = f'Entry-Zone {ez} haelt bzw. zeigt bullische Reaktion.'
         elif above_zone:
-            label = 'Selektiv jetzt / Pullback bevorzugt'
-            stage = 'selective_or_pullback'
-            summary = f'Setup ist stark, aber der Kurs liegt ueber der idealen Entry-Zone {ez}.'
-            now = 'Sauberer: Pullback in/nahe Entry-Zone abwarten. Aggressiv: nur kleine/selektive Position, wenn Staerke haelt.'
-            trigger = f'Pullback in/nahe Entry-Zone {ez} oder erneuter Ausbruch mit bestaetigter Staerke.'
+            _dist_above = None
+            try:
+                _lo_tmp, _hi_tmp = _radar_v182_parse_zone(ez)
+                _px_tmp = _v176_to_float(current_price, None)
+                if _px_tmp is not None and _hi_tmp is not None and _hi_tmp > 0 and _px_tmp > _hi_tmp:
+                    _dist_above = ((_px_tmp - _hi_tmp) / _hi_tmp) * 100.0
+            except Exception:
+                _dist_above = None
+            if _dist_above is not None and _dist_above > 3.0:
+                label = 'Abwarten / nicht hinterherlaufen'
+                stage = 'no_chase_distance'
+                summary = f'Setup ist konstruktiv, aber der Kurs liegt ca. {_dist_above:.1f}% ueber der Entry-Zone {ez}.'
+                now = 'Kein prozyklischer Neueinstieg an dieser Stelle; Pullback, neue Base oder bestaetigten Ausbruch mit engem Risiko abwarten.'
+                trigger = f'Pullback in/nahe Entry-Zone {ez} oder neue enge Base mit klarer Bestaetigung.'
+            else:
+                label = 'Selektiv jetzt / Pullback bevorzugt'
+                stage = 'selective_or_pullback'
+                summary = f'Setup ist stark, aber der Kurs liegt ueber der idealen Entry-Zone {ez}.'
+                now = 'Sauberer: Pullback in/nahe Entry-Zone abwarten. Aggressiv: nur kleine/selektive Position, wenn Staerke haelt.'
+                trigger = f'Pullback in/nahe Entry-Zone {ez} oder erneuter Ausbruch mit bestaetigter Staerke.'
         elif below_zone:
             label = 'Reclaim abwarten'
             stage = 'reclaim_needed'
@@ -2817,7 +2869,7 @@ def build_charttechnik_setup_v176(result, *, entry_zone='-', current_price=None,
     setup_type = 'neutral'
     summary = 'Charttechnik liefert noch keinen klaren eigenstaendigen Setup-Typ.'
     trigger = _v176_clean_text(sp.get('trigger_text'), '-')
-    invalid = _v176_level_price_text(structures, current_price, ccy) or 'Bruch der relevanten Support-/Trigger-Zone.'
+    invalid = _v176_entry_zone_invalid_text(entry_zone, current_price, structures, ccy, prefer_entry=False)
     score = max(tc_score * 0.35, sp_score * 0.35, fib_score * 0.25, wave_score * 0.25, turn_score * 0.25)
     drivers = []
 
@@ -2833,6 +2885,7 @@ def build_charttechnik_setup_v176(result, *, entry_zone='-', current_price=None,
         setup_type = 'turnaround'
         summary = 'Chart zeigt eine moegliche Trendwende/Stabilisierung; entscheidend ist Reclaim mit Folgestaerke.'
         trigger = _v176_clean_text(turn.get('key_level_text') or turn.get('action_hint'), trigger)
+        invalid = _v176_entry_zone_invalid_text(entry_zone, current_price, structures, ccy, prefer_entry=True)
         drivers.append('Turnaround-Kontext')
         score = max(score, turn_score)
     elif sp_score >= 60 and sp_type:
@@ -2856,6 +2909,7 @@ def build_charttechnik_setup_v176(result, *, entry_zone='-', current_price=None,
         setup_type = 'pullback_structure'
         summary = 'Fib-/Strukturreaktion ist sichtbar; ein handelbarer Trigger braucht Stabilisierung oder Reclaim.'
         trigger = _v176_clean_text(fib.get('confirmation_action') or wave.get('confirmation_action') or fib.get('action_hint') or wave.get('action_hint'), trigger)
+        invalid = _v176_entry_zone_invalid_text(entry_zone, current_price, structures, ccy, prefer_entry=True)
         if fib_score >= 45: drivers.append('Fibonacci-Reaktion')
         if wave_score >= 45: drivers.append('Strukturtrigger')
         score = max(score, fib_score, wave_score)
@@ -3053,6 +3107,11 @@ if "watchlist_new_name" not in st.session_state:
 if "watchlist_bulk_add" not in st.session_state:
     st.session_state.watchlist_bulk_add = ""
 
+# v22.8: Watchlist-Add-Queue - neue Werte werden erst lokal gesammelt
+# und dann gebuendelt in Google Sheets gespeichert.
+if "pending_watchlist_adds_v228" not in st.session_state:
+    st.session_state.pending_watchlist_adds_v228 = []
+
 if "selected_watchlist_alert_mode" not in st.session_state:
     st.session_state.selected_watchlist_alert_mode = "Standard"
 
@@ -3079,6 +3138,54 @@ if "send_watchlist_alerts_after_run" not in st.session_state:
 
 if "workspace_mode" not in st.session_state:
     st.session_state.workspace_mode = ""
+
+# v22.7: Browser-Reload des Live-Monitors darf nicht wieder im Startmenue landen.
+# Wenn der Auto-Refresh aktiv ist, wird der Arbeitsmodus ueber Query-Parameter
+# wiederhergestellt. Das ist absichtlich nur fuer den Live-Monitor aktiv, damit
+# normale Navigation nicht von URL-Parametern ueberschrieben wird.
+def restore_live_monitor_workspace_from_query_v226():
+    try:
+        qp = st.query_params
+        live_param = str(qp.get("live_monitor", "")).lower()
+        workspace_param = str(qp.get("workspace", ""))
+        if live_param in {"1", "true", "yes", "on"}:
+            # v24.11: Query-Parameter nur beim ersten Laden/Browser-Reload als
+            # Wiederherstellung nutzen. Wenn wir sie bei jedem Streamlit-Rerun
+            # erneut in die Widget-Keys schreiben, springt die Refresh-Auswahl
+            # nach einer manuellen Änderung wieder auf den alten URL-Wert
+            # zurück, meist 30 Minuten.
+            first_query_restore = not bool(st.session_state.get("_v2411_live_query_restore_done", False))
+            # v25.5: Den Workspace nur beim einmaligen Query-Restore setzen.
+            # Zuvor wurde der URL-Wert bei jedem Rerun erneut angewendet. Dadurch
+            # sprang der Kandidaten-Radar nach dem Start wieder auf Watchlisten /
+            # Live-Screener, sobald noch live_monitor=1&workspace=Watchlisten in
+            # der URL stand.
+            if first_query_restore:
+                if workspace_param.lower() in {"watchlisten", "watchlist", "watchlists"}:
+                    st.session_state.workspace_mode = "Watchlisten"
+                elif workspace_param.lower() in {"positionen", "positions"}:
+                    st.session_state.workspace_mode = "Positionen"
+            if first_query_restore or "live_watchlist_monitor_enabled" not in st.session_state:
+                st.session_state.live_watchlist_monitor_enabled = True
+                st.session_state.live_watchlist_monitor_enabled_widget = True
+            refresh_param = str(qp.get("refresh", ""))
+            refresh_map = {"15": "15 Minuten", "30": "30 Minuten", "60": "60 Minuten"}
+            if refresh_param in refresh_map and (first_query_restore or "live_watchlist_refresh_interval" not in st.session_state):
+                st.session_state.live_watchlist_refresh_interval = refresh_map[refresh_param]
+                st.session_state.live_watchlist_refresh_interval_widget = refresh_map[refresh_param]
+            live_horizon_param = str(qp.get("live_horizon", "")).strip().lower()
+            horizon_map = {
+                "short": "Kurzfrist / Trading",
+                "swing": "Swing / 1-4 Wochen",
+            }
+            if live_horizon_param in horizon_map and (first_query_restore or "live_watchlist_horizon" not in st.session_state):
+                st.session_state.live_watchlist_horizon = horizon_map[live_horizon_param]
+                st.session_state.live_watchlist_horizon_widget = horizon_map[live_horizon_param]
+            st.session_state._v2411_live_query_restore_done = True
+    except Exception:
+        pass
+
+restore_live_monitor_workspace_from_query_v226()
 
 if "ui_refresh_nonce" not in st.session_state:
     st.session_state.ui_refresh_nonce = 0
@@ -3534,6 +3641,13 @@ def radar_professional_sort_score(row, result_map, style_name):
     """Regime-sensitive, typkalibrierte Radar-Priorisierung statt reinem Score-Ranking."""
     tkr = str(row.get("Ticker", "") or "")
     r = result_map.get(tkr, {}) or {}
+    # v18: Professional Funnel ist die primaere Sortierlogik.
+    # Der alte Mixscore bleibt als Fallback erhalten, falls ein Snapshot keine Result-Map hat.
+    if r:
+        try:
+            return round(float(build_professional_radar_decision_v18(r, style_name).get("score", 0.0)), 2)
+        except Exception:
+            pass
     trigger_rank_map = {"Aktiv": 6, "Jetzt prüfbar": 6, "Nahe dran": 5, "Fast prüfbar": 5, "Frühe Beobachtung": 4, "Früh interessant": 4, "Beobachten": 3, "Weiter beobachten": 3, "Passiv": 2, "Aktuell kein Fokus": 2, "Warten": 1, "Noch warten": 1}
     trigger_score = float(row.get("__trigger_sort", trigger_rank_map.get(str(row.get("Trigger-Status", "") or ""), 0)) or 0)
     entry = _radar_safe_num(row.get("Einstieg jetzt attraktiv?"), 0)
@@ -3676,6 +3790,1945 @@ def radar_brake_reason(result):
     return "keine dominante Bremse"
 
 
+# ---------- v18.5: Professional Radar Funnel mit strengem Top-Chancen-Filter ----------
+def _radar_v18_clip(value, lo=0.0, hi=100.0):
+    try:
+        return max(lo, min(hi, float(value)))
+    except Exception:
+        return lo
+
+
+def _radar_v18_text(result, key, default=""):
+    try:
+        txt = str((result or {}).get(key, default) or default).strip()
+        return "" if txt.lower() in {"nan", "none", "null"} else txt
+    except Exception:
+        return default
+
+
+def _radar_v18_entry_position(result):
+    """Approximate entry stretch from existing scoring/text fields without requiring price parsing."""
+    entry_quality = _radar_v18_text(result, "entry_quality", "").lower()
+    trading = _radar_safe_num((result or {}).get("trading_case_score"), 50)
+    stretch = _radar_safe_num((result or {}).get("stretch_risk_score"), 0)
+    fomo_label = str(((result or {}).get("fomo_smart_money_pkg") or {}).get("label") or "").lower()
+    if any(x in entry_quality for x in ["gut", "entry-zone", "zone", "prüfbar", "pruefbar"]):
+        return "in/nahe Zone", 82
+    if any(x in entry_quality for x in ["spät", "spaet", "extended", "überdehnt", "ueberdehnt", "oberhalb", "nicht hinterher"]):
+        return "zu weit gelaufen", max(10, 38 - stretch * 0.25)
+    if any(x in fomo_label for x in ["kritisch", "erhöht", "erhoeht"]):
+        return "FOMO/Stretch beachten", max(20, 55 - stretch * 0.15)
+    if trading >= 70:
+        return "operativ attraktiv", 76
+    if trading >= 58:
+        return "nahe Zone/Trigger", 64
+    if trading >= 45:
+        return "noch nicht ideal", 48
+    return "unattraktiv", 28
+
+
+# ---------- v18.2: Risk/Reward und Entry-Qualitaet fuer Professional Radar ----------
+def _radar_v182_first_non_empty(result, *keys, default=""):
+    for key in keys:
+        try:
+            if isinstance(key, tuple) and len(key) == 2:
+                block = (result or {}).get(key[0], {}) or {}
+                value = block.get(key[1], "") if isinstance(block, dict) else ""
+            else:
+                value = (result or {}).get(key, "")
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text and text.lower() not in {"nan", "none", "null", "-", "n/a", "na"}:
+                return value
+        except Exception:
+            continue
+    return default
+
+
+def _radar_v182_num(value, default=None):
+    try:
+        if value is None:
+            return default
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            if pd.isna(value):
+                return default
+            return float(value)
+        text = str(value).strip()
+        if not text or text.lower() in {"nan", "none", "null", "-", "n/a", "na"}:
+            return default
+        text = text.replace("%", "").replace("USD", "").replace("EUR", "").replace("$", "").strip()
+        text = text.replace(".", "").replace(",", ".") if ("," in text and "." in text and text.rfind(",") > text.rfind(".")) else text.replace(",", ".")
+        m = re.search(r"-?\d+(?:\.\d+)?", text)
+        if not m:
+            return default
+        return float(m.group(0))
+    except Exception:
+        return default
+
+
+def _radar_v182_parse_zone(entry_zone):
+    try:
+        low, high = _parse_entry_zone_bounds_v1524_12(entry_zone)
+        return low, high
+    except Exception:
+        text = str(entry_zone or "").replace(",", ".")
+        nums = [float(x) for x in re.findall(r"[-+]?\d+(?:\.\d+)?", text)]
+        if len(nums) >= 2:
+            return min(nums[0], nums[1]), max(nums[0], nums[1])
+    return None, None
+
+
+def _radar_v182_get_price(result):
+    return _radar_v182_num(_radar_v182_first_non_empty(result, "live_price", "analysis_price", "price", "Aktueller_Kurs", "Analyse_Kursbasis"), default=None)
+
+
+def _radar_v182_entry_zone_text(result):
+    return str(_radar_v182_first_non_empty(
+        result,
+        "suggested_entry_zone",
+        "Entry-Zone",
+        "Entry_Zone",
+        ("action_clarity_pkg", "entry_zone"),
+        default="",
+    ) or "").strip()
+
+
+def _radar_v182_tp1_value(result):
+    # Legacy helper kept for compatibility. In v21.1 the Radar-RR no longer uses
+    # the mechanical 1R-TP1 as the primary target, because that made almost every
+    # Radar candidate show CRV 1.0. Use _radar_v209_main_target_value instead.
+    return _radar_v182_num(_radar_v182_first_non_empty(result, "tp1", "TP1", "target1", "Target_1", default=""), default=None)
+
+
+def _radar_v209_parse_price_zone(value):
+    """Return (low, high) from a text like 'ca. 320.77 - 325.05'."""
+    try:
+        text = str(value or "").replace(",", ".")
+        nums = [float(x) for x in re.findall(r"[-+]?\d+(?:\.\d+)?", text)]
+        # Ignore extension labels like 1.272/1.618 if larger price numbers follow.
+        nums = [x for x in nums if abs(x) >= 2.0]
+        if len(nums) >= 2:
+            return min(nums[-2], nums[-1]), max(nums[-2], nums[-1])
+        if len(nums) == 1:
+            return nums[0], nums[0]
+    except Exception:
+        pass
+    return None, None
+
+
+def _radar_v209_main_target_value(result, price=None):
+    """Bestimmt ein sinnvolles Radar-Ziel fuer CRV.
+
+    Hintergrund v21.1:
+    Das normale Analyse-TP1 ist im Tradingboard oft bewusst ein 1R-Ziel
+    (price + 1 * risk). Wenn der Radar dieses TP1 nutzt, kommt fast immer CRV 1.0
+    heraus. Fuer die Radar-Attraktivitaet ist aber das naechste strukturelle bzw.
+    operative Hauptziel relevanter: TP2, technische Ziele, Wave-Zielzone, 52W-Hoch.
+    Nur wenn gar kein Hauptziel existiert, bleibt CRV n/a statt kuenstlich 1.0.
+    """
+    r = result or {}
+    if price is None:
+        price = _radar_v182_get_price(r)
+
+    def _valid(v):
+        num = _radar_v182_num(v, default=None)
+        if num is None or num <= 0:
+            return None
+        if price is not None and price > 0 and num <= price * 1.002:
+            return None
+        return num
+
+    candidates = [
+        ("TP2 / Hauptziel", _valid(_radar_v182_first_non_empty(r, "tp2", "TP2", "target2", "Target_2", default=""))),
+        ("technisches Ziel", _valid(_radar_v182_first_non_empty(r, "technical_target_1", "Technical_Target_1", "Setup_Target_1", default=""))),
+        ("Wave-Ziel", None),
+        ("52W-Hoch", _valid(_radar_v182_first_non_empty(r, "high52", "52W_High", "high_52w", default=""))),
+        ("Analysten-/Modellziel", _valid(_radar_v182_first_non_empty(r, "target", "Target", "price_target", "analyst_target", default=""))),
+        ("TP3", _valid(_radar_v182_first_non_empty(r, "tp3", "TP3", "target3", "Target_3", default=""))),
+    ]
+
+    # Wave-Zielzone aus der v19/v20-Wellenanalyse konservativ mit der unteren Zone nutzen.
+    wave = r.get("wave_structure_pkg") or {}
+    if isinstance(wave, dict):
+        for key in ("wave_extension_127", "target_127", "wave_target_127"):
+            val = _valid(wave.get(key))
+            if val is not None:
+                candidates[2] = ("Wave-Ziel", val)
+                break
+        if candidates[2][1] is None:
+            low, high = _radar_v209_parse_price_zone(wave.get("wave_target_zone") or wave.get("wave_readable_target") or "")
+            val = _valid(low) or _valid(high)
+            if val is not None:
+                candidates[2] = ("Wave-Ziel", val)
+
+    for source, val in candidates:
+        if val is not None:
+            return val, source
+
+    # 1R-TP1 wird bewusst NICHT als Radar-Hauptziel verwendet. Es ist nur ein
+    # Mindest-Teilziel und wuerde den Radar permanent auf CRV 1.0 kalibrieren.
+    tp1 = _valid(_radar_v182_first_non_empty(r, "tp1", "TP1", "target1", "Target_1", default=""))
+    if tp1 is not None:
+        return None, "kein strukturelles Hauptziel; TP1 ist nur 1R/Teilziel"
+    return None, "kein belastbares Hauptziel"
+
+
+def _radar_v182_stop_value(result):
+    stop = _radar_v182_num(_radar_v182_first_non_empty(result, "stop_used", "stop", "Stop", "PM_Stop", default=""), default=None)
+    if stop is not None and stop > 0:
+        return stop
+    invalid_txt = str(_radar_v182_first_non_empty(result, ("action_clarity_pkg", "invalid"), ("charttechnik_setup_pkg", "invalid"), "PM_Stop_Plan", default="") or "")
+    nums = [float(x) for x in re.findall(r"[-+]?\d+(?:[\.,]\d+)?", invalid_txt.replace(",", "."))]
+    if len(nums) >= 2:
+        return min(nums[0], nums[1])
+    if len(nums) == 1:
+        return nums[0]
+    ez = _radar_v182_entry_zone_text(result)
+    low, high = _radar_v182_parse_zone(ez)
+    if low is not None:
+        return low
+    return None
+
+
+def build_radar_entry_rr_package_v182(result):
+    """Berechnet Entry-Abstand und CRV fuer den Radar.
+
+    Ziel: ein technisch gutes Setup wird nicht als Top-Kandidat angezeigt, wenn der
+    Kurs operativ zu weit ueber der Entry-Zone liegt oder das Chance/Risiko-Verhaeltnis
+    zu schwach ist.
+    """
+    r = result or {}
+    price = _radar_v182_get_price(r)
+    entry_zone = _radar_v182_entry_zone_text(r)
+    low, high = _radar_v182_parse_zone(entry_zone)
+    tp1, tp1_source = _radar_v209_main_target_value(r, price=price)
+    stop = _radar_v182_stop_value(r)
+
+    entry_distance_pct = None
+    entry_position = "Keine Entry-Zone"
+    entry_score = 45.0
+    if price is not None and low is not None and high is not None and high > 0:
+        base = max(abs(price), abs(low), abs(high), 1e-9)
+        if low <= price <= high:
+            entry_distance_pct = 0.0
+            entry_position = "In Entry-Zone"
+            entry_score = 92.0
+        elif price < low:
+            entry_distance_pct = -((low - price) / base) * 100.0
+            if abs(entry_distance_pct) <= 1.5:
+                entry_position = "Knapp unter Entry / Reclaim nötig"
+                entry_score = 76.0
+            else:
+                entry_position = "Unter Entry / Reclaim nötig"
+                entry_score = max(35.0, 66.0 - abs(entry_distance_pct) * 1.6)
+        else:
+            entry_distance_pct = ((price - high) / base) * 100.0
+            if entry_distance_pct <= 1.5:
+                entry_position = "Knapp oberhalb Entry"
+                entry_score = 72.0
+            elif entry_distance_pct <= 5.0:
+                entry_position = "Oberhalb Entry"
+                entry_score = max(42.0, 68.0 - entry_distance_pct * 4.0)
+            else:
+                entry_position = "Zu weit über Entry"
+                entry_score = max(12.0, 48.0 - (entry_distance_pct - 5.0) * 3.0)
+
+    crv = None
+    rr_label = "CRV n/a"
+    rr_score = 45.0
+    rr_text = "CRV nicht sauber berechenbar; Entry, Stop oder strukturelles Ziel fehlen."
+    if price is not None and stop is not None and tp1 is not None and stop > 0 and tp1 > 0:
+        risk = price - stop
+        reward = tp1 - price
+        if risk > 0 and reward > 0:
+            crv = reward / risk
+            if crv >= 3.0:
+                rr_label = "CRV sehr attraktiv"
+                rr_score = 94.0
+            elif crv >= 2.0:
+                rr_label = "CRV attraktiv"
+                rr_score = 82.0
+            elif crv >= 1.5:
+                rr_label = "CRV okay"
+                rr_score = 66.0
+            elif crv >= 1.0:
+                rr_label = "CRV eng"
+                rr_score = 44.0
+            else:
+                rr_label = "CRV unattraktiv"
+                rr_score = 24.0
+            rr_text = f"CRV {crv:.2f} · Stop {stop:.2f} · Ziel {tp1:.2f} ({tp1_source})"
+        elif risk <= 0:
+            rr_label = "Stop unplausibel"
+            rr_score = 25.0
+            rr_text = "Stop/Invalidierung liegt nicht unter dem aktuellen Kurs."
+        else:
+            rr_label = "TP1 unplausibel"
+            rr_score = 25.0
+            rr_text = "Das Ziel liegt nicht oberhalb des aktuellen Kurses."
+
+    distance_text = "n/a" if entry_distance_pct is None else f"{entry_distance_pct:+.1f}%"
+    if entry_zone:
+        entry_text = f"{entry_position} ({distance_text}) · Zone {entry_zone}"
+    else:
+        entry_text = entry_position
+
+    return {
+        "entry_zone": entry_zone or "-",
+        "entry_position": entry_position,
+        "entry_distance_pct": None if entry_distance_pct is None else round(entry_distance_pct, 2),
+        "entry_distance_text": distance_text,
+        "entry_score": round(_radar_v18_clip(entry_score), 1),
+        "crv": None if crv is None else round(crv, 2),
+        "rr_label": rr_label,
+        "rr_score": round(_radar_v18_clip(rr_score), 1),
+        "rr_text": rr_text,
+        "entry_text": entry_text,
+        "price": price,
+        "stop": stop,
+        "tp1": tp1,
+        "target_source": tp1_source,
+    }
+
+
+
+
+def _radar_v183_style_fit(result, style_name="Ausgewogen"):
+    """Stil-Fit als separater Kalibrierungsbaustein.
+
+    Ziel: Leader-, Charttechnik- und Turnaround-Radar sollen nicht nur anders sortieren,
+    sondern Kandidaten aktiv nach ihrem Profil belohnen oder bremsen.
+    """
+    r = result or {}
+    style = str(style_name or "Ausgewogen").lower()
+    typ = radar_candidate_type(r)
+    risk = radar_risk_bucket(r)
+    trigger = _radar_v18_text(r, "trigger_status", "")
+    leadership = _radar_safe_num(r.get("leadership_score"), 50)
+    trend = _radar_safe_num(r.get("trend_quality_score"), 50)
+    base = _radar_safe_num(r.get("base_quality_score"), 50)
+    catalyst = _radar_safe_num(r.get("catalyst_score"), 50)
+    short_term = _radar_safe_num(r.get("short_term_score"), 50)
+    tb = _radar_safe_num(r.get("tb_score_100"), _radar_safe_num(r.get("tb_score"), 50))
+    chart_score = _radar_safe_num(radar_chart_impulse_pack(r).get("score"), 0)
+    confluence = _radar_nested_num(r, "trigger_confluence_pkg", "score", 50)
+    setup_type = str(r.get("setup_type", "") or "")
+
+    score = 50.0
+    label = "neutral"
+    reason = "Stil-Fit neutral."
+
+    if "leader" in style:
+        score = leadership * 0.40 + trend * 0.24 + confluence * 0.14 + base * 0.12 + tb * 0.10
+        if typ == "Leader":
+            score += 8
+        if typ in {"Bounce", "Hype / Event", "Riskant"}:
+            score -= 10
+        if risk == "hoch":
+            score -= 8
+        label = "Leader-Fit"
+        reason = f"Leader-Fit: Leadership {leadership:.0f}, Trend {trend:.0f}, Konfluenz {confluence:.0f}."
+    elif "chart" in style:
+        score = chart_score * 0.42 + confluence * 0.22 + tb * 0.18 + base * 0.10 + short_term * 0.08
+        if trigger in {"Aktiv", "Jetzt prüfbar", "Nahe dran", "Fast prüfbar"}:
+            score += 6
+        if risk == "hoch":
+            score -= 7
+        label = "Charttechnik-Fit"
+        reason = f"Chart-Fit: Impuls {chart_score:.0f}, Konfluenz {confluence:.0f}, Trigger {trigger or '-'}."
+    elif "turnaround" in style:
+        score = catalyst * 0.26 + short_term * 0.25 + chart_score * 0.20 + tb * 0.15 + confluence * 0.14
+        if typ == "Bounce" or any(x in setup_type.lower() for x in ["rebound", "reclaim", "turnaround", "pullback"]):
+            score += 7
+        if typ == "Leader" and leadership >= 72:
+            score -= 3
+        if risk == "hoch":
+            score -= 10
+        label = "Turnaround-Fit"
+        reason = f"Turnaround-Fit: Katalysator {catalyst:.0f}, Kurzfrist {short_term:.0f}, Chart {chart_score:.0f}."
+    else:
+        score = leadership * 0.22 + trend * 0.18 + chart_score * 0.20 + confluence * 0.18 + tb * 0.12 + base * 0.10
+        if typ in {"Hype / Event", "Riskant"}:
+            score -= 7
+        label = "Ausgewogen-Fit"
+        reason = f"Ausgewogen-Fit: Leadership {leadership:.0f}, Chart {chart_score:.0f}, Konfluenz {confluence:.0f}."
+
+    score = _radar_v18_clip(score)
+    if score >= 72:
+        fit_label = f"{label} stark"
+    elif score >= 58:
+        fit_label = f"{label} passend"
+    elif score >= 45:
+        fit_label = f"{label} mittel"
+    else:
+        fit_label = f"{label} schwach"
+    return {"score": round(score, 1), "label": fit_label, "reason": reason}
+
+
+def _radar_v192_wave_impact(result):
+    """v19.4: Uebersetzt die Wellenanalyse in einen Radar-Baustein.
+
+    Ziel: Die Wellenanalyse bleibt ein weicher Strukturkontext, beeinflusst aber
+    Score, Heute-Relevanz, Bucket und Handlung. Keine dogmatische Elliott-Logik.
+    """
+    r = result or {}
+    wave = r.get("wave_structure_pkg") or {}
+    if not isinstance(wave, dict) or not wave:
+        return {
+            "score": 50.0,
+            "impact": 0.0,
+            "label": "Wave neutral",
+            "status": "Keine belastbare Wellenanalyse",
+            "reason": "Wellenstruktur nicht belastbar genug.",
+            "trigger": "-",
+            "trigger_price": None,
+            "trigger_distance_pct": None,
+            "invalidation": "-",
+            "invalidation_price": None,
+            "target_zone": "-",
+            "target_127": None,
+            "target_162": None,
+            "today_boost": 0.0,
+            "gate": "",
+            "subscore_text": "Wave n/a",
+            "next_step_hint": "",
+            "bias": "neutral",
+        }
+
+    def _num(value, default=None):
+        try:
+            if value is None:
+                return default
+            if isinstance(value, str):
+                txt = value.strip().lower()
+                if txt in {"", "n/a", "nan", "none", "-"}:
+                    return default
+                value = txt.replace("%", "").replace(",", ".")
+            f = float(value)
+            if pd.isna(f):
+                return default
+            return f
+        except Exception:
+            return default
+
+    price = _num(r.get("price"), None)
+    if price is None:
+        price = _num(r.get("analysis_price"), None)
+    if price is None:
+        price = _num(r.get("live_price"), None)
+
+    quality = _num(wave.get("wave_quality_score"), _num(wave.get("score"), 50.0))
+    confirmation = _num(wave.get("confirmation_score"), 0.0)
+    label = str(wave.get("wave_label") or wave.get("label") or "").lower()
+    sequence = str(wave.get("wave_sequence") or "").upper()
+    readable_status = str(wave.get("wave_readable_status") or wave.get("wave_phase") or wave.get("phase") or "Wave neutral")
+    trigger = str(wave.get("wave_trigger") or wave.get("confirmation_text") or "-")
+    invalidation = str(wave.get("wave_invalidation") or "-")
+    target_zone = str(wave.get("wave_target_zone") or "-")
+    trigger_price = _num(wave.get("wave_trigger_price"), None)
+    invalid_price = _num(wave.get("wave_invalidation_price"), None)
+    target_127 = _num(wave.get("wave_extension_127"), None)
+    target_162 = _num(wave.get("wave_extension_162"), None)
+
+    trigger_distance_pct = None
+    if trigger_price is not None and price and price > 0:
+        trigger_distance_pct = (trigger_price / price - 1.0) * 100.0
+
+    score = float(quality if quality is not None else 50.0)
+    reason_parts = []
+    bias = "neutral"
+    gate = ""
+    today_boost = 0.0
+
+    if label in {"impulsfortsetzung", "welle-2-pullback"} or "HH/HL" in sequence:
+        score += 8.0
+        bias = "bullish"
+        reason_parts.append("Aufwaertsstruktur mit hoeheren Hochs/Tiefs")
+    elif label in {"frueher-reclaim"} or ("HL" in sequence and "LL" not in sequence):
+        score += 3.0
+        bias = "constructive"
+        reason_parts.append("fruehe Stabilisierung / Higher Low")
+    elif label in {"abwaertsstruktur"} or "LH/LL" in sequence:
+        score -= 16.0
+        bias = "bearish"
+        gate = "Wave-Struktur angeschlagen"
+        reason_parts.append("tiefere Hochs/Tiefs bremsen Long-Setups")
+    elif label in {"gemischt"}:
+        score -= 2.0
+        reason_parts.append("Swing-Folge gemischt")
+
+    if confirmation >= 72:
+        score += 8.0
+        today_boost += 4.0
+        reason_parts.append("Wellentrigger bestaetigt")
+    elif confirmation >= 52:
+        score += 3.0
+        reason_parts.append("Wellentrigger unter Beobachtung")
+
+    if trigger_distance_pct is not None:
+        if trigger_distance_pct <= 0.25:
+            today_boost += 4.0
+            reason_parts.append("Wann aktiv? direkt erreicht/nahe")
+        elif trigger_distance_pct <= 2.0:
+            today_boost += 3.0
+            reason_parts.append(f"Wann aktiv? nur {trigger_distance_pct:.1f}% entfernt")
+        elif trigger_distance_pct <= 4.0:
+            today_boost += 1.0
+            reason_parts.append(f"Wann aktiv? {trigger_distance_pct:.1f}% entfernt")
+        elif trigger_distance_pct > 8.0:
+            score -= 3.0
+            reason_parts.append("Wann aktiv? noch weit entfernt")
+
+    impact = 0.0
+    if score >= 78:
+        impact = 8.0
+        label_text = "Wave stark positiv"
+    elif score >= 66:
+        impact = 5.0
+        label_text = "Wave konstruktiv"
+    elif score >= 55:
+        impact = 2.0
+        label_text = "Wave leicht positiv"
+    elif score >= 43:
+        impact = 0.0
+        label_text = "Wave neutral"
+    elif score >= 30:
+        impact = -5.0
+        label_text = "Wave bremst"
+    else:
+        impact = -9.0
+        label_text = "Wave negativ"
+
+    if bias == "bearish":
+        impact = min(impact, -5.0)
+    if bias in {"bullish", "constructive"}:
+        impact += min(today_boost, 4.0) * 0.5
+
+    score = _radar_v18_clip(score)
+    reason = "; ".join(reason_parts[:4]) if reason_parts else "Wellenstruktur neutral."
+
+    if bias == "bearish":
+        next_step_hint = "Wellenstruktur bremst: erst Reclaim und neue hoeheren Tiefs abwarten."
+    elif trigger and trigger != "-":
+        next_step_hint = f"Wave beachten: {trigger}."
+        if invalidation and invalidation != "-":
+            next_step_hint += f" {invalidation}."
+    else:
+        next_step_hint = "Wave liefert keinen eigenstaendigen Trigger."
+
+    dist_txt = "n/a" if trigger_distance_pct is None else f"{trigger_distance_pct:+.1f}%"
+    return {
+        "score": round(score, 1),
+        "impact": round(float(impact), 1),
+        "label": label_text,
+        "status": readable_status,
+        "reason": reason,
+        "trigger": trigger,
+        "trigger_price": trigger_price,
+        "trigger_distance_pct": None if trigger_distance_pct is None else round(trigger_distance_pct, 2),
+        "invalidation": invalidation,
+        "invalidation_price": invalid_price,
+        "target_zone": target_zone,
+        "target_127": target_127,
+        "target_162": target_162,
+        "today_boost": round(float(today_boost), 1),
+        "gate": gate,
+        "subscore_text": f"Wave {score:.0f} ({label_text}, Trigger {dist_txt})",
+        "next_step_hint": next_step_hint,
+        "bias": bias,
+    }
+
+
+
+def _mtf_v200_num(value, default=None):
+    try:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            txt = value.strip().lower()
+            if txt in {"", "n/a", "nan", "none", "-"}:
+                return default
+            value = txt.replace("%", "").replace(",", ".")
+        f = float(value)
+        if pd.isna(f):
+            return default
+        return f
+    except Exception:
+        return default
+
+
+def _mtf_v200_prepare_ohlc(df):
+    try:
+        if df is None or len(df) < 8:
+            return None
+        out = df.copy()
+        rename = {}
+        for c in out.columns:
+            cl = str(c).lower()
+            if cl == "open": rename[c] = "Open"
+            elif cl == "high": rename[c] = "High"
+            elif cl == "low": rename[c] = "Low"
+            elif cl == "close": rename[c] = "Close"
+            elif cl == "volume": rename[c] = "Volume"
+        if rename:
+            out = out.rename(columns=rename)
+        if not {"Open", "High", "Low", "Close"}.issubset(set(out.columns)):
+            return None
+        out = out.dropna(subset=["Open", "High", "Low", "Close"], how="any")
+        if len(out) < 8:
+            return None
+        if not isinstance(out.index, pd.DatetimeIndex):
+            out.index = pd.to_datetime(out.index, errors="coerce")
+            out = out[~out.index.isna()]
+        return out.sort_index()
+    except Exception:
+        return None
+
+
+def _mtf_v200_resample_weekly(df):
+    daily = _mtf_v200_prepare_ohlc(df)
+    if daily is None or len(daily) < 25:
+        return None
+    try:
+        agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last"}
+        if "Volume" in daily.columns:
+            agg["Volume"] = "sum"
+        weekly = daily.resample("W-FRI").agg(agg).dropna(subset=["Open", "High", "Low", "Close"], how="any")
+        return weekly.tail(160) if weekly is not None and len(weekly) >= 8 else None
+    except Exception:
+        return None
+
+
+def _mtf_v200_tf_state(df, label, result=None):
+    d = _mtf_v200_prepare_ohlc(df)
+    if d is None or len(d) < 8:
+        return {"label": label, "score": 50.0, "bias": "neutral", "status": "nicht belastbar", "reason": "zu wenig Daten", "action": "nicht gewichten"}
+    close = d["Close"].astype(float)
+    price = float(close.iloc[-1])
+    ma20 = float(close.rolling(20, min_periods=5).mean().iloc[-1]) if len(close) >= 5 else price
+    ma50 = float(close.rolling(50, min_periods=10).mean().iloc[-1]) if len(close) >= 10 else ma20
+    ma200 = float(close.rolling(200, min_periods=30).mean().iloc[-1]) if len(close) >= 30 else ma50
+    ret_short = 0.0
+    try:
+        lookback = min(len(close)-1, 5 if label.lower().startswith("hour") else 20)
+        if lookback > 0 and float(close.iloc[-lookback-1]) > 0:
+            ret_short = (price / float(close.iloc[-lookback-1]) - 1.0) * 100.0
+    except Exception:
+        ret_short = 0.0
+
+    score = 50.0
+    reasons = []
+    if price >= ma20:
+        score += 9; reasons.append("Kurs über MA20")
+    else:
+        score -= 8; reasons.append("Kurs unter MA20")
+    if ma20 >= ma50:
+        score += 8; reasons.append("MA20 über MA50")
+    else:
+        score -= 7; reasons.append("MA20 unter MA50")
+    if price >= ma50:
+        score += 5
+    else:
+        score -= 5
+    if len(close) >= 80:
+        if price >= ma200:
+            score += 4
+        else:
+            score -= 5
+    if ret_short >= 3:
+        score += 5; reasons.append("Momentum positiv")
+    elif ret_short <= -3:
+        score -= 5; reasons.append("Momentum schwach")
+
+    try:
+        wave = build_wave_structure_context_v190(d, result or {}) if "build_wave_structure_context_v190" in globals() else {}
+        seq = str((wave or {}).get("wave_sequence", "")).upper()
+        wq = _mtf_v200_num((wave or {}).get("wave_quality_score"), 50.0)
+        if "HH/HL" in seq or "HL" in seq and "LL" not in seq:
+            score += 8; reasons.append("Swing-Struktur konstruktiv")
+        elif "LH/LL" in seq or "LL" in seq:
+            score -= 10; reasons.append("Swing-Struktur defensiv")
+        score += max(-4, min(4, (float(wq or 50)-50)/8))
+    except Exception:
+        wave = {}
+
+    score = round(max(0, min(100, score)), 1)
+    if score >= 68:
+        bias = "bullish"; status = "konstruktiv"
+    elif score >= 56:
+        bias = "constructive"; status = "leicht konstruktiv"
+    elif score >= 44:
+        bias = "neutral"; status = "neutral/gemischt"
+    elif score >= 32:
+        bias = "defensive"; status = "defensiv"
+    else:
+        bias = "bearish"; status = "schwach"
+    action = "unterstützt Long-Setup" if score >= 62 else "neutral" if score >= 44 else "bremst Long-Setup"
+    return {
+        "label": label,
+        "score": score,
+        "bias": bias,
+        "status": status,
+        "reason": "; ".join(reasons[:3]) if reasons else "keine klare Tendenz",
+        "action": action,
+        "price": round(price, 4),
+        "ma20": round(ma20, 4),
+        "ma50": round(ma50, 4),
+        "ma200": round(ma200, 4),
+        "ret_short": round(ret_short, 2),
+        "wave_sequence": str((wave or {}).get("wave_readable_sequence", (wave or {}).get("wave_sequence", "-"))),
+    }
+
+
+def build_multi_timeframe_context_v200(daily_df=None, result=None, hourly_df=None):
+    """v21.1: Top-down Multi-Timeframe-Struktur.
+
+    Weekly = uebergeordneter Trend, Daily = Setup, Hourly = Timing.
+    Bewusst regelbasiert und weich gewichtet, damit bestehende Radar-Gates stabil bleiben.
+    """
+    r = result or {}
+    daily = _mtf_v200_prepare_ohlc(daily_df)
+    if daily is None:
+        return {
+            "available": False,
+            "score": 50.0,
+            "impact": 0.0,
+            "label": "MTF nicht belastbar",
+            "summary": "Multi-Timeframe-Struktur nicht berechenbar.",
+            "action": "Nicht gewichten; Tagesanalyse nutzen.",
+            "weekly": {}, "daily": {}, "hourly": {},
+            "conflict": "n/a", "radar_text": "MTF n/a", "gate": "",
+        }
+    weekly_df = _mtf_v200_resample_weekly(daily)
+    hourly = _mtf_v200_prepare_ohlc(hourly_df)
+    weekly_state = _mtf_v200_tf_state(weekly_df, "Weekly", r) if weekly_df is not None else {"label":"Weekly","score":50.0,"bias":"neutral","status":"nicht belastbar","reason":"zu wenig Wochendaten","action":"neutral"}
+    daily_state = _mtf_v200_tf_state(daily, "Daily", r)
+    hourly_state = _mtf_v200_tf_state(hourly, "Hourly", r) if hourly is not None and len(hourly) >= 8 else {"label":"Hourly","score":50.0,"bias":"neutral","status":"nicht belastbar","reason":"keine Intraday-Daten","action":"neutral"}
+
+    ws = float(weekly_state.get("score", 50) or 50)
+    ds = float(daily_state.get("score", 50) or 50)
+    hs = float(hourly_state.get("score", 50) or 50)
+    score = round(max(0, min(100, ws * 0.44 + ds * 0.38 + hs * 0.18)), 1)
+
+    conflict = "keine klare Konfliktlage"
+    gate = ""
+    if ws >= 62 and ds >= 58 and hs >= 54:
+        label = "MTF unterstützt"
+        impact = 5.0
+        summary = "Weekly, Daily und kurzfristiges Timing zeigen in eine konstruktive Richtung."
+        action = "Setup aktiv/nah prüfen; Entry, CRV und Invalidierung beachten."
+    elif ws >= 62 and ds >= 56 and hs < 46:
+        label = "MTF: kurzfristiger Trigger offen"
+        impact = 2.0
+        conflict = "Weekly/Daily konstruktiv, Hourly bremst noch"
+        summary = "Übergeordnete Struktur passt, aber die kurzfristige Aktivierung fehlt noch."
+        action = "Nahe am Trigger; Stunden-Reclaim oder Stabilisierung abwarten."
+    elif ws >= 62 and ds < 46:
+        label = "MTF-Konflikt"
+        impact = -2.0
+        conflict = "Weekly stark, Daily Setup schwach"
+        summary = "Der übergeordnete Trend ist konstruktiv, der Tageschart bestätigt das Setup aber noch nicht."
+        action = "Nicht erzwingen; Tages-Setup/Reclaim abwarten."
+    elif ws < 44 and ds >= 56:
+        label = "MTF Bounce gegen Trend"
+        impact = -4.0
+        conflict = "Daily Bounce gegen schwachen Weekly-Kontext"
+        gate = "MTF-Konflikt: Bounce gegen uebergeordneten Trend"
+        summary = "Der Tageschart wirkt besser, aber der Wochenkontext bremst."
+        action = "Nur selektiv/kleiner handeln; starke Bestätigung nötig."
+    elif score >= 62:
+        label = "MTF leicht konstruktiv"
+        impact = 3.0
+        summary = "Die Zeitebenen sind insgesamt konstruktiv, aber nicht perfekt synchron."
+        action = "Vorbereiten; kurzfristige Bestätigung beachten."
+    elif score >= 48:
+        label = "MTF gemischt"
+        impact = 0.0
+        summary = "Die Zeitebenen liefern kein eindeutiges gemeinsames Signal."
+        action = "Nicht erzwingen; Trigger und Zone abwarten."
+    else:
+        label = "MTF defensiv"
+        impact = -6.0
+        gate = "MTF-Struktur defensiv"
+        summary = "Mehrere Zeitebenen bremsen das Long-Setup."
+        action = "Kein aktiver Entry ohne neue Bestätigung."
+
+    radar_text = f"MTF {score:.0f}: Weekly {weekly_state.get('status','-')}, Daily {daily_state.get('status','-')}, Hourly {hourly_state.get('status','-')}"
+    return {
+        "available": True,
+        "score": score,
+        "impact": round(float(impact), 1),
+        "label": label,
+        "summary": summary,
+        "action": action,
+        "weekly": weekly_state,
+        "daily": daily_state,
+        "hourly": hourly_state,
+        "conflict": conflict,
+        "radar_text": radar_text,
+        "gate": gate,
+    }
+
+
+def _radar_v200_mtf_impact(result):
+    r = result or {}
+    mtf = r.get("multi_timeframe_pkg") or r.get("mtf_context_pkg") or {}
+    if not isinstance(mtf, dict) or not mtf:
+        return {"score": 50.0, "impact": 0.0, "label": "MTF n/a", "summary": "Multi-Timeframe nicht berechnet.", "action": "", "gate": "", "radar_text": "MTF n/a"}
+    score = _mtf_v200_num(mtf.get("score"), 50.0)
+    impact = _mtf_v200_num(mtf.get("impact"), 0.0)
+    return {
+        "score": round(float(score), 1),
+        "impact": round(float(impact), 1),
+        "label": str(mtf.get("label") or "MTF neutral"),
+        "summary": str(mtf.get("summary") or ""),
+        "action": str(mtf.get("action") or ""),
+        "gate": str(mtf.get("gate") or ""),
+        "radar_text": str(mtf.get("radar_text") or f"MTF {score:.0f}"),
+    }
+
+def _radar_v183_top_chance_rank(decision):
+    """Zusatz-Ranking fuer die Box 'Beste heutige Chancen'."""
+    d = decision or {}
+    score = _radar_v18_clip(d.get("score", 0))
+    bucket = str(d.get("bucket", "") or "")
+    grade = str(d.get("grade", "") or "")
+    rank = score
+    if bucket == "Jetzt prüfbar":
+        rank += 14
+    elif bucket == "Nahe am Trigger":
+        rank += 8
+    elif bucket == "Starke Watchlist":
+        rank += 3
+    elif bucket.startswith("Pullback"):
+        rank -= 5
+    elif bucket.startswith("Warn"):
+        rank -= 22
+    if grade == "A":
+        rank += 5
+    elif grade == "B":
+        rank += 2
+    try:
+        crv = d.get("crv")
+        if crv is not None:
+            crv = float(crv)
+            if crv >= 2.0:
+                rank += 4
+            elif crv < 1.2:
+                rank -= 18
+            elif crv < 1.5:
+                rank -= 8
+    except Exception:
+        pass
+    if d.get("knockout"):
+        rank -= 30
+    return round(rank, 2)
+
+def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
+    """Professionalisiert den Radar als Funnel: Gates, Subscores, Bucket und Handlung.
+
+    Die Funktion ersetzt nicht die Einzelanalyse. Sie ordnet Radar-Kandidaten strenger ein,
+    damit Top-Listen nicht nur hohe Mischscores, sondern wirklich handlungsrelevante Setups zeigen.
+    """
+    r = result or {}
+    style_name = str(style_name or "Ausgewogen")
+    typ = radar_candidate_type(r)
+    risk = radar_risk_bucket(r)
+    maturity = radar_setup_maturity(r)
+    trigger = _radar_v18_text(r, "trigger_status", "")
+    trigger_display = display_trigger_status_label(trigger) if trigger else "-"
+    valid_setup = bool(r.get("valid_trade_setup", False))
+    regime_raw = str((r.get("market_info", {}) or {}).get("regime", "") or "").upper()
+
+    investment = _radar_safe_num(r.get("investment_case_score"), 50)
+    trading = _radar_safe_num(r.get("trading_case_score"), 50)
+    tradeability = _radar_safe_num(r.get("tradeability_score"), 50)
+    setup_conf = _radar_safe_num(r.get("setup_confidence"), 50)
+    leadership = _radar_safe_num(r.get("leadership_score"), 50)
+    trend = _radar_safe_num(r.get("trend_quality_score"), 50)
+    base = _radar_safe_num(r.get("base_quality_score"), 50)
+    volume = _radar_safe_num(r.get("volume_quality_score"), 50)
+    accumulation = _radar_safe_num(r.get("accumulation_score"), 50)
+    distribution = _radar_safe_num(r.get("distribution_pressure_score"), 0)
+    catalyst = _radar_safe_num(r.get("catalyst_score"), 50)
+    short_term = _radar_safe_num(r.get("short_term_score"), 50)
+    tb = _radar_safe_num(r.get("tb_score_100"), _radar_safe_num(r.get("tb_score"), 50))
+    confluence = _radar_nested_num(r, "trigger_confluence_pkg", "score", 50)
+    fomo_label = str(((r.get("fomo_smart_money_pkg") or {}).get("label") or "").lower())
+    chart_pack = radar_chart_impulse_pack(r)
+    chart_score = _radar_safe_num(chart_pack.get("score"), 0)
+    entry_position, entry_position_score = _radar_v18_entry_position(r)
+    entry_rr_pkg = build_radar_entry_rr_package_v182(r)
+    entry_position = entry_rr_pkg.get("entry_position") or entry_position
+    entry_position_score = max(float(entry_position_score or 0), float(entry_rr_pkg.get("entry_score", 0) or 0))
+    style_fit_pkg = _radar_v183_style_fit(r, style_name)
+    style_fit_score = _radar_safe_num(style_fit_pkg.get("score"), 50)
+    wave_impact_pkg = _radar_v192_wave_impact(r)
+    wave_score = _radar_safe_num(wave_impact_pkg.get("score"), 50)
+    wave_impact = _radar_safe_num(wave_impact_pkg.get("impact"), 0)
+    mtf_impact_pkg = _radar_v200_mtf_impact(r)
+    mtf_score = _radar_safe_num(mtf_impact_pkg.get("score"), 50)
+    mtf_impact = _radar_safe_num(mtf_impact_pkg.get("impact"), 0)
+
+    setup_score = _radar_v18_clip(setup_conf * 0.25 + confluence * 0.22 + chart_score * 0.20 + max(trend, base) * 0.12 + wave_score * 0.09 + mtf_score * 0.12)
+    timing_score = _radar_v18_clip(trading * 0.30 + tb * 0.21 + chart_score * 0.16 + entry_position_score * 0.16 + wave_score * 0.08 + mtf_score * 0.09)
+    leadership_score = _radar_v18_clip(leadership * 0.45 + trend * 0.25 + investment * 0.18 + max(0, accumulation - distribution * 0.35) * 0.12)
+    rr_score = _radar_v18_clip(tradeability * 0.18 + trading * 0.18 + entry_position_score * 0.18 + float(entry_rr_pkg.get("rr_score", 45) or 45) * 0.22 + (100 - max(distribution, 0)) * 0.05 + wave_score * 0.09 + mtf_score * 0.10)
+    regime_score = 62.0 if regime_raw == "POSITIV" else 45.0 if regime_raw == "NEUTRAL" else 30.0 if regime_raw == "NEGATIV" else 50.0
+    data_quality = _radar_v18_clip(_radar_safe_num((r.get("confidence_info", {}) or {}).get("coverage"), 0.75) * 100 if isinstance(r.get("confidence_info", {}), dict) else 70)
+
+    penalty = 0.0
+    brakes = []
+    gates = []
+    if risk == "hoch":
+        penalty += 18; gates.append("Risiko hoch"); brakes.append("Risiko/Volatilität hoch")
+    elif risk == "erhöht":
+        penalty += 8; brakes.append("Risiko erhöht")
+    if "kritisch" in fomo_label:
+        penalty += 16; gates.append("FOMO kritisch"); brakes.append("FOMO kritisch")
+    elif "erhöht" in fomo_label or "erhoeht" in fomo_label:
+        penalty += 8; brakes.append("FOMO erhöht")
+    entry_distance_pct = entry_rr_pkg.get("entry_distance_pct")
+    crv = entry_rr_pkg.get("crv")
+    rr_label = str(entry_rr_pkg.get("rr_label", "") or "")
+    if entry_distance_pct is not None and entry_distance_pct > 5.0:
+        penalty += 12; gates.append("Entry-Abstand zu groß"); brakes.append(f"{entry_rr_pkg.get('entry_position')} ({entry_rr_pkg.get('entry_distance_text')})")
+    elif entry_distance_pct is not None and entry_distance_pct > 1.5:
+        penalty += 5; brakes.append(f"oberhalb Entry ({entry_rr_pkg.get('entry_distance_text')})")
+    if crv is not None and crv < 1.2:
+        penalty += 14; gates.append("CRV unattraktiv"); brakes.append(f"{rr_label} ({crv:.2f})")
+    elif crv is not None and crv < 1.5:
+        penalty += 7; brakes.append(f"{rr_label} ({crv:.2f})")
+    if distribution > accumulation + 14:
+        penalty += 10; gates.append("Distribution dominiert"); brakes.append("Distribution > Akkumulation")
+    if typ in {"Hype / Event", "Riskant"}:
+        penalty += 10; gates.append(f"Typ {typ}"); brakes.append("Hype-/Risikotyp")
+    if regime_raw == "NEGATIV" and typ in {"Bounce", "Hype / Event", "Riskant"}:
+        penalty += 10; gates.append("Risk-off bremst Setup-Typ")
+    if entry_position in {"zu weit gelaufen", "Zu weit über Entry"}:
+        penalty += 9; brakes.append("Kurs zu weit über sinnvoller Zone")
+    if data_quality < 45:
+        penalty += 8; brakes.append("Datenqualität niedrig")
+    if style_fit_score < 42:
+        penalty += 7; brakes.append("Stil-Fit schwach")
+    elif style_fit_score < 52:
+        penalty += 3
+    if wave_impact_pkg.get("gate"):
+        penalty += 6; gates.append(str(wave_impact_pkg.get("gate"))); brakes.append(str(wave_impact_pkg.get("gate")))
+    elif wave_impact < -4:
+        penalty += 3; brakes.append(str(wave_impact_pkg.get("label", "Wave bremst")))
+    if mtf_impact_pkg.get("gate"):
+        penalty += 5; gates.append(str(mtf_impact_pkg.get("gate"))); brakes.append(str(mtf_impact_pkg.get("gate")))
+    elif mtf_impact < -4:
+        penalty += 3; brakes.append(str(mtf_impact_pkg.get("label", "MTF bremst")))
+
+    style = style_name.lower()
+    if "chart" in style:
+        raw_score = setup_score * 0.27 + timing_score * 0.27 + rr_score * 0.16 + style_fit_score * 0.18 + regime_score * 0.07 + data_quality * 0.05
+    elif "leader" in style:
+        raw_score = leadership_score * 0.27 + setup_score * 0.21 + timing_score * 0.18 + rr_score * 0.13 + style_fit_score * 0.13 + regime_score * 0.05 + data_quality * 0.03
+    elif "turnaround" in style:
+        turnaround_component = _radar_v18_clip(catalyst * 0.24 + short_term * 0.26 + timing_score * 0.24 + chart_score * 0.26)
+        raw_score = turnaround_component * 0.26 + setup_score * 0.20 + rr_score * 0.18 + style_fit_score * 0.18 + regime_score * 0.10 + data_quality * 0.04 + investment * 0.04
+    else:
+        raw_score = setup_score * 0.23 + timing_score * 0.21 + leadership_score * 0.18 + rr_score * 0.16 + style_fit_score * 0.12 + regime_score * 0.07 + data_quality * 0.03
+
+    # Positive gates: nur echte Reife/Nahe am Trigger bekommt Top-Status.
+    if valid_setup:
+        raw_score += 4
+    if trigger in {"Aktiv", "Jetzt prüfbar"}:
+        raw_score += 5
+    elif trigger in {"Nahe dran", "Fast prüfbar"}:
+        raw_score += 2
+    if typ == "Leader" and "leader" in style:
+        raw_score += 5
+    if chart_score >= 70 and "chart" in style:
+        raw_score += 4
+    raw_score += wave_impact + min(float(wave_impact_pkg.get("today_boost", 0) or 0), 4.0) + mtf_impact
+
+    score = _radar_v18_clip(raw_score - penalty)
+
+    knockout = False
+    if risk == "hoch" and not valid_setup:
+        knockout = True
+    if "kritisch" in fomo_label and trading < 72:
+        knockout = True
+    if distribution > accumulation + 22 and trading < 70:
+        knockout = True
+    if str(wave_impact_pkg.get("bias", "")) == "bearish" and trading < 66 and not valid_setup:
+        knockout = True
+    if mtf_impact <= -5 and trading < 62 and not valid_setup:
+        knockout = True
+    if typ in {"Hype / Event", "Riskant"} and risk in {"hoch", "erhöht"} and score < 72:
+        knockout = True
+
+    chase_risk = bool(entry_distance_pct is not None and entry_distance_pct > 5.0 and ("kritisch" in fomo_label or "erhöht" in fomo_label or "erhoeht" in fomo_label))
+    if chase_risk:
+        gates.append("Nicht hinterherlaufen: Entry-Abstand + FOMO")
+        brakes.insert(0, f"Nicht hinterherlaufen: {entry_rr_pkg.get('entry_distance_text')} über Entry und FOMO-Bremse")
+        score = min(score, 61.0)
+
+    poor_crv_gate = bool(crv is not None and crv < 1.2)
+    weak_crv_gate = bool(crv is not None and 1.2 <= crv < 1.5)
+    if poor_crv_gate:
+        gates.append("CRV zu eng für aktiven Entry")
+        brakes.insert(0, f"CRV {crv:.2f} zu eng")
+        score = min(score, 64.0)
+    elif weak_crv_gate:
+        brakes.insert(0, f"CRV {crv:.2f} nur selektiv")
+        score = min(score, 70.0)
+
+    if knockout:
+        score = min(score, 49.0)
+
+    if knockout or gates and score < 55:
+        bucket = "Warnsignale / meiden"
+        priority = "niedrig"
+    elif chase_risk or entry_position in {"zu weit gelaufen", "Zu weit über Entry"} or any("über" in b.lower() or "weit" in b.lower() for b in brakes):
+        bucket = "Pullback bevorzugt / nicht hinterherlaufen"
+        priority = "mittel" if score >= 62 else "niedrig"
+    elif score >= 74 and style_fit_score >= 54 and rr_score >= 48 and not poor_crv_gate and (maturity == "prüfbar" or trigger in {"Aktiv", "Jetzt prüfbar"}) and risk != "hoch":
+        bucket = "Jetzt prüfbar"
+        priority = "hoch"
+    elif score >= 62 and style_fit_score >= 48 and not poor_crv_gate and (maturity in {"prüfbar", "nahe dran", "aufbauen"} or trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"} or float(wave_impact_pkg.get("today_boost", 0) or 0) >= 3.0 or mtf_impact >= 4.0):
+        bucket = "Nahe am Trigger"
+        priority = "hoch" if score >= 70 and risk == "ruhig" else "mittel"
+    elif score >= 56 or investment >= 70 or leadership_score >= 68:
+        bucket = "Starke Watchlist"
+        priority = "mittel"
+    else:
+        bucket = "Später beobachten"
+        priority = "niedrig" if score < 45 else "mittel"
+
+    # v18.9: Grade als echte Qualitätsnote kalibrieren.
+    # Wichtig: Grade darf NICHT der strenge operative Entry-/CRV-Filter sein.
+    # Top-Chancen und Bucket bleiben streng, aber ein starker Leader/Chartwert
+    # kann A/B sein, auch wenn Entry oder CRV aktuell noch nicht handelbar sind.
+    try:
+        _setup_q = float(setup_score or 0)
+        _timing_q = float(timing_score or 0)
+        _leader_q = float(leadership_score or 0)
+        _style_q = float(style_fit_score or 0)
+        _chart_q = float(chart_score or 0)
+        _regime_q = float(regime_score or 50)
+        _data_q = float(data_quality or 70)
+
+        # Qualitätsmix: bewusst weniger CRV/Entry, mehr Grundqualität.
+        grade_quality_score = (
+            _setup_q * 0.26
+            + _timing_q * 0.18
+            + _leader_q * 0.25
+            + _style_q * 0.15
+            + _chart_q * 0.08
+            + float(wave_score or 50) * 0.06
+            + float(mtf_score or 50) * 0.06
+            + _regime_q * 0.02
+            + _data_q * 0.02
+        )
+
+        # Bonus für klar starke Profile, damit die Skala A/B praktisch erreichbar ist.
+        strong_core_count = sum([
+            _setup_q >= 70,
+            _timing_q >= 70,
+            _leader_q >= 72,
+            _style_q >= 62,
+            _chart_q >= 65,
+        ])
+        if strong_core_count >= 4:
+            grade_quality_score += 6.0
+        elif strong_core_count >= 3:
+            grade_quality_score += 4.0
+        elif strong_core_count >= 2:
+            grade_quality_score += 2.0
+
+        if valid_setup:
+            grade_quality_score += 2.0
+        if typ == "Leader" and _leader_q >= 74:
+            grade_quality_score += 2.0
+        if "chart" in str(style_name or "").lower() and _chart_q >= 68:
+            grade_quality_score += 2.0
+        if float(wave_score or 0) >= 72:
+            grade_quality_score += 2.0
+        elif float(wave_score or 0) < 35:
+            grade_quality_score -= 2.0
+        if float(mtf_score or 0) >= 68:
+            grade_quality_score += 2.0
+        elif float(mtf_score or 0) < 38:
+            grade_quality_score -= 2.0
+
+        # Operative Bremsen nur mild in Grade einpreisen. Sie steuern Bucket/Top-Chance separat.
+        if risk == "hoch":
+            grade_quality_score -= 3.0
+        elif risk == "erhöht":
+            grade_quality_score -= 1.0
+        if chase_risk:
+            grade_quality_score -= 2.0
+        if data_quality < 45:
+            grade_quality_score -= 3.0
+        if style_fit_score < 42:
+            grade_quality_score -= 2.0
+        if distribution > accumulation + 22:
+            grade_quality_score -= 3.0
+
+        # CRV beeinflusst Top-Chancen hart, Grade aber nur leicht.
+        if crv is not None and crv >= 2.0:
+            grade_quality_score += 2.0
+        elif crv is not None and crv >= 1.5:
+            grade_quality_score += 1.0
+        elif crv is not None and crv < 1.2:
+            grade_quality_score -= 1.0
+
+        grade_quality_score = _radar_v18_clip(grade_quality_score)
+    except Exception:
+        grade_quality_score = float(score)
+
+    # v18.9: realistische Notenskala. A/B sollen bei starken Kandidaten erreichbar sein.
+    if knockout:
+        grade = "D" if grade_quality_score >= 58 else "E"
+    elif grade_quality_score >= 74:
+        grade = "A"
+    elif grade_quality_score >= 63:
+        grade = "B"
+    elif grade_quality_score >= 50:
+        grade = "C"
+    elif grade_quality_score >= 38:
+        grade = "D"
+    else:
+        grade = "E"
+
+    # Harte Grade-Deckel nur fuer echte No-Go-Faelle, nicht fuer normale Entry-/CRV-Probleme.
+    # CRV < 1.2 oder CRV n/a darf Top-Chancen blockieren, aber nicht pauschal die Qualitätsnote.
+    if risk == "hoch" and (not valid_setup) and grade == "A":
+        grade = "B"
+    if chase_risk and grade == "A":
+        grade = "B"
+    if data_quality < 30 and grade in {"A", "B"}:
+        grade = "C"
+    if typ in {"Hype / Event", "Riskant"} and risk in {"hoch", "erhöht"} and grade in {"A", "B"}:
+        grade = "C"
+
+    if poor_crv_gate:
+        next_step = f"Noch nicht als aktiven Entry werten: CRV {crv:.2f} ist zu eng; besseren Entry, engeren Stop oder höhere TP-Bestätigung abwarten."
+    elif weak_crv_gate:
+        next_step = f"Nur selektiv prüfen: CRV {crv:.2f} ist knapp; Positionsgröße reduzieren oder bessere Zone abwarten."
+    elif bucket == "Jetzt prüfbar":
+        next_step = f"Jetzt prüfbar: {entry_rr_pkg.get('entry_text')}; {entry_rr_pkg.get('rr_text')}"
+    elif bucket == "Nahe am Trigger":
+        old_next_trigger = _radar_v18_text(r, "next_trigger", "")
+        if old_next_trigger.strip().lower() in {"jetzt prüfbar", "jetzt pruefbar", "aktiv"}:
+            next_step = "Nahe am Trigger: Bestätigung/Reclaim abwarten; noch nicht automatisch als Entry freigeben."
+        else:
+            next_step = old_next_trigger or "Reclaim/Bestätigung abwarten"
+    elif bucket.startswith("Pullback"):
+        next_step = f"Nicht hinterherlaufen; Pullback in/nahe {entry_rr_pkg.get('entry_zone', 'Entry-Zone')} oder neue Base abwarten"
+    elif bucket.startswith("Warn"):
+        next_step = "Kein Top-Kandidat; Risiko-/FOMO-Bremse zuerst klären"
+    elif bucket == "Starke Watchlist":
+        next_step = "Eng verfolgen; Triggernähe und Volumenbestätigung beobachten"
+    else:
+        next_step = "Nur beobachten; Setup-Reife fehlt noch"
+
+    if mtf_impact_pkg.get("action") and bucket in {"Jetzt prüfbar", "Nahe am Trigger", "Starke Watchlist"}:
+        _mtf_hint = str(mtf_impact_pkg.get("action"))
+        if _mtf_hint and _mtf_hint not in next_step:
+            next_step = f"{next_step} · MTF: {_mtf_hint}"
+
+    if wave_impact_pkg.get("next_step_hint") and bucket in {"Jetzt prüfbar", "Nahe am Trigger", "Starke Watchlist"}:
+        _wave_hint = str(wave_impact_pkg.get("next_step_hint"))
+        if _wave_hint and _wave_hint not in next_step:
+            next_step = f"{next_step} · {_wave_hint}"
+
+    if not brakes:
+        brakes.append("keine dominante Bremse")
+
+    why_parts = []
+    if setup_score >= 66:
+        why_parts.append(f"Setup {setup_score:.0f}/100")
+    if timing_score >= 66:
+        why_parts.append(f"Timing {timing_score:.0f}/100")
+    if leadership_score >= 68:
+        why_parts.append(f"Leadership {leadership_score:.0f}/100")
+    if chart_score >= 62:
+        why_parts.append(f"Chartimpuls {chart_score:.0f}/100")
+    if wave_score >= 62:
+        why_parts.append(str(wave_impact_pkg.get("label", "Wave konstruktiv")))
+    if mtf_score >= 62:
+        why_parts.append(str(mtf_impact_pkg.get("label", "MTF konstruktiv")))
+    if entry_position in {"in/nahe Zone", "operativ attraktiv", "nahe Zone/Trigger", "In Entry-Zone", "Knapp oberhalb Entry", "Knapp unter Entry / Reclaim nötig"}:
+        why_parts.append(entry_position)
+    if style_fit_score >= 68:
+        why_parts.append(style_fit_pkg.get("label", "Stil-Fit stark"))
+    if entry_rr_pkg.get("crv") is not None and float(entry_rr_pkg.get("crv") or 0) >= 1.5:
+        why_parts.append(f"CRV {float(entry_rr_pkg.get('crv')):.2f}")
+    if not why_parts:
+        why_parts.append("noch keine starke Bestätigungsgruppe")
+
+    subscores_text = (
+        f"Setup {setup_score:.0f} · Timing {timing_score:.0f} · Leadership {leadership_score:.0f} · "
+        f"RR {rr_score:.0f} · Stil {style_fit_score:.0f} · Wave {wave_score:.0f} · MTF {mtf_score:.0f} · CRV {entry_rr_pkg.get('crv') if entry_rr_pkg.get('crv') is not None else 'n/a'} · Regime {regime_score:.0f} · Penalty -{penalty:.0f}"
+    )
+    return {
+        "score": round(score, 1),
+        "grade": grade,
+        "bucket": bucket,
+        "priority": priority,
+        "eligible": not knockout,
+        "knockout": knockout,
+        "setup_score": round(setup_score, 1),
+        "timing_score": round(timing_score, 1),
+        "leadership_score": round(leadership_score, 1),
+        "rr_score": round(rr_score, 1),
+        "regime_score": round(regime_score, 1),
+        "data_quality_score": round(data_quality, 1),
+        "grade_quality_score": round(grade_quality_score, 1),
+        "style_fit_score": round(style_fit_score, 1),
+        "style_fit_label": style_fit_pkg.get("label", "-"),
+        "style_fit_reason": style_fit_pkg.get("reason", "-"),
+        "wave_score": round(wave_score, 1),
+        "mtf_score": round(mtf_score, 1),
+        "mtf_impact": mtf_impact_pkg.get("impact"),
+        "mtf_label": mtf_impact_pkg.get("label"),
+        "mtf_summary": mtf_impact_pkg.get("summary"),
+        "mtf_action": mtf_impact_pkg.get("action"),
+        "mtf_radar_text": mtf_impact_pkg.get("radar_text"),
+        "wave_impact": wave_impact_pkg.get("impact"),
+        "wave_label": wave_impact_pkg.get("label"),
+        "wave_status": wave_impact_pkg.get("status"),
+        "wave_reason": wave_impact_pkg.get("reason"),
+        "wave_trigger": wave_impact_pkg.get("trigger"),
+        "wave_trigger_distance_pct": wave_impact_pkg.get("trigger_distance_pct"),
+        "wave_invalidation": wave_impact_pkg.get("invalidation"),
+        "wave_target_zone": wave_impact_pkg.get("target_zone"),
+        "wave_subscore_text": wave_impact_pkg.get("subscore_text"),
+        "top_chance_rank": _radar_v183_top_chance_rank({"score": score, "bucket": bucket, "grade": grade, "crv": entry_rr_pkg.get("crv"), "knockout": knockout}),
+        "penalty": round(penalty, 1),
+        "subscores_text": subscores_text,
+        "why_today": "; ".join(why_parts[:4]),
+        "next_step": next_step,
+        "brake": "; ".join(brakes[:3]),
+        "entry_position": entry_position,
+        "entry_zone": entry_rr_pkg.get("entry_zone"),
+        "entry_distance_pct": entry_rr_pkg.get("entry_distance_pct"),
+        "entry_distance_text": entry_rr_pkg.get("entry_distance_text"),
+        "entry_quality_text": entry_rr_pkg.get("entry_text"),
+        "crv": entry_rr_pkg.get("crv"),
+        "risk_reward_label": entry_rr_pkg.get("rr_label"),
+        "risk_reward_text": entry_rr_pkg.get("rr_text"),
+        "gate_reasons": "; ".join(gates) if gates else "keine harten Gates",
+        "trigger": trigger_display,
+    }
+
+
+def radar_reason_professional_v18(result, style_name_local):
+    d = build_professional_radar_decision_v18(result, style_name_local)
+    typ = radar_candidate_type(result or {})
+    return (
+        f"{d['grade']} · {d['bucket']} · Radar {d['score']}/100. "
+        f"{d['why_today']}. Bremse: {d['brake']}. Typ: {typ}."
+    )
+
+
+
+
+# ---------- v21.1: Setup-Alerts auf Analysebedingungen ----------
+def _v210_alert_num(value, default=None):
+    """Robuste Zahlenerkennung fuer Alert-Bedingungen."""
+    try:
+        if value is None:
+            return default
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            if pd.isna(value):
+                return default
+            return float(value)
+        txt = str(value).strip()
+        if not txt or txt.lower() in {"nan", "none", "n/a", "na", "-"}:
+            return default
+        txt = txt.replace("%", "").replace("EUR", "").replace("USD", "").replace("$", "").strip()
+        txt = txt.replace(".", "").replace(",", ".") if ("," in txt and "." in txt and txt.rfind(",") > txt.rfind(".")) else txt.replace(",", ".")
+        m = re.search(r"-?\d+(?:\.\d+)?", txt)
+        return float(m.group(0)) if m else default
+    except Exception:
+        return default
+
+
+def _v210_alert_price(result):
+    r = result or {}
+
+    # v22.7: Kurs robust validieren. In einigen Analysepfaden kam np.nan/NaN
+    # bis in die Live-Watchlist durch und wurde dort als "nan USD" angezeigt.
+    # Deshalb gilt: nur endliche positive Zahlen sind ein valider Kurs.
+    def _valid_price(x):
+        try:
+            if x is None:
+                return None
+            val = _v210_alert_num(x, default=None)
+            if val is None:
+                return None
+            val = float(val)
+            if not np.isfinite(val) or pd.isna(val) or val <= 0:
+                return None
+            return val
+        except Exception:
+            return None
+
+    # Erst vorhandene Analyse-/Live-Felder nutzen.
+    for key in [
+        "live_price", "Aktueller_Kurs", "analysis_price", "Analyse_Kursbasis",
+        "price", "regularMarketPrice", "regular_market_price", "current_price",
+        "currentPrice", "last_price", "lastPrice", "previousClose", "Kurs"
+    ]:
+        val = _valid_price(r.get(key))
+        if val is not None:
+            return val
+
+    # Danach info/fast_info-Felder pruefen, falls analyze_stock diese mitliefert.
+    for container_key in ["info", "fast_info", "quote", "meta"]:
+        obj = r.get(container_key)
+        if isinstance(obj, dict):
+            for key in ["regularMarketPrice", "currentPrice", "last_price", "lastPrice", "regular_market_price", "previousClose"]:
+                val = _valid_price(obj.get(key))
+                if val is not None:
+                    return val
+
+    # Fallback: Kurzabruf ueber bestehende yfinance-Hilfsfunktion. Nur fuer Live-Watchlist,
+    # nicht als harte Entscheidungsgrundlage.
+    ticker = str(r.get("ticker") or r.get("Ticker") or "").strip().upper()
+    if ticker:
+        try:
+            fallback_price, _src = _bt_review_get_current_price_v1713(ticker)
+            val = _valid_price(fallback_price)
+            if val is not None:
+                return val
+        except Exception:
+            pass
+    return None
+
+
+def _v210_alert_level(value):
+    return _v210_alert_num(value, default=None)
+
+
+def _v210_alert_add(rows, *, ticker, name, alert_type, priority, message, action, price=None, bucket="", grade="", crv=None, trigger="", invalidation="", status_key=""):
+    rows.append({
+        "Priorität": priority,
+        "Alert-Typ": alert_type,
+        "Ticker": ticker,
+        "Name": name,
+        "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
+        "Startkurs": "n/a",
+        "Seit Aufnahme": "n/a",
+        "Grade": grade,
+        "Bucket": bucket,
+        "CRV": "n/a" if crv is None else round(float(crv), 2),
+        "Trigger": trigger or "-",
+        "Invalidierung": invalidation or "-",
+        "Nachricht": message,
+        "Nächste Handlung": action,
+        "Status-Key": status_key or f"{ticker}|{alert_type}|{bucket}|{grade}",
+    })
+
+
+def build_setup_alerts_v210(result, style_name="Ausgewogen", decision=None):
+    """Erzeugt echte, handlungsrelevante Setup-Alerts.
+
+    v21.3 trennt bewusst zwischen echten Alerts und Brems-/Diagnosehinweisen:
+    - Setup-Gates, Warnsignale und "später beobachten" werden NICHT mehr als Alerts ausgespielt.
+    - Entry-Alerts entstehen nur, wenn wirklich eine parsebare Entry-Zone vorhanden ist.
+    - CRV-Alerts entstehen nur bei relevantem Bucket, belastbarem CRV und ohne harte Gates.
+    """
+    r = result or {}
+    decision = decision or build_professional_radar_decision_v18(r, style_name)
+    ticker = str(r.get("ticker") or r.get("Ticker") or "").strip().upper()
+    # v22.2: In der Live-Watchlist nicht den Ticker als Namen anzeigen.
+    # analyze_stock liefert die Firmendaten meist im Result-/info-Objekt; der robuste
+    # Radar-Name-Resolver vermeidet Fallbacks wie Name = Ticker.
+    try:
+        name = radar_company_display_name_v15237(r, ticker, 36)
+    except Exception:
+        name = str(r.get("company_name") or r.get("longName") or r.get("shortName") or r.get("name") or r.get("Name") or ticker or "-").strip()
+        if name.strip().upper() == ticker:
+            name = str((r.get("info", {}) or {}).get("longName") or (r.get("info", {}) or {}).get("shortName") or ticker).strip()
+    price = _v210_alert_price(r)
+    bucket = str(decision.get("bucket") or "").strip()
+    grade = str(decision.get("grade") or "").strip().upper()
+    score = _v210_alert_num(decision.get("score"), default=0) or 0
+    crv = decision.get("crv")
+    try:
+        crv = None if crv in {"", "-", "n/a", None} else float(crv)
+    except Exception:
+        crv = None
+
+    entry_pos = str(decision.get("entry_position") or "")
+    entry_text = str(decision.get("entry_quality_text") or decision.get("entry_distance_text") or "")
+    rr_text = str(decision.get("risk_reward_text") or "")
+    next_step = str(decision.get("next_step") or "")
+    wave_trigger_txt = str(decision.get("wave_trigger") or "")
+    wave_trigger = _v210_alert_level(wave_trigger_txt)
+    wave_inval_txt = str(decision.get("wave_invalidation") or "")
+    wave_inval = _v210_alert_level(wave_inval_txt)
+    gate = str(decision.get("gate_reasons") or "")
+    gate_low = gate.lower().strip()
+    hard_gate = bool(gate_low and gate_low not in {"keine harten gates", "keine harten gate", "-", "nan", "none"})
+
+    # v22.1: Exit-/Schutzampel darf den Live-Kauftrigger nicht allein rot faerben.
+    # Sie ist Positions-/Stop-Risikohinweis, aber kein Einstiegsgate. Rot bleibt nur
+    # bei echter Invalidierung oder einem nicht-exitbezogenen harten Gate.
+    exit_gate_terms = [
+        "exit", "schutz", "stop prüfen", "stop pruefen", "gewinnschutz",
+        "tactical", "de-risk", "derisk", "teilverkauf", "risikoabbau"
+    ]
+    non_entry_exit_gate = bool(hard_gate and gate_low and any(t in gate_low for t in exit_gate_terms))
+    entry_hard_gate = bool(hard_gate and not non_entry_exit_gate)
+
+    rows = []
+    if not ticker:
+        return rows
+
+    # v21.1: harte Relevanzfilter. Alerts sollen Handlungsereignisse sein,
+    # keine Liste aller Bremsen oder ausgeschlossenen Werte.
+    actionable_buckets = {"Jetzt prüfbar", "Nahe am Trigger"}
+    watch_buckets = actionable_buckets | {"Starke Watchlist"}
+    excluded_buckets = {"Warnsignale / meiden", "Später beobachten", "Pullback bevorzugt / nicht hinterherlaufen"}
+    grade_ok = grade in {"A", "B", "C"}
+    radar_ok = score >= 58
+    excluded = bucket in excluded_buckets or hard_gate or not grade_ok
+    actionable = bucket in actionable_buckets and grade_ok and radar_ok and not hard_gate
+    watch_relevant = bucket in watch_buckets and grade_ok and radar_ok and not hard_gate
+
+    # Entry-Zone nur dann auswerten, wenn sie wirklich vorhanden und parsebar ist.
+    entry_zone = str(decision.get("entry_zone") or _radar_v182_entry_zone_text(r) or "").strip()
+    entry_low_val, entry_high_val = _radar_v182_parse_zone(entry_zone)
+    has_entry_zone = bool(entry_low_val is not None and entry_high_val is not None and entry_high_val >= entry_low_val)
+    in_or_near_entry = False
+    if has_entry_zone and price is not None and price > 0:
+        # Kleine Toleranz, damit ein minimaler Abstand zur Zone noch als "nahe" gilt.
+        tol = 0.0075
+        in_or_near_entry = (entry_low_val * (1 - tol)) <= price <= (entry_high_val * (1 + tol))
+    entry_low = (entry_pos + " " + entry_text).lower()
+    if "keine entry-zone" in entry_low:
+        has_entry_zone = False
+        in_or_near_entry = False
+
+    # 1) Bucket-Wechsel / aktives Setup.
+    if actionable and bucket == "Jetzt prüfbar":
+        prio = "hoch" if grade in {"A", "B"} and (crv is None or crv >= 1.5) else "mittel"
+        msg = f"{ticker}: Bucket ist jetzt prüfbar. Grade {grade}, CRV {crv:.2f}." if crv is not None else f"{ticker}: Bucket ist jetzt prüfbar. Grade {grade}."
+        _v210_alert_add(rows, ticker=ticker, name=name, alert_type="Bucket: Jetzt prüfbar", priority=prio, message=msg, action=next_step or "Setup aktiv prüfen.", price=price, bucket=bucket, grade=grade, crv=crv, trigger=wave_trigger_txt, invalidation=wave_inval_txt, status_key=f"{ticker}|bucket|jetzt|{grade}|{round(crv or 0,2)}")
+
+    # 2) Entry-Zone erreicht / Entry nah.
+    if actionable and has_entry_zone and in_or_near_entry:
+        prio = "hoch" if bucket == "Jetzt prüfbar" and (crv is None or crv >= 1.5) else "mittel"
+        zone_msg = f"Zone {entry_zone}" if entry_zone else (entry_text or entry_pos)
+        _v210_alert_add(rows, ticker=ticker, name=name, alert_type="Entry-Zone erreicht", priority=prio, message=f"{ticker}: Kurs liegt in oder nahe der Entry-Zone. {zone_msg}", action=next_step or "Bestätigung/Trigger prüfen.", price=price, bucket=bucket, grade=grade, crv=crv, trigger=wave_trigger_txt, invalidation=wave_inval_txt, status_key=f"{ticker}|entry|{bucket}|{grade}|{entry_zone}")
+
+    # 3) Wave-Trigger aktiv oder nah. Aktiv darf auch für starke Watchlist-Kandidaten erscheinen,
+    # aber keine Warn-/Gate-Kandidaten.
+    if watch_relevant and wave_trigger is not None and price is not None and wave_trigger > 0:
+        dist_pct = (wave_trigger / price - 1.0) * 100.0
+        if price >= wave_trigger:
+            _v210_alert_add(rows, ticker=ticker, name=name, alert_type="Wave-Trigger aktiv", priority="hoch", message=f"{ticker}: Wave-Trigger ist aktiviert ({fmt_num(wave_trigger, 2)}).", action=next_step or "Wellenbestätigung und Zielzone prüfen.", price=price, bucket=bucket, grade=grade, crv=crv, trigger=wave_trigger_txt, invalidation=wave_inval_txt, status_key=f"{ticker}|wave_active|{round(wave_trigger,2)}")
+        elif actionable and 0 <= dist_pct <= 2.0:
+            _v210_alert_add(rows, ticker=ticker, name=name, alert_type="Wave-Trigger nahe", priority="mittel", message=f"{ticker}: Wave-Trigger liegt nur ca. {dist_pct:.1f}% entfernt ({fmt_num(wave_trigger, 2)}).", action="Reclaim/Ausbruch abwarten; nicht vor Bestätigung erzwingen.", price=price, bucket=bucket, grade=grade, crv=crv, trigger=wave_trigger_txt, invalidation=wave_inval_txt, status_key=f"{ticker}|wave_near|{round(wave_trigger,2)}")
+
+    # 4) CRV attraktiv geworden. Nur noch fuer echte handlungsnahe Kandidaten,
+    # nicht fuer Starke Watchlist / Warnsignale / Gate-Faelle.
+    if actionable and crv is not None and crv >= 1.8:
+        _v210_alert_add(rows, ticker=ticker, name=name, alert_type="CRV attraktiv", priority="mittel" if bucket != "Jetzt prüfbar" else "hoch", message=f"{ticker}: CRV ist attraktiv ({crv:.2f}). {rr_text}", action=next_step or "Entry/Trigger mit Stop prüfen.", price=price, bucket=bucket, grade=grade, crv=crv, trigger=wave_trigger_txt, invalidation=wave_inval_txt, status_key=f"{ticker}|crv|{round(crv,1)}|{bucket}")
+
+    # 5) Invalidierung / Stop gebrochen. Das ist auch bei schwachen Kandidaten relevant,
+    # weil es eine bestehende Idee aus dem Rennen nimmt.
+    if wave_inval is not None and price is not None and wave_inval > 0 and price <= wave_inval:
+        _v210_alert_add(rows, ticker=ticker, name=name, alert_type="Invalidierung gebrochen", priority="hoch", message=f"{ticker}: Kurs liegt unter der Wave-/Setup-Invalidierung ({fmt_num(wave_inval, 2)}).", action="Setup nicht mehr als aktiv werten; Risiko/Stop prüfen.", price=price, bucket=bucket, grade=grade, crv=crv, trigger=wave_trigger_txt, invalidation=wave_inval_txt, status_key=f"{ticker}|invalid|{round(wave_inval,2)}")
+
+    # v21.1: Keine "Setup-Gate aktiv"-Alerts mehr. Gate-/Bremsgruende bleiben in Radar-Bremse/Gate sichtbar.
+
+    # Deduplizieren innerhalb eines Kandidaten.
+    out = []
+    seen = set()
+    prio_rank = {"hoch": 0, "mittel": 1, "niedrig": 2}
+    for row in sorted(rows, key=lambda x: prio_rank.get(str(x.get("Priorität", "mittel")), 1)):
+        key = str(row.get("Status-Key", ""))
+        if key and key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out[:3]
+
+def build_setup_alerts_table_v210(results, style_name="Ausgewogen", limit=25):
+    rows = []
+    for r in results or []:
+        try:
+            decision = build_professional_radar_decision_v18(r, style_name)
+            rows.extend(build_setup_alerts_v210(r, style_name=style_name, decision=decision))
+        except Exception:
+            continue
+    if not rows:
+        return pd.DataFrame(columns=["Priorität", "Alert-Typ", "Ticker", "Name", "Kurs", "Grade", "Bucket", "CRV", "Trigger", "Invalidierung", "Nachricht", "Nächste Handlung", "Status-Key"])
+    df = pd.DataFrame(rows)
+    prio_rank = {"hoch": 0, "mittel": 1, "niedrig": 2}
+    df["__prio"] = df["Priorität"].map(prio_rank).fillna(1)
+    if "Ticker" in df.columns:
+        df = df.drop_duplicates(subset=["Ticker", "Alert-Typ", "Status-Key"], keep="first")
+    df = df.sort_values(["__prio", "Ticker", "Alert-Typ"]).drop(columns=["__prio"], errors="ignore")
+    return df.head(int(limit)).reset_index(drop=True)
+
+
+def setup_alert_summary_v210(result, style_name="Ausgewogen"):
+    alerts = build_setup_alerts_v210(result, style_name=style_name)
+    if not alerts:
+        return "-"
+    first = alerts[0]
+    return f"{first.get('Priorität','mittel')}: {first.get('Alert-Typ','Alert')}"
+
+
+
+# ---------- v22.8: Watchlist Add Queue / Batch Save ----------
+# v25.3: _v228_norm_watchlist_ticker nach modules/ ausgelagert.
+
+
+# ---------- v22.17: Watchlist Startkurs-Backfill ----------
+def _v2214_start_price_store_path():
+    """Lokaler Sidecar-Speicher fuer Watchlist-Aufnahmekurse.
+
+    Google Sheets bleibt der primaere Watchlist-Katalog, aber Startkurse werden
+    bewusst lokal gepuffert, damit der Live-Monitor Performance-Kontext anzeigen
+    kann, ohne bei jedem Watchlist-Edit weitere Sheets-Writes zu erzeugen.
+    """
+    try:
+        base_dir = Path(__file__).resolve().parent
+        return base_dir / ".watchlist_start_prices_v2214.json"
+    except Exception:
+        return Path("/tmp/.watchlist_start_prices_v2214.json")
+
+
+def _v2214_load_start_price_store():
+    # v23.6: Store robust gegen Cloud-/Reload-Situationen.
+    # Primaer Sidecar-Datei, Fallback/Mirror in st.session_state.
+    session_store = {}
+    try:
+        session_store = st.session_state.get("watchlist_start_price_store_v2214", {})
+        if not isinstance(session_store, dict):
+            session_store = {}
+    except Exception:
+        session_store = {}
+    try:
+        path = _v2214_start_price_store_path()
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                merged = dict(session_store)
+                merged.update(data)
+                try:
+                    st.session_state.watchlist_start_price_store_v2214 = merged
+                except Exception:
+                    pass
+                return merged
+    except Exception:
+        pass
+    return dict(session_store)
+
+
+def _v2214_save_start_price_store(store):
+    ok_file = False
+    try:
+        st.session_state.watchlist_start_price_store_v2214 = dict(store or {})
+    except Exception:
+        pass
+    try:
+        path = _v2214_start_price_store_path()
+        path.write_text(json.dumps(store or {}, ensure_ascii=False, indent=2), encoding="utf-8")
+        ok_file = True
+    except Exception:
+        ok_file = False
+    # Session-State reicht zumindest fuer die geoeffnete App; Datei wenn moeglich fuer Persistenz.
+    return True if (store is not None) else ok_file
+
+
+def _v2214_valid_price(value):
+    try:
+        if value in [None, "", "-", "n/a", "nan", "None"]:
+            return None
+        f = float(str(value).replace(",", "."))
+        if np.isfinite(f) and not pd.isna(f) and f > 0:
+            return float(f)
+    except Exception:
+        pass
+    return None
+
+
+# v25.3: _v2214_watchlist_key nach modules/ ausgelagert.
+
+
+def _v2214_get_current_price_for_ticker(ticker):
+    """Robuster Kurzabruf fuer den aktuellen Start-/Backfill-Kurs."""
+    tk = _v228_norm_watchlist_ticker(ticker)
+    if not tk:
+        return None
+    cache_key = f"v2214_start_price_quote::{tk}"
+    try:
+        cache = st.session_state.get("watchlist_start_price_quote_cache_v2214", {})
+        if isinstance(cache, dict):
+            cached = cache.get(cache_key)
+            if isinstance(cached, dict):
+                ts = cached.get("ts")
+                val = _v2214_valid_price(cached.get("price"))
+                try:
+                    age = (datetime.now() - datetime.fromisoformat(str(ts))).total_seconds()
+                except Exception:
+                    age = 999999
+                if val is not None and age < 1800:
+                    return val
+    except Exception:
+        pass
+
+    price = None
+    try:
+        t = yf.Ticker(tk)
+        # fast_info ist in yfinance oft deutlich leichter als info.
+        try:
+            fi = getattr(t, "fast_info", {}) or {}
+            for key in ["last_price", "lastPrice", "regular_market_price", "regularMarketPrice", "previous_close", "previousClose"]:
+                try:
+                    price = _v2214_valid_price(fi.get(key) if hasattr(fi, "get") else getattr(fi, key, None))
+                except Exception:
+                    price = None
+                if price is not None:
+                    break
+        except Exception:
+            pass
+        if price is None:
+            try:
+                inf = t.info or {}
+                for key in ["regularMarketPrice", "currentPrice", "lastPrice", "previousClose", "open"]:
+                    price = _v2214_valid_price(inf.get(key))
+                    if price is not None:
+                        break
+            except Exception:
+                pass
+        if price is None:
+            try:
+                hist = t.history(period="7d", auto_adjust=False)
+                if hist is not None and not hist.empty and "Close" in hist.columns:
+                    price = _v2214_valid_price(hist["Close"].dropna().iloc[-1])
+            except Exception:
+                pass
+    except Exception:
+        price = None
+
+    try:
+        cache = st.session_state.get("watchlist_start_price_quote_cache_v2214", {})
+        if not isinstance(cache, dict):
+            cache = {}
+        if price is not None:
+            cache[cache_key] = {"price": price, "ts": datetime.now().isoformat(timespec="seconds")}
+            st.session_state.watchlist_start_price_quote_cache_v2214 = cache
+    except Exception:
+        pass
+    return price
+
+
+def _v2216_parse_added_at(value):
+    """Parst ein Watchlist-Aufnahmedatum robust fuer historischen Startkurs-Backfill."""
+    try:
+        if value in [None, "", "-", "n/a", "nan", "None"]:
+            return None
+        dt = pd.to_datetime(value, dayfirst=True, errors="coerce")
+        if pd.isna(dt):
+            dt = pd.to_datetime(value, errors="coerce")
+        if pd.isna(dt):
+            return None
+        return dt.to_pydatetime() if hasattr(dt, "to_pydatetime") else dt
+    except Exception:
+        return None
+
+
+def _v2216_get_added_at_from_meta(meta):
+    if not isinstance(meta, dict):
+        return None
+    for k in [
+        "Added_At", "added_at", "Vorgemerkt_Am", "Created_At", "created_at",
+        "Aufnahme", "Aufnahmedatum", "Hinzugefuegt_Am", "Hinzugefügt_Am", "Datum"
+    ]:
+        val = meta.get(k)
+        if str(val).strip() not in {"", "-", "n/a", "nan", "None"}:
+            return val
+    return None
+
+
+def _v2216_get_historical_price_for_ticker(ticker, added_at=None):
+    """Versucht den Schlusskurs am/um das Aufnahmedatum zu holen.
+
+    Wichtig: Wenn kein Aufnahmedatum existiert, darf nicht behauptet werden,
+    der aktuelle Kurs sei der historische Startkurs. Dann faellt der Backfill
+    bewusst auf den aktuellen Kurs zurueck und markiert die Quelle entsprechend.
+    """
+    tk = _v228_norm_watchlist_ticker(ticker)
+    dt = _v2216_parse_added_at(added_at)
+    if not tk or dt is None:
+        return None
+    try:
+        start = (dt - timedelta(days=7)).strftime("%Y-%m-%d")
+        end = (dt + timedelta(days=14)).strftime("%Y-%m-%d")
+        hist = yf.Ticker(tk).history(start=start, end=end, auto_adjust=False)
+        if hist is None or hist.empty or "Close" not in hist.columns:
+            return None
+        tmp = hist.copy()
+        tmp["__date"] = pd.to_datetime(tmp.index, errors="coerce").tz_localize(None)
+        target = pd.Timestamp(dt).tz_localize(None)
+        tmp = tmp.dropna(subset=["__date", "Close"]).sort_values("__date")
+        if tmp.empty:
+            return None
+        # Erst den naechsten Handelstag am/nach Aufnahmedatum, sonst den letzten davor.
+        after = tmp[tmp["__date"] >= target]
+        if not after.empty:
+            return _v2214_valid_price(after.iloc[0]["Close"])
+        before = tmp[tmp["__date"] <= target]
+        if not before.empty:
+            return _v2214_valid_price(before.iloc[-1]["Close"])
+    except Exception:
+        return None
+    return None
+
+
+# v25.3: _v2214_set_start_price nach modules/ ausgelagert.
+
+
+# v25.3: _v2214_get_start_price_meta_map nach modules/ ausgelagert.
+
+
+def _v232_is_current_baseline_source(source):
+    txt = str(source or "").strip().lower()
+    # v23.6: Manuell bestaetigte Baselines sind gueltige Startpunkte ab jetzt
+    # und duerfen im Live-Monitor angezeigt werden. Nur automatische aktuelle
+    # Fallbacks gelten als irrefuehrend und werden ausgeblendet/loeschbar.
+    if "manuell" in txt:
+        return False
+    return any(x in txt for x in [
+        "backfill aktuell",
+        "session-baseline",
+        "baseline ab jetzt",
+        "aktueller kurs",
+        "current fallback",
+    ])
+
+
+# v25.3: _v232_delete_current_baselines_for_watchlist nach modules/ ausgelagert.
+
+
+# v25.3: _v234_set_current_baselines_for_missing nach modules/ ausgelagert.
+
+
+# v25.3: backfill_watchlist_start_prices_v2214 nach modules/ ausgelagert.
+
+
+# v25.3: _v228_get_pending_watchlist_adds nach modules/ ausgelagert.
+
+
+# v25.3: _v228_pending_for_watchlist nach modules/ ausgelagert.
+
+
+# v25.3: _v228_pending_tickers_for_watchlist nach modules/ ausgelagert.
+
+
+# v25.3: queue_entries_to_watchlist_v228 nach modules/ ausgelagert.
+
+
+# v25.3: save_pending_watchlist_adds_v228 nach modules/ ausgelagert.
+
+
+# v25.3: clear_pending_watchlist_adds_v228 nach modules/ ausgelagert.
+
+
+# v25.3: render_pending_watchlist_adds_v228 nach modules/ ausgelagert.
+
+# ---------- v22.1: Live-Watchlist / Trigger-Monitor mit Statuswechsel-Historie ----------
+
+def _v214_monitor_final_release_check(result, decision=None):
+    """Prueft, ob die Live-Watchlist einen Wert wirklich gruen/selektiv freigeben darf.
+
+    v21.10: Die Freigabe wird nicht mehr nur an einem einzelnen Flag festgemacht.
+    Einige Analysepfade liefern "Kaufen"/"Trade-Setup valide" nur in Textpaketen
+    oder UI-Zusammenfassungen. Deshalb wird zuerst positive Evidenz gesammelt und
+    erst danach werden harte Blocker gewertet. Das verhindert MRVL-artige
+    Widersprueche: Sofortanalyse klar konstruktiv, Live-Monitor trotzdem rot.
+    """
+    r = result or {}
+    d = decision or {}
+    blockers = []
+
+    def _low(v):
+        return str(v or "").strip().lower()
+
+    def _num(v, default=None):
+        try:
+            if v is None:
+                return default
+            if isinstance(v, str) and not v.strip():
+                return default
+            f = float(v)
+            if pd.isna(f):
+                return default
+            return f
+        except Exception:
+            return default
+
+    timing_pkg = r.get("timing_action_confidence_pkg") if isinstance(r.get("timing_action_confidence_pkg"), dict) else {}
+    conf_pkg = r.get("trigger_confluence_pkg") if isinstance(r.get("trigger_confluence_pkg"), dict) else {}
+    action_pkg = r.get("action_clarity_pkg") if isinstance(r.get("action_clarity_pkg"), dict) else {}
+    chart_pkg = r.get("charttechnik_setup_pkg") if isinstance(r.get("charttechnik_setup_pkg"), dict) else {}
+    model_debug = r.get("model_debug_pkg") if isinstance(r.get("model_debug_pkg"), dict) else {}
+
+    timing_score = _num(timing_pkg.get("score"), default=None)
+    timing_label = _low(timing_pkg.get("label"))
+    timing_action = _low(timing_pkg.get("action"))
+    timing_summary = _low(timing_pkg.get("summary"))
+    timing_fits = _low(timing_pkg.get("fits_text"))
+    timing_missing = _low(timing_pkg.get("missing_text"))
+
+    conf_score = _num(conf_pkg.get("score"), default=None)
+    conf_label = _low(conf_pkg.get("label"))
+
+    action_text = " ".join([
+        _low(action_pkg.get("label")),
+        _low(action_pkg.get("summary")),
+        _low(action_pkg.get("trigger")),
+        _low(action_pkg.get("action")),
+        _low(r.get("position_action")),
+        _low(r.get("Aktion_Final")),
+        _low(r.get("final_action")),
+        _low(model_debug.get("final_action")),
+        _low(model_debug.get("exec_verdict")),
+        _low(timing_action),
+        _low(timing_summary),
+        _low(timing_fits),
+    ])
+    chart_text = " ".join([
+        _low(chart_pkg.get("trigger")),
+        _low(chart_pkg.get("summary")),
+        _low(chart_pkg.get("label")),
+        _low(chart_pkg.get("invalid")),
+    ])
+    all_text = " ".join([action_text, chart_text, _low(timing_missing), conf_label])
+
+    positive_terms = [
+        "kaufen", "einstieg prüfen", "einstieg pruefen", "einstieg grundsätzlich freigegeben",
+        "einstieg grundsaetzlich freigegeben", "aktion ist bereits offensiv", "trade-setup ist valide",
+        "setup ist valide", "timing wirkt reif", "timing reif", "mehrere bausteine bestätigen",
+        "mehrere bausteine bestaetigen", "offensiv", "prozyklische long-setups"
+    ]
+    negative_terms_hard = [
+        "valides trade-setup fehlt", "einstieg noch nicht freigegeben", "kein klares kaufsignal",
+        "nicht als kaufsignal", "timing-konfidenz zu niedrig", "timing sehr niedrig"
+    ]
+
+    positive_text_release = any(term in all_text for term in positive_terms)
+    strong_numeric_release = (
+        (timing_score is not None and timing_score >= 75)
+        and (conf_score is not None and conf_score >= 68)
+        and not ("gemischt" in conf_label and conf_score < 68)
+    )
+    valid_setup_flag = bool(r.get("valid_trade_setup", False))
+    valid_setup_text = any(term in all_text for term in ["trade-setup ist valide", "setup ist valide", "einstieg grundsätzlich freigegeben", "einstieg grundsaetzlich freigegeben"])
+    valid_setup = valid_setup_flag or valid_setup_text or (positive_text_release and strong_numeric_release)
+
+    offensive_release = bool(valid_setup and (positive_text_release or strong_numeric_release) and (timing_score is None or timing_score >= 55) and (conf_score is None or conf_score >= 58))
+
+    # Harte Blocker nur setzen, wenn sie nicht durch eine klare positive Sofortanalyse ueberstimmt werden.
+    if not valid_setup and not offensive_release:
+        blockers.append("Valides Trade-Setup fehlt")
+
+    if timing_score is not None and timing_score < 55:
+        blockers.append(f"Timing-Konfidenz zu niedrig ({timing_score:.0f}/100)")
+    elif any(x in timing_label for x in ["sehr niedrig", "niedrig", "noch nicht", "nicht freigegeben"]):
+        if not offensive_release:
+            blockers.append("Timing noch nicht freigegeben")
+
+    if any(x in (timing_action + " " + timing_missing) for x in [
+        "kein klares kaufsignal", "einstieg noch nicht", "nicht als kaufsignal", "nicht freigegeben", "valides trade-setup fehlt"
+    ]):
+        if not offensive_release:
+            blockers.append("Sofortanalyse gibt Einstieg noch nicht frei")
+
+    # Weiche Bestätigungstexte wie "Stabilisierung oder bullische Reaktion..." sind bei
+    # einer offensiven Sofortanalyse keine rote Sperre, sondern nur Ausfuehrungshinweis.
+    if any(x in action_text for x in ["abwarten", "warten", "noch nicht"]):
+        if not offensive_release:
+            blockers.append("Nächste Handlung steht noch auf Abwarten/Bestätigung")
+
+    if any(x in chart_text for x in ["abwarten", "noch nicht", "braucht stabilisierung", "braucht", "bei bruch der zone"]):
+        if not offensive_release:
+            blockers.append("Charttechnik-Trigger noch nicht aktiv")
+
+    if conf_score is not None and conf_score < 58:
+        blockers.append(f"Trigger-Konfluenz noch nicht stark ({conf_score:.0f}/100)")
+    elif "gemischt" in conf_label and not offensive_release:
+        blockers.append("Trigger-Konfluenz gemischt")
+
+    bucket = str((d or {}).get("bucket") or "").strip()
+    if bucket in {"Warnsignale / meiden", "Später beobachten"} and not offensive_release:
+        blockers.append(f"Bucket ist {bucket}")
+
+    # Deduplizieren und auf wenige klare Gruende kuerzen.
+    clean = []
+    seen = set()
+    for b in blockers:
+        if not b:
+            continue
+        key = b.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        clean.append(b)
+
+    # Bei klarer positiver Sofortanalyse-Freigabe bleiben nur wirklich harte numerische
+    # Blocker erhalten. Alte Bucket-/Textwarnungen duerfen nicht rot dominieren.
+    if offensive_release:
+        clean = [b for b in clean if any(w in b.lower() for w in ["timing-konfidenz zu niedrig", "trigger-konfluenz noch nicht stark"])]
+
+    return len(clean) == 0, clean[:4]
+
+# v25.3: _v212_monitor_status_from_decision nach modules/ ausgelagert.
+
+
+# v25.3: build_live_watchlist_monitor_v212 nach modules/ ausgelagert.
+
+
+
+# ---------- v22.7: Live-Watchlist Preis-/Name-Fix ----------
+
+# v25.3: _v220_live_status_rank nach modules/ ausgelagert.
+
+
+# v25.3: _v220_live_change_label nach modules/ ausgelagert.
+
+# v25.3: _v237_parse_live_score nach modules/ ausgelagert.
+
+
+# v25.3: _v237_set_live_row nach modules/ ausgelagert.
+
+
+# v25.3: _v237_apply_live_signal_hysteresis nach modules/ ausgelagert.
+
+
+
+
+# v25.3: _v240_live_trade_state nach modules/ ausgelagert.
+
+# v25.3: _v227_live_history_file_path nach modules/ ausgelagert.
+
+
+# v25.3: _v227_load_persistent_live_history nach modules/ ausgelagert.
+
+
+# v25.3: _v227_save_persistent_live_history nach modules/ ausgelagert.
+
+
+# v25.3: reset_live_watchlist_status_history_v227 nach modules/ ausgelagert.
+
+
+# v25.3: apply_live_watchlist_status_history_v220 nach modules/ ausgelagert.
+
 def radar_reason_professional_v1521(result, style_name_local):
     if str(style_name_local or "") == "Charttechnik":
         return radar_chart_impulse_reason(result)
@@ -3781,7 +5834,21 @@ def run_radar_snapshot_job(job):
             return False, "Keine auswertbaren Ergebnisse", {"analyzed_count": 0, "resolution_rows": resolution_rows, "errors": errors}
         radar_df = build_ranking_table(results)
         result_map = {str(r.get("ticker", "")): r for r in results}
-        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_reason_professional_v1521(r, style_name) for r in results})
+        radar_v18_map = {str(r.get("ticker", "")): build_professional_radar_decision_v18(r, style_name) for r in results}
+        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_reason_professional_v18(r, style_name) for r in results})
+        radar_df["Radar-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("score") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Grade"] = radar_df["Ticker"].astype(str).map({k: v.get("grade") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Bucket"] = radar_df["Ticker"].astype(str).map({k: v.get("bucket") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Subscores"] = radar_df["Ticker"].astype(str).map({k: v.get("subscores_text") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Gate"] = radar_df["Ticker"].astype(str).map({k: v.get("gate_reasons") for k, v in radar_v18_map.items()})
+        radar_df["Heute-Relevanz"] = radar_df["Ticker"].astype(str).map({k: v.get("why_today") for k, v in radar_v18_map.items()})
+        radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({k: v.get("priority") for k, v in radar_v18_map.items()})
+        radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({k: v.get("next_step") for k, v in radar_v18_map.items()})
+        radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({k: v.get("brake") for k, v in radar_v18_map.items()})
+        radar_df["Wave-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_score") for k, v in radar_v18_map.items()})
+        radar_df["Wave-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_label") for k, v in radar_v18_map.items()})
+        radar_df["Wann aktiv?"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_trigger") for k, v in radar_v18_map.items()})
+        radar_df["Ziel bei Bestätigung"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_target_zone") for k, v in radar_v18_map.items()})
         radar_df["__style_sort"] = radar_df.apply(lambda row: compute_radar_style_sort_shared(row, result_map, style_name), axis=1)
         signature = _radar_snapshot_signature(universe, style_name, max_candidates, custom_text)
         payload = {
@@ -7156,6 +9223,341 @@ def build_wave_structure_context_v1532(chart_df=None, result=None):
 
 
 
+def _wave_v190_fmt_num(value, digits=2):
+    try:
+        if value is None or pd.isna(value):
+            return "n/a"
+        return f"{float(value):.{digits}f}"
+    except Exception:
+        return "n/a"
+
+
+def _wave_v190_swing_points(df, high_col="High", low_col="Low", close_col="Close", window=3, max_points=9):
+    """Findet robuste lokale Swing-Highs/-Lows ohne externe Abhaengigkeiten."""
+    points = []
+    try:
+        highs = pd.to_numeric(df[high_col], errors="coerce") if high_col in df.columns else pd.to_numeric(df[close_col], errors="coerce")
+        lows = pd.to_numeric(df[low_col], errors="coerce") if low_col in df.columns else pd.to_numeric(df[close_col], errors="coerce")
+        closes = pd.to_numeric(df[close_col], errors="coerce")
+        n = len(closes)
+        if n < window * 2 + 8:
+            return []
+        start = max(window, n - 180)
+        for i in range(start, n - window):
+            h = highs.iloc[i]
+            l = lows.iloc[i]
+            if pd.isna(h) or pd.isna(l):
+                continue
+            h_slice = highs.iloc[i-window:i+window+1]
+            l_slice = lows.iloc[i-window:i+window+1]
+            if h >= h_slice.max() and h > h_slice.drop(highs.index[i], errors="ignore").max():
+                points.append({"idx": int(i), "type": "H", "price": float(h)})
+            if l <= l_slice.min() and l < l_slice.drop(lows.index[i], errors="ignore").min():
+                points.append({"idx": int(i), "type": "L", "price": float(l)})
+        points = sorted(points, key=lambda x: x["idx"])
+        cleaned = []
+        for p in points:
+            if not cleaned:
+                cleaned.append(p)
+                continue
+            last = cleaned[-1]
+            if p["type"] == last["type"]:
+                if (p["type"] == "H" and p["price"] >= last["price"]) or (p["type"] == "L" and p["price"] <= last["price"]):
+                    cleaned[-1] = p
+            else:
+                cleaned.append(p)
+        return cleaned[-max_points:]
+    except Exception:
+        return []
+
+
+
+def _wave_v191_sequence_text(sequence):
+    seq = str(sequence or "").strip().upper()
+    mapping = {
+        "HH/HL": "höhere Hochs und höhere Tiefs",
+        "HH": "höheres Hoch, aber noch kein bestätigtes höheres Tief",
+        "HL": "höheres Tief, aber noch kein neues höheres Hoch",
+        "LH/LL": "tiefere Hochs und tiefere Tiefs",
+        "LH": "tieferes Hoch",
+        "LL": "tieferes Tief",
+    }
+    return mapping.get(seq, "gemischte Hoch-/Tief-Struktur")
+
+
+def _wave_v191_readable_status(label, phase, quality_label, sequence):
+    lbl = str(label or "").lower()
+    q = str(quality_label or "").lower()
+    if lbl in {"impulsfortsetzung", "welle-2-pullback"}:
+        if q in {"hoch", "gut"}:
+            return "Konstruktiv und nahe an einer Bestätigung"
+        return "Konstruktiv, aber noch nicht klar genug bestätigt"
+    if lbl == "frueher-reclaim":
+        return "Frühe Stabilisierung, Bestätigung fehlt noch"
+    if lbl == "abwaertsstruktur":
+        return "Defensiv: die Wellenstruktur ist angeschlagen"
+    if "gemischt" in lbl or "gemischt" in str(phase or "").lower():
+        if str(sequence or "").upper() == "HH/HL":
+            return "Konstruktiv, aber noch nicht eindeutig bestätigt"
+        return "Seitwärts/gemischt: nicht aus der Wellenstruktur allein handeln"
+    return "Nicht eindeutig genug für ein eigenes Signal"
+
+
+def _wave_v191_strip_price_text(text):
+    txt = str(text or "").strip()
+    if not txt or txt.lower() in {"n/a", "nan", "none", "-"}:
+        return "n/a"
+    return txt
+
+
+def _wave_v191_build_readable_fields(pkg):
+    """Macht aus technischen Wellenfeldern eine verständliche UI-Lesart."""
+    pkg = pkg or {}
+    phase = str(pkg.get("wave_phase") or pkg.get("phase") or "-")
+    label = str(pkg.get("wave_label") or pkg.get("label") or "")
+    sequence = str(pkg.get("wave_sequence") or "gemischt")
+    quality = str(pkg.get("wave_quality_label") or "-")
+    trigger = _wave_v191_strip_price_text(pkg.get("wave_trigger") or pkg.get("confirmation_text") or "-")
+    invalidation = _wave_v191_strip_price_text(pkg.get("wave_invalidation") or "-")
+    target = _wave_v191_strip_price_text(pkg.get("wave_target_zone") or "-")
+    seq_text = _wave_v191_sequence_text(sequence)
+    status = _wave_v191_readable_status(label, phase, quality, sequence)
+
+    if "HH/HL" in sequence.upper() or seq_text.startswith("höhere"):
+        meaning = (
+            f"Der Kurs zeigt {seq_text}. Das spricht grundsätzlich für eine intakte Aufwärtsstruktur. "
+            f"Die Qualität ist {quality}; deshalb sollte der Trigger bestätigt werden, bevor daraus ein aktiver Einstieg wird."
+        )
+    elif "LH/LL" in sequence.upper() or "tiefere" in seq_text:
+        meaning = (
+            f"Der Kurs zeigt {seq_text}. Das bremst Long-Setups; erst ein Reclaim und neue höhere Tiefs würden die Lage verbessern."
+        )
+    else:
+        meaning = (
+            f"Die Swing-Folge ist gemischt. Fibonacci-Zonen, Entry-Zone, Volumen und klassische Trigger bleiben wichtiger als die Wellenstruktur allein."
+        )
+
+    if trigger and trigger != "n/a":
+        action = f"Aktiv wird die Struktur erst bei: {trigger}."
+    else:
+        action = "Aktiv wird die Struktur erst bei einem klaren Reclaim oder Ausbruch mit Bestätigung."
+
+    if invalidation and invalidation != "n/a":
+        risk = f"Hinfällig bzw. angeschlagen wird sie bei: {invalidation}."
+    else:
+        risk = "Hinfällig wird sie bei Bruch der nächsten relevanten Support-/Entry-Zone."
+
+    if target and target != "n/a":
+        target_text = f"Erste Zielzone bei Bestätigung: {target}."
+    else:
+        target_text = "Eine belastbare Zielzone ist aus der Wellenstruktur noch nicht ableitbar."
+
+    compact = f"{status}. {meaning} {action} {risk} {target_text}"
+    return {
+        "wave_readable_status": status,
+        "wave_readable_sequence": seq_text,
+        "wave_readable_meaning": meaning,
+        "wave_readable_action": action,
+        "wave_readable_risk": risk,
+        "wave_readable_target": target_text,
+        "wave_readable_compact": compact,
+    }
+
+def build_wave_structure_context_v190(chart_df=None, result=None):
+    """v19.0: Robuste Swing-/Wellenstruktur-Analyse.
+
+    Keine dogmatische Elliott-Wellen-Zaehlung. Die Funktion arbeitet regelbasiert:
+    Swing High/Low, HH/HL/LH/LL-Sequenz, Impuls/Korrektur, Pullback-Tiefe,
+    Trigger, Invalidierung und moegliche Extension-Zielzone.
+    """
+    base = build_wave_structure_context_v1532(chart_df, result)
+    result = result or {}
+    try:
+        df = chart_df.copy() if chart_df is not None else None
+        if df is None or df.empty:
+            return base
+        close_col = "Close" if "Close" in df.columns else "Adj Close" if "Adj Close" in df.columns else None
+        if close_col is None:
+            return base
+        high_col = "High" if "High" in df.columns else close_col
+        low_col = "Low" if "Low" in df.columns else close_col
+        close = pd.to_numeric(df[close_col], errors="coerce").dropna()
+        high = pd.to_numeric(df[high_col], errors="coerce").dropna()
+        low = pd.to_numeric(df[low_col], errors="coerce").dropna()
+        if len(close) < 60:
+            return base
+        price = float(close.iloc[-1])
+        ma20 = float(close.rolling(20).mean().iloc[-1]) if len(close) >= 20 else np.nan
+        ma50 = float(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else np.nan
+        swings = _wave_v190_swing_points(df, high_col=high_col, low_col=low_col, close_col=close_col, window=3, max_points=10)
+        if len(swings) < 4:
+            base.update({
+                "wave_phase": "Nicht belastbar",
+                "wave_sequence": "zu wenige Swing-Punkte",
+                "wave_quality_label": "n/a",
+                "wave_trigger": base.get("confirmation_text", "klassische Trigger nutzen"),
+                "wave_invalidation": base.get("zones", [{}])[-1].get("Zone/Wert", "n/a") if base.get("zones") else "n/a",
+                "wave_target_zone": "n/a",
+            })
+            base.update(_wave_v191_build_readable_fields(base))
+            return base
+
+        highs = [p for p in swings if p["type"] == "H"]
+        lows = [p for p in swings if p["type"] == "L"]
+        last_high = highs[-1] if highs else None
+        prev_high = highs[-2] if len(highs) >= 2 else None
+        last_low = lows[-1] if lows else None
+        prev_low = lows[-2] if len(lows) >= 2 else None
+        hh = bool(last_high and prev_high and last_high["price"] > prev_high["price"])
+        hl = bool(last_low and prev_low and last_low["price"] > prev_low["price"])
+        lh = bool(last_high and prev_high and last_high["price"] < prev_high["price"])
+        ll = bool(last_low and prev_low and last_low["price"] < prev_low["price"])
+        seq_parts = []
+        if hh: seq_parts.append("HH")
+        elif lh: seq_parts.append("LH")
+        if hl: seq_parts.append("HL")
+        elif ll: seq_parts.append("LL")
+        sequence = "/".join(seq_parts) if seq_parts else "gemischt"
+
+        # letzten sinnvollen Impuls bestimmen: meist letzter Low->High oder High->Low
+        swing_low = last_low["price"] if last_low else float(low.tail(60).min())
+        swing_high = last_high["price"] if last_high else float(high.tail(60).max())
+        if last_low and last_high and last_low["idx"] > last_high["idx"] and prev_low and last_high:
+            impulse_low = prev_low["price"]
+            impulse_high = last_high["price"]
+        else:
+            impulse_low = swing_low
+            impulse_high = swing_high
+        impulse = max(impulse_high - impulse_low, 1e-9)
+        pullback_pct = ((impulse_high - price) / impulse) * 100.0 if impulse_high >= price and impulse > 0 else 0.0
+        extension_127 = impulse_high + impulse * 0.272
+        extension_162 = impulse_high + impulse * 0.618
+
+        quality = 45.0
+        drivers = []
+        if hh and hl:
+            quality += 22; drivers.append("HH/HL-Sequenz intakt")
+        elif hl and not ll:
+            quality += 12; drivers.append("Higher Low sichtbar")
+        if lh or ll:
+            quality -= 18; drivers.append("LH/LL bremst Struktur")
+        if pd.notna(ma20) and price >= ma20:
+            quality += 8; drivers.append("ueber MA20")
+        elif pd.notna(ma20):
+            quality -= 8; drivers.append("unter MA20")
+        if pd.notna(ma50) and price >= ma50:
+            quality += 7; drivers.append("ueber MA50")
+        elif pd.notna(ma50):
+            quality -= 10; drivers.append("unter MA50")
+        if 30 <= pullback_pct <= 68 and (hl or price >= swing_low):
+            quality += 12; drivers.append(f"Pullback-Tiefe konstruktiv ({pullback_pct:.0f}%)")
+        elif pullback_pct > 78:
+            quality -= 14; drivers.append(f"tiefer Pullback ({pullback_pct:.0f}%)")
+        elif pullback_pct < 15 and price >= impulse_high * 0.98:
+            quality += 4; drivers.append("nahe Impulshoch")
+        quality = max(0, min(100, quality))
+
+        if hh and hl and 25 <= pullback_pct <= 68:
+            phase = "Moegliche Welle-2-/Pullback-Zone vor Fortsetzung"
+            label = "welle-2-pullback"
+            summary = "Swing-Struktur zeigt HH/HL und einen geordneten Ruecklauf. Das ist ein moeglicher frueher Fortsetzungsbereich, aber erst Reclaim/Volumen bestaetigt den Einstieg."
+            action = "Reclaim ueber kurzfristigen Pivot abwarten; Invalidierung unter letztem Higher Low."
+        elif hh and hl and price >= impulse_high * 0.98:
+            phase = "Moegliche fruehe Impulsfortsetzung / Welle 3"
+            label = "impulsfortsetzung"
+            summary = "HH/HL-Sequenz ist intakt und der Kurs arbeitet am Impulshoch. Das spricht fuer eine moegliche Fortsetzung, solange kein Rueckfall unter das letzte Higher Low folgt."
+            action = "Bei Ausbruch/Reclaim mit Volumen aktiv pruefen; nicht hinterherlaufen, wenn Abstand zur Entry-Zone zu gross wird."
+        elif hl and not hh:
+            phase = "Fruehe Boden-/Reclaim-Struktur"
+            label = "frueher-reclaim"
+            summary = "Ein Higher Low ist erkennbar, aber ein neues Higher High fehlt noch. Das ist Watchlist-/Trigger-Naehe, kein voll bestaetigter Impuls."
+            action = "Bullisher erst ueber dem letzten Swing High; Bruch des Higher Low invalidiert die Struktur."
+        elif lh and ll:
+            phase = "Abwaertsstruktur / gebrochene Wellenfolge"
+            label = "abwaertsstruktur"
+            summary = "LH/LL-Sequenz spricht gegen eine aktive Long-Wellenstruktur. Erst Reclaim und neue HH/HL-Folge verbessern die Lage."
+            action = "Kein aggressiver Einstieg; Reversal-/Reclaim-Struktur abwarten."
+        else:
+            phase = "Gemischte Swing-Struktur"
+            label = "gemischt"
+            summary = "Die Swing-Folge ist nicht eindeutig. Fibonacci, Entry-Zone, Volumen und klassische Trigger bleiben primaer."
+            action = "Nicht aus der Wellenstruktur handeln; klare Trigger abwarten."
+
+        trigger_price = None
+        if last_high and price <= last_high["price"]:
+            trigger_price = last_high["price"]
+            trigger = f"Reclaim/Ausbruch ueber letztes Swing High {_wave_v190_fmt_num(trigger_price)}"
+        elif last_high:
+            trigger_price = max(float(high.tail(5).max()), price)
+            trigger = f"Folgestaerke ueber kurzfristigem Hoch {_wave_v190_fmt_num(trigger_price)}"
+        else:
+            trigger = base.get("confirmation_text", "Klassischen Trigger nutzen")
+        invalid_price = last_low["price"] if last_low else (ma20 if pd.notna(ma20) else np.nan)
+        invalidation = f"Bruch unter letztes Swing Low/Higher Low {_wave_v190_fmt_num(invalid_price)}" if pd.notna(invalid_price) else "n/a"
+        target_zone = f"1.272-1.618 Extension ca. {_wave_v190_fmt_num(extension_127)} - {_wave_v190_fmt_num(extension_162)}" if impulse_high > impulse_low else "n/a"
+        quality_label = "hoch" if quality >= 75 else "gut" if quality >= 62 else "mittel" if quality >= 48 else "schwach"
+
+        zones = list(base.get("zones") or [])
+        zones.extend([
+            {"Punkt": "Letztes Swing High", "Zone/Wert": _wave_v190_fmt_num(last_high["price"] if last_high else None), "Lesart": "Reclaim/Ausbruch darueber verbessert die Wellenstruktur."},
+            {"Punkt": "Letztes Swing Low", "Zone/Wert": _wave_v190_fmt_num(last_low["price"] if last_low else None), "Lesart": "Darunter ist die aktuelle Long-Struktur invalidiert."},
+            {"Punkt": "Wellen-Zielzone", "Zone/Wert": target_zone, "Lesart": "Orientierungszone aus Extension, nur mit aktivem Trigger relevant."},
+        ])
+        base.update({
+            "label": label,
+            "phase": phase,
+            "summary": summary,
+            "action_hint": action,
+            "score": int(round(quality)),
+            "drivers": (drivers + list(base.get("drivers") or []))[:6],
+            "zones": zones,
+            "plain_hint": f"{sequence}: {summary}",
+            "wave_phase": phase,
+            "wave_label": label,
+            "wave_sequence": sequence,
+            "wave_quality_score": int(round(quality)),
+            "wave_quality_label": quality_label,
+            "wave_pullback_depth_pct": round(float(pullback_pct), 1),
+            "wave_trigger": trigger,
+            "wave_trigger_price": round(float(trigger_price), 2) if trigger_price is not None and pd.notna(trigger_price) else "n/a",
+            "wave_invalidation": invalidation,
+            "wave_invalidation_price": round(float(invalid_price), 2) if pd.notna(invalid_price) else "n/a",
+            "wave_target_zone": target_zone,
+            "wave_extension_127": round(float(extension_127), 2),
+            "wave_extension_162": round(float(extension_162), 2),
+            "swing_points": swings,
+            "is_score_relevant": True,
+        })
+        # Bestaetigung auf den konkreten Wellentrigger umbiegen, ohne alte Kerzenlogik zu verlieren.
+        old_conf_score = int(base.get("confirmation_score") or 0)
+        if trigger_price is not None and pd.notna(trigger_price) and price >= trigger_price:
+            wave_conf_score = max(old_conf_score, 72)
+            wave_conf_label = "Wellentrigger bestaetigt"
+            wave_conf_text = f"{trigger}; Kurs handelt darueber. {', '.join(drivers[:3])}."
+            wave_conf_action = "Aktiv pruefen, sofern Entry/CRV und Volumen passen."
+        elif quality >= 62 and label in {"welle-2-pullback", "frueher-reclaim"}:
+            wave_conf_score = max(old_conf_score, 52)
+            wave_conf_label = "Wellentrigger unter Beobachtung"
+            wave_conf_text = f"{trigger}; Strukturqualitaet {quality_label}, aber Trigger noch nicht voll aktiv."
+            wave_conf_action = "Vorbereiten; erst bei Reclaim/Ausbruch und passendem CRV handeln."
+        else:
+            wave_conf_score = min(max(old_conf_score, int(round(quality * 0.6))), 55)
+            wave_conf_label = base.get("confirmation_label", "unter Beobachtung")
+            wave_conf_text = f"{trigger}; {summary}"
+            wave_conf_action = action
+        base["confirmation_label"] = wave_conf_label
+        base["confirmation_score"] = int(max(0, min(100, wave_conf_score)))
+        base["confirmation_text"] = wave_conf_text
+        base["confirmation_action"] = wave_conf_action
+        base["confirmation_drivers"] = drivers[:5]
+        base.update(_wave_v191_build_readable_fields(base))
+        return base
+    except Exception as exc:
+        base["summary"] = f"Wellenanalyse v21.1 nicht belastbar: {exc}"
+        base["action_hint"] = "Nicht als eigenstaendiges Signal verwenden."
+        return base
+
+
 def build_fibonacci_context_v1533(chart_df=None, result=None):
     """Weicher Fibonacci-Kontext fuer Pullback-/Zielzonen.
 
@@ -7484,91 +9886,49 @@ def build_fibonacci_context_v1533(chart_df=None, result=None):
         return out
 
 
-def add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg):
-    """Optionale Fibonacci-Linien im Chart. Bewusst dezent, aber mit Level UND Kurswert beschriftet."""
+
+def _chart_label_xpos_v205(df, position="right"):
+    """Verteilt dauerhafte Chart-Labels horizontal, damit rechts nicht alles kollidiert."""
     try:
-        if not isinstance(fib_pkg, dict):
-            return fig
-        levels = fib_pkg.get("levels") or []
-        if not levels:
-            return fig
-
-        def _fmt_fib_price_v1535_1(value):
-            try:
-                v = float(value)
-                if not pd.notna(v):
-                    return "n/a"
-                if abs(v) >= 100:
-                    return f"{v:,.2f}"
-                if abs(v) >= 10:
-                    return f"{v:,.2f}"
-                if abs(v) >= 1:
-                    return f"{v:,.2f}"
-                return f"{v:,.4f}"
-            except Exception:
-                return str(value or "n/a")
-
-        # Plotlys add_hline annotation can truncate labels in some Streamlit/browser
-        # combinations. Therefore we draw the line and the label separately.
-        try:
-            x0 = chart_df.index[0]
-            x1 = chart_df.index[-1]
-        except Exception:
-            x0 = None
-            x1 = None
-
-        for item in levels:
-            y = item.get("Kurszone")
-            name = str(item.get("Level") or "").strip()
-            if y is None or str(y).strip().lower() in {"", "n/a", "nan", "none"}:
-                continue
-            y_float = float(y)
-            price_txt = _fmt_fib_price_v1535_1(y_float)
-            label = f"Fib {name} · {price_txt}" if name else f"Fib · {price_txt}"
-
-            if x0 is not None and x1 is not None:
-                fig.add_shape(
-                    type="line",
-                    x0=x0,
-                    x1=x1,
-                    y0=y_float,
-                    y1=y_float,
-                    xref="x",
-                    yref="y",
-                    line=dict(width=1, dash="dot", color="rgba(220,220,220,0.55)"),
-                    row=1,
-                    col=1,
-                )
-                fig.add_annotation(
-                    x=x1,
-                    y=y_float,
-                    xref="x",
-                    yref="y",
-                    text=label,
-                    showarrow=False,
-                    xanchor="right",
-                    yanchor="bottom",
-                    align="right",
-                    font=dict(size=10, color="rgba(245,245,245,0.95)"),
-                    bgcolor="rgba(0,0,0,0.55)",
-                    bordercolor="rgba(255,255,255,0.18)",
-                    borderwidth=1,
-                    borderpad=2,
-                    row=1,
-                    col=1,
-                )
-            else:
-                fig.add_hline(
-                    y=y_float,
-                    line_width=1,
-                    line_dash="dot",
-                    opacity=0.45,
-                    row=1,
-                    col=1,
-                )
-        return fig
+        if df is None or df.empty:
+            return None
+        n = len(df.index)
+        if n <= 1:
+            return df.index[-1]
+        pos = str(position or "right").lower()
+        if pos in {"left", "links"}:
+            return df.index[max(0, int(n * 0.05))]
+        if pos in {"mid", "middle", "center", "zentrum"}:
+            return df.index[min(n - 1, max(0, int(n * 0.55)))]
+        if pos in {"right_inner", "innen_rechts"}:
+            return df.index[min(n - 1, max(0, int(n * 0.86)))]
+        return df.index[-1]
     except Exception:
-        return fig
+        try:
+            return df.index[-1]
+        except Exception:
+            return None
+
+
+
+
+_CHART_LARGE_LABELS_V207 = False
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
 def align_action_with_trigger_v1520_2(action_label, action_reason, next_trigger, trigger_status, entry_quality, position_mode=False):
     """Keep the action label consistent with the operative trigger text.
@@ -10711,657 +13071,85 @@ def build_chart_structures(df, sr_basis_df=None):
 
 
 
-def format_chart_zone_label(prefix, idx, zone, ccy=""):
-    try:
-        low = float(zone.get("low", np.nan))
-        high = float(zone.get("high", np.nan))
-        touches = int(zone.get("touches", 0))
-        ccy_suffix = f" {ccy}".strip()
-        return f"{prefix}{idx} ({touches}x) - {low:.2f} bis {high:.2f}{(' ' + ccy) if ccy else ''}"
-    except Exception:
-        touches = zone.get("touches", "?")
-        return f"{prefix}{idx} ({touches}x)"
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
-def add_sr_zones_to_plotly(fig, df, supports, resistances, active_zones=None, ccy=""):
-    if df is None or df.empty:
-        return
-    x0 = df.index.min()
-    x1 = df.index.max()
-
-    for idx, z in enumerate(supports, start=1):
-        label = format_chart_zone_label("S", idx, z, ccy=ccy)
-        fig.add_shape(
-            type="rect",
-            x0=x0,
-            x1=x1,
-            y0=z["low"],
-            y1=z["high"],
-            line=dict(width=0),
-            fillcolor="rgba(34,197,94,0.24)",
-            layer="below",
-            row=1,
-            col=1
-        )
-        fig.add_annotation(
-            x=x1,
-            y=z["mid"],
-            text=label,
-            showarrow=False,
-            xanchor="left",
-            font=dict(size=10, color="#bbf7d0"),
-            bgcolor="rgba(22,101,52,0.42)",
-            bordercolor="rgba(187,247,208,0.30)",
-            borderpad=3,
-            row=1,
-            col=1
-        )
-
-    for idx, z in enumerate(resistances, start=1):
-        label = format_chart_zone_label("R", idx, z, ccy=ccy)
-        fig.add_shape(
-            type="rect",
-            x0=x0,
-            x1=x1,
-            y0=z["low"],
-            y1=z["high"],
-            line=dict(width=0),
-            fillcolor="rgba(239,68,68,0.24)",
-            layer="below",
-            row=1,
-            col=1
-        )
-        fig.add_annotation(
-            x=x1,
-            y=z["mid"],
-            text=label,
-            showarrow=False,
-            xanchor="left",
-            font=dict(size=10, color="#fecaca"),
-            bgcolor="rgba(127,29,29,0.42)",
-            bordercolor="rgba(254,202,202,0.30)",
-            borderpad=3,
-            row=1,
-            col=1
-        )
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
 
-    for idx, z in enumerate(active_zones or [], start=1):
-        label = format_chart_zone_label("Aktive Zone ", idx, z, ccy=ccy)
-        fig.add_shape(
-            type="rect",
-            x0=x0,
-            x1=x1,
-            y0=z["low"],
-            y1=z["high"],
-            line=dict(width=0),
-            fillcolor="rgba(59,130,246,0.18)",
-            layer="below",
-            row=1,
-            col=1
-        )
-        fig.add_annotation(
-            x=x1,
-            y=z["mid"],
-            text=label,
-            showarrow=False,
-            xanchor="left",
-            font=dict(size=10, color="#dbeafe"),
-            bgcolor="rgba(30,64,175,0.34)",
-            bordercolor="rgba(191,219,254,0.28)",
-            borderpad=3,
-            row=1,
-            col=1
-        )
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
 
-def add_trend_channel_to_plotly(fig, df, channel):
-    if not channel or df is None or df.empty:
-        return
-
-    x_vals = np.arange(len(df), dtype=float)
-    x_dates = df.index
-    slope = channel["slope"]
-    lower_intercept = channel["lower_intercept"]
-    upper_intercept = channel["upper_intercept"]
-
-    lower_y = slope * x_vals + lower_intercept
-    upper_y = slope * x_vals + upper_intercept
-
-    lower_name = "Trendkanal unten" if channel.get("source") == "pivot" else "Trendkanal unten (Reg.)"
-    upper_name = "Trendkanal oben" if channel.get("source") == "pivot" else "Trendkanal oben (Reg.)"
-
-    fig.add_trace(
-        go.Scatter(
-            x=x_dates,
-            y=lower_y,
-            mode="lines",
-            name=lower_name,
-            line=dict(dash="dash", width=2.2, color="rgba(34,197,94,0.95)")
-        ),
-        row=1,
-        col=1
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=x_dates,
-            y=upper_y,
-            mode="lines",
-            name=upper_name,
-            line=dict(dash="dash", width=2.2, color="rgba(239,68,68,0.95)")
-        ),
-        row=1,
-        col=1
-    )
-
-    label = channel.get("label", "Trendkanal")
-    quality = channel.get("quality", "")
-    label_text = f"{label} - Qualitaet: {quality}" if quality else label
-
-    fig.add_annotation(
-        x=x_dates[-1],
-        y=float((lower_y[-1] + upper_y[-1]) / 2.0),
-        text=label_text,
-        showarrow=False,
-        xanchor="right",
-        font=dict(size=10, color="#dbeafe"),
-        bgcolor="rgba(30,41,59,0.58)",
-        bordercolor="rgba(147,197,253,0.24)",
-        borderpad=4,
-        row=1,
-        col=1
-    )
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
 
-def summarize_chart_structures(df, structures):
-    summaries = []
-    if df is None or df.empty or not structures:
-        return summaries
-
-    try:
-        current_price = float(pd.to_numeric(df["Close"], errors="coerce").iloc[-1])
-    except Exception:
-        return summaries
-
-    supports = structures.get("supports", []) or []
-    resistances = structures.get("resistances", []) or []
-    active_zones = structures.get("active_zones", []) or []
-    channel = structures.get("channel")
-
-    if supports:
-        s1 = supports[0]
-        s_mid = float(s1.get("mid", np.nan))
-        s_touches = int(s1.get("touches", 0) or 0)
-        if pd.notna(s_mid) and s_mid > 0:
-            dist_pct = ((current_price / s_mid) - 1.0) * 100.0
-            if abs(dist_pct) <= 1.5:
-                summaries.append(f"Kurs aktuell nahe Support S1 ({s_touches}x) bei {s_mid:.2f}.")
-            elif current_price < s_mid:
-                summaries.append(f"Kurs unter S1 bei {s_mid:.2f} - Support wurde zuletzt unterschritten.")
-            else:
-                summaries.append(f"Nächster Support S1 liegt bei {s_mid:.2f}, Abstand {dist_pct:.1f}%.")
-
-    if active_zones:
-        z0 = active_zones[0]
-        z_mid = float(z0.get("mid", np.nan))
-        if pd.notna(z_mid):
-            summaries.append(f"Kurs handelt aktuell in einer aktiven Zone um {z_mid:.2f}.")
-
-    if resistances:
-        r1 = resistances[0]
-        r_mid = float(r1.get("mid", np.nan))
-        r_touches = int(r1.get("touches", 0) or 0)
-        if pd.notna(r_mid) and r_mid > 0:
-            dist_pct = ((r_mid / current_price) - 1.0) * 100.0
-            if abs(dist_pct) <= 1.5:
-                summaries.append(f"Kurs läuft direkt an Widerstand R1 ({r_touches}x) bei {r_mid:.2f}.")
-            elif current_price > r_mid:
-                summaries.append(f"Kurs über R1 bei {r_mid:.2f} - Ausbruch über den nächsten Widerstand.")
-            else:
-                summaries.append(f"Nächster Widerstand R1 liegt bei {r_mid:.2f}, Abstand {dist_pct:.1f}%.")
-
-    if channel:
-        try:
-            idx = len(df) - 1
-            slope = float(channel.get("slope", 0.0))
-            lower = slope * idx + float(channel.get("lower_intercept", 0.0))
-            upper = slope * idx + float(channel.get("upper_intercept", 0.0))
-            if upper > lower and current_price > 0:
-                pos = (current_price - lower) / (upper - lower)
-                label = channel.get("label", "Trendkanal")
-                quality = channel.get("quality", "")
-                quality_txt = f" ({quality})" if quality else ""
-                if pos <= 0.25:
-                    summaries.append(f"Kurs im unteren Bereich des {label.lower()}{quality_txt} - eher supportnah.")
-                elif pos >= 0.75:
-                    summaries.append(f"Kurs im oberen Bereich des {label.lower()}{quality_txt} - eher widerstandsnah.")
-                else:
-                    summaries.append(f"Kurs bewegt sich im mittleren Bereich des {label.lower()}{quality_txt}.")
-        except Exception:
-            pass
-
-    return summaries
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
 
-def compute_ultra_short_term_zone_signal(df, structures):
-    signal = {
-        "label": "Kein Signal",
-        "strength": 0,
-        "confirmation": "fehlt",
-        "reason": "Keine klare Reaktion an einer relevanten Zone.",
-        "bullets": [],
-        "tone": "blue",
-    }
-    if df is None or df.empty or not structures or len(df) < 5:
-        return signal
-
-    try:
-        close = pd.to_numeric(df["Close"], errors="coerce")
-        open_ = pd.to_numeric(df["Open"], errors="coerce")
-        high = pd.to_numeric(df["High"], errors="coerce")
-        low = pd.to_numeric(df["Low"], errors="coerce")
-        volume = pd.to_numeric(df.get("Volume"), errors="coerce") if "Volume" in df.columns else pd.Series(index=df.index, dtype=float)
-        current_price = float(close.iloc[-1])
-        prev_close = float(close.iloc[-2])
-        prev_high = float(high.iloc[-2])
-        prev_low = float(low.iloc[-2])
-    except Exception:
-        return signal
-
-    ema10 = close.ewm(span=10, adjust=False).mean()
-    ema20 = close.ewm(span=20, adjust=False).mean()
-    vol20 = volume.rolling(20, min_periods=5).mean() if not volume.empty else pd.Series(index=df.index, dtype=float)
-
-    candle_range = max(0.01, float(high.iloc[-1] - low.iloc[-1]))
-    lower_wick = max(0.0, float(min(open_.iloc[-1], close.iloc[-1]) - low.iloc[-1]))
-    upper_wick = max(0.0, float(high.iloc[-1] - max(open_.iloc[-1], close.iloc[-1])))
-    lower_wick_ratio = lower_wick / candle_range
-    upper_wick_ratio = upper_wick / candle_range
-    close_pos = (float(close.iloc[-1]) - float(low.iloc[-1])) / candle_range
-
-    supports = structures.get("supports", []) or []
-    resistances = structures.get("resistances", []) or []
-    active_zones = structures.get("active_zones", []) or []
-    channel = structures.get("channel")
-
-    bull = 0.0
-    bear = 0.0
-    watch = 0.0
-    confirm = 0.0
-    reasons_bull = []
-    reasons_bear = []
-    reasons_watch = []
-
-    near_support = False
-    near_resistance = False
-
-    if supports:
-        s1 = supports[0]
-        s_mid = float(s1.get("mid", np.nan))
-        if pd.notna(s_mid) and current_price > 0:
-            dist_support = abs((current_price / s_mid) - 1.0) * 100.0
-            if dist_support <= 1.8:
-                bull += 26
-                near_support = True
-                reasons_bull.append("Kurs direkt an Support S1")
-            elif dist_support <= 3.2:
-                bull += 16
-                reasons_bull.append("Kurs nahe Support S1")
-            if current_price < s_mid:
-                bear += 16
-                reasons_bear.append("Kurs unter Support S1")
-
-    if resistances:
-        r1 = resistances[0]
-        r_mid = float(r1.get("mid", np.nan))
-        if pd.notna(r_mid) and current_price > 0:
-            dist_res = abs((r_mid / current_price) - 1.0) * 100.0
-            if dist_res <= 1.8:
-                bear += 26
-                near_resistance = True
-                reasons_bear.append("Kurs direkt an Widerstand R1")
-            elif dist_res <= 3.2:
-                bear += 16
-                reasons_bear.append("Kurs nahe Widerstand R1")
-            if current_price > r_mid:
-                bull += 14
-                reasons_bull.append("Kurs ueber R1")
-
-    if active_zones:
-        z0 = active_zones[0]
-        z_low = float(z0.get("low", np.nan))
-        z_high = float(z0.get("high", np.nan))
-        if pd.notna(z_low) and pd.notna(z_high) and z_low <= current_price <= z_high:
-            watch += 24
-            reasons_watch.append("Kurs in aktiver Entscheidungszone")
-
-    if near_support:
-        if lower_wick_ratio >= 0.35:
-            bull += 12
-            reasons_bull.append("unterer Docht an Support")
-        if close_pos >= 0.62:
-            bull += 8
-            reasons_bull.append("Schlusskurs erholt sich aus der Zone")
-        if float(close.iloc[-1]) > float(close.iloc[-2]):
-            confirm += 10
-
-    if near_resistance:
-        if upper_wick_ratio >= 0.35:
-            bear += 12
-            reasons_bear.append("oberer Docht an Widerstand")
-        if close_pos <= 0.42:
-            bear += 8
-            reasons_bear.append("schwacher Schlusskurs an R1")
-        if float(close.iloc[-1]) < float(close.iloc[-2]):
-            confirm += 10
-
-    if len(df) >= 3:
-        ret2 = ((float(close.iloc[-1]) / float(close.iloc[-3])) - 1.0) * 100.0
-    else:
-        ret2 = np.nan
-    ret3 = ((float(close.iloc[-1]) / float(close.iloc[-4])) - 1.0) * 100.0 if len(df) >= 4 else np.nan
-
-    if pd.notna(ema10.iloc[-1]):
-        if current_price > float(ema10.iloc[-1]) and near_support:
-            bull += 8
-            reasons_bull.append("ueber EMA10")
-        elif current_price < float(ema10.iloc[-1]) and near_resistance:
-            bear += 8
-            reasons_bear.append("unter EMA10")
-
-    if pd.notna(ret2):
-        if ret2 > 1.5 and near_support:
-            bull += 10
-            confirm += 8
-            reasons_bull.append("2T-Momentum zieht an")
-        elif ret2 < -1.5 and near_resistance:
-            bear += 10
-            confirm += 8
-            reasons_bear.append("2T-Momentum kippt ab")
-    if pd.notna(ret3):
-        if ret3 > 2.5 and near_support:
-            bull += 6
-        elif ret3 < -2.5 and near_resistance:
-            bear += 6
-
-    if not vol20.empty and pd.notna(vol20.iloc[-1]) and vol20.iloc[-1] > 0 and not volume.empty and pd.notna(volume.iloc[-1]):
-        vol_ratio = float(volume.iloc[-1] / vol20.iloc[-1])
-        if near_support and float(close.iloc[-1]) > float(open_.iloc[-1]) and vol_ratio >= 1.1:
-            bull += 8
-            reasons_bull.append("Reaktion mit besserem Volumen")
-        elif near_resistance and float(close.iloc[-1]) < float(open_.iloc[-1]) and vol_ratio >= 1.1:
-            bear += 8
-            reasons_bear.append("Ablehnung mit erhoehtem Volumen")
-        elif vol_ratio < 0.85 and (near_support or near_resistance):
-            watch += 4
-
-    if channel:
-        try:
-            idx_last = len(df) - 1
-            slope = float(channel.get("slope", 0.0))
-            lower = slope * idx_last + float(channel.get("lower_intercept", 0.0))
-            upper = slope * idx_last + float(channel.get("upper_intercept", 0.0))
-            if upper > lower:
-                pos = (current_price - lower) / (upper - lower)
-                if pos <= 0.22:
-                    bull += 10
-                    reasons_bull.append("unterer Kanalbereich")
-                elif pos >= 0.78:
-                    bear += 10
-                    reasons_bear.append("oberer Kanalbereich")
-        except Exception:
-            pass
-
-    bull = int(round(clamp(bull, 0, 100)))
-    bear = int(round(clamp(bear, 0, 100)))
-    watch = int(round(clamp(watch, 0, 100)))
-    confirm = int(round(clamp(confirm, 0, 100)))
-
-    # v15.24.13: Ultra-Kurzfrist war zu streng und fiel dadurch fast immer auf
-    # "Kein Signal" zurück. Für den Nutzer ist aber bereits eine kurzfristige
-    # Reaktion an/nahe einer Zone relevant. Deshalb: harte Signale bleiben streng,
-    # frühe Reaktionen werden separat ausgewiesen, statt komplett neutral zu wirken.
-    max_side = max(bull, bear)
-    side_gap = abs(bull - bear)
-
-    if bull >= 48 and bull >= bear + 6:
-        signal.update({
-            "label": "Ultra-Kurzfrist bullish",
-            "strength": bull,
-            "tone": "blue",
-            "reason": reasons_bull[0] if reasons_bull else "Support wird kurzfristig verteidigt.",
-            "bullets": list(dict.fromkeys(reasons_bull))[:4],
-        })
-    elif bear >= 48 and bear >= bull + 6:
-        signal.update({
-            "label": "Ultra-Kurzfrist bearish",
-            "strength": bear,
-            "tone": "red",
-            "reason": reasons_bear[0] if reasons_bear else "Widerstand wird kurzfristig bestaetigt.",
-            "bullets": list(dict.fromkeys(reasons_bear))[:4],
-        })
-    elif bull >= 34 and bull >= bear + 5:
-        signal.update({
-            "label": "Frühe bullische Reaktion",
-            "strength": bull,
-            "tone": "amber",
-            "reason": reasons_bull[0] if reasons_bull else "Erste konstruktive Reaktion, Bestaetigung fehlt noch.",
-            "bullets": list(dict.fromkeys(reasons_bull + reasons_watch))[:4],
-        })
-    elif bear >= 34 and bear >= bull + 5:
-        signal.update({
-            "label": "Frühe bearische Reaktion",
-            "strength": bear,
-            "tone": "amber",
-            "reason": reasons_bear[0] if reasons_bear else "Erste Schwäche an einer relevanten Zone, Bestaetigung fehlt noch.",
-            "bullets": list(dict.fromkeys(reasons_bear + reasons_watch))[:4],
-        })
-    elif max(bull, bear, watch) >= 22:
-        signal.update({
-            "label": "Zone unter Beobachtung",
-            "strength": max(bull, bear, watch),
-            "tone": "amber",
-            "reason": (reasons_watch or reasons_bull or reasons_bear or ["Zone wird getestet, Bestaetigung fehlt noch."])[0],
-            "bullets": list(dict.fromkeys((reasons_watch + reasons_bull + reasons_bear)))[:4],
-        })
-
-    if confirm >= 20:
-        signal["confirmation"] = "vorhanden"
-    elif confirm >= 10:
-        signal["confirmation"] = "teilweise"
-    else:
-        signal["confirmation"] = "fehlt"
-
-    return signal
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
 
-def evaluate_chart_structure_bias(df, structures):
-    """
-    Leichte Zusatzlesart aus S/R-Zonen und Trendkanal.
-    Gibt nur kleine Adjustments zur operativen Einordnung zurück.
-    """
-    result = {
-        "bias": 0,
-        "setup_bias": 0,
-        "tradeability_bias": 0,
-        "notes_pos": [],
-        "notes_neg": [],
-        "summary": [],
-    }
-    if df is None or df.empty or not structures:
-        return result
-
-    try:
-        current_price = float(pd.to_numeric(df["Close"], errors="coerce").iloc[-1])
-    except Exception:
-        return result
-
-    supports = structures.get("supports", []) or []
-    resistances = structures.get("resistances", []) or []
-    active_zones = structures.get("active_zones", []) or []
-    channel = structures.get("channel")
-
-    if supports:
-        s1 = supports[0]
-        s_mid = float(s1.get("mid", np.nan))
-        if pd.notna(s_mid) and s_mid > 0:
-            dist_pct = ((current_price / s_mid) - 1.0) * 100.0
-            if 0 <= dist_pct <= 1.6:
-                result["bias"] += 2
-                result["setup_bias"] += 2
-                result["notes_pos"].append("Kurs nahe Support S1")
-                result["summary"].append(f"Support S1 stützt bei {s_mid:.2f}.")
-            elif current_price < s_mid:
-                result["bias"] -= 2
-                result["tradeability_bias"] -= 2
-                result["notes_neg"].append("Kurs unter Support S1")
-                result["summary"].append(f"S1 bei {s_mid:.2f} wurde unterschritten.")
-
-    if active_zones:
-        z0 = active_zones[0]
-        z_mid = float(z0.get("mid", np.nan))
-        if pd.notna(z_mid):
-            summaries.append(f"Kurs handelt aktuell in einer aktiven Zone um {z_mid:.2f}.")
-
-    if resistances:
-        r1 = resistances[0]
-        r_mid = float(r1.get("mid", np.nan))
-        if pd.notna(r_mid) and r_mid > 0:
-            dist_pct = ((r_mid / current_price) - 1.0) * 100.0
-            if 0 <= dist_pct <= 1.6:
-                result["bias"] -= 1
-                result["tradeability_bias"] -= 1
-                result["notes_neg"].append("Kurs direkt an Widerstand R1")
-                result["summary"].append(f"R1 liegt direkt bei {r_mid:.2f}.")
-            elif current_price > r_mid:
-                result["bias"] += 2
-                result["setup_bias"] += 1
-                result["notes_pos"].append("Ausbruch über Widerstand R1")
-                result["summary"].append(f"R1 bei {r_mid:.2f} wurde überschritten.")
-
-    if channel:
-        try:
-            idx_last = len(df) - 1
-            slope = float(channel.get("slope", 0.0))
-            lower = slope * idx_last + float(channel.get("lower_intercept", 0.0))
-            upper = slope * idx_last + float(channel.get("upper_intercept", 0.0))
-            if upper > lower:
-                pos = (current_price - lower) / (upper - lower)
-                label = str(channel.get("label", "Trendkanal")).strip()
-                if str(channel.get("type")) == "uptrend":
-                    if pos <= 0.30:
-                        result["bias"] += 1
-                        result["setup_bias"] += 1
-                        result["notes_pos"].append("Im unteren Bereich eines Aufwaertskanals")
-                    elif pos >= 0.82:
-                        result["bias"] -= 1
-                        result["tradeability_bias"] -= 1
-                        result["notes_neg"].append("Im oberen Bereich eines Aufwaertskanals")
-                elif str(channel.get("type")) == "downtrend":
-                    result["bias"] -= 2
-                    result["tradeability_bias"] -= 1
-                    result["notes_neg"].append(label)
-                result["summary"].append(f"Chart laeuft in {label.lower()}.")
-        except Exception:
-            pass
-
-    result["bias"] = int(max(-4, min(4, result["bias"])))
-    result["setup_bias"] = int(max(-3, min(3, result["setup_bias"])))
-    result["tradeability_bias"] = int(max(-3, min(3, result["tradeability_bias"])))
-    return result
 
 
-def build_candlestick_chart(chart_df, ticker, ccy, show_sr=False, show_channel=False, structures=None, show_fib=False, fib_pkg=None):
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.03,
-        row_heights=[0.75, 0.25]
-    )
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
-    fig.add_trace(
-        go.Candlestick(
-            x=chart_df.index,
-            open=chart_df["Open"],
-            high=chart_df["High"],
-            low=chart_df["Low"],
-            close=chart_df["Close"],
-            name=ticker
-        ),
-        row=1,
-        col=1
-    )
 
-    if "MA10" in chart_df.columns:
-        fig.add_trace(
-            go.Scatter(x=chart_df.index, y=chart_df["MA10"], mode="lines", name="MA10"),
-            row=1,
-            col=1
-        )
-    if "MA20" in chart_df.columns:
-        fig.add_trace(
-            go.Scatter(x=chart_df.index, y=chart_df["MA20"], mode="lines", name="MA20"),
-            row=1,
-            col=1
-        )
-    if "MA50" in chart_df.columns:
-        fig.add_trace(
-            go.Scatter(x=chart_df.index, y=chart_df["MA50"], mode="lines", name="MA50"),
-            row=1,
-            col=1
-        )
-    if "MA200" in chart_df.columns:
-        fig.add_trace(
-            go.Scatter(x=chart_df.index, y=chart_df["MA200"], mode="lines", name="MA200"),
-            row=1,
-            col=1
-        )
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
-    fig.add_trace(
-        go.Bar(
-            x=chart_df.index,
-            y=chart_df["Volume"],
-            name="Volumen"
-        ),
-        row=2,
-        col=1
-    )
 
-    if show_sr or show_channel:
-        try:
-            structures = structures or build_chart_structures(chart_df)
-            if show_sr:
-                add_sr_zones_to_plotly(fig, chart_df, structures.get("supports", []), structures.get("resistances", []), structures.get("active_zones", []))
-            if show_channel:
-                add_trend_channel_to_plotly(fig, chart_df, structures.get("channel"))
-        except Exception:
-            pass
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
-    if show_fib:
-        try:
-            add_fibonacci_levels_to_plotly_v1533(fig, chart_df, fib_pkg)
-        except Exception:
-            pass
 
-    fig.update_layout(
-        title="",
-        xaxis_rangeslider_visible=False,
-        height=650,
-        template="plotly_dark",
-        margin=dict(l=20, r=20, t=20, b=20),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="left",
-            x=0,
-            bgcolor="rgba(0,0,0,0)"
-        )
-    )
-    fig.update_yaxes(title_text=f"Kurs ({ccy})", row=1, col=1)
-    fig.update_yaxes(title_text="Volumen", row=2, col=1)
-    return fig
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
 
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+
+
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+# v25.4: Chart-Funktion(en) in modules/chart_overlays.py ausgelagert.
+
+
+# ---------- v25.4: modulare Chart-/Overlay-Schicht ----------
+from modules import chart_overlays as _chart_module
+_chart_module.configure_context(
+    build_chart_structures=build_chart_structures,
+    _chart_label_xpos_v205=_chart_label_xpos_v205,
+    clamp=clamp,
+)
+_chart_annotation_style_v206 = _chart_module._chart_annotation_style_v206
+_chart_hover_text_v207 = _chart_module._chart_hover_text_v207
+_chart_add_hover_point_v207 = _chart_module._chart_add_hover_point_v207
+_chart_label_yshift_v206 = _chart_module._chart_label_yshift_v206
+_chart_add_annotation_v206 = _chart_module._chart_add_annotation_v206
+_chart_zone_compact_label_v205 = _chart_module._chart_zone_compact_label_v205
+add_fibonacci_levels_to_plotly_v1533 = _chart_module.add_fibonacci_levels_to_plotly_v1533
+format_chart_zone_label = _chart_module.format_chart_zone_label
+add_sr_zones_to_plotly = _chart_module.add_sr_zones_to_plotly
+add_trend_channel_to_plotly = _chart_module.add_trend_channel_to_plotly
+summarize_chart_structures = _chart_module.summarize_chart_structures
+compute_ultra_short_term_zone_signal = _chart_module.compute_ultra_short_term_zone_signal
+evaluate_chart_structure_bias = _chart_module.evaluate_chart_structure_bias
+build_trade_setup_overlay_v193 = _chart_module.build_trade_setup_overlay_v193
+add_current_price_marker_to_plotly_v204 = _chart_module.add_current_price_marker_to_plotly_v204
+add_trade_setup_overlay_to_plotly_v193 = _chart_module.add_trade_setup_overlay_to_plotly_v193
+build_candlestick_chart = _chart_module.build_candlestick_chart
 
 # ---------- Data Enrichment ----------
 def extract_analyst_data(ticker_obj, info):
@@ -11970,6 +13758,86 @@ def search_tickers(query, max_results=8):
     return clean
 
 
+
+# ---------- v21.1: robuste Ticker-/Firmennamen-Auflösung ----------
+_COMMON_NAME_TICKER_MAP_V202 = {
+    # US Mega/Large Caps
+    "apple": "AAPL", "apple inc": "AAPL", "aapl": "AAPL",
+    "microsoft": "MSFT", "microsoft corp": "MSFT", "msft": "MSFT",
+    "nvidia": "NVDA", "nvidia corp": "NVDA", "nvda": "NVDA",
+    "tesla": "TSLA", "tesla inc": "TSLA", "tsla": "TSLA",
+    "amazon": "AMZN", "amazon.com": "AMZN", "amzn": "AMZN",
+    "alphabet": "GOOGL", "google": "GOOGL", "googl": "GOOGL", "goog": "GOOG",
+    "meta": "META", "meta platforms": "META", "facebook": "META",
+    "amd": "AMD", "advanced micro devices": "AMD",
+    "broadcom": "AVGO", "avgo": "AVGO",
+    "netflix": "NFLX", "nflx": "NFLX",
+    "oracle": "ORCL", "orcl": "ORCL",
+    "salesforce": "CRM", "crm": "CRM",
+    "palantir": "PLTR", "pltr": "PLTR",
+    # Europe / Germany commonly used in this app
+    "asml": "ASML", "asml holding": "ASML",
+    "sap": "SAP.DE", "sap se": "SAP.DE",
+    "siemens": "SIE.DE", "siemens ag": "SIE.DE",
+    "siemens energy": "ENR.DE",
+    "basf": "BAS.DE", "basf se": "BAS.DE",
+    "rheinmetall": "RHM.DE", "rheinmetall ag": "RHM.DE",
+    "allianz": "ALV.DE", "allianz se": "ALV.DE",
+    "deutsche telekom": "DTE.DE", "telekom": "DTE.DE",
+    "mercedes": "MBG.DE", "mercedes benz": "MBG.DE", "mercedes-benz": "MBG.DE",
+    "volkswagen": "VOW3.DE", "vw": "VOW3.DE",
+    "bmw": "BMW.DE",
+    "bayer": "BAYN.DE",
+    "adidas": "ADS.DE",
+    "airbus": "AIR.PA", "lvmh": "MC.PA", "novo nordisk": "NVO",
+}
+
+
+def _v202_norm_query(value):
+    txt = str(value or "").strip().lower()
+    txt = txt.replace("-", " ").replace("_", " ")
+    txt = re.sub(r"\s+", " ", txt)
+    return txt
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _v202_yfinance_symbol_has_prices(symbol):
+    """Validiert direkte Ticker ohne die Yahoo-Such-API.
+
+    Die Yahoo Search API kann auf Streamlit Cloud gelegentlich leer laufen. Direkte
+    Ticker wie AAPL, ASML, SAP.DE oder GC=F sollen trotzdem funktionieren, wenn
+    yfinance Kursdaten liefert.
+    """
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return False
+    try:
+        hist = yf.Ticker(sym).history(period="7d", auto_adjust=False)
+        return bool(hist is not None and not hist.empty and "Close" in hist.columns and hist["Close"].dropna().shape[0] > 0)
+    except Exception:
+        return False
+
+
+def _v202_ticker_candidate_variants(raw):
+    txt = str(raw or "").strip()
+    if not txt:
+        return []
+    up = txt.upper()
+    variants = []
+    # Futures / Indizes / Börsensuffixe direkt respektieren.
+    if re.fullmatch(r"[A-Z0-9^=.-]{1,15}", up):
+        variants.append(up)
+    # Deutsche/EU-Namen ohne Suffix werden bei Bedarf mit typischen Suffixen geprüft.
+    if re.fullmatch(r"[A-Z0-9]{1,6}", up):
+        for suffix in [".DE", ".PA", ".AS", ".MI", ".SW", ".L"]:
+            variants.append(up + suffix)
+    seen = set()
+    out = []
+    for v in variants:
+        if v and v not in seen:
+            out.append(v); seen.add(v)
+    return out
+
 def looks_like_real_ticker(user_input):
     raw = str(user_input or "").strip()
     if not raw:
@@ -12026,15 +13894,23 @@ def score_search_result(query, item):
 
 
 def resolve_input_to_ticker(user_input, fallback=None):
+    """Robuste Eingabeauflösung für Ticker, Firmennamen und Rohstoff-Aliasse.
+
+    Reihenfolge v21.1:
+    1) Rohstoff-Aliasse wie Gold/Silber/WTI
+    2) gepflegte Common-Name-Aliasse für häufige Eingaben
+    3) Yahoo Search API, wenn verfügbar
+    4) validierter Direkt-Ticker-Fallback über yfinance-Kursdaten
+    5) übergebener Fallback
+    """
     user_input = str(user_input or "").strip()
     if not user_input:
         return fallback
 
     raw = user_input.strip()
     upper = raw.upper()
+    norm = _v202_norm_query(raw)
 
-    # v15.34.3: Rohstoffnamen wie "gold", "silver", "copper" nicht über Yahoo-Suche
-    # als falsche Aktien/ETFs auflösen, sondern direkt auf die passenden Futures mappen.
     commodity_alias = resolve_commodity_alias_v1534_3(raw)
     if commodity_alias:
         try:
@@ -12044,9 +13920,11 @@ def resolve_input_to_ticker(user_input, fallback=None):
             pass
         return commodity_alias
 
-    if looks_like_real_ticker(raw):
-        return upper
+    alias = _COMMON_NAME_TICKER_MAP_V202.get(norm)
+    if alias:
+        return alias
 
+    # Yahoo-Suche zuerst fuer Firmennamen, aber nicht als einzige Quelle.
     results = search_tickers(raw, max_results=8)
     if results:
         ranked = sorted(results, key=lambda x: score_search_result(raw, x), reverse=True)
@@ -12054,6 +13932,13 @@ def resolve_input_to_ticker(user_input, fallback=None):
         symbol = best.get("symbol")
         if symbol:
             return str(symbol).upper()
+
+    # Direkte Ticker auch dann akzeptieren, wenn die Yahoo-Suche leer bleibt.
+    # Wichtig: vorher kamen Common-Name-Aliasse und Yahoo-Suche, daher wird "Apple"
+    # nicht blind als APPLE genutzt, falls AAPL per Alias/Suche gefunden wurde.
+    for candidate in _v202_ticker_candidate_variants(raw):
+        if _v202_yfinance_symbol_has_prices(candidate):
+            return candidate
 
     return fallback if fallback else None
 
@@ -12127,7 +14012,7 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
         if val:
             return shorten_text(val, max_len)
 
-    # v15.23.13: Letzter Fallback für Radar-Snapshots/Abschnitte ohne Result-Objekt.
+    # v15.24.0: Letzter Fallback für Radar-Snapshots/Abschnitte ohne Result-Objekt.
     # Yahoo-Suche liefert für reine Ticker oft shortname/longname; das verhindert
     # insbesondere im Abschnitt "Jetzt spannend" die Anzeige Ticker = Name.
     if ticker:
@@ -12158,6 +14043,7 @@ def build_ranking_table(results):
         confidence_info = r.get("confidence_info", {}) or {}
         full_red_flag = r.get("top_red_flag", "-")
         full_thesis = r.get("short_thesis", r.get("decision_summary", "-"))
+        radar_v18 = build_professional_radar_decision_v18(r, "Ausgewogen")
 
         rows.append({
             "Ticker": r.get("ticker", "-"),
@@ -12165,10 +14051,20 @@ def build_ranking_table(results):
             "Setup-Typ": r.get("setup_type", "-"),
             "Kandidatentyp": radar_candidate_type(r),
             "Radar-Risiko": radar_risk_bucket(r),
+            "Radar-Score": radar_v18.get("score"),
+            "Radar-Grade": radar_v18.get("grade"),
+            "Radar-Bucket": radar_v18.get("bucket"),
+            "Radar-Subscores": radar_v18.get("subscores_text"),
+            "Radar-Gate": radar_v18.get("gate_reasons"),
+            "Heute-Relevanz": radar_v18.get("why_today"),
             "Setup-Reife": radar_setup_maturity(r),
-            "Radar-Priorität": radar_priority_label(r, "Ausgewogen"),
-            "Nächster Schritt": radar_next_step(r),
-            "Was bremst": radar_brake_reason(r),
+            "Radar-Priorität": radar_v18.get("priority") or radar_priority_label(r, "Ausgewogen"),
+            "Nächster Schritt": radar_v18.get("next_step") or radar_next_step(r),
+            "Was bremst": radar_v18.get("brake") or radar_brake_reason(r),
+            "Wave-Score": radar_v18.get("wave_score"),
+            "Wave-Impact": radar_v18.get("wave_label"),
+            "Wann aktiv?": radar_v18.get("wave_trigger"),
+            "Ziel bei Bestätigung": radar_v18.get("wave_target_zone"),
             "Benchmark": r.get("benchmark_label", "-"),
             "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
             "Company Quality": r.get("company", np.nan),
@@ -14859,6 +16755,142 @@ def _legacy_analyze_stock(
     }
 
 
+# ---------- v25.3: Modularisierung Phase 2 – Live/Watchlist ----------
+# Die Module muessen als Ordner "modules" direkt neben app.py liegen.
+# Der App-Ordner wird explizit in sys.path aufgenommen, damit die Imports auch
+# bei abweichendem Streamlit-Startverzeichnis stabil funktionieren.
+import sys as _sys
+from pathlib import Path as _ModulePath
+
+_APP_DIR_V252 = _ModulePath(__file__).resolve().parent
+if str(_APP_DIR_V252) not in _sys.path:
+    _sys.path.insert(0, str(_APP_DIR_V252))
+
+_MODULE_DIR_V252 = _APP_DIR_V252 / "modules"
+_REQUIRED_MODULE_FILES_V252 = (
+    _MODULE_DIR_V252 / "__init__.py",
+    _MODULE_DIR_V252 / "risk_calculator.py",
+    _MODULE_DIR_V252 / "event_log.py",
+    _MODULE_DIR_V252 / "position_monitor.py",
+    _MODULE_DIR_V252 / "live_monitor.py",
+    _MODULE_DIR_V252 / "watchlist_storage.py",
+)
+_missing_module_files_v252 = [str(x.relative_to(_APP_DIR_V252)) for x in _REQUIRED_MODULE_FILES_V252 if not x.exists()]
+if _missing_module_files_v252:
+    raise ModuleNotFoundError(
+        "Modulare App unvollstaendig bereitgestellt. Lade neben app.py auch den kompletten "
+        "Ordner 'modules/' in dasselbe Repository-Verzeichnis hoch. Fehlend: "
+        + ", ".join(_missing_module_files_v252)
+    )
+
+from modules import risk_calculator as _risk_module
+from modules import event_log as _event_module
+from modules import position_monitor as _position_module
+from modules import live_monitor as _live_module
+from modules import watchlist_storage as _watchlist_module
+
+_risk_module.configure_context(
+    build_professional_radar_decision_v18=build_professional_radar_decision_v18,
+    build_radar_entry_rr_package_v182=build_radar_entry_rr_package_v182,
+    _v210_alert_price=_v210_alert_price,
+    _radar_v182_entry_zone_text=_radar_v182_entry_zone_text,
+    _radar_v182_parse_zone=_radar_v182_parse_zone,
+    _radar_v182_stop_value=_radar_v182_stop_value,
+    _radar_v209_main_target_value=_radar_v209_main_target_value,
+)
+
+_v230_safe_float = _risk_module._v230_safe_float
+_v230_price_text = _risk_module._v230_price_text
+_v2410_infer_quote_currency = _risk_module._v2410_infer_quote_currency
+_v230_extract_position_inputs = _risk_module._v230_extract_position_inputs
+_v230_calculate_position_size = _risk_module._v230_calculate_position_size
+
+_event_module.configure_context(
+    base_dir=Path(__file__).resolve().parent,
+    time_provider=get_current_berlin_time,
+)
+_v2416_event_store_path = _event_module._v2416_event_store_path
+_v2416_load_event_store = _event_module._v2416_load_event_store
+_v2416_save_event_store = _event_module._v2416_save_event_store
+_v2416_log_event = _event_module._v2416_log_event
+_v2416_events_dataframe = _event_module._v2416_events_dataframe
+_v2416_reset_events = _event_module._v2416_reset_events
+
+_position_module.configure_context(
+    base_dir=Path(__file__).resolve().parent,
+    event_logger=_v2416_log_event,
+    safe_float=_v230_safe_float,
+    price_text=_v230_price_text,
+)
+_v244_position_store_key = _position_module._v244_position_store_key
+_v245_positions_store_path = _position_module._v245_positions_store_path
+_v245_safe_json_load = _position_module._v245_safe_json_load
+_v245_load_all_positions = _position_module._v245_load_all_positions
+_v245_save_all_positions = _position_module._v245_save_all_positions
+_v244_get_positions = _position_module._v244_get_positions
+_v244_save_positions = _position_module._v244_save_positions
+_v245_delete_positions_for_watchlist = _position_module._v245_delete_positions_for_watchlist
+_v244_row_price = _position_module._v244_row_price
+_v244_calc_trade_state = _position_module._v244_calc_trade_state
+_v244_positions_dataframe = _position_module._v244_positions_dataframe
+
+# v25.3: Live-Monitor-Modul konfigurieren
+_live_module.configure_context(
+    _v210_alert_num=_v210_alert_num,
+    _v210_alert_price=_v210_alert_price,
+    _v214_monitor_final_release_check=_v214_monitor_final_release_check,
+    _v232_is_current_baseline_source=_v232_is_current_baseline_source,
+    build_professional_radar_decision_v18=build_professional_radar_decision_v18,
+    build_setup_alerts_v210=build_setup_alerts_v210,
+    get_current_berlin_time=get_current_berlin_time,
+    radar_company_display_name_v15237=radar_company_display_name_v15237,
+    shorten_text=shorten_text,
+    analyze_stock_live_cached_v2414=analyze_stock_live_cached_v2414,
+    _v2414_market_bucket=_v2414_market_bucket,
+    _v2416_log_event=_v2416_log_event,
+)
+_v212_monitor_status_from_decision = _live_module._v212_monitor_status_from_decision
+build_live_watchlist_monitor_v212 = _live_module.build_live_watchlist_monitor_v212
+_v220_live_status_rank = _live_module._v220_live_status_rank
+_v220_live_change_label = _live_module._v220_live_change_label
+_v237_parse_live_score = _live_module._v237_parse_live_score
+_v237_set_live_row = _live_module._v237_set_live_row
+_v237_apply_live_signal_hysteresis = _live_module._v237_apply_live_signal_hysteresis
+_v240_live_trade_state = _live_module._v240_live_trade_state
+_v227_live_history_file_path = _live_module._v227_live_history_file_path
+_v227_load_persistent_live_history = _live_module._v227_load_persistent_live_history
+_v227_save_persistent_live_history = _live_module._v227_save_persistent_live_history
+reset_live_watchlist_status_history_v227 = _live_module.reset_live_watchlist_status_history_v227
+apply_live_watchlist_status_history_v220 = _live_module.apply_live_watchlist_status_history_v220
+
+# v25.3: Watchlist-Speicher/Queue-Modul konfigurieren
+_watchlist_module.configure_context(
+    _v2214_get_current_price_for_ticker=_v2214_get_current_price_for_ticker,
+    _v2214_load_start_price_store=_v2214_load_start_price_store,
+    _v2214_save_start_price_store=_v2214_save_start_price_store,
+    _v2214_valid_price=_v2214_valid_price,
+    _v2216_get_added_at_from_meta=_v2216_get_added_at_from_meta,
+    _v2216_get_historical_price_for_ticker=_v2216_get_historical_price_for_ticker,
+    _v232_is_current_baseline_source=_v232_is_current_baseline_source,
+    get_current_berlin_time=get_current_berlin_time,
+    add_entries_to_watchlist=add_entries_to_watchlist,
+    trigger_ui_refresh=trigger_ui_refresh,
+)
+_v228_norm_watchlist_ticker = _watchlist_module._v228_norm_watchlist_ticker
+_v2214_watchlist_key = _watchlist_module._v2214_watchlist_key
+_v2214_set_start_price = _watchlist_module._v2214_set_start_price
+_v2214_get_start_price_meta_map = _watchlist_module._v2214_get_start_price_meta_map
+_v232_delete_current_baselines_for_watchlist = _watchlist_module._v232_delete_current_baselines_for_watchlist
+_v234_set_current_baselines_for_missing = _watchlist_module._v234_set_current_baselines_for_missing
+backfill_watchlist_start_prices_v2214 = _watchlist_module.backfill_watchlist_start_prices_v2214
+_v228_get_pending_watchlist_adds = _watchlist_module._v228_get_pending_watchlist_adds
+_v228_pending_for_watchlist = _watchlist_module._v228_pending_for_watchlist
+_v228_pending_tickers_for_watchlist = _watchlist_module._v228_pending_tickers_for_watchlist
+queue_entries_to_watchlist_v228 = _watchlist_module.queue_entries_to_watchlist_v228
+save_pending_watchlist_adds_v228 = _watchlist_module.save_pending_watchlist_adds_v228
+clear_pending_watchlist_adds_v228 = _watchlist_module.clear_pending_watchlist_adds_v228
+render_pending_watchlist_adds_v228 = _watchlist_module.render_pending_watchlist_adds_v228
+
 # ---------- Main App Flow ----------
 logo_path = Path("a_logo_for_the_capital_hill_score_model_is_promi.png")
 
@@ -15117,6 +17149,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# v25.5: Beim Wechsel in einen anderen Hauptarbeitsbereich alte Live-Monitor-
+# Query-Parameter entfernen. Sonst kann ein spaeterer Browser-Rerun den alten
+# Watchlisten-Workspace wiederherstellen und den Radar scheinbar zum Screener
+# zurueckspringen lassen.
+def _clear_live_monitor_navigation_query_v255():
+    try:
+        for _key in ("workspace", "live_monitor", "refresh", "live_horizon"):
+            if _key in st.query_params:
+                del st.query_params[_key]
+    except Exception:
+        pass
+
 # v15.24.5: Einstieg bleibt sichtbar, Landing-/Workspace-Text entfernt.
 st.markdown("""<div class="landing-cards-wrap compact-entry-buttons">""", unsafe_allow_html=True)
 wc1, wc2, wc3, wc4 = st.columns(4)
@@ -15126,6 +17170,7 @@ with wc1:
         use_container_width=True,
         key="workspace_analysis_btn"
     ):
+        _clear_live_monitor_navigation_query_v255()
         st.session_state.workspace_mode = "Sofortanalyse"
 with wc2:
     if st.button(
@@ -15133,6 +17178,7 @@ with wc2:
         use_container_width=True,
         key="workspace_watchlist_btn"
     ):
+        _clear_live_monitor_navigation_query_v255()
         st.session_state.workspace_mode = "Watchlisten"
 with wc3:
     if st.button(
@@ -15140,6 +17186,7 @@ with wc3:
         use_container_width=True,
         key="workspace_position_btn"
     ):
+        _clear_live_monitor_navigation_query_v255()
         st.session_state.workspace_mode = "Positionen"
 with wc4:
     if st.button(
@@ -15147,6 +17194,7 @@ with wc4:
         use_container_width=True,
         key="workspace_candidate_radar_btn"
     ):
+        _clear_live_monitor_navigation_query_v255()
         st.session_state.workspace_mode = "Kandidaten-Radar"
 
 st.markdown("""</div>""", unsafe_allow_html=True)
@@ -15695,6 +17743,13 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 if str(x).strip()
             ]
 
+            # v22.8: Vorgemerkte Werte sofort lokal in der Watchlist anzeigen und im Live-Monitor nutzen,
+            # ohne sie direkt in Google Sheets zu schreiben.
+            pending_tickers_v228 = _v228_pending_tickers_for_watchlist(selected_watchlist_name)
+            for _pt in pending_tickers_v228:
+                if _pt and _pt not in current_tickers:
+                    current_tickers.append(_pt)
+
             st.markdown(
                 f'<div class="section-chip"><strong>Ausgewählte Liste:</strong> <span>{selected_watchlist_name} - Typ: {selected_watchlist_type} - Alert: {st.session_state.selected_watchlist_alert_mode} - Frequenz: {st.session_state.selected_watchlist_check_frequency} - Werte: {len(current_tickers)}</span></div>',
                 unsafe_allow_html=True
@@ -15779,7 +17834,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     if st.button("Aktuellen Ticker hinzufügen", use_container_width=True, key="add_current_ticker_watchlist"):
                         current_to_add = st.session_state.get("selected_ticker", "").strip().upper()
                         if current_to_add:
-                            ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, [current_to_add], check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
+                            ok, msg = queue_entries_to_watchlist_v228(
+                                selected_watchlist_name,
+                                selected_watchlist_type,
+                                [current_to_add],
+                                source="Aktueller Ticker",
+                                check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"),
+                                existing_tickers=current_tickers,
+                            )
                             if ok:
                                 st.success(msg)
                                 trigger_ui_refresh()
@@ -15808,13 +17870,106 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     matches = search_tickers(entry, max_results=1)
                                     if matches:
                                         resolved_entries.append(matches[0]["symbol"])
-                            ok, msg = add_entries_to_watchlist(selected_watchlist_name, selected_watchlist_type, resolved_entries, check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"))
+                            ok, msg = queue_entries_to_watchlist_v228(
+                                selected_watchlist_name,
+                                selected_watchlist_type,
+                                resolved_entries,
+                                source="Manuelle Eingabe",
+                                check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"),
+                                existing_tickers=current_tickers,
+                            )
                             if ok:
                                 st.success(msg)
                                 st.session_state.watchlist_bulk_add = ""
                                 trigger_ui_refresh()
                             else:
                                 st.error(msg)
+
+                render_pending_watchlist_adds_v228(selected_watchlist_name=selected_watchlist_name)
+
+                # v22.17: Bestehende Watchlists koennen Startkurse lokal nachtragen.
+                with st.expander("Startkurse / Performance-Kontext", expanded=False):
+                    st.caption("Startkurse werden lokal gespeichert und dienen nur dem Live-Monitor-Kontext 'Seit Aufnahme'. Google Sheets wird dabei nicht zusaetzlich belastet.")
+                    start_meta_map_v2214 = _v2214_get_start_price_meta_map(selected_watchlist_name)
+                    have_start_v2214 = sum(1 for _tk in current_tickers if _tk in start_meta_map_v2214 and _v2214_valid_price(start_meta_map_v2214[_tk].get("Startkurs")) is not None)
+                    st.write(f"Startkurs vorhanden: {have_start_v2214} / {len(current_tickers)}")
+                    start_meta_from_sheet_v2216 = {}
+                    try:
+                        if current_watchlist_df is not None and not current_watchlist_df.empty:
+                            for _, _row in current_watchlist_df.iterrows():
+                                _tk = _v228_norm_watchlist_ticker(_row.get("Ticker"))
+                                if _tk:
+                                    start_meta_from_sheet_v2216[_tk] = dict(_row)
+                    except Exception:
+                        start_meta_from_sheet_v2216 = {}
+                    c_back1, c_back2, c_back3, c_back4, c_back5 = st.columns([1.0, 1.0, 1.0, 1.15, 1.25])
+                    with c_back1:
+                        if st.button("Historische Startkurse nachtragen", use_container_width=True, key="backfill_start_prices_v2214"):
+                            ok, msg = backfill_watchlist_start_prices_v2214(selected_watchlist_name, current_tickers, force=False, meta_by_ticker=start_meta_from_sheet_v2216, prefer_historical=True, allow_current_fallback=False)
+                            if ok:
+                                st.success(msg)
+                                trigger_ui_refresh()
+                            else:
+                                st.warning(msg)
+                    with c_back2:
+                        if st.button("Historisch neu berechnen", use_container_width=True, key="recalc_start_prices_historical_v2216"):
+                            ok, msg = backfill_watchlist_start_prices_v2214(selected_watchlist_name, current_tickers, force=True, meta_by_ticker=start_meta_from_sheet_v2216, prefer_historical=True, allow_current_fallback=False)
+                            if ok:
+                                st.success(msg)
+                                trigger_ui_refresh()
+                            else:
+                                st.warning(msg)
+                    with c_back3:
+                        if st.button("Aktuelle Baselines löschen", use_container_width=True, key="delete_current_baselines_v232"):
+                            n = _v232_delete_current_baselines_for_watchlist(selected_watchlist_name)
+                            st.success(f"{n} aktuelle Baseline(s) gelöscht." if n else "Keine aktuellen Baselines gefunden.")
+                            trigger_ui_refresh()
+                    with c_back4:
+                        if st.button("Baseline ab jetzt setzen", use_container_width=True, key="set_current_baselines_missing_v234"):
+                            ok, msg = _v234_set_current_baselines_for_missing(selected_watchlist_name, current_tickers)
+                            if ok:
+                                st.success(msg)
+                                trigger_ui_refresh()
+                            else:
+                                st.warning(msg)
+                    with c_back5:
+                        st.caption("v23.9: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
+
+                    st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
+                    if current_tickers:
+                        m1, m2, m3, m4 = st.columns([1.0, 1.0, 1.0, 1.2])
+                        with m1:
+                            manual_start_ticker_v2217 = st.selectbox("Ticker", options=current_tickers, key="manual_start_ticker_v2217")
+                        with m2:
+                            current_manual_meta_v2217 = _v2214_get_start_price_meta_map(selected_watchlist_name).get(_v228_norm_watchlist_ticker(manual_start_ticker_v2217), {})
+                            default_manual_price_v2217 = _v2214_valid_price(current_manual_meta_v2217.get("Startkurs")) or 0.0
+                            manual_start_price_v2217 = st.number_input("Startkurs", min_value=0.0, value=float(default_manual_price_v2217), step=0.01, format="%.4f", key="manual_start_price_v2217")
+                        with m3:
+                            manual_start_date_v2217 = st.date_input("Aufnahmedatum", value=date.today(), key="manual_start_date_v2217")
+                        with m4:
+                            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                            if st.button("Startkurs speichern", use_container_width=True, key="save_manual_start_price_v2217"):
+                                if manual_start_price_v2217 and manual_start_price_v2217 > 0:
+                                    ok = _v2214_set_start_price(selected_watchlist_name, manual_start_ticker_v2217, float(manual_start_price_v2217), source="Manuell", added_at=str(manual_start_date_v2217), force=True)
+                                    if ok:
+                                        st.success(f"Startkurs für {manual_start_ticker_v2217} gespeichert.")
+                                        trigger_ui_refresh()
+                                    else:
+                                        st.warning("Startkurs konnte nicht gespeichert werden.")
+                                else:
+                                    st.warning("Bitte einen Startkurs > 0 eingeben.")
+                            if st.button("Kurs aus Datum holen", use_container_width=True, key="fetch_manual_start_price_v2217"):
+                                hist_price_v2217 = _v2216_get_historical_price_for_ticker(manual_start_ticker_v2217, str(manual_start_date_v2217))
+                                if hist_price_v2217 is not None:
+                                    ok = _v2214_set_start_price(selected_watchlist_name, manual_start_ticker_v2217, hist_price_v2217, source="Historisch manuell", added_at=str(manual_start_date_v2217), force=True)
+                                    if ok:
+                                        st.success(f"Historischer Startkurs für {manual_start_ticker_v2217}: {hist_price_v2217:.4f}")
+                                        trigger_ui_refresh()
+                                    else:
+                                        st.warning("Historischer Startkurs konnte nicht gespeichert werden.")
+                                else:
+                                    st.warning("Für dieses Datum konnte kein historischer Kurs geladen werden.")
+                    st.caption("Hinweis: Wenn eine alte Watchlist kein Aufnahmedatum gespeichert hat, kann die App die frühere +/-% Entwicklung nicht rekonstruieren. Dann hilft nur manuell Startkurs/Datum setzen.")
 
                 st.markdown("**Inhalt der aktuellen Watchlist**")
                 st.caption(f"Anzahl Werte: {len(current_tickers)}")
@@ -15897,6 +18052,688 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     else:
                         st.info("In dieser Watchlist sind noch keine Ticker.")
 
+
+            # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
+            st.markdown("### Live-Watchlist / Trading-Cockpit v25.1")
+            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
+            st.caption("Performance v25.1: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
+            lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
+            with lm1:
+                live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
+                st.session_state.live_watchlist_monitor_enabled = live_monitor_enabled
+            with lm2:
+                refresh_options = ["15 Minuten", "30 Minuten", "60 Minuten"]
+                current_refresh = st.session_state.get("live_watchlist_refresh_interval", "30 Minuten")
+                if current_refresh not in refresh_options:
+                    current_refresh = "30 Minuten"
+                refresh_label = st.selectbox("Refresh", refresh_options, index=refresh_options.index(current_refresh), key="live_watchlist_refresh_interval_widget")
+                st.session_state.live_watchlist_refresh_interval = refresh_label
+                # v24.11: Die manuelle Auswahl sofort in der URL spiegeln, damit
+                # der naechste Browser-Refresh nicht wieder den alten Wert nutzt.
+                try:
+                    if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
+                        st.query_params["refresh"] = str(refresh_label).split()[0]
+                except Exception:
+                    pass
+            with lm3:
+                horizon_options = ["Kurzfrist / Trading", "Swing / 1-4 Wochen"]
+                current_live_horizon = st.session_state.get("live_watchlist_horizon", "Kurzfrist / Trading")
+                if current_live_horizon not in horizon_options:
+                    current_live_horizon = "Kurzfrist / Trading"
+                live_monitor_horizon = st.selectbox("Live-Zeithorizont", horizon_options, index=horizon_options.index(current_live_horizon), key="live_watchlist_horizon_widget")
+                st.session_state.live_watchlist_horizon = live_monitor_horizon
+                try:
+                    if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
+                        st.query_params["live_horizon"] = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
+                except Exception:
+                    pass
+            with lm4:
+                only_active = st.checkbox("Nur grün/gelb", value=bool(st.session_state.get("live_watchlist_only_active", False)), key="live_watchlist_only_active_widget")
+                st.session_state.live_watchlist_only_active = only_active
+                st.caption("Prüfstil: Charttechnik")
+            # v23.9: Pruefstil bleibt Charttechnik, aber der Live-Zeithorizont ist explizit waählbar.
+            # Kurzfrist / Trading nutzt die neue Short-Term-Live-Engine; Swing bleibt als bisheriger Modus erhalten.
+            monitor_style = "Charttechnik"
+            st.session_state.live_watchlist_style = monitor_style
+
+            run_live_monitor = False
+            manual_live_run_v246 = False
+            lm_run1, lm_run2 = st.columns([1.0, 2.0])
+            with lm_run1:
+                if st.button("Jetzt prüfen", use_container_width=True, key="run_live_watchlist_monitor_now"):
+                    run_live_monitor = True
+                    manual_live_run_v246 = True
+                    st.session_state.live_watchlist_last_manual_run = datetime.now().isoformat()
+            with lm_run2:
+                if live_monitor_enabled:
+                    interval_ms = {"15 Minuten": 15 * 60 * 1000, "30 Minuten": 30 * 60 * 1000, "60 Minuten": 60 * 60 * 1000}.get(refresh_label, 30 * 60 * 1000)
+                    refresh_minutes = {"15 Minuten": "15", "30 Minuten": "30", "60 Minuten": "60"}.get(refresh_label, "30")
+                    live_horizon_param = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
+                    # v22.7: Reload-Ziel in der URL speichern, sonst startet Streamlit Cloud
+                    # nach einem Browser-Reload gelegentlich wieder im Startmenue.
+                    try:
+                        st.query_params["workspace"] = "Watchlisten"
+                        st.query_params["live_monitor"] = "1"
+                        st.query_params["refresh"] = refresh_minutes
+                        st.query_params["live_horizon"] = live_horizon_param
+                    except Exception:
+                        pass
+                    st.info(f"Live-Monitor aktiv: native Aktualisierung alle {refresh_label}, solange der Bereich Live-Screener geöffnet ist. Kein Browser-Reload; Risiko- und Positionsdaten bleiben erhalten.")
+
+                    # v25.1: Nativer Streamlit-Refresh statt Browser-/JavaScript-Reload.
+                    # Das Fragment prueft nur im aktiven Live-Screener-Bereich zyklisch,
+                    # ob das Intervall abgelaufen ist, und startet dann einen normalen
+                    # Streamlit-App-Rerun. Session-State und Cockpit-Auswahl bleiben erhalten.
+                    _native_refresh_seconds_v2415 = max(60, int(interval_ms / 1000))
+
+                    @st.fragment(run_every=_native_refresh_seconds_v2415)
+                    def _native_live_screener_refresh_v2415():
+                        _active_area = str(st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener"))
+                        _enabled = bool(st.session_state.get("live_watchlist_monitor_enabled", False))
+                        _now = datetime.now()
+                        _last_raw = st.session_state.get("v2415_native_live_refresh_ts")
+                        try:
+                            _last = datetime.fromisoformat(str(_last_raw)) if _last_raw else None
+                        except Exception:
+                            _last = None
+
+                        # Beim ersten Rendern nur den Startzeitpunkt setzen; nicht sofort neu laden.
+                        if _last is None:
+                            st.session_state.v2415_native_live_refresh_ts = _now.isoformat()
+                            return
+
+                        _elapsed = (_now - _last).total_seconds()
+                        if _enabled and _active_area == "📡 Live-Screener" and _elapsed >= (_native_refresh_seconds_v2415 - 2):
+                            st.session_state.v2415_native_live_refresh_ts = _now.isoformat()
+                            st.session_state.v2415_native_refresh_due = True
+                            st.rerun(scope="app")
+
+                    _native_live_screener_refresh_v2415()
+                else:
+                    # Wenn der Monitor ausgeschaltet wird, URL-Refreshmarker entfernen.
+                    try:
+                        if str(st.query_params.get("live_monitor", "")) in {"1", "true", "True"}:
+                            st.query_params.pop("live_monitor", None)
+                            st.query_params.pop("refresh", None)
+                            st.query_params.pop("live_horizon", None)
+                    except Exception:
+                        pass
+
+            # v24.6: Live-Monitor-Scan-Cache.
+            # Streamlit fuehrt das Skript bei jeder Auswahl neu aus. Ohne Cache startet
+            # der komplette Watchlist-Screener auch dann neu, wenn man nur im
+            # Risiko-/Positionsgroessen-Rechner einen Wert auswaehlt. Der Cache ist
+            # an Watchlist, Tickerliste, Horizont und Stil gebunden und wird erst nach
+            # Ablauf des eingestellten Refresh-Intervalls oder per "Jetzt pruefen" neu gebaut.
+            try:
+                refresh_minutes_v246 = int(str(refresh_label).split()[0])
+            except Exception:
+                refresh_minutes_v246 = 30
+            live_cache_key_v246 = {
+                "watchlist": str(selected_watchlist_name or ""),
+                "tickers": tuple([str(t).strip().upper() for t in (current_tickers or [])]),
+                "style": str(monitor_style or ""),
+                "horizon": str(live_monitor_horizon or ""),
+            }
+            live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
+            cache_ok_v246 = False
+            cache_stale_v246 = True
+            try:
+                cache_ok_v246 = bool(live_cache_v246) and live_cache_v246.get("key") == live_cache_key_v246 and isinstance(live_cache_v246.get("live_df"), pd.DataFrame)
+                cache_ts_v246 = datetime.fromisoformat(str(live_cache_v246.get("ts"))) if cache_ok_v246 else None
+                if cache_ts_v246 is not None:
+                    cache_stale_v246 = (datetime.now() - cache_ts_v246).total_seconds() >= refresh_minutes_v246 * 60
+            except Exception:
+                cache_ok_v246 = False
+                cache_stale_v246 = True
+            native_refresh_due_v2415 = bool(st.session_state.pop("v2415_native_refresh_due", False))
+            live_should_scan_v246 = bool(manual_live_run_v246 or run_live_monitor or native_refresh_due_v2415 or (live_monitor_enabled and (not cache_ok_v246 or cache_stale_v246)))
+            show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246)
+
+            if show_live_monitor_v246:
+                if not current_tickers:
+                    st.info("Diese Watchlist ist leer.")
+                else:
+                    if live_should_scan_v246:
+                        with st.spinner(f"Live-Watchlist wird geprüft ({min(len(current_tickers), 40)} Werte) ..."):
+                            current_watchlist_meta_by_ticker = {}
+                            try:
+                                if current_watchlist_df is not None and not current_watchlist_df.empty:
+                                    for _, _row in current_watchlist_df.iterrows():
+                                        _tk = _v228_norm_watchlist_ticker(_row.get("Ticker"))
+                                        if _tk and _tk not in current_watchlist_meta_by_ticker:
+                                            current_watchlist_meta_by_ticker[_tk] = dict(_row)
+                            except Exception:
+                                current_watchlist_meta_by_ticker = {}
+                            # v22.17: lokal gespeicherte Startkurse ergaenzen/ueberschreiben die Sheets-Metadaten.
+                            try:
+                                for _tk, _meta in _v2214_get_start_price_meta_map(selected_watchlist_name).items():
+                                    if not _tk:
+                                        continue
+                                    base = current_watchlist_meta_by_ticker.get(_tk, {})
+                                    merged = dict(base)
+                                    merged.update(dict(_meta))
+                                    current_watchlist_meta_by_ticker[_tk] = merged
+                            except Exception:
+                                pass
+                            try:
+                                for _item in _v228_pending_for_watchlist(selected_watchlist_name):
+                                    _tk = _v228_norm_watchlist_ticker(_item.get("Ticker"))
+                                    if _tk:
+                                        base = current_watchlist_meta_by_ticker.get(_tk, {})
+                                        merged = dict(base)
+                                        merged.update(dict(_item))
+                                        current_watchlist_meta_by_ticker[_tk] = merged
+                            except Exception:
+                                pass
+                            live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40, watchlist_meta_by_ticker=current_watchlist_meta_by_ticker, live_horizon=live_monitor_horizon)
+                        live_events_df = pd.DataFrame()
+                        if not live_df.empty:
+                            live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_watchlist_name, style_name=f"{monitor_style} | {live_monitor_horizon}")
+                        try:
+                            live_errors_cache_v246 = live_errors.copy() if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
+                        except Exception:
+                            live_errors_cache_v246 = pd.DataFrame()
+                        st.session_state["v246_live_monitor_cache"] = {
+                            "key": live_cache_key_v246,
+                            "ts": datetime.now().isoformat(),
+                            "live_df": live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame(),
+                            "live_errors": live_errors_cache_v246,
+                        }
+                    else:
+                        try:
+                            live_df = live_cache_v246.get("live_df", pd.DataFrame()).copy()
+                        except Exception:
+                            live_df = pd.DataFrame()
+                        try:
+                            live_errors = live_cache_v246.get("live_errors", pd.DataFrame()).copy()
+                        except Exception:
+                            live_errors = pd.DataFrame()
+                        live_events_df = pd.DataFrame()
+                        try:
+                            cache_ts_txt_v246 = datetime.fromisoformat(str(live_cache_v246.get("ts"))).strftime("%d.%m.%Y %H:%M:%S")
+                            st.caption(f"Zwischengespeicherte Live-Ergebnisse vom {cache_ts_txt_v246}. Neuer Scan erst nach Refresh-Intervall oder per 'Jetzt prüfen'.")
+                        except Exception:
+                            st.caption("Zwischengespeicherte Live-Ergebnisse. Neuer Scan erst nach Refresh-Intervall oder per 'Jetzt prüfen'.")
+                    if only_active and not live_df.empty:
+                        live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
+                    if live_df.empty:
+                        st.info("Aktuell keine grünen oder gelben Trigger in dieser Watchlist." if only_active else "Keine Live-Watchlist-Ergebnisse verfügbar.")
+                        try:
+                            _live_errors_df = live_errors if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
+                        except Exception:
+                            _live_errors_df = pd.DataFrame()
+                        if _live_errors_df is not None and not _live_errors_df.empty:
+                            st.warning(f"{len(_live_errors_df)} Ticker konnten nicht geprüft werden. Details anzeigen, um Daten-/Tickerfehler zu sehen.")
+                            with st.expander("Live-Monitor Fehlerdetails", expanded=False):
+                                st.dataframe(_live_errors_df, hide_index=True, use_container_width=True)
+                    else:
+                        # v24.14: Nur den aktiven Cockpit-Bereich rendern.
+                        # Anders als st.tabs fuehrt diese Navigation nicht den Code aller
+                        # Bereiche bei jedem Widget-Rerun aus. Risiko-/Positions-Eingaben
+                        # starten dadurch keine teuren Analysen aus anderen Bereichen.
+                        cockpit_options = [
+                            "📡 Live-Screener", "📐 Risiko-Rechner",
+                            "📌 Positionen / Exit", "🧾 Historie & Details",
+                        ]
+                        current_cockpit = st.session_state.get("watchlist_cockpit_area_v2413", cockpit_options[0])
+                        if current_cockpit not in cockpit_options:
+                            current_cockpit = cockpit_options[0]
+                        cockpit_area = st.radio(
+                            "Trading-Cockpit",
+                            cockpit_options,
+                            index=cockpit_options.index(current_cockpit),
+                            horizontal=True,
+                            key="watchlist_cockpit_area_v2413",
+                            label_visibility="collapsed",
+                        )
+                        st.caption("Nur der gewählte Arbeitsbereich wird ausgeführt; der letzte Live-Scan bleibt im Cache.")
+
+                        if cockpit_area == "📡 Live-Screener":
+                            if "Radar-Bucket" in live_df.columns and "Status" in live_df.columns:
+                                override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
+                                if bool(override_mask.any()):
+                                    st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
+                            st.caption("Volatilität = ATR(14) in % des Kurses: typische tägliche Handelsspanne; höher bedeutet größere Chancen, aber auch größere Stop-/Positionsrisiken.")
+                            # v24.3: Lesbare operative Haupttabelle.
+                            # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
+                            # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
+                            # scrollen, um den Unternehmensnamen zu sehen.
+                            main_cols = [
+                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Live-Score",
+                                "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
+                                "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung",
+                            ]
+                            optional_cols = [c for c in main_cols if c in live_df.columns]
+                            live_display_df = live_df[optional_cols].copy() if optional_cols else live_df.copy()
+
+                            def _v243_clean_cell(x):
+                                try:
+                                    txt = str(x or "").strip()
+                                    if txt.lower() in {"none", "nan"}:
+                                        return "-"
+                                    # Sicherheitsnetz gegen interne Streamlit-/Tabellenartefakte.
+                                    if "column index out of bounds" in txt.lower():
+                                        return "-"
+                                    return txt
+                                except Exception:
+                                    return "-"
+
+                            def _v243_clip_cell(x, max_len=46):
+                                txt = _v243_clean_cell(x)
+                                return txt if len(txt) <= max_len else txt[:max_len - 1] + "…"
+
+                            for _col in live_display_df.columns:
+                                live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)
+                            for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24}.items():
+                                if _col in live_display_df.columns:
+                                    live_display_df[_col] = live_display_df[_col].apply(lambda x, m=_max: _v243_clip_cell(x, m))
+
+                            st.dataframe(live_display_df, hide_index=True, use_container_width=True, height=min(520, 42 * len(live_display_df) + 55))
+                            with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
+                                detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
+                                try:
+                                    detail_df = detail_df.applymap(lambda x: "-" if "column index out of bounds" in str(x).lower() else x)
+                                except Exception:
+                                    pass
+                                st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
+                            green_count = int((live_df["Ampel"] == "🟢").sum()) if "Ampel" in live_df.columns else 0
+                            yellow_count = int((live_df["Ampel"] == "🟡").sum()) if "Ampel" in live_df.columns else 0
+                            red_count = int((live_df["Ampel"] == "🔴").sum()) if "Ampel" in live_df.columns else 0
+                            changed_count = int((live_df["Änderung"].astype(str).isin(["Neu", "Verbessert", "Verschlechtert", "Geändert"])).sum()) if "Änderung" in live_df.columns else 0
+                            score_txt = ""
+                            if "Live-Score" in live_df.columns:
+                                try:
+                                    score_vals = live_df["Live-Score"].astype(str).str.extract(r"(\d+)")[0].dropna().astype(float)
+                                    if not score_vals.empty:
+                                        score_txt = f" · Score Ø {score_vals.mean():.0f}/100"
+                                except Exception:
+                                    score_txt = ""
+                            st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
+
+                        # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
+                        elif cockpit_area == "📐 Risiko-Rechner":
+                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.14")
+                            st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
+                            calc_df = live_df.copy()
+                            if not calc_df.empty and "Ampel" in calc_df.columns:
+                                preferred_mask = calc_df["Ampel"].isin(["🟢", "🟡"])
+                                if bool(preferred_mask.any()):
+                                    calc_df = calc_df[preferred_mask].copy()
+                            if calc_df.empty:
+                                st.info("Keine grünen oder gelben Live-Kandidaten für den Risiko-Rechner sichtbar. Filter anpassen oder Watchlist erneut prüfen.")
+                            else:
+                                def _v230_row_label(row):
+                                    tk = str(row.get("Ticker") or "-")
+                                    stx = str(row.get("Status") or "-")
+                                    score = str(row.get("Live-Score") or "-")
+                                    price_txt = str(row.get("Kurs") or "n/a")
+                                    return f"{tk} · {stx} · {score} · Kurs {price_txt}"
+                                calc_options = [_v230_row_label(row) for _, row in calc_df.iterrows()]
+                                csel1, csel2 = st.columns([1.5, 1.0])
+                                with csel1:
+                                    selected_calc_label = st.selectbox("Setup auswählen", calc_options, index=0, key="v230_risk_calc_selected_live_row")
+                                selected_calc_idx = calc_options.index(selected_calc_label)
+                                selected_calc_row = calc_df.iloc[selected_calc_idx].to_dict()
+                                selected_calc_ticker = str(selected_calc_row.get("Ticker") or "").strip().upper()
+                                with csel2:
+                                    # v24.10: Waehrung nicht global auf EUR festhalten.
+                                    # Die Einheit wird je Ticker aus der Kurswaehrung abgeleitet
+                                    # und tickerbezogen gespeichert, damit US-Werte USD anzeigen.
+                                    default_risk_currency_v2410 = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, fallback="USD")
+                                    currency_key_v2410 = f"v230_risk_currency_widget_{re.sub(r'[^A-Za-z0-9_]+', '_', selected_calc_ticker or 'UNKNOWN')}"
+                                    risk_currency = st.text_input("Währung/Einheit", value=st.session_state.get(currency_key_v2410, default_risk_currency_v2410), key=currency_key_v2410)
+                                    risk_currency = str(risk_currency or default_risk_currency_v2410 or "USD").strip().upper()
+
+                                # v24.6: Risiko-Basis je Ticker cachen. Die Auswahl im Rechner
+                                # darf nicht immer wieder eine komplette Einzelanalyse starten.
+                                risk_cache_key_v246 = f"{selected_calc_ticker}|{monitor_style}|Swing (1-4 Wochen)"
+                                risk_cache_store_v246 = st.session_state.get("v246_risk_basis_cache", {})
+                                if risk_cache_key_v246 in risk_cache_store_v246:
+                                    risk_inputs = dict(risk_cache_store_v246.get(risk_cache_key_v246) or {})
+                                    risk_error = None
+                                else:
+                                    with st.spinner(f"Risiko-Basis für {selected_calc_ticker} wird berechnet ..."):
+                                        try:
+                                            risk_result = analyze_stock(
+                                                ticker=selected_calc_ticker,
+                                                # v24.0: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
+                                                # der gewaehlte Live-Horizont beeinflusst Status/Score, nicht den
+                                                # unsupported Core-Horizon-Parameter.
+                                                horizon="Swing (1-4 Wochen)",
+                                                depot=10000,
+                                                risk_pct=1.0,
+                                                override=0.0,
+                                                buy_in_override=0.0,
+                                                smart_money_default=True,
+                                                strict_mode=True,
+                                            )
+                                            risk_inputs = _v230_extract_position_inputs(risk_result, style_name=monitor_style)
+                                            risk_inputs["currency"] = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, risk_result, fallback=default_risk_currency_v2410)
+                                            risk_cache_store_v246[risk_cache_key_v246] = dict(risk_inputs)
+                                            st.session_state["v246_risk_basis_cache"] = risk_cache_store_v246
+                                            risk_error = None
+                                        except Exception as exc:
+                                            risk_inputs = {}
+                                            risk_error = str(exc)[:220]
+                                if risk_error:
+                                    st.warning(f"Risiko-Basis konnte nicht berechnet werden: {risk_error}")
+                                else:
+                                    # Falls die Risiko-Basis eine genauere Waehrung liefert, hat sie Vorrang.
+                                    risk_currency = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, risk_inputs, fallback=risk_currency)
+                                    # v24.8: Der Risiko-Rechner darf beim Wechsel des Tickerauswahlfeldes
+                                    # keine alten Entry-/Stop-/Ziel-Widgetwerte eines anderen Tickers behalten.
+                                    # Daher werden die Widget-Keys tickerbezogen geführt. Außerdem hat der
+                                    # aktuelle Live-Monitor-Kurs Vorrang vor einem ggf. gecachten Analysepreis.
+                                    live_row_price_v248 = _v230_safe_float(selected_calc_row.get("Kurs"), default=None)
+                                    if live_row_price_v248 is not None and live_row_price_v248 > 0:
+                                        risk_inputs["price"] = live_row_price_v248
+                                        risk_inputs["entry_default"] = live_row_price_v248
+
+                                    ticker_key_v248 = re.sub(r"[^A-Za-z0-9_]+", "_", selected_calc_ticker or "UNKNOWN")
+                                    entry_widget_key_v248 = f"v230_entry_widget_{ticker_key_v248}"
+                                    stop_widget_key_v248 = f"v230_stop_widget_{ticker_key_v248}"
+                                    target_widget_key_v248 = f"v230_target_widget_{ticker_key_v248}"
+                                    current_btn_key_v248 = f"v230_use_current_price_btn_{ticker_key_v248}"
+
+                                    st.markdown(
+                                        f"**{selected_calc_ticker}** · Status: **{selected_calc_row.get('Status', '-')}** · Live-Score: **{selected_calc_row.get('Live-Score', '-')}** · Radar-Bucket: **{selected_calc_row.get('Radar-Bucket', '-')}**"
+                                    )
+                                    st.caption(
+                                        f"Live-Kurs {_v230_price_text(risk_inputs.get('price'))} · Entry-Zone {risk_inputs.get('entry_zone') or '-'} · Vorschlags-Stop {_v230_price_text(risk_inputs.get('stop'))} · Ziel {_v230_price_text(risk_inputs.get('target'))} ({risk_inputs.get('target_source') or '-'})"
+                                    )
+
+                                    # v24.8: Pending-Override nur auf denselben Ticker anwenden und vor
+                                    # der Widget-Erstellung setzen.
+                                    _pending_entry_override_v248 = st.session_state.pop("v247_pending_entry_override", None)
+                                    if isinstance(_pending_entry_override_v248, dict):
+                                        if str(_pending_entry_override_v248.get("ticker") or "").upper() == selected_calc_ticker:
+                                            try:
+                                                st.session_state[entry_widget_key_v248] = float(round(float(_pending_entry_override_v248.get("value")), 4))
+                                            except Exception:
+                                                pass
+                                    elif _pending_entry_override_v248 is not None:
+                                        try:
+                                            st.session_state[entry_widget_key_v248] = float(round(float(_pending_entry_override_v248), 4))
+                                        except Exception:
+                                            pass
+
+                                    rc1, rc2, rc3, rc4 = st.columns(4)
+                                    default_account = float(st.session_state.get("v230_account_size", 50000.0) or 50000.0)
+                                    default_risk_pct = float(st.session_state.get("v230_risk_pct", 0.5) or 0.5)
+                                    default_max_pos = float(st.session_state.get("v230_max_position_pct", 12.0) or 12.0)
+                                    with rc1:
+                                        account_size = st.number_input("Depotgröße", min_value=0.0, value=default_account, step=1000.0, key="v230_account_size_widget")
+                                        st.session_state.v230_account_size = account_size
+                                    with rc2:
+                                        risk_pct_input = st.number_input("Risiko pro Trade (%)", min_value=0.01, max_value=10.0, value=default_risk_pct, step=0.05, key="v230_risk_pct_widget")
+                                        st.session_state.v230_risk_pct = risk_pct_input
+                                    with rc3:
+                                        entry_default = _v230_safe_float(risk_inputs.get("entry_default"), default=0.0) or 0.0
+                                        entry_input = st.number_input("Geplanter Entry", min_value=0.0, value=float(round(entry_default, 4)), step=0.01, key=entry_widget_key_v248)
+                                    with rc4:
+                                        stop_default = _v230_safe_float(risk_inputs.get("stop"), default=0.0) or 0.0
+                                        stop_input = st.number_input("Stop / Invalidierung", min_value=0.0, value=float(round(stop_default, 4)), step=0.01, key=stop_widget_key_v248)
+
+                                    rc5, rc6, rc7 = st.columns([1.0, 1.0, 1.2])
+                                    with rc5:
+                                        target_default = _v230_safe_float(risk_inputs.get("target"), default=0.0) or 0.0
+                                        target_input = st.number_input("Ziel / Teilziel", min_value=0.0, value=float(round(target_default, 4)), step=0.01, key=target_widget_key_v248)
+                                    with rc6:
+                                        max_position_pct = st.number_input("Max. Positionsanteil (%)", min_value=0.0, max_value=100.0, value=default_max_pos, step=1.0, key="v230_max_position_pct_widget")
+                                        st.session_state.v230_max_position_pct = max_position_pct
+                                    with rc7:
+                                        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                                        use_current_as_entry = st.button("Aktuellen Kurs als Entry setzen", use_container_width=True, key=current_btn_key_v248)
+                                        if use_current_as_entry:
+                                            # Nicht direkt den Widget-Key nach der Widget-Erstellung setzen.
+                                            # Stattdessen tickerbezogen fuer den naechsten Run vormerken.
+                                            st.session_state["v247_pending_entry_override"] = {
+                                                "ticker": selected_calc_ticker,
+                                                "value": float(round(_v230_safe_float(risk_inputs.get("price"), default=entry_input) or entry_input, 4)),
+                                            }
+                                            st.rerun()
+
+                                    calc_pkg = _v230_calculate_position_size(entry_input, stop_input, target_input, account_size, risk_pct_input, max_position_pct=max_position_pct)
+                                    if not calc_pkg.get("ok"):
+                                        st.warning(calc_pkg.get("error") or "Positionsgröße nicht berechenbar.")
+                                    else:
+                                        m1, m2, m3, m4 = st.columns(4)
+                                        with m1:
+                                            st.metric("Stückzahl", f"{int(calc_pkg['shares'])}")
+                                        with m2:
+                                            st.metric("Positionswert", f"{calc_pkg['position_value']:,.0f} {risk_currency}".replace(",", "."))
+                                        with m3:
+                                            st.metric("Max. Risiko", f"{calc_pkg['actual_risk']:,.0f} {risk_currency}".replace(",", "."), delta=(f"{calc_pkg['actual_risk_pct']:.2f}% Depot" if calc_pkg.get('actual_risk_pct') is not None else None))
+                                        with m4:
+                                            crv_show = calc_pkg.get("crv")
+                                            st.metric("CRV auf Ziel", "n/a" if crv_show is None else f"{crv_show:.2f}")
+                                        if calc_pkg.get("capped"):
+                                            st.info("Positionsgröße wurde durch den maximalen Positionsanteil begrenzt.")
+                                        st.caption(
+                                            f"Risiko je Aktie: {calc_pkg['unit_risk']:.2f} · Stop-Abstand: {calc_pkg['stop_distance_pct']:.1f}% · rechnerische Stückzahl ohne Positionslimit: {calc_pkg['shares_raw']:.1f}"
+                                        )
+                                        if calc_pkg["shares"] <= 0:
+                                            st.warning("Bei diesen Parametern ergibt sich keine kaufbare Stückzahl. Risiko erhöhen, Stop enger planen oder kleinere Einheit prüfen.")
+                                        elif calc_pkg.get("stop_distance_pct", 0) > 18:
+                                            st.warning("Großer Stop-Abstand: Positionsgröße fällt klein aus. Prüfen, ob ein engerer technischer Stop oder ein Pullback sinnvoller ist.")
+                                        elif calc_pkg.get("crv") is not None and calc_pkg.get("crv") < 1.2:
+                                            st.warning("CRV auf das gewählte Ziel ist schwach. Ziel, Entry oder Stop erneut prüfen.")
+                                        else:
+                                            st.success("Risiko-Plan rechnerisch plausibel. Vor Umsetzung Setup, Liquidität und Stop-Regel final prüfen.")
+
+                        # ---------- v24.4: Positions-/Exit-Monitor ----------
+                        elif cockpit_area == "📌 Positionen / Exit":
+                            st.markdown("### Positions-/Exit-Monitor v25.1")
+                            st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
+                            positions = _v244_get_positions(selected_watchlist_name)
+                            pc1, pc2 = st.columns([0.72, 0.28])
+                            with pc1:
+                                st.markdown('<div class="compact-help">Positionsspeicher: lokal je Watchlist. Änderungen werden beim Speichern/Löschen direkt persistiert.</div>', unsafe_allow_html=True)
+                            with pc2:
+                                if positions and st.button("Alle Positionen dieser Watchlist löschen", use_container_width=True, key="v245_clear_positions_for_watchlist"):
+                                    _v245_delete_positions_for_watchlist(selected_watchlist_name)
+                                    positions = {}
+                                    st.warning("Alle gespeicherten Positionen dieser Watchlist wurden gelöscht.")
+                            pos_df = _v244_positions_dataframe(positions, live_df, selected_watchlist_name)
+                            if pos_df.empty:
+                                st.info("Noch keine aktiven Positionen erfasst. Unten ein Live-Signal auswählen und Entry/Stop/Stückzahl speichern.")
+                            else:
+                                st.dataframe(pos_df, hide_index=True, use_container_width=True, height=min(420, 42 * len(pos_df) + 55))
+                                existing_position_tickers = sorted([str(t).strip().upper() for t in positions.keys() if str(t).strip()])
+                                delete_position_tickers = st.multiselect(
+                                    "Positionen zum Löschen auswählen",
+                                    options=existing_position_tickers,
+                                    default=[],
+                                    key=f"v2417_delete_position_selection_{selected_watchlist_name}",
+                                    help="Eine oder mehrere Positionen auswählen und anschließend gesammelt löschen.",
+                                )
+                                dc1, dc2 = st.columns([0.34, 0.66])
+                                with dc1:
+                                    if st.button(
+                                        "Ausgewählte Positionen löschen",
+                                        use_container_width=True,
+                                        disabled=not delete_position_tickers,
+                                        key=f"v2417_delete_selected_positions_{selected_watchlist_name}",
+                                    ):
+                                        deleted_count = 0
+                                        for delete_ticker in delete_position_tickers:
+                                            deleted_pos = positions.pop(delete_ticker, None)
+                                            if deleted_pos is None:
+                                                continue
+                                            deleted_count += 1
+                                            _v2416_log_event(
+                                                event_type="Position gelöscht",
+                                                ticker=delete_ticker,
+                                                watchlist_name=selected_watchlist_name,
+                                                source="Positions-/Exit-Monitor",
+                                                status="Position entfernt",
+                                                price=_v230_safe_float((deleted_pos or {}).get("last_price"), default=None),
+                                                details="Position wurde über die Mehrfachauswahl aus dem Monitor gelöscht.",
+                                                payload=deleted_pos if isinstance(deleted_pos, dict) else {},
+                                                signature=f"multi_deleted|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}|{delete_ticker}",
+                                            )
+                                        _v244_save_positions(selected_watchlist_name, positions)
+                                        st.success(f"{deleted_count} Position(en) gelöscht.")
+                                        st.rerun()
+                                with dc2:
+                                    st.caption("Einzellöschung ist weiterhin unten beim ausgewählten Ticker möglich.")
+
+                            add_df = live_df.copy()
+                            if not add_df.empty and "Ampel" in add_df.columns:
+                                preferred = add_df[add_df["Ampel"].isin(["🟢", "🟡"])].copy()
+                                if not preferred.empty:
+                                    add_df = preferred
+                            if add_df.empty or "Ticker" not in add_df.columns:
+                                st.info("Keine Live-Zeilen zum Anlegen einer Position verfügbar.")
+                            else:
+                                def _v244_label(row):
+                                    return f"{row.get('Ticker','-')} · {row.get('Status','-')} · {row.get('Live-Score','-')} · Kurs {row.get('Kurs','n/a')}"
+                                add_options = [_v244_label(row) for _, row in add_df.iterrows()]
+                                a1, a2 = st.columns([1.4, 1.0])
+                                with a1:
+                                    selected_pos_label = st.selectbox("Position aus Live-Signal anlegen/aktualisieren", add_options, index=0, key="v244_position_select_row")
+                                selected_pos_row = add_df.iloc[add_options.index(selected_pos_label)].to_dict()
+                                pos_ticker = str(selected_pos_row.get("Ticker") or "").strip().upper()
+                                pos_name = str(selected_pos_row.get("Name") or pos_ticker).strip()
+                                default_price = _v244_row_price(selected_pos_row) or 0.0
+                                # Fuer Stop/Ziel Defaults die vorhandene Risiko-Funktion wiederverwenden.
+                                pos_defaults = {}
+                                try:
+                                    pos_result = analyze_stock(
+                                        ticker=pos_ticker,
+                                        horizon="Swing (1-4 Wochen)",
+                                        depot=10000,
+                                        risk_pct=1.0,
+                                        override=0.0,
+                                        buy_in_override=0.0,
+                                        smart_money_default=True,
+                                        strict_mode=True,
+                                    )
+                                    pos_defaults = _v230_extract_position_inputs(pos_result, style_name=monitor_style)
+                                except Exception:
+                                    pos_defaults = {}
+                                old_pos = positions.get(pos_ticker, {}) if isinstance(positions, dict) else {}
+                                d_entry = _v230_safe_float(old_pos.get("entry"), default=None)
+                                if d_entry is None:
+                                    d_entry = _v230_safe_float(pos_defaults.get("entry_default"), default=default_price) or default_price
+                                d_stop = _v230_safe_float(old_pos.get("stop"), default=None)
+                                if d_stop is None:
+                                    d_stop = _v230_safe_float(pos_defaults.get("stop"), default=0.0) or 0.0
+                                d_target = _v230_safe_float(old_pos.get("target"), default=None)
+                                if d_target is None:
+                                    d_target = _v230_safe_float(pos_defaults.get("target"), default=0.0) or 0.0
+                                d_shares = int(_v230_safe_float(old_pos.get("shares"), default=0) or 0)
+                                with a2:
+                                    st.caption(f"Auswahl: **{pos_ticker}** · {pos_name}")
+                                    st.caption(f"Live-Kurs: {_v230_price_text(default_price)} · Stop-Vorschlag: {_v230_price_text(d_stop)}")
+                                p1, p2, p3, p4 = st.columns(4)
+                                with p1:
+                                    entry_v = st.number_input("Entry", min_value=0.0, value=float(round(d_entry or 0.0, 4)), step=0.01, key=f"v244_entry_{pos_ticker}")
+                                with p2:
+                                    stop_v = st.number_input("Stop", min_value=0.0, value=float(round(d_stop or 0.0, 4)), step=0.01, key=f"v244_stop_{pos_ticker}")
+                                with p3:
+                                    target_v = st.number_input("Ziel/Teilziel", min_value=0.0, value=float(round(d_target or 0.0, 4)), step=0.01, key=f"v244_target_{pos_ticker}")
+                                with p4:
+                                    shares_v = st.number_input("Stückzahl", min_value=0, value=int(d_shares), step=1, key=f"v244_shares_{pos_ticker}")
+                                b1, b2, b3 = st.columns([1.0, 1.0, 1.0])
+                                with b1:
+                                    if st.button("Position speichern/aktualisieren", use_container_width=True, key=f"v244_save_{pos_ticker}"):
+                                        positions[pos_ticker] = {
+                                            "ticker": pos_ticker,
+                                            "name": pos_name,
+                                            "entry": float(entry_v or 0.0),
+                                            "stop": float(stop_v or 0.0),
+                                            "target": float(target_v or 0.0),
+                                            "shares": int(shares_v or 0),
+                                            "created_at": old_pos.get("created_at") or get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
+                                            "last_price": default_price,
+                                        }
+                                        _v244_save_positions(selected_watchlist_name, positions)
+                                        _v2416_log_event(
+                                            event_type="Position gespeichert" if old_pos else "Position angelegt",
+                                            ticker=pos_ticker,
+                                            watchlist_name=selected_watchlist_name,
+                                            source="Positions-/Exit-Monitor",
+                                            status="Offene Position",
+                                            price=default_price,
+                                            details=f"Entry {entry_v:.4f} · Stop {stop_v:.4f} · Ziel {target_v:.4f} · Stück {int(shares_v or 0)}",
+                                            payload={"Entry": entry_v, "Stop": stop_v, "Ziel": target_v, "Stück": int(shares_v or 0)},
+                                            signature=f"{entry_v:.4f}|{stop_v:.4f}|{target_v:.4f}|{int(shares_v or 0)}",
+                                        )
+                                        st.success(f"Position {pos_ticker} gespeichert.")
+                                        st.rerun()
+                                with b2:
+                                    if st.button("Aktuellen Kurs als Entry", use_container_width=True, key=f"v244_current_entry_{pos_ticker}"):
+                                        st.session_state[f"v244_entry_{pos_ticker}"] = float(round(default_price or 0.0, 4))
+                                        st.rerun()
+                                with b3:
+                                    if pos_ticker in positions and st.button("Position löschen", use_container_width=True, key=f"v244_delete_{pos_ticker}"):
+                                        deleted_pos = positions.pop(pos_ticker, None)
+                                        _v244_save_positions(selected_watchlist_name, positions)
+                                        _v2416_log_event(
+                                            event_type="Position gelöscht",
+                                            ticker=pos_ticker,
+                                            watchlist_name=selected_watchlist_name,
+                                            source="Positions-/Exit-Monitor",
+                                            status="Position entfernt",
+                                            price=default_price,
+                                            details="Position wurde manuell aus dem Monitor gelöscht.",
+                                            payload=deleted_pos if isinstance(deleted_pos, dict) else {},
+                                            signature=f"deleted|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
+                                        )
+                                        st.warning(f"Position {pos_ticker} gelöscht.")
+                                        st.rerun()
+
+
+                        elif cockpit_area == "🧾 Historie & Details":
+                            st.markdown("### Historie & Details")
+                            if live_events_df is not None and not live_events_df.empty:
+                                st.markdown("#### Statuswechsel-Historie")
+                                event_filter = st.selectbox("Historie anzeigen", ["Alle", "Nur verbessert", "Nur verschlechtert", "Nur neue/geänderte"], index=0, key="live_watchlist_history_filter_v220")
+                                hist_df = live_events_df.copy()
+                                if event_filter == "Nur verbessert":
+                                    hist_df = hist_df[hist_df["Änderung"] == "Verbessert"]
+                                elif event_filter == "Nur verschlechtert":
+                                    hist_df = hist_df[hist_df["Änderung"] == "Verschlechtert"]
+                                elif event_filter == "Nur neue/geänderte":
+                                    hist_df = hist_df[hist_df["Änderung"].isin(["Neu", "Geändert"])]
+                                st.dataframe(hist_df.head(100), hide_index=True, use_container_width=True, height=min(420, 42 * len(hist_df.head(100)) + 55))
+                                if st.button("Status-Historie zurücksetzen", key="reset_live_watchlist_history_v220"):
+                                    reset_live_watchlist_status_history_v227()
+                                    st.rerun()
+                            else:
+                                st.info("Noch keine Statuswechsel-Historie vorhanden. Nach weiteren Prüfungen erscheinen hier Änderungen.")
+                            st.markdown("#### Signal-/Trade-Event-Log v25.1")
+                            event_log_df_v2416 = _v2416_events_dataframe(selected_watchlist_name)
+                            if event_log_df_v2416 is not None and not event_log_df_v2416.empty:
+                                ev_types = ["Alle"] + sorted(event_log_df_v2416["Ereignis"].dropna().astype(str).unique().tolist())
+                                ev_filter = st.selectbox("Event-Typ", ev_types, index=0, key="v2416_event_type_filter")
+                                ev_view = event_log_df_v2416.copy()
+                                if ev_filter != "Alle":
+                                    ev_view = ev_view[ev_view["Ereignis"].astype(str) == ev_filter]
+                                st.dataframe(ev_view.head(300), hide_index=True, use_container_width=True, height=min(520, 42 * len(ev_view.head(300)) + 55))
+                                csv_v2416 = ev_view.to_csv(index=False).encode("utf-8-sig")
+                                e1, e2 = st.columns([1.0, 1.0])
+                                with e1:
+                                    st.download_button("Event-Log als CSV", data=csv_v2416, file_name="signal_trade_event_log.csv", mime="text/csv", use_container_width=True)
+                                with e2:
+                                    if st.button("Event-Log dieser Watchlist löschen", key="v2416_reset_event_log", use_container_width=True):
+                                        _v2416_reset_events(selected_watchlist_name)
+                                        st.rerun()
+                            else:
+                                st.info("Noch keine dauerhaften Signal-/Trade-Ereignisse vorhanden. Neue Statuswechsel sowie 1R/2R-/Stop-Ereignisse erscheinen hier.")
+                            with st.expander("Vollständige Live-Diagnose", expanded=False):
+                                detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
+                                st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
+                    try:
+                        _live_errors_df_bottom = live_errors if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
+                    except Exception:
+                        _live_errors_df_bottom = pd.DataFrame()
+                    if _live_errors_df_bottom is not None and not _live_errors_df_bottom.empty:
+                        with st.expander("Nicht prüfbare Watchlist-Werte", expanded=False):
+                            st.dataframe(_live_errors_df_bottom, hide_index=True, use_container_width=True)
+
 # ---------- Analyse-Steuerung im Hauptbereich ----------
 if workspace_mode:
     if workspace_mode:
@@ -15969,42 +18806,10 @@ if workspace_mode:
             if run_candidate_radar:
                 st.session_state.radar_requested = True
 
-        style_note_map = {
-            "Leader": "Bevorzugt bestätigte Stärke, Leadership und saubere Trend-Setups.",
-            "Charttechnik": "Sucht gezielt nach charttechnischen Impulsen: Trigger-Nähe, MA10/20, Spezialmuster, Bases/VCP, Pullback/Reclaim, Volumen/Smart Money, Fib-/Strukturreaktion und Konfluenz.",
-            "Turnaround": "Bevorzugt frühe Drehkandidaten, Rebounds und technische Erholungsfenster.",
-            "Ausgewogen": "Mittelweg zwischen bestätigter Stärke und früheren Chancen.",
-        }
-        st.info(
-            f"Screening-Stil: {st.session_state.radar_screening_style}. "
-            f"Der Stil veraendert nur die Radar-Priorisierung und Reihenfolge der Kandidaten, "
-            f"nicht die Einzelanalyse einer Aktie. {style_note_map.get(st.session_state.radar_screening_style, '')}"
-        )
-
-
-        def radar_score_badge(value):
-            try:
-                num = float(str(value).replace('%', '').replace(',', '.').strip())
-            except Exception:
-                return str(value) if str(value).strip() else '-'
-            if num >= 75:
-                return f"🟢 {int(round(num))}"
-            if num >= 55:
-                return f"🟡 {int(round(num))}"
-            return f"🔴 {int(round(num))}"
-
-        def radar_trigger_badge(value):
-            raw = str(value).strip()
-            s = raw.lower()
-            if s in {"aktiv", "jetzt prüfbar"}:
-                return f"🟢 {raw}"
-            if s in {"nahe dran", "fast prüfbar"}:
-                return f"🟡 {raw}"
-            if s in {"frühe beobachtung", "früh interessant", "beobachten", "weiter beobachten"}:
-                return f"🟠 {raw}"
-            if s in {"passiv", "aktuell kein fokus", "warten", "noch warten"}:
-                return f"🔴 {raw}"
-            return raw if raw else '-'
+        from modules import radar_view as _radar_view
+        _radar_view.render_style_info(st, st.session_state.radar_screening_style)
+        radar_score_badge = _radar_view.radar_score_badge
+        radar_trigger_badge = _radar_view.radar_trigger_badge
 
         def radar_priority_badge(value):
             raw = str(value).strip()
@@ -16046,10 +18851,10 @@ if workspace_mode:
         st.markdown(
             """
             <div class="section-card">
-                <div class="premium-title">V1 in diesem Schritt</div>
-                <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Radar-Lauf → Top-Kandidaten heute</div>
+                <div class="premium-title">Radar Professional v21.1</div>
+                <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
                 <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf ein erstes Start-Universum oder deine eigene Liste angewendet und als kompakte Kandidaten-Tabelle sortiert.
+                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v21.1 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
                 </div>
             </div>
             """,
@@ -16245,14 +19050,32 @@ if workspace_mode:
                     radar_result_map = {str(r.get("ticker", "")): r for r in radar_results} if radar_results else {}
                 else:
                     radar_df = build_ranking_table(radar_results)
-                    radar_reason_map = {str(r.get("ticker", "")): radar_reason_professional_v1521(r, str(st.session_state.get("radar_screening_style", "Leader") or "Leader")) for r in radar_results}
+                    radar_reason_map = {str(r.get("ticker", "")): radar_reason_professional_v18(r, str(st.session_state.get("radar_screening_style", "Leader") or "Leader")) for r in radar_results}
                     radar_result_map = {str(r.get("ticker", "")): r for r in radar_results}
                     radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map(radar_reason_map)
                     _radar_style_for_cols = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
+                    _radar_v18_map = {str(r.get("ticker", "")): build_professional_radar_decision_v18(r, _radar_style_for_cols) for r in radar_results}
+                    radar_df["Radar-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("score") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-Grade"] = radar_df["Ticker"].astype(str).map({k: v.get("grade") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-Bucket"] = radar_df["Ticker"].astype(str).map({k: v.get("bucket") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-Subscores"] = radar_df["Ticker"].astype(str).map({k: v.get("subscores_text") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-Gate"] = radar_df["Ticker"].astype(str).map({k: v.get("gate_reasons") for k, v in _radar_v18_map.items()})
+                    radar_df["Heute-Relevanz"] = radar_df["Ticker"].astype(str).map({k: v.get("why_today") for k, v in _radar_v18_map.items()})
+                    radar_df["Radar-CRV"] = radar_df["Ticker"].astype(str).map({k: v.get("crv") if v.get("crv") is not None else "n/a" for k, v in _radar_v18_map.items()})
+                    radar_df["Entry-Abstand"] = radar_df["Ticker"].astype(str).map({k: v.get("entry_distance_text") for k, v in _radar_v18_map.items()})
+                    radar_df["Entry-Qualität"] = radar_df["Ticker"].astype(str).map({k: v.get("entry_quality_text") for k, v in _radar_v18_map.items()})
+                    radar_df["Risk/Reward"] = radar_df["Ticker"].astype(str).map({k: v.get("risk_reward_text") for k, v in _radar_v18_map.items()})
                     radar_df["Setup-Reife"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_setup_maturity(r) for r in radar_results})
-                    radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_priority_label(r, _radar_style_for_cols) for r in radar_results})
-                    radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_next_step(r) for r in radar_results})
-                    radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_brake_reason(r) for r in radar_results})
+                    radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({k: v.get("priority") for k, v in _radar_v18_map.items()})
+                    radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({k: v.get("next_step") for k, v in _radar_v18_map.items()})
+                    radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({k: v.get("brake") for k, v in _radar_v18_map.items()})
+                    radar_df["Wave-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_score") for k, v in _radar_v18_map.items()})
+                    radar_df["Wave-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_label") for k, v in _radar_v18_map.items()})
+                    radar_df["MTF-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("mtf_score") for k, v in _radar_v18_map.items()})
+                    radar_df["MTF-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("mtf_label") for k, v in _radar_v18_map.items()})
+                    radar_df["Setup-Alert"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): setup_alert_summary_v210(r, _radar_style_for_cols) for r in radar_results})
+                    radar_df["Wann aktiv?"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_trigger") for k, v in _radar_v18_map.items()})
+                    radar_df["Ziel bei Bestätigung"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_target_zone") for k, v in _radar_v18_map.items()})
                     radar_df["Chart-Impuls"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("label", "-") for r in radar_results})
                     radar_df["Chart-Score"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("score", 0) for r in radar_results})
                     radar_df["Chart-Trigger"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("trigger", "-") for r in radar_results})
@@ -16288,6 +19111,34 @@ if workspace_mode:
                     radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
                     radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
 
+                # v21.1: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
+                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "MTF-Score", "MTF-Impact", "Setup-Alert", "Wann aktiv?", "Ziel bei Bestätigung", "Top-Chance-Rang"]:
+                    if _col_name not in radar_df.columns:
+                        radar_df[_col_name] = "-"
+                if radar_result_map:
+                    _radar_v18_style = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
+                    def _radar_v18_for_row(_row):
+                        return build_professional_radar_decision_v18(radar_result_map.get(str(_row.get("Ticker", "")), {}), _radar_v18_style)
+                    radar_df["Radar-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("score", _row.get("Radar-Score", "-")), axis=1)
+                    radar_df["Radar-Grade"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("grade", _row.get("Radar-Grade", "-")), axis=1)
+                    radar_df["Radar-Bucket"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("bucket", _row.get("Radar-Bucket", "-")), axis=1)
+                    radar_df["Radar-Subscores"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("subscores_text", _row.get("Radar-Subscores", "-")), axis=1)
+                    radar_df["Radar-Gate"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("gate_reasons", _row.get("Radar-Gate", "-")), axis=1)
+                    radar_df["Heute-Relevanz"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("why_today", _row.get("Heute-Relevanz", "-")), axis=1)
+                    radar_df["Radar-CRV"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("crv", "n/a"), axis=1)
+                    radar_df["Entry-Abstand"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("entry_distance_text", _row.get("Entry-Abstand", "-")), axis=1)
+                    radar_df["Entry-Qualität"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("entry_quality_text", _row.get("Entry-Qualität", "-")), axis=1)
+                    radar_df["Risk/Reward"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("risk_reward_text", _row.get("Risk/Reward", "-")), axis=1)
+                    radar_df["Stil-Fit"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("style_fit_label", _row.get("Stil-Fit", "-")), axis=1)
+                    radar_df["Wave-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_score", _row.get("Wave-Score", "-")), axis=1)
+                    radar_df["Wave-Impact"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_label", _row.get("Wave-Impact", "-")), axis=1)
+                    radar_df["MTF-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("mtf_score", _row.get("MTF-Score", "-")), axis=1)
+                    radar_df["MTF-Impact"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("mtf_label", _row.get("MTF-Impact", "-")), axis=1)
+                    radar_df["Setup-Alert"] = radar_df.apply(lambda _row: setup_alert_summary_v210(radar_result_map.get(str(_row.get("Ticker", "")), {}), _radar_v18_style), axis=1)
+                    radar_df["Wann aktiv?"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_trigger", _row.get("Wann aktiv?", "-")), axis=1)
+                    radar_df["Ziel bei Bestätigung"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_target_zone", _row.get("Ziel bei Bestätigung", "-")), axis=1)
+                    radar_df["Top-Chance-Rang"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("top_chance_rank", _row.get("Top-Chance-Rang", "-")), axis=1)
+
                 # v15.23.7: Firmenname im Radar robust nachfuellen.
                 # Bei gespeicherten Snapshots oder Ticker-Fallbacks stand sonst in `Name` oft nur erneut der Ticker.
                 if "Name" not in radar_df.columns:
@@ -16320,7 +19171,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v17.9: Der Radar wird nicht nur sortiert, sondern in handlungsorientierte Gruppen geclustert: Jetzt prüfbar, Nahe am Trigger, Starke Watchlist, Pullback bevorzugt und Warnsignale.")
+                st.caption("v21.1: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -16477,6 +19328,24 @@ if workspace_mode:
                 radar_df.loc[radar_near_mask, "Radar-Gruppe"] = "Nahe am Trigger"
                 radar_df.loc[radar_now_mask, "Radar-Gruppe"] = "Jetzt prüfbar"
 
+                # v18.1: Wenn der Professional Funnel einen Bucket liefert, ist er die primaere Cluster-Quelle.
+                if "Radar-Bucket" in radar_df.columns:
+                    _bucket_series = radar_df["Radar-Bucket"].fillna("").astype(str)
+                    _valid_buckets = {
+                        "Jetzt prüfbar",
+                        "Nahe am Trigger",
+                        "Starke Watchlist",
+                        "Pullback bevorzugt / nicht hinterherlaufen",
+                        "Warnsignale / meiden",
+                        "Später beobachten",
+                    }
+                    radar_df["Radar-Gruppe"] = _bucket_series.where(_bucket_series.isin(_valid_buckets), radar_df["Radar-Gruppe"])
+                    radar_now_mask = radar_df["Radar-Gruppe"].eq("Jetzt prüfbar")
+                    radar_near_mask = radar_df["Radar-Gruppe"].eq("Nahe am Trigger")
+                    radar_watchlist_mask = radar_df["Radar-Gruppe"].eq("Starke Watchlist")
+                    radar_pullback_mask = radar_df["Radar-Gruppe"].eq("Pullback bevorzugt / nicht hinterherlaufen")
+                    radar_warn_mask = radar_df["Radar-Gruppe"].eq("Warnsignale / meiden")
+
                 radar_now_df = sort_section_df(radar_df[radar_now_mask].copy())
                 radar_near_df = sort_section_df(radar_df[radar_near_mask].copy())
                 radar_watchlist_df = sort_section_df(radar_df[radar_watchlist_mask].copy())
@@ -16580,6 +19449,84 @@ if workspace_mode:
 
                 selected_radar_tickers = []
 
+                # v18.5: Top-Chancen-Box mit hartem Qualitätsfilter.
+                if radar_display_df is not None and not radar_display_df.empty:
+                    _top_box_df = radar_display_df.copy()
+                    if "Top-Chance-Rang" not in _top_box_df.columns:
+                        _top_box_df["Top-Chance-Rang"] = pd.to_numeric(_top_box_df.get("Radar-Score", 0), errors="coerce").fillna(0)
+                    _top_box_df["__top_rank"] = pd.to_numeric(_top_box_df["Top-Chance-Rang"], errors="coerce").fillna(0)
+                    _top_box_df["__score"] = pd.to_numeric(_top_box_df.get("Radar-Score", 0), errors="coerce").fillna(0)
+                    _top_box_df["__crv"] = pd.to_numeric(_top_box_df.get("Radar-CRV", np.nan), errors="coerce")
+                    _top_box_df["__grade"] = _top_box_df.get("Radar-Grade", "").astype(str).str.upper().str.strip()
+                    _top_box_df["__bucket"] = _top_box_df.get("Radar-Bucket", _top_box_df.get("Radar-Gruppe", "")).astype(str)
+                    _top_box_df["__gate"] = _top_box_df.get("Radar-Gate", "").astype(str).str.lower()
+                    _top_box_df["__entry"] = _top_box_df.get("Entry-Abstand", "").astype(str).str.lower().str.strip()
+
+                    _strict_grade_ok = _top_box_df["__grade"].isin(["A", "B"]) | ((_top_box_df["__grade"] == "C") & (_top_box_df["__crv"] >= 1.5))
+                    _strict_bucket_ok = _top_box_df["__bucket"].isin(["Jetzt prüfbar", "Nahe am Trigger"])
+                    _strict_crv_ok = _top_box_df["__crv"].notna() & (_top_box_df["__crv"] >= 1.2)
+                    _strict_entry_ok = ~_top_box_df["__entry"].isin(["", "-", "n/a", "nan", "none"])
+                    _strict_gate_ok = _top_box_df["__gate"].isin(["", "keine harten gates", "keine harten gate"])
+                    _strict_score_ok = _top_box_df["__score"] >= 62
+                    _strict_no_watchlist = ~_top_box_df["__bucket"].isin(["Starke Watchlist", "Später beobachten", "Pullback bevorzugt / nicht hinterherlaufen", "Warnsignale / meiden"])
+
+                    _top_box_strict_df = _top_box_df[
+                        _strict_grade_ok
+                        & _strict_bucket_ok
+                        & _strict_crv_ok
+                        & _strict_entry_ok
+                        & _strict_gate_ok
+                        & _strict_score_ok
+                        & _strict_no_watchlist
+                    ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
+
+                    st.markdown("### Beste heutige Chancen")
+                    st.caption("v21.1 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    if not _top_box_strict_df.empty:
+                        _cols = st.columns(len(_top_box_strict_df))
+                        for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
+                            _ticker = str(_top_row.get("Ticker", "-") or "-")
+                            _name = _radar_render_name_v15238(_top_row)
+                            _score = _top_row.get("Radar-Score", "-")
+                            _grade = str(_top_row.get("Radar-Grade", "-") or "-")
+                            _bucket = str(_top_row.get("Radar-Bucket", _top_row.get("Radar-Gruppe", "-")) or "-")
+                            _crv = str(_top_row.get("Radar-CRV", "n/a") or "n/a")
+                            _entry = str(_top_row.get("Entry-Abstand", "-") or "-")
+                            _why = shorten_text(str(_top_row.get("Heute-Relevanz", _top_row.get("Warum heute auffällig", "-")) or "-"), 95)
+                            _next = shorten_text(str(_top_row.get("Nächster Schritt", "-") or "-"), 105)
+                            _wave = shorten_text(str(_top_row.get("Wave-Impact", "-") or "-"), 70)
+                            _cols[_idx].markdown(
+                                f"""
+                                <div class="section-card" style="border-left:5px solid #22c55e; min-height:220px;">
+                                    <div class="premium-title">#{_idx + 1} · {_ticker}</div>
+                                    <div class="premium-value">{_name}</div>
+                                    <div class="premium-sub"><b>{_grade}</b> · Radar {radar_score_badge(_score)} · CRV {_crv}</div>
+                                    <div class="premium-sub"><b>{_bucket}</b><br>Entry: {_entry}</div>
+                                    <div class="premium-sub">{_why}</div>
+                                    <div class="premium-sub"><b>Wave:</b> {_wave}</div>
+                                    <div class="premium-sub"><b>Nächster Schritt:</b> {_next}</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                    else:
+                        st.markdown(
+                            '<div class="empty-state"><div class="empty-state-title">Keine sauberen heutigen Chancen gefunden</div><div class="empty-state-text">Der Radar erzwingt keine Top 3 mehr. Werte mit Grade D/E, rotem Radar, CRV n/a, CRV unter 1.2, Entry n/a oder Watchlist-/Pullback-Bucket werden hier bewusst ausgeblendet.</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        _watch_box_df = _top_box_df[
+                            _top_box_df["__bucket"].isin(["Starke Watchlist", "Nahe am Trigger", "Später beobachten"])
+                            & ~_top_box_df["__bucket"].str.startswith("Warnsignale", na=False)
+                        ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
+                        if not _watch_box_df.empty:
+                            st.markdown("#### Beste Watchlist-Kandidaten")
+                            st.caption("Diese Werte sind interessant, aber noch keine sauberen heutigen Chancen, weil Entry, CRV, Gate oder Trigger fehlen.")
+                            st.dataframe(
+                                _watch_box_df[[c for c in ["Ticker", "Name", "Radar-Grade", "Radar-Score", "Radar-Bucket", "Radar-CRV", "Entry-Abstand", "Nächster Schritt"] if c in _watch_box_df.columns]],
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+
                 st.markdown("### Radar-Auswahl")
                 st.caption("Werte direkt links in den Zeilen markieren. Standardmäßig ist zunächst nichts vorausgewählt; die Auswahl startet keine neue Radar-Analyse.")
 
@@ -16594,55 +19541,61 @@ if workspace_mode:
                     else:
                         _radar_is_chart_style = str(st.session_state.get("radar_screening_style", "")) == "Charttechnik"
                         if _radar_is_chart_style:
-                            header_cols = st.columns([0.55, 0.75, 1.55, 1.35, 0.9, 1.15, 1.05, 1.8, 2.2, 1.6])
-                            headers = ["Auswahl", "Ticker", "Name", "Chart-Impuls", "Score", "Reife", "Prio", "Chart-Trigger", "Nächster Schritt", "Bremse"]
+                            header_cols = st.columns([0.55, 0.75, 1.45, 1.15, 0.85, 0.65, 1.25, 1.65, 2.15, 1.75])
+                            headers = ["Auswahl", "Ticker", "Name", "Chart-Impuls", "Radar", "Grade", "Bucket", "Chart-Trigger", "Nächster Schritt", "Gate/Bremse"]
                         else:
-                            header_cols = st.columns([0.6, 0.8, 1.7, 1.25, 1.0, 1.0, 1.05, 1.15, 1.25, 1.4, 2.4, 1.8])
-                            headers = ["Auswahl", "Ticker", "Name", "Typ", "Reife", "Risiko", "Radar-Prio", "Investment", "Einstieg", "Trigger", "Nächster Schritt", "Was bremst"]
+                            header_cols = st.columns([0.55, 0.75, 1.45, 0.85, 0.55, 1.25, 0.8, 1.05, 1.25, 1.0, 2.25, 1.85, 1.65])
+                            headers = ["Auswahl", "Ticker", "Name", "Radar", "Grade", "Bucket", "CRV", "Entry", "Heute", "Trigger", "Nächster Schritt", "Gate/Bremse", "Subscores"]
                         for _col, _hdr in zip(header_cols, headers):
                             _col.markdown(f"**{_hdr}**")
 
-                        for _, _row in section_df.iterrows():
+                        for _row_idx, _row in section_df.reset_index(drop=True).iterrows():
                             _ticker = str(_row.get("Ticker", "")).strip()
                             if not _ticker:
                                 continue
-                            checkbox_key = f"radar_pick_{_ticker}"
-                            if checkbox_key not in st.session_state:
-                                st.session_state[checkbox_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
+                            # v18.6: Streamlit requires widget keys to be unique within one render.
+                            # The same ticker can appear in multiple Radar sections (e.g. Watchlist and Top boxes),
+                            # so the checkbox widget key must include the section and row position.
+                            checkbox_state_key = f"radar_pick_{_ticker}"
+                            checkbox_widget_key = f"radar_pick_{_ticker}_{abs(hash(str(section_title))) % 100000}_{_row_idx}"
+                            if checkbox_state_key not in st.session_state:
+                                st.session_state[checkbox_state_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
 
                             if _radar_is_chart_style:
-                                row_cols = st.columns([0.55, 0.75, 1.55, 1.35, 0.9, 1.15, 1.05, 1.8, 2.2, 1.6])
+                                row_cols = st.columns([0.55, 0.75, 1.45, 1.15, 0.85, 0.65, 1.25, 1.65, 2.15, 1.75])
                             else:
-                                row_cols = st.columns([0.6, 0.8, 1.7, 1.25, 1.0, 1.0, 1.05, 1.15, 1.25, 1.4, 2.4, 1.8])
+                                row_cols = st.columns([0.55, 0.75, 1.45, 0.85, 0.55, 1.25, 0.8, 1.05, 1.25, 1.0, 2.25, 1.85, 1.65])
                             is_selected = row_cols[0].checkbox(
                                 "",
-                                value=bool(st.session_state.get(checkbox_key, False)),
-                                key=checkbox_key,
+                                value=bool(st.session_state.get(checkbox_state_key, False)),
+                                key=checkbox_widget_key,
                                 label_visibility="collapsed"
                             )
-                            if is_selected:
+                            st.session_state[checkbox_state_key] = bool(is_selected)
+                            if is_selected and _ticker not in selected_radar_tickers:
                                 selected_radar_tickers.append(_ticker)
 
                             row_cols[1].write(_ticker)
                             row_cols[2].write(_radar_render_name_v15238(_row))
                             if _radar_is_chart_style:
                                 row_cols[3].write(str(_row.get("Chart-Impuls", "-")))
-                                row_cols[4].write(radar_score_badge(_row.get("Chart-Score", "-")))
-                                row_cols[5].write(str(_row.get("Setup-Reife", "-")))
-                                row_cols[6].write(radar_priority_badge(_row.get("Radar-Priorität", _row.get("Watchlist-Priorität", "-"))))
+                                row_cols[4].write(radar_score_badge(_row.get("Radar-Score", _row.get("Chart-Score", "-"))))
+                                row_cols[5].write(str(_row.get("Radar-Grade", "-")))
+                                row_cols[6].write(str(_row.get("Radar-Bucket", _row.get("Radar-Gruppe", "-"))))
                                 row_cols[7].write(str(_row.get("Chart-Trigger", "-")))
                                 row_cols[8].write(str(_row.get("Nächster Schritt", "-")))
-                                row_cols[9].write(str(_row.get("Chart-Bremse", _row.get("Was bremst", "-"))))
+                                row_cols[9].write(str(_row.get("Radar-Gate", _row.get("Chart-Bremse", _row.get("Was bremst", "-")))))
                             else:
-                                row_cols[3].write(str(_row.get("Kandidatentyp", _row.get("Setup-Typ", "-"))))
-                                row_cols[4].write(str(_row.get("Setup-Reife", "-")))
-                                row_cols[5].write(str(_row.get("Radar-Risiko", "-")))
-                                row_cols[6].write(radar_priority_badge(_row.get("Radar-Priorität", _row.get("Watchlist-Priorität", "-"))))
-                                row_cols[7].write(radar_score_badge(_row.get("Investment-Attraktivität", "-")))
-                                row_cols[8].write(radar_score_badge(_row.get("Einstieg jetzt attraktiv?", "-")))
+                                row_cols[3].write(radar_score_badge(_row.get("Radar-Score", _row.get("__style_sort", "-"))))
+                                row_cols[4].write(str(_row.get("Radar-Grade", "-")))
+                                row_cols[5].write(str(_row.get("Radar-Bucket", _row.get("Radar-Gruppe", "-"))))
+                                row_cols[6].write(str(_row.get("Radar-CRV", "n/a")))
+                                row_cols[7].write(str(_row.get("Entry-Abstand", "-")))
+                                row_cols[8].write(str(_row.get("Heute-Relevanz", _row.get("Warum heute auffällig", "-"))))
                                 row_cols[9].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
                                 row_cols[10].write(str(_row.get("Nächster Schritt", "-")))
-                                row_cols[11].write(str(_row.get("Was bremst", _row.get("Top Red Flag", "-"))))
+                                row_cols[11].write(str(_row.get("Radar-Gate", _row.get("Was bremst", _row.get("Top Red Flag", "-")))))
+                                row_cols[12].write(str(_row.get("Radar-Subscores", "-")))
 
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -16658,6 +19611,20 @@ if workspace_mode:
                 if radar_errors:
                     with st.expander("Nicht analysierbare Radar-Werte", expanded=False):
                         st.dataframe(pd.DataFrame(radar_errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
+
+                # v21.1: Setup-Alerts aus Radar-Bedingungen anzeigen.
+                if radar_result_map:
+                    _alert_style_v210 = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
+                    setup_alerts_df_v210 = build_setup_alerts_table_v210(list(radar_result_map.values()), style_name=_alert_style_v210, limit=30)
+                    st.markdown("### Setup-Alerts v21.10")
+                    st.caption("Konservative Vorschau: Diese Alerts werden aus Entry, Wave-Trigger, Bucket, CRV und Invalidierung berechnet. Es wird noch nichts automatisch versendet.")
+                    if setup_alerts_df_v210.empty:
+                        st.info("Aktuell keine handlungsrelevanten Setup-Alerts. Warn-/Gate-/Watchlist-Hinweise werden bewusst nicht als Alerts angezeigt.")
+                    else:
+                        _alert_show_cols = [c for c in ["Priorität", "Alert-Typ", "Ticker", "Name", "Kurs", "Grade", "Bucket", "CRV", "Nachricht", "Nächste Handlung"] if c in setup_alerts_df_v210.columns]
+                        st.dataframe(setup_alerts_df_v210[_alert_show_cols], hide_index=True, use_container_width=True)
+                        with st.expander("Alert-Details / Status-Keys", expanded=False):
+                            st.dataframe(setup_alerts_df_v210, hide_index=True, use_container_width=True)
 
                 radar_batch_text = "\n".join(selected_radar_tickers)
 
@@ -16748,14 +19715,27 @@ if workspace_mode:
                         elif not selected_watchlist_name_for_radar:
                             st.info("Bitte lege zuerst eine Watchlist an oder wähle eine Ziel-Watchlist aus.")
                         else:
-                            ok, msg = add_entries_to_watchlist(
+                            # v22.8: Radar-Kandidaten nur vormerken und gesammelt speichern,
+                            # damit Google-Sheets-Quota nicht bei mehreren Klicks erreicht wird.
+                            existing_for_radar = []
+                            try:
+                                _rdf, _rerr = load_watchlists_df()
+                                if _rerr is None and _rdf is not None and not _rdf.empty:
+                                    _mask = _rdf["Watchlist_Name"].astype(str).str.strip().str.lower() == str(selected_watchlist_name_for_radar).strip().lower()
+                                    existing_for_radar = _rdf.loc[_mask, "Ticker"].astype(str).str.upper().tolist()
+                            except Exception:
+                                existing_for_radar = []
+                            ok, msg = queue_entries_to_watchlist_v228(
                                 selected_watchlist_name_for_radar,
                                 selected_watchlist_type_for_radar,
                                 selected_radar_tickers,
-                                check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich")
+                                source="Kandidaten-Radar",
+                                check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"),
+                                existing_tickers=existing_for_radar,
                             )
                             if ok:
                                 st.success(msg)
+                                st.info("Die Kandidaten sind vorgemerkt. Speichere sie gebuendelt im Watchlisten-Bereich.")
                             else:
                                 st.error(msg)
             elif not radar_should_run_analysis:
@@ -16816,38 +19796,8 @@ if workspace_mode:
         parameter_panel = st.container()
 
     with parameter_panel:
-        analysis_mode_default_idx = 0 if st.session_state.analysis_mode == "Einzelanalyse" else 1
-        analysis_mode = st.radio(
-            "Was möchtest du machen?",
-            ["Einzelanalyse", "Mehrere Aktien vergleichen"],
-            index=analysis_mode_default_idx,
-            horizontal=True,
-            key="analysis_mode_widget_main"
-        )
-        st.session_state.analysis_mode = analysis_mode
-
-        single_input = ""
-        batch_input = ""
-
-        if analysis_mode == "Einzelanalyse":
-            single_input = st.text_input(
-                "Aktie oder Firmenname",
-                value=st.session_state.search_input,
-                placeholder="z. B. AAPL, Apple, Siemens, BASF, GC=F, SI=F",
-                key="search_input_widget_main"
-            ).strip()
-            st.session_state.search_input = single_input
-            st.caption("Du kannst einen Ticker, Firmennamen oder Rohstoff-Future eingeben, z. B. GC=F für Gold oder SI=F für Silber.")
-        else:
-            batch_input = st.text_area(
-                "Mehrere Ticker oder Firmennamen",
-                value=st.session_state.batch_input,
-                placeholder="Ein Wert pro Zeile oder durch Komma trennen, z. B.\nAAPL\nMicrosoft\nASML\nNVIDIA",
-                height=120,
-                key="batch_input_widget_main"
-            ).strip()
-            st.session_state.batch_input = batch_input
-            st.caption("Ein Wert pro Zeile oder mit Komma trennen. Die App löst Firmennamen automatisch auf.")
+        from modules import analysis_view as _analysis_view
+        analysis_mode, single_input, batch_input = _analysis_view.render_analysis_mode_inputs(st)
 
         with st.expander("Erweiterte Einstellungen", expanded=False):
             horizon = st.selectbox(
@@ -16933,13 +19883,21 @@ if workspace_mode:
         if analysis_mode == "Einzelanalyse":
             search_input = single_input
             if search_input:
-                looks_like_ticker = (
-                    " " not in search_input and len(search_input) <= 12
-                    and search_input.replace(".", "").replace("-", "").isalnum()
-                )
+                # v21.1: Ticker-/Namensauflösung wieder trennen.
+                # Ein-Wort-Firmennamen wie "Apple", "Nvidia" oder "Siemens" duerfen
+                # nicht blind zu APPLE/NVIDIA/SIEMENS gemacht werden, sonst findet die
+                # App scheinbar keine Ticker mehr. Direkte Ticker gelten nur bei echter
+                # Ticker-Schreibweise; Rohstoff-Aliasse werden separat behandelt.
+                commodity_alias = resolve_commodity_alias_v1534_3(search_input) if "resolve_commodity_alias_v1534_3" in globals() else None
+                looks_like_ticker = looks_like_real_ticker(search_input)
 
-                if looks_like_ticker:
-                    ticker = search_input.upper()
+                if commodity_alias:
+                    ticker = commodity_alias
+                    st.session_state.selected_ticker = ticker
+                    st.session_state.selected_search_label = None
+                    resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Rohstoff-Alias"}]
+                elif looks_like_ticker:
+                    ticker = resolve_input_to_ticker(search_input, fallback=search_input.upper())
                     st.session_state.selected_ticker = ticker
                     st.session_state.selected_search_label = None
                     resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Ticker direkt"}]
@@ -16969,8 +19927,18 @@ if workspace_mode:
                         st.session_state.selected_ticker = ticker
                         resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "Aus Trefferauswahl"}]
                     else:
-                        st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
-                        ticker = st.session_state.selected_ticker
+                        # v21.1: Wenn die Yahoo-Such-API leer bleibt, trotzdem robuste
+                        # Auflösung über Common-Name-Aliasse und validierten Ticker-Fallback versuchen.
+                        resolved_fallback = resolve_input_to_ticker(search_input, fallback=None)
+                        if resolved_fallback:
+                            ticker = resolved_fallback
+                            st.session_state.selected_ticker = ticker
+                            st.session_state.selected_search_label = None
+                            resolved_input_rows = [{"Eingabe": search_input, "Auflösung": ticker, "Typ": "v21.1 Fallback-Auflösung"}]
+                            st.caption(f"Aufgelöst: {ticker}")
+                        else:
+                            st.warning("Kein passender Ticker gefunden. Bitte Namen präzisieren oder Ticker direkt eingeben.")
+                            ticker = st.session_state.selected_ticker
             else:
                 ticker = st.session_state.selected_ticker
 
@@ -16984,11 +19952,13 @@ if workspace_mode:
 
             analysis_candidates = []
             for entry in raw_batch_entries:
-                looks_like_ticker = (
-                    " " not in entry and len(entry) <= 12
-                    and entry.replace(".", "").replace("-", "").isalnum()
-                )
-                if looks_like_ticker:
+                # v21.1: Auch im Batch-Modus Firmennamen nicht blind als Ticker interpretieren.
+                commodity_alias = resolve_commodity_alias_v1534_3(entry) if "resolve_commodity_alias_v1534_3" in globals() else None
+                looks_like_ticker = looks_like_real_ticker(entry)
+                if commodity_alias:
+                    analysis_candidates.append(commodity_alias)
+                    resolved_input_rows.append({"Eingabe": entry, "Auflösung": commodity_alias, "Typ": "Rohstoff-Alias"})
+                elif looks_like_ticker:
                     analysis_candidates.append(entry.upper())
                     resolved_input_rows.append({"Eingabe": entry, "Auflösung": entry.upper(), "Typ": "Ticker direkt"})
                 else:
@@ -16997,7 +19967,12 @@ if workspace_mode:
                         analysis_candidates.append(matches[0]["symbol"])
                         resolved_input_rows.append({"Eingabe": entry, "Auflösung": matches[0]["symbol"], "Typ": "Firmenname aufgelöst"})
                     else:
-                        resolved_input_rows.append({"Eingabe": entry, "Auflösung": "-", "Typ": "Nicht gefunden"})
+                        resolved_fallback = resolve_input_to_ticker(entry, fallback=None)
+                        if resolved_fallback:
+                            analysis_candidates.append(resolved_fallback)
+                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": resolved_fallback, "Typ": "v21.1 Fallback-Auflösung"})
+                        else:
+                            resolved_input_rows.append({"Eingabe": entry, "Auflösung": "-", "Typ": "Nicht gefunden"})
 
             seen = set()
             analysis_candidates = [x for x in analysis_candidates if not (x in seen or seen.add(x))]
@@ -18703,27 +21678,67 @@ if result is not None:
     benchmark_label = result["benchmark_label"]
     benchmark_symbol = result["benchmark_symbol"]
     market_info = result["market_info"]
-    price = result["price"]
+    price = result.get("price", np.nan)
     live_price = result.get("live_price", np.nan)
     live_price_source = result.get("live_price_source", "Schlusskurs")
     live_price_diff_pct = result.get("live_price_diff_pct", np.nan)
     live_price_note = result.get("live_price_note", "")
 
-    # v16.1.3: finaler UI-Fallback direkt im Renderpfad.
-    # In einigen Ergebnisobjekten ist live_price trotz Engine-Fallback noch leer.
-    # Dann darf die Kursbasis-Karte nicht "Aktuell: n/a" zeigen, sondern die
-    # reguläre Analysebasis als aktuellen Vergleichswert ausweisen.
-    try:
-        if not pd.notna(live_price):
-            live_price = float(price) if pd.notna(price) else np.nan
-            live_price_source = "Schlusskurs / Analysebasis"
-            live_price_diff_pct = 0.0 if pd.notna(live_price) else np.nan
-            live_price_note = "Kein separater Live-/Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
-    except Exception:
-        live_price = price
+    # v22.7: Kursbasis-Karte robust gegen NaN-Werte machen.
+    # Der Live-Watchlist-Fix hatte nur die Monitor-Tabelle bereinigt; in der
+    # Einzelanalyse konnte result["price"] weiterhin NaN sein und als
+    # "nan USD" gerendert werden. Deshalb wird direkt im Renderpfad aus allen
+    # verfuegbaren Quellen ein sauberer Preis gesucht und die Anzeige bei Bedarf
+    # auf "n/a" gesetzt.
+    def _v224_clean_price_value(value):
+        try:
+            val = float(pd.to_numeric(value, errors="coerce"))
+            if np.isfinite(val) and val > 0:
+                return val
+        except Exception:
+            pass
+        return np.nan
+
+    def _v224_last_close_from_df(_df):
+        try:
+            if _df is not None and not getattr(_df, "empty", True) and "Close" in _df.columns:
+                close_ser = pd.to_numeric(_df["Close"], errors="coerce").dropna()
+                if not close_ser.empty:
+                    return _v224_clean_price_value(close_ser.iloc[-1])
+        except Exception:
+            pass
+        return np.nan
+
+    _analysis_price_candidates = [
+        price,
+        result.get("analysis_price", np.nan),
+        result.get("Analyse_Kursbasis", np.nan),
+        result.get("Aktueller_Kurs", np.nan),
+        live_price,
+        result.get("regularMarketPrice", np.nan),
+        result.get("currentPrice", np.nan),
+        result.get("lastPrice", np.nan),
+        result.get("previousClose", np.nan),
+        _v224_last_close_from_df(df),
+    ]
+    clean_price = np.nan
+    for _candidate_price in _analysis_price_candidates:
+        clean_price = _v224_clean_price_value(_candidate_price)
+        if pd.notna(clean_price):
+            break
+    price = clean_price
+    price_display = fmt_num(price, 2, " " + ccy) if pd.notna(price) else "n/a"
+
+    live_price = _v224_clean_price_value(live_price)
+    if not pd.notna(live_price) and pd.notna(price):
+        live_price = float(price)
         live_price_source = "Schlusskurs / Analysebasis"
         live_price_diff_pct = 0.0
         live_price_note = "Kein separater Live-/Vor-/Nachbörsenkurs verfügbar; angezeigt wird die reguläre Analysebasis."
+    elif not pd.notna(live_price):
+        live_price_source = "Kurs nicht verfügbar"
+        live_price_diff_pct = np.nan
+        live_price_note = "Kein sauberer Kurswert verfügbar."
     target = result["target"]
     upside = result["upside"]
     regime = result["regime"]
@@ -18932,7 +21947,7 @@ if result is not None:
             f"""
             <div class="premium-card">
                 <div class="premium-title">Kursbasis</div>
-                <div class="premium-value">{price:.2f} {ccy}</div>
+                <div class="premium-value">{price_display}</div>
                 <div class="premium-sub">Reguläre Analysebasis · {ts}</div>
                 <div class="premium-sub">Aktuell: {(fmt_num(live_price, 2, " " + ccy) if pd.notna(live_price) else "n/a")} · {live_price_source}{(" · " + fmt_num(live_price_diff_pct, 1, "%")) if pd.notna(live_price_diff_pct) else ""}</div>
             </div>
@@ -19381,13 +22396,44 @@ if result is not None:
         key=f"chart_range_{ticker}"
     )
 
-    chart_overlay_col1, chart_overlay_col2, chart_overlay_col3 = st.columns(3)
-    with chart_overlay_col1:
-        show_sr_zones = st.checkbox("Unterstützung / Widerstand anzeigen", value=True, key=f"show_sr_{ticker}")
-    with chart_overlay_col2:
-        show_trend_channel = st.checkbox("Trendkanal anzeigen", value=False, key=f"show_channel_{ticker}")
-    with chart_overlay_col3:
-        show_fib_levels = st.checkbox("Fibonacci-Level anzeigen", value=False, key=f"show_fib_{ticker}")
+    chart_view = st.selectbox(
+        "Chart-Ansicht",
+        ["Kompakt", "Setup", "Vollanalyse"],
+        index=1,
+        key=f"chart_view_{ticker}",
+        help="Kompakt zeigt nur die wichtigsten Ebenen. Setup fokussiert Entry/Stop/Ziele/Wave. Vollanalyse zeigt zusätzlich S/R, Trendkanal und Fibonacci."
+    )
+
+    large_chart_labels = st.checkbox(
+        "Große Chart-Labels",
+        value=False,
+        key=f"large_chart_labels_{ticker}",
+        help="Vergrößert die wichtigsten Chart-Badges. Details erscheinen zusätzlich per Mouseover über den Labels."
+    )
+
+    if chart_view == "Vollanalyse":
+        chart_overlay_col1, chart_overlay_col2, chart_overlay_col3, chart_overlay_col4 = st.columns(4)
+        with chart_overlay_col1:
+            show_sr_zones = st.checkbox("Unterstützung / Widerstand", value=True, key=f"show_sr_{ticker}")
+        with chart_overlay_col2:
+            show_trend_channel = st.checkbox("Trendkanal", value=True, key=f"show_channel_{ticker}")
+        with chart_overlay_col3:
+            show_fib_levels = st.checkbox("Fibonacci", value=True, key=f"show_fib_{ticker}")
+        with chart_overlay_col4:
+            show_trade_overlay = st.checkbox("Trade-Setup", value=True, key=f"show_trade_overlay_{ticker}")
+    elif chart_view == "Setup":
+        chart_overlay_col1, chart_overlay_col2 = st.columns(2)
+        with chart_overlay_col1:
+            show_trade_overlay = st.checkbox("Trade-Setup anzeigen", value=True, key=f"show_trade_overlay_{ticker}")
+        with chart_overlay_col2:
+            show_fib_levels = st.checkbox("Fibonacci dezent anzeigen", value=False, key=f"show_fib_{ticker}")
+        show_sr_zones = False
+        show_trend_channel = False
+    else:
+        show_trade_overlay = st.checkbox("Trade-Setup anzeigen", value=True, key=f"show_trade_overlay_{ticker}")
+        show_sr_zones = False
+        show_trend_channel = False
+        show_fib_levels = False
 
     chart_df = compute_display_chart_df_v1535(df, chart_range, ticker)
     chart_sr_basis_df = compute_chart_df(df, "1 Jahr")
@@ -19400,14 +22446,66 @@ if result is not None:
         result["fibonacci_confirmation"] = fibonacci_context_pkg.get("confirmation_label")
         result["fibonacci_confirmation_score"] = fibonacci_context_pkg.get("confirmation_score")
         result["fibonacci_confirmation_text"] = fibonacci_context_pkg.get("confirmation_text")
+    # v21.1: Technische Chartanalyse ist fachlich unabhängig von der Chart-Detailstufe.
+    # Die Chart-Ansicht steuert nur, welche Overlays gezeichnet werden.
+    # S/R-, Trend-, Ultra-, Muster- und Detailausgaben darunter sollen immer berechnet werden.
     chart_structures = None
-    if show_sr_zones or show_trend_channel:
-        try:
-            chart_structures = build_chart_structures(chart_df, sr_basis_df=chart_sr_basis_df)
-        except Exception:
-            chart_structures = None
-    fig = build_candlestick_chart(chart_df, ticker, ccy, show_sr=show_sr_zones, show_channel=show_trend_channel, structures=chart_structures, show_fib=show_fib_levels, fib_pkg=fibonacci_context_pkg)
+    try:
+        chart_structures = build_chart_structures(chart_df, sr_basis_df=chart_sr_basis_df)
+    except Exception:
+        chart_structures = None
+
+    # v19.4: Wellenanalyse vor dem Chart berechnen, damit Wann aktiv?/-Zielzone im Overlay sichtbar sind.
+    try:
+        wave_structure_pkg = build_wave_structure_context_v190(chart_df, result if "result" in locals() else {})
+        if isinstance(result, dict):
+            result["wave_structure_pkg"] = wave_structure_pkg
+            result["wave_structure_label"] = wave_structure_pkg.get("label")
+            result["wave_structure_summary"] = wave_structure_pkg.get("summary")
+            result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
+    except Exception:
+        wave_structure_pkg = (result or {}).get("wave_structure_pkg", {}) if isinstance(result, dict) else {}
+
+    # v21.1: Multi-Timeframe-Struktur vor Radar-/Chart-Kontext berechnen.
+    try:
+        _mtf_hourly_df = get_intraday_hourly_df_for_candles(result if "result" in locals() else {}, chart_df) if "get_intraday_hourly_df_for_candles" in globals() else None
+        multi_timeframe_pkg = build_multi_timeframe_context_v200(chart_df, result if "result" in locals() else {}, _mtf_hourly_df)
+        if isinstance(result, dict):
+            result["multi_timeframe_pkg"] = multi_timeframe_pkg
+            result["mtf_context_pkg"] = multi_timeframe_pkg
+    except Exception:
+        multi_timeframe_pkg = (result or {}).get("multi_timeframe_pkg", {}) if isinstance(result, dict) else {}
+
+    trade_overlay_pkg = build_trade_setup_overlay_v193(result if "result" in locals() else {}, wave_structure_pkg, ccy)
+    fig = build_candlestick_chart(
+        chart_df, ticker, ccy,
+        show_sr=show_sr_zones,
+        show_channel=show_trend_channel,
+        structures=chart_structures,
+        show_fib=show_fib_levels,
+        fib_pkg=fibonacci_context_pkg,
+        show_trade_overlay=show_trade_overlay,
+        trade_overlay_pkg=trade_overlay_pkg,
+        chart_view=chart_view,
+        large_labels=large_chart_labels,
+    )
     st.plotly_chart(fig, use_container_width=True)
+    if show_trade_overlay and trade_overlay_pkg and trade_overlay_pkg.get("has_overlay"):
+        _overlay_bits = []
+        if trade_overlay_pkg.get("price"):
+            _overlay_bits.append(f"Aktuell {trade_overlay_pkg.get('price'):.2f} {ccy}".strip())
+        if trade_overlay_pkg.get("entry_low") and trade_overlay_pkg.get("entry_high"):
+            _overlay_bits.append(f"Entry {trade_overlay_pkg.get('entry_low'):.2f}-{trade_overlay_pkg.get('entry_high'):.2f}")
+        if trade_overlay_pkg.get("stop"):
+            _overlay_bits.append(f"Stop/Invalidierung {trade_overlay_pkg.get('stop'):.2f}")
+        if trade_overlay_pkg.get("tp1"):
+            _overlay_bits.append(f"TP1 {trade_overlay_pkg.get('tp1'):.2f}")
+        if trade_overlay_pkg.get("wave_trigger"):
+            _overlay_bits.append(f"Wann aktiv? {trade_overlay_pkg.get('wave_trigger'):.2f}")
+        if trade_overlay_pkg.get("crv") is not None:
+            _overlay_bits.append(f"CRV {trade_overlay_pkg.get('crv'):.2f}")
+        if _overlay_bits:
+            st.caption("Setup im Chart: " + " · ".join(_overlay_bits))
     _chart_data_note = getattr(chart_df, "attrs", {}).get("chart_data_note", "") if chart_df is not None else ""
     if _chart_data_note:
         st.caption(_chart_data_note)
@@ -19421,6 +22519,7 @@ if result is not None:
         st.caption(f"S/R-Basis: {chart_structures.get('sr_basis_label', '1 Jahr')}")
 
     with st.expander("Technische Chartdetails", expanded=False):
+        st.caption("v21.1: Diese technische Einordnung wird unabhängig von der gewählten Chart-Ansicht vollständig berechnet. Kompakt/Setup/Vollanalyse steuert nur die sichtbaren Overlays im Chart.")
         if chart_structures:
             chart_text_items = summarize_chart_structures(chart_df, chart_structures)
             if chart_text_items:
@@ -19456,14 +22555,15 @@ if result is not None:
                 <table class="{table_class}"><thead><tr>{head}</tr></thead><tbody>{''.join(html_rows)}</tbody></table>
                 """, unsafe_allow_html=True)
 
-            # v15.32: Weicher Wellen-/Strukturkontext, bewusst nicht score-wirksam.
-            wave_structure_pkg = build_wave_structure_context_v1532(chart_df, result if "result" in locals() else {})
-            if isinstance(result, dict):
-                result["wave_structure_pkg"] = wave_structure_pkg
-                result["wave_structure_label"] = wave_structure_pkg.get("label")
-                result["wave_structure_summary"] = wave_structure_pkg.get("summary")
-                result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellen-/Strukturkontext (weich, nicht im Score)**")
+            # v19.4: Wellenanalyse wurde bereits vor dem Chart fuer das Trade-Setup-Overlay berechnet.
+            if "wave_structure_pkg" not in locals() or not isinstance(wave_structure_pkg, dict):
+                wave_structure_pkg = build_wave_structure_context_v190(chart_df, result if "result" in locals() else {})
+                if isinstance(result, dict):
+                    result["wave_structure_pkg"] = wave_structure_pkg
+                    result["wave_structure_label"] = wave_structure_pkg.get("label")
+                    result["wave_structure_summary"] = wave_structure_pkg.get("summary")
+                    result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
+            st.markdown("**Wellenanalyse v21.1 / Swing-Struktur**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -19478,7 +22578,7 @@ if result is not None:
                 <div class="section-card" style="padding:0.85rem 0.95rem;margin:0.55rem 0 0.85rem 0;">
                     <div class="premium-title">{html.escape(str(wave_structure_pkg.get('phase', 'Nicht belastbar')))}</div>
                     <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(wave_structure_pkg.get('label', 'unklar')).capitalize())}</div>
-                    <div class="premium-sub" style="margin-top:4px;"><b>Lesart:</b> {html.escape(str(wave_structure_pkg.get('plain_hint', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:4px;"><b>Lesart:</b> {html.escape(str(wave_structure_pkg.get('wave_readable_compact', wave_structure_pkg.get('plain_hint', '-'))))}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Triggerprüfung:</b> {html.escape(_wave_conf_label.capitalize())}{' · ' + html.escape(str(_wave_conf_score)) + '/100' if str(_wave_conf_score).strip() not in {'', '0'} and _wave_conf_label not in {'noch nicht erreicht', 'kein Trigger', 'nicht belastbar'} else ''}</div>
                     <div class="premium-sub">{html.escape(_wave_conf_text)}</div>
                     <div class="premium-sub" style="margin-top:6px;"><b>Jetzt tun:</b> {html.escape(_wave_conf_action)}</div>
@@ -19488,11 +22588,51 @@ if result is not None:
                 """,
                 unsafe_allow_html=True,
             )
+            _wave_status = str(wave_structure_pkg.get("wave_readable_status", wave_structure_pkg.get("wave_phase", wave_structure_pkg.get("phase", "-"))))
+            _wave_meaning = str(wave_structure_pkg.get("wave_readable_meaning", wave_structure_pkg.get("summary", "-")))
+            _wave_action_readable = str(wave_structure_pkg.get("wave_readable_action", wave_structure_pkg.get("wave_trigger", "-")))
+            _wave_risk_readable = str(wave_structure_pkg.get("wave_readable_risk", wave_structure_pkg.get("wave_invalidation", "-")))
+            _wave_target_readable = str(wave_structure_pkg.get("wave_readable_target", wave_structure_pkg.get("wave_target_zone", "-")))
+            _wave_sequence_readable = str(wave_structure_pkg.get("wave_readable_sequence", wave_structure_pkg.get("wave_sequence", "-")))
+            _wave_quality = str(wave_structure_pkg.get("wave_quality_label", "-"))
+            st.markdown(f"""
+            <div class="premium-card" style="margin-top:10px;">
+                <div class="premium-title">Wellenanalyse v21.1</div>
+                <div class="premium-value" style="font-size:1.02rem;">{html.escape(_wave_status)}</div>
+                <div class="premium-sub" style="margin-top:6px;"><b>Was bedeutet das?</b> {html.escape(_wave_meaning)}</div>
+                <div class="premium-sub" style="margin-top:6px;"><b>Struktur:</b> {html.escape(_wave_sequence_readable)} · <b>Qualität:</b> {html.escape(_wave_quality)}</div>
+                <div class="premium-sub" style="margin-top:6px;"><b>Wann aktiv?</b> {html.escape(_wave_action_readable)}</div>
+                <div class="premium-sub"><b>Wann hinfällig?</b> {html.escape(_wave_risk_readable)}</div>
+                <div class="premium-sub"><b>Ziel bei Bestätigung:</b> {html.escape(_wave_target_readable)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            # v21.1: Multi-Timeframe-Block (Weekly/Daily/Hourly)
+            try:
+                _mtf_pkg = multi_timeframe_pkg if "multi_timeframe_pkg" in locals() and isinstance(multi_timeframe_pkg, dict) else ((result or {}).get("multi_timeframe_pkg") if isinstance(result, dict) else {})
+            except Exception:
+                _mtf_pkg = {}
+            if isinstance(_mtf_pkg, dict) and _mtf_pkg:
+                _w = _mtf_pkg.get("weekly", {}) or {}
+                _d = _mtf_pkg.get("daily", {}) or {}
+                _h = _mtf_pkg.get("hourly", {}) or {}
+                st.markdown(f"""
+                <div class="premium-card" style="margin-top:10px;">
+                    <div class="premium-title">Multi-Timeframe v21.1</div>
+                    <div class="premium-value" style="font-size:1.02rem;">{html.escape(str(_mtf_pkg.get('label', 'MTF nicht berechnet')))} · {html.escape(str(_mtf_pkg.get('score', 'n/a')))}/100</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Lesart:</b> {html.escape(str(_mtf_pkg.get('summary', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Weekly:</b> {html.escape(str(_w.get('status', '-')))} · {html.escape(str(_w.get('reason', '-')))}</div>
+                    <div class="premium-sub"><b>Daily:</b> {html.escape(str(_d.get('status', '-')))} · {html.escape(str(_d.get('reason', '-')))}</div>
+                    <div class="premium-sub"><b>Hourly:</b> {html.escape(str(_h.get('status', '-')))} · {html.escape(str(_h.get('reason', '-')))}</div>
+                    <div class="premium-sub" style="margin-top:6px;"><b>Konflikt:</b> {html.escape(str(_mtf_pkg.get('conflict', '-')))}</div>
+                    <div class="premium-sub"><b>Handlung:</b> {html.escape(str(_mtf_pkg.get('action', '-')))}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
             _wave_zones = wave_structure_pkg.get("zones", []) if isinstance(wave_structure_pkg, dict) else []
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("Wellen-/Strukturkontext ist keine Elliott-Zaehllogik. Er beschreibt nur, ob der letzte Move eher frueh, konstruktiv, fortgeschritten oder korrektiv wirkt.")
+                st.caption("v21.1: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})
@@ -20254,6 +23394,32 @@ if result is not None:
     _now_do_value = str(final_action_label).capitalize()
     _why_txt = str(final_action_reason if "final_action_reason" in locals() else compact_action_text_phase_ui(final_action_label))
 
+    # v22.7: Kein Hinterherlaufen in der zentralen Handlungskarte.
+    # Wenn der aktuelle Kurs deutlich oberhalb der Entry-Zone liegt, darf die
+    # Anzeige nicht mehr "Kaufen" ausgeben. Dann ist das Setup maximal selektiv
+    # bzw. ein Pullback-/neue-Base-Kandidat. Exit-/Schutzampel und Marktregime
+    # duerfen diese operative Distanz nicht ueberstimmen.
+    try:
+        if not position_mode and str(final_action_label or "").strip().lower() in {"kaufen", "buy"}:
+            _ez_no_chase = suggested_entry_zone if "suggested_entry_zone" in locals() else result.get("suggested_entry_zone", "-")
+            _price_no_chase = _v176_to_float(price if "price" in locals() else result.get("price"), None)
+            _low_no_chase, _high_no_chase = _radar_v182_parse_zone(_ez_no_chase)
+            _dist_no_chase = None
+            if _price_no_chase is not None and _high_no_chase is not None and _high_no_chase > 0 and _price_no_chase > _high_no_chase:
+                _dist_no_chase = ((_price_no_chase - _high_no_chase) / _high_no_chase) * 100.0
+            if _dist_no_chase is not None and _dist_no_chase > 3.0:
+                final_action_label = "abwarten"
+                final_action_reason = (
+                    f"Kurs liegt ca. {_dist_no_chase:.1f}% ueber der Entry-Zone; "
+                    "kein Hinterherlaufen. Pullback, neue Base oder bestaetigten Ausbruch abwarten."
+                )
+                _now_do_value = "Abwarten / Pullback"
+                _why_txt = final_action_reason
+                result["action_overextension_guard_v225"] = True
+                result["action_overextension_distance_pct_v225"] = round(float(_dist_no_chase), 1)
+    except Exception:
+        pass
+
     # v17.0.1: In Pre-Entry soll ein valides, reifes Setup nicht wie passives
     # "Abwarten" wirken. Die Kernlogik bleibt unverändert; die Handlungsbox
     # formuliert die nächste Aktion als Vorbereitung bis zum konkreten Trigger.
@@ -20271,7 +23437,17 @@ if result is not None:
 
     if not position_mode:
         _action_low_bridge = str(final_action_label or "").lower()
-        if "kaufen" in _action_low_bridge:
+        _overextended_for_ui = bool(result.get("action_overextension_guard_v225", False)) if isinstance(result, dict) else False
+        if _overextended_for_ui:
+            _trigger_label = "Sauberer Pullback / neue Base"
+            _trigger_txt = _v17_clean_operational_trigger_text(
+                f"Kein Neueinstieg bei deutlichem Abstand zur Entry-Zone. Sauberer: Pullback in/nahe {suggested_entry_zone if 'suggested_entry_zone' in locals() else '-'} oder neue enge Base/Breakout-Bestaetigung.",
+                suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+                price if "price" in locals() else None,
+                chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
+                ccy if "ccy" in locals() else "",
+            )
+        elif "kaufen" in _action_low_bridge:
             _trigger_label = "Jetzt umsetzen / prüfen"
             try:
                 _ez_for_label = suggested_entry_zone if "suggested_entry_zone" in locals() else "-"

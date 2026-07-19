@@ -27,6 +27,7 @@ REQUIRED_FILES = [
     "modules/__init__.py",
     "modules/risk_calculator.py",
     "modules/position_monitor.py",
+    "modules/trade_journal.py",
     "modules/event_log.py",
     "modules/live_monitor.py",
     "modules/watchlist_storage.py",
@@ -55,6 +56,7 @@ def import_modules():
     names = [
         "modules.risk_calculator",
         "modules.position_monitor",
+        "modules.trade_journal",
         "modules.event_log",
         "modules.live_monitor",
         "modules.watchlist_storage",
@@ -124,6 +126,41 @@ def test_position_monitor(mod) -> None:
     check(stopped["Ampel"] == "🔴", "Stop-Erkennung fehlerhaft")
 
 
+def test_trade_journal(mod) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        mod.configure_context(
+            base_dir=tmp,
+            safe_float=lambda v, default=None: float(v) if v not in (None, "", "n/a", "-") else default,
+            event_logger=lambda **kwargs: True,
+        )
+        mod._v270_reset_trade_journal()
+        positions = {
+            "AAPL": {
+                "ticker": "AAPL", "name": "Apple Inc.", "entry": 100, "stop": 95,
+                "initial_stop": 95, "target": 115, "shares": 10, "initial_shares": 10,
+            }
+        }
+        partial = mod._v270_partial_exit(
+            positions, watchlist_name="Test", ticker="AAPL", exit_price=105,
+            exit_shares=4, exit_date="2026-01-01", note="Teilgewinn",
+        )
+        check(partial["ok"] is True, "Teilverkäuf konnte nicht gespeichert werden")
+        check(partial["positions"]["AAPL"]["shares"] == 6, "Reststueckzahl nach Teilverkauf fehlerhaft")
+        closed = mod._v270_close_position(
+            partial["positions"], watchlist_name="Test", ticker="AAPL",
+            exit_price=110, exit_date="2026-01-02", reason="Ziel erreicht",
+        )
+        check(closed["ok"] is True, "Position konnte nicht geschlossen werden")
+        check("AAPL" not in closed["positions"], "Geschlossene Position wurde nicht entfernt")
+        df = mod._v270_journal_entries_dataframe("Test")
+        check(len(df) == 2, "Trade-Journal enthaelt unerwartete Anzahl Eintraege")
+        summary = mod._v270_journal_summary(df)
+        check(summary["closed_trades"] == 1, "Geschlossener Trade wird nicht gezaehlt")
+        check(summary["partial_exits"] == 1, "Teilverkäuf wird nicht gezaehlt")
+        check(summary["realized_pnl"] > 0, "Realisiertes P/L wurde nicht berechnet")
+        check((Path(tmp) / ".trade_journal_v270.json").exists(), "Trade-Journal wurde nicht persistent gespeichert")
+
+
 def test_event_log(mod) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         mod.configure_context(base_dir=tmp)
@@ -155,7 +192,7 @@ def test_radar_view(mod) -> None:
 
 def test_navigation_guards() -> None:
     source = (ROOT / "app.py").read_text(encoding="utf-8")
-    check("v26.0" in source, "v26.0 Versionsstand fehlt in app.py")
+    check("v27.0" in source, "v27.0 Versionsstand fehlt in app.py")
     check("query" in source.lower() and "workspace" in source.lower(), "Workspace-Query-State nicht auffindbar")
     check("modules" in source and "radar_view" in source, "Radar-Modul ist nicht integriert")
     check("modules" in source and "live_monitor" in source, "Live-Monitor-Modul ist nicht integriert")
@@ -190,11 +227,12 @@ def main() -> None:
     test_risk_calculator(mods["modules.risk_calculator"])
     test_live_monitor(mods["modules.live_monitor"])
     test_position_monitor(mods["modules.position_monitor"])
+    test_trade_journal(mods["modules.trade_journal"])
     test_event_log(mods["modules.event_log"])
     test_radar_view(mods["modules.radar_view"])
     test_phase4_modules(mods)
     test_navigation_guards()
-    print("v26.0 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v27.0 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

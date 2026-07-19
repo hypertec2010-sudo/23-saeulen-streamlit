@@ -285,6 +285,8 @@ def _v244_positions_dataframe(positions, live_df=None, watchlist_name=""):
             "Entry": _v230_price_text(pos.get("entry")),
             "Stop": _v230_price_text(pos.get("stop")),
             "Stück": int(_v230_safe_float(pos.get("shares"), default=0) or 0),
+            "Initial-Stück": int(_v230_safe_float(pos.get("initial_shares"), default=pos.get("shares")) or 0),
+            "Realisiert P/L": "n/a" if _v230_safe_float(pos.get("realized_pnl"), default=None) is None else f"{_v230_safe_float(pos.get('realized_pnl'), default=0.0):.2f}",
             "R": "n/a" if calc.get("R-Multiple") is None else f"{calc.get('R-Multiple'):.2f}R",
             "P/L": "n/a" if calc.get("P/L") is None else f"{calc.get('P/L'):.0f}",
             "P/L %": "n/a" if calc.get("P/L %") is None else f"{calc.get('P/L %'):.1f}%",

@@ -1,18 +1,27 @@
-# v26.0 Modularisierung Phase 4
+# v27.0 Trade-Journal
 
-Neu ausgelagert:
+Neu in dieser Version:
 
-- `modules/analysis_engine.py` – zentrale Core-/Fallback-Analyse und Asset-Nachbearbeitung
-- `modules/cache_layer.py` – gemeinsame Analyse-Cache-Schicht und Marktzeit-Buckets
-- `modules/market_data.py` – robuste Preis-/ATR-Helfer
-- `modules/ticker_resolver.py` – Ticker-Normalisierung und Kandidatenvarianten
-- `modules/scoring_engine.py` – gemeinsame Score-Normalisierung
+- Teilverkäufe aus offenen Positionen dokumentieren
+- Positionen vollständig schließen
+- Ausstiegskurs, Datum und Schließungsgrund speichern
+- realisierten Gewinn/Verlust und R-Multiple berechnen
+- Stop-Anpassungen mit Historie protokollieren
+- Trade-Notizen und Erkenntnisse speichern
+- persistentes Trade-Journal je Watchlist
+- Journal-Kennzahlen: geschlossene Trades, Teilverkäufe, realisiertes P/L, Trefferquote und durchschnittliches R
+- CSV-Export des Trade-Journals
 
-Die bestehenden UI-, Live-Monitor-, Watchlist-, Risiko-, Positions- und Event-Module bleiben erhalten.
+Neues Modul:
+
+- `modules/trade_journal.py`
 
 ## Deployment
 
-Den vollständigen Inhalt dieses Ordners ins Repository übernehmen. Danach optional ausführen:
+Den vollständigen Inhalt dieses Ordners ins Repository übernehmen. Insbesondere muss
+`modules/trade_journal.py` direkt neben den übrigen Moduldateien liegen.
+
+Optional prüfen:
 
 ```bash
 python verify_deployment.py

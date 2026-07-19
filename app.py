@@ -2653,7 +2653,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v26.0"
+APP_VERSION = "v27.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -16772,6 +16772,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "risk_calculator.py",
     _MODULE_DIR_V252 / "event_log.py",
     _MODULE_DIR_V252 / "position_monitor.py",
+    _MODULE_DIR_V252 / "trade_journal.py",
     _MODULE_DIR_V252 / "live_monitor.py",
     _MODULE_DIR_V252 / "watchlist_storage.py",
 )
@@ -16786,6 +16787,7 @@ if _missing_module_files_v252:
 from modules import risk_calculator as _risk_module
 from modules import event_log as _event_module
 from modules import position_monitor as _position_module
+from modules import trade_journal as _trade_journal_module
 from modules import live_monitor as _live_module
 from modules import watchlist_storage as _watchlist_module
 
@@ -16833,6 +16835,24 @@ _v245_delete_positions_for_watchlist = _position_module._v245_delete_positions_f
 _v244_row_price = _position_module._v244_row_price
 _v244_calc_trade_state = _position_module._v244_calc_trade_state
 _v244_positions_dataframe = _position_module._v244_positions_dataframe
+
+# v27.0: Persistentes Trade-Journal konfigurieren
+_trade_journal_module.configure_context(
+    base_dir=Path(__file__).resolve().parent,
+    time_provider=get_current_berlin_time,
+    safe_float=_v230_safe_float,
+    event_logger=_v2416_log_event,
+)
+_v270_trade_journal_path = _trade_journal_module._v270_trade_journal_path
+_v270_load_trade_journal = _trade_journal_module._v270_load_trade_journal
+_v270_save_trade_journal = _trade_journal_module._v270_save_trade_journal
+_v270_partial_exit = _trade_journal_module._v270_partial_exit
+_v270_close_position = _trade_journal_module._v270_close_position
+_v270_adjust_stop = _trade_journal_module._v270_adjust_stop
+_v270_save_trade_note = _trade_journal_module._v270_save_trade_note
+_v270_journal_entries_dataframe = _trade_journal_module._v270_journal_entries_dataframe
+_v270_journal_summary = _trade_journal_module._v270_journal_summary
+_v270_reset_trade_journal = _trade_journal_module._v270_reset_trade_journal
 
 # v25.3: Live-Monitor-Modul konfigurieren
 _live_module.configure_context(
@@ -18274,7 +18294,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         # starten dadurch keine teuren Analysen aus anderen Bereichen.
                         cockpit_options = [
                             "📡 Live-Screener", "📐 Risiko-Rechner",
-                            "📌 Positionen / Exit", "🧾 Historie & Details",
+                            "📌 Positionen / Exit", "📓 Trade-Journal", "🧾 Historie & Details",
                         ]
                         current_cockpit = st.session_state.get("watchlist_cockpit_area_v2413", cockpit_options[0])
                         if current_cockpit not in cockpit_options:
@@ -18524,8 +18544,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         elif cockpit_area == "📌 Positionen / Exit":
-                            st.markdown("### Positions-/Exit-Monitor v25.1")
-                            st.caption("Überwacht manuell angelegte Positionen aus der Watchlist: R-Multiple, P/L, 1R/2R, Stop-/Teilgewinn- und Exit-Hinweise. Die App eröffnet keine Trades automatisch. Positionen werden lokal persistiert und bleiben nach Reload erhalten, sofern der App-Speicher verfügbar ist.")
+                            st.markdown("### Positions-/Exit-Monitor v27.0")
+                            st.caption("Überwacht offene Positionen: R-Multiple, P/L, Stop-/Teilgewinn- und Exit-Hinweise. Mit dem Trade-Journal können Teilverkäufe, Stop-Anpassungen, Notizen und vollständige Schließungen dokumentiert werden. Die App eröffnet oder schließt keine Trades automatisch.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])
                             with pc1:
@@ -18639,14 +18659,28 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 b1, b2, b3 = st.columns([1.0, 1.0, 1.0])
                                 with b1:
                                     if st.button("Position speichern/aktualisieren", use_container_width=True, key=f"v244_save_{pos_ticker}"):
+                                        _initial_stop_v270 = _v230_safe_float(old_pos.get("initial_stop"), default=None)
+                                        if _initial_stop_v270 is None:
+                                            _initial_stop_v270 = float(stop_v or 0.0)
+                                        _initial_shares_v270 = int(_v230_safe_float(old_pos.get("initial_shares"), default=0) or 0)
+                                        if _initial_shares_v270 <= 0:
+                                            _initial_shares_v270 = int(shares_v or 0)
                                         positions[pos_ticker] = {
                                             "ticker": pos_ticker,
                                             "name": pos_name,
                                             "entry": float(entry_v or 0.0),
                                             "stop": float(stop_v or 0.0),
+                                            "initial_stop": _initial_stop_v270,
                                             "target": float(target_v or 0.0),
                                             "shares": int(shares_v or 0),
+                                            "initial_shares": _initial_shares_v270,
+                                            "realized_pnl": _v230_safe_float(old_pos.get("realized_pnl"), default=0.0) or 0.0,
+                                            "realized_shares": int(_v230_safe_float(old_pos.get("realized_shares"), default=0) or 0),
+                                            "realized_r_weighted": _v230_safe_float(old_pos.get("realized_r_weighted"), default=0.0) or 0.0,
+                                            "stop_history": list(old_pos.get("stop_history") or []),
+                                            "journal_notes": list(old_pos.get("journal_notes") or []),
                                             "created_at": old_pos.get("created_at") or get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
+                                            "updated_at": get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
                                             "last_price": default_price,
                                         }
                                         _v244_save_positions(selected_watchlist_name, positions)
@@ -18683,6 +18717,229 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             signature=f"deleted|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
                                         )
                                         st.warning(f"Position {pos_ticker} gelöscht.")
+                                        st.rerun()
+                            # ---------- v27.0: Trade verwalten / Journal-Aktionen ----------
+                            if positions:
+                                st.divider()
+                                st.markdown("#### Offenen Trade verwalten")
+                                st.caption("Teilverkäufe, Stop-Anpassungen und vollständige Schließungen werden persistent im Trade-Journal dokumentiert.")
+                                manage_tickers_v270 = sorted([str(t).strip().upper() for t in positions.keys() if str(t).strip()])
+                                manage_ticker_v270 = st.selectbox(
+                                    "Offene Position",
+                                    options=manage_tickers_v270,
+                                    key=f"v270_manage_ticker_{selected_watchlist_name}",
+                                )
+                                manage_pos_v270 = dict(positions.get(manage_ticker_v270) or {})
+                                manage_name_v270 = str(manage_pos_v270.get("name") or manage_ticker_v270)
+                                manage_live_price_v270 = _v230_safe_float(manage_pos_v270.get("last_price"), default=None)
+                                try:
+                                    _manage_match_v270 = live_df[live_df["Ticker"].astype(str).str.upper() == manage_ticker_v270]
+                                    if not _manage_match_v270.empty:
+                                        manage_live_price_v270 = _v244_row_price(_manage_match_v270.iloc[0].to_dict()) or manage_live_price_v270
+                                except Exception:
+                                    pass
+                                manage_calc_v270 = _v244_calc_trade_state(
+                                    manage_pos_v270,
+                                    {"Kurs": manage_live_price_v270} if manage_live_price_v270 is not None else {},
+                                )
+                                jm1, jm2, jm3, jm4 = st.columns(4)
+                                with jm1:
+                                    st.metric("Offene Stück", int(_v230_safe_float(manage_pos_v270.get("shares"), default=0) or 0))
+                                with jm2:
+                                    st.metric("Aktueller Kurs", _v230_price_text(manage_live_price_v270))
+                                with jm3:
+                                    _manage_r_v270 = manage_calc_v270.get("R-Multiple")
+                                    st.metric("Aktuelles R", "n/a" if _manage_r_v270 is None else f"{_manage_r_v270:.2f}R")
+                                with jm4:
+                                    st.metric("Status", str(manage_calc_v270.get("Status") or "-"))
+
+                                manage_action_v270 = st.radio(
+                                    "Journal-Aktion",
+                                    ["Teilverkauf", "Position schließen", "Stop anpassen", "Notiz / Erkenntnis"],
+                                    horizontal=True,
+                                    key=f"v270_manage_action_{selected_watchlist_name}",
+                                )
+                                today_v270 = get_current_berlin_time().date()
+                                open_shares_v270 = int(_v230_safe_float(manage_pos_v270.get("shares"), default=0) or 0)
+                                default_exit_price_v270 = _v230_safe_float(manage_live_price_v270, default=None)
+                                if default_exit_price_v270 is None:
+                                    default_exit_price_v270 = _v230_safe_float(manage_pos_v270.get("entry"), default=0.0) or 0.0
+
+                                if manage_action_v270 == "Teilverkauf":
+                                    if open_shares_v270 <= 1:
+                                        st.info("Für einen Teilverkauf werden mindestens 2 offene Stück benötigt. Nutze stattdessen 'Position schließen'.")
+                                    else:
+                                        with st.form(f"v270_partial_form_{selected_watchlist_name}_{manage_ticker_v270}"):
+                                            q1, q2, q3 = st.columns(3)
+                                            with q1:
+                                                partial_price_v270 = st.number_input("Verkaufskurs", min_value=0.0, value=float(round(default_exit_price_v270, 4)), step=0.01)
+                                            with q2:
+                                                partial_shares_v270 = st.number_input("Verkaufte Stück", min_value=1, max_value=max(1, open_shares_v270 - 1), value=max(1, min(open_shares_v270 - 1, open_shares_v270 // 2)), step=1)
+                                            with q3:
+                                                partial_date_v270 = st.date_input("Datum", value=today_v270)
+                                            partial_note_v270 = st.text_area("Notiz", placeholder="Warum wird reduziert? Setup, Ziel, Risiko ...")
+                                            partial_learning_v270 = st.text_area("Erkenntnis", placeholder="Was soll für künftige Trades festgehalten werden?")
+                                            partial_submit_v270 = st.form_submit_button("Teilverkauf dokumentieren", use_container_width=True)
+                                        if partial_submit_v270:
+                                            result_v270 = _v270_partial_exit(
+                                                positions,
+                                                watchlist_name=selected_watchlist_name,
+                                                ticker=manage_ticker_v270,
+                                                exit_price=partial_price_v270,
+                                                exit_shares=partial_shares_v270,
+                                                exit_date=partial_date_v270,
+                                                note=partial_note_v270,
+                                                learning=partial_learning_v270,
+                                            )
+                                            if result_v270.get("ok"):
+                                                positions = result_v270.get("positions", positions)
+                                                _v244_save_positions(selected_watchlist_name, positions)
+                                                st.success(f"Teilverkauf für {manage_ticker_v270} gespeichert. Verbleibend: {result_v270.get('remaining')} Stück.")
+                                                st.rerun()
+                                            else:
+                                                st.error(result_v270.get("error") or "Teilverkauf konnte nicht gespeichert werden.")
+
+                                elif manage_action_v270 == "Position schließen":
+                                    with st.form(f"v270_close_form_{selected_watchlist_name}_{manage_ticker_v270}"):
+                                        q1, q2, q3 = st.columns(3)
+                                        with q1:
+                                            close_price_v270 = st.number_input("Ausstiegskurs", min_value=0.0, value=float(round(default_exit_price_v270, 4)), step=0.01)
+                                        with q2:
+                                            close_date_v270 = st.date_input("Ausstiegsdatum", value=today_v270)
+                                        with q3:
+                                            close_reason_v270 = st.selectbox("Grund", ["Manuell geschlossen", "Ziel erreicht", "Stop erreicht", "Signal abgeschwächt", "Zeit-Exit", "Sonstiger Grund"])
+                                        close_note_v270 = st.text_area("Trade-Notiz", placeholder="Ausführung, Marktumfeld, Abweichung vom Plan ...")
+                                        close_learning_v270 = st.text_area("Erkenntnis / Verbesserung", placeholder="Was lief gut, was sollte beim nächsten Trade anders sein?")
+                                        close_submit_v270 = st.form_submit_button("Position schließen und journalisieren", use_container_width=True)
+                                    if close_submit_v270:
+                                        result_v270 = _v270_close_position(
+                                            positions,
+                                            watchlist_name=selected_watchlist_name,
+                                            ticker=manage_ticker_v270,
+                                            exit_price=close_price_v270,
+                                            exit_date=close_date_v270,
+                                            reason=close_reason_v270,
+                                            note=close_note_v270,
+                                            learning=close_learning_v270,
+                                        )
+                                        if result_v270.get("ok"):
+                                            positions = result_v270.get("positions", positions)
+                                            _v244_save_positions(selected_watchlist_name, positions)
+                                            st.success(f"Position {manage_ticker_v270} geschlossen und im Trade-Journal gespeichert.")
+                                            st.rerun()
+                                        else:
+                                            st.error(result_v270.get("error") or "Position konnte nicht geschlossen werden.")
+
+                                elif manage_action_v270 == "Stop anpassen":
+                                    old_stop_v270 = _v230_safe_float(manage_pos_v270.get("stop"), default=0.0) or 0.0
+                                    with st.form(f"v270_stop_form_{selected_watchlist_name}_{manage_ticker_v270}"):
+                                        q1, q2 = st.columns(2)
+                                        with q1:
+                                            new_stop_v270 = st.number_input("Neuer Stop", min_value=0.0, value=float(round(old_stop_v270, 4)), step=0.01)
+                                        with q2:
+                                            stop_date_v270 = st.date_input("Datum", value=today_v270)
+                                        stop_note_v270 = st.text_area("Begründung", placeholder="Break-even, neues Swing-Low, Gewinnschutz ...")
+                                        stop_submit_v270 = st.form_submit_button("Stop aktualisieren", use_container_width=True)
+                                    if stop_submit_v270:
+                                        result_v270 = _v270_adjust_stop(
+                                            positions,
+                                            watchlist_name=selected_watchlist_name,
+                                            ticker=manage_ticker_v270,
+                                            new_stop=new_stop_v270,
+                                            action_date=stop_date_v270,
+                                            note=stop_note_v270,
+                                        )
+                                        if result_v270.get("ok"):
+                                            positions = result_v270.get("positions", positions)
+                                            _v244_save_positions(selected_watchlist_name, positions)
+                                            st.success(f"Stop für {manage_ticker_v270} aktualisiert und protokolliert.")
+                                            st.rerun()
+                                        else:
+                                            st.error(result_v270.get("error") or "Stop konnte nicht aktualisiert werden.")
+
+                                else:
+                                    with st.form(f"v270_note_form_{selected_watchlist_name}_{manage_ticker_v270}"):
+                                        note_date_v270 = st.date_input("Datum", value=today_v270)
+                                        trade_note_v270 = st.text_area("Notiz", placeholder="Beobachtung zur Position, Ausführung oder zum Markt ...")
+                                        trade_learning_v270 = st.text_area("Erkenntnis", placeholder="Lernpunkt oder Regel für künftige Trades ...")
+                                        note_submit_v270 = st.form_submit_button("Notiz speichern", use_container_width=True)
+                                    if note_submit_v270:
+                                        result_v270 = _v270_save_trade_note(
+                                            positions,
+                                            watchlist_name=selected_watchlist_name,
+                                            ticker=manage_ticker_v270,
+                                            note=trade_note_v270,
+                                            learning=trade_learning_v270,
+                                            action_date=note_date_v270,
+                                        )
+                                        if result_v270.get("ok"):
+                                            positions = result_v270.get("positions", positions)
+                                            _v244_save_positions(selected_watchlist_name, positions)
+                                            st.success(f"Trade-Notiz für {manage_ticker_v270} gespeichert.")
+                                            st.rerun()
+                                        else:
+                                            st.error(result_v270.get("error") or "Notiz konnte nicht gespeichert werden.")
+
+                        elif cockpit_area == "📓 Trade-Journal":
+                            st.markdown("### Trade-Journal v27.0")
+                            st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Daten bilden später die Grundlage für das Lern-/Backtest-Dashboard.")
+                            journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
+                            if journal_df_v270 is None or journal_df_v270.empty:
+                                st.info("Noch keine Journal-Einträge für diese Watchlist. Aktionen aus dem Positions-/Exit-Monitor erscheinen hier.")
+                            else:
+                                summary_v270 = _v270_journal_summary(journal_df_v270)
+                                js1, js2, js3, js4, js5 = st.columns(5)
+                                with js1:
+                                    st.metric("Geschlossene Trades", summary_v270.get("closed_trades", 0))
+                                with js2:
+                                    st.metric("Teilverkäufe", summary_v270.get("partial_exits", 0))
+                                with js3:
+                                    st.metric("Realisiert P/L", f"{summary_v270.get('realized_pnl', 0.0):,.2f}".replace(",", "."))
+                                with js4:
+                                    _wr_v270 = summary_v270.get("win_rate")
+                                    st.metric("Trefferquote", "n/a" if _wr_v270 is None else f"{_wr_v270:.1f}%")
+                                with js5:
+                                    _avg_r_v270 = summary_v270.get("avg_r")
+                                    st.metric("Ø R geschlossen", "n/a" if _avg_r_v270 is None else f"{_avg_r_v270:.2f}R")
+
+                                jf1, jf2 = st.columns(2)
+                                with jf1:
+                                    journal_types_v270 = ["Alle"] + sorted(journal_df_v270["Typ"].dropna().astype(str).unique().tolist())
+                                    journal_type_filter_v270 = st.selectbox("Journal-Typ", journal_types_v270, key="v270_journal_type_filter")
+                                with jf2:
+                                    journal_tickers_v270 = ["Alle"] + sorted(journal_df_v270["Ticker"].dropna().astype(str).unique().tolist())
+                                    journal_ticker_filter_v270 = st.selectbox("Ticker", journal_tickers_v270, key="v270_journal_ticker_filter")
+                                journal_view_v270 = journal_df_v270.copy()
+                                if journal_type_filter_v270 != "Alle":
+                                    journal_view_v270 = journal_view_v270[journal_view_v270["Typ"].astype(str) == journal_type_filter_v270]
+                                if journal_ticker_filter_v270 != "Alle":
+                                    journal_view_v270 = journal_view_v270[journal_view_v270["Ticker"].astype(str) == journal_ticker_filter_v270]
+                                journal_display_cols_v270 = [
+                                    "Datum", "Ticker", "Name", "Typ", "Kurs", "Stück", "Verbleibend",
+                                    "Realisiert P/L", "Realisiert %", "Realisiert R", "Gesamt P/L", "Gesamt R",
+                                    "Alter Stop", "Neuer Stop", "Notiz", "Erkenntnis", "Details",
+                                ]
+                                journal_display_cols_v270 = [c for c in journal_display_cols_v270 if c in journal_view_v270.columns]
+                                st.dataframe(
+                                    journal_view_v270[journal_display_cols_v270].head(500),
+                                    hide_index=True,
+                                    use_container_width=True,
+                                    height=min(600, 42 * len(journal_view_v270.head(500)) + 55),
+                                )
+                                csv_v270 = journal_view_v270.drop(columns=["ID"], errors="ignore").to_csv(index=False).encode("utf-8-sig")
+                                jc1, jc2 = st.columns(2)
+                                with jc1:
+                                    st.download_button(
+                                        "Trade-Journal als CSV",
+                                        data=csv_v270,
+                                        file_name=f"trade_journal_{selected_watchlist_name}.csv",
+                                        mime="text/csv",
+                                        use_container_width=True,
+                                    )
+                                with jc2:
+                                    confirm_reset_v270 = st.checkbox("Löschen bestätigen", key="v270_confirm_reset")
+                                    if st.button("Trade-Journal dieser Watchlist löschen", disabled=not confirm_reset_v270, use_container_width=True, key="v270_reset_journal"):
+                                        _v270_reset_trade_journal(selected_watchlist_name)
                                         st.rerun()
 
 

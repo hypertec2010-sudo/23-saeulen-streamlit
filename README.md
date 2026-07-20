@@ -1,3 +1,7 @@
+# v27.1 Trade-Journal Navigation/Scan Fix
+
+Der Trade-Journal-Bereich nutzt beim Wechsel nur noch den letzten Live-Scan aus dem Cache. Ein automatischer Vollscan der Watchlist wird ausschließlich im aktiven Bereich **Live-Screener** ausgelöst.
+
 # v27.0 Trade-Journal
 
 Neu in dieser Version:

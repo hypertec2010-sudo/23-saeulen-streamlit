@@ -2653,7 +2653,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v27.0"
+APP_VERSION = "v27.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -16836,7 +16836,7 @@ _v244_row_price = _position_module._v244_row_price
 _v244_calc_trade_state = _position_module._v244_calc_trade_state
 _v244_positions_dataframe = _position_module._v244_positions_dataframe
 
-# v27.0: Persistentes Trade-Journal konfigurieren
+# v27.1: Persistentes Trade-Journal konfigurieren
 _trade_journal_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
     time_provider=get_current_berlin_time,
@@ -18207,7 +18207,26 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 cache_ok_v246 = False
                 cache_stale_v246 = True
             native_refresh_due_v2415 = bool(st.session_state.pop("v2415_native_refresh_due", False))
-            live_should_scan_v246 = bool(manual_live_run_v246 or run_live_monitor or native_refresh_due_v2415 or (live_monitor_enabled and (not cache_ok_v246 or cache_stale_v246)))
+
+            # v27.1: Nur der Live-Screener darf einen automatischen Vollscan ausloesen.
+            # Beim Wechsel in Risiko, Positionen, Trade-Journal oder Historie werden
+            # ausschliesslich die zuletzt gecachten Live-Ergebnisse verwendet. Sonst
+            # startet der teure Watchlist-Scan bei jeder Cockpit-Navigation erneut und
+            # der Trade-Journal-Bereich wirkt wie eine Endlosschleife.
+            active_cockpit_pre_v271 = str(
+                st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener")
+            )
+            live_screener_active_v271 = active_cockpit_pre_v271 == "📡 Live-Screener"
+            live_should_scan_v246 = bool(
+                manual_live_run_v246
+                or run_live_monitor
+                or (live_screener_active_v271 and native_refresh_due_v2415)
+                or (
+                    live_screener_active_v271
+                    and live_monitor_enabled
+                    and (not cache_ok_v246 or cache_stale_v246)
+                )
+            )
             show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246)
 
             if show_live_monitor_v246:
@@ -18544,7 +18563,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         elif cockpit_area == "📌 Positionen / Exit":
-                            st.markdown("### Positions-/Exit-Monitor v27.0")
+                            st.markdown("### Positions-/Exit-Monitor v27.1")
                             st.caption("Überwacht offene Positionen: R-Multiple, P/L, Stop-/Teilgewinn- und Exit-Hinweise. Mit dem Trade-Journal können Teilverkäufe, Stop-Anpassungen, Notizen und vollständige Schließungen dokumentiert werden. Die App eröffnet oder schließt keine Trades automatisch.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])
@@ -18718,7 +18737,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         )
                                         st.warning(f"Position {pos_ticker} gelöscht.")
                                         st.rerun()
-                            # ---------- v27.0: Trade verwalten / Journal-Aktionen ----------
+                            # ---------- v27.1: Trade verwalten / Journal-Aktionen ----------
                             if positions:
                                 st.divider()
                                 st.markdown("#### Offenen Trade verwalten")
@@ -18881,7 +18900,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.error(result_v270.get("error") or "Notiz konnte nicht gespeichert werden.")
 
                         elif cockpit_area == "📓 Trade-Journal":
-                            st.markdown("### Trade-Journal v27.0")
+                            st.markdown("### Trade-Journal v27.1")
                             st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Daten bilden später die Grundlage für das Lern-/Backtest-Dashboard.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             if journal_df_v270 is None or journal_df_v270.empty:

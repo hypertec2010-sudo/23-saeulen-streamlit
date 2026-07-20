@@ -192,7 +192,7 @@ def test_radar_view(mod) -> None:
 
 def test_navigation_guards() -> None:
     source = (ROOT / "app.py").read_text(encoding="utf-8")
-    check("v27.0" in source, "v27.0 Versionsstand fehlt in app.py")
+    check("v27.1" in source, "v27.1 Versionsstand fehlt in app.py")
     check("query" in source.lower() and "workspace" in source.lower(), "Workspace-Query-State nicht auffindbar")
     check("modules" in source and "radar_view" in source, "Radar-Modul ist nicht integriert")
     check("modules" in source and "live_monitor" in source, "Live-Monitor-Modul ist nicht integriert")

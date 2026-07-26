@@ -4,7 +4,10 @@ import subprocess
 import sys
 
 required = [
-    "app.py", "modules/__init__.py", "modules/risk_calculator.py",
+    "app.py", "legacy_app.py", "modules/__init__.py",
+    "modules/app_shell.py", "modules/page_runtime.py",
+    "pages/analysis.py", "pages/radar.py", "pages/watchlists.py",
+    "pages/positions.py", "pages/trade_journal.py", "modules/risk_calculator.py",
     "modules/position_monitor.py", "modules/trade_journal.py", "modules/event_log.py", "modules/live_monitor.py",
     "modules/watchlist_storage.py", "modules/chart_overlays.py",
     "modules/radar_view.py", "modules/analysis_view.py", "modules/analysis_engine.py", "modules/cache_layer.py",

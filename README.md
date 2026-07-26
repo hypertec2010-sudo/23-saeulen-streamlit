@@ -1,55 +1,30 @@
-# v28.1 Repository- und Datenmodell-Schicht
+# v28.2 Native Streamlit Multipage-Struktur
 
-Diese Version baut auf der funktionierenden Supabase-Migration aus v28.0 auf. Die bestehende Tabelle `app_state`, die Streamlit-Secrets und bereits gespeicherte Daten bleiben voll kompatibel.
+Diese Version baut auf v28.1 auf und ändert weder das Supabase-Schema noch bestehende Daten.
 
-## Neu in v28.1
+## Neue Seiten
 
-- verbindliche Domain-Modelle fuer Positionen, Journal-Eintraege, Signal-Events und Watchlist-Eintraege
-- zentrale Repository Registry
-- eigene Repositories fuer Positionen, Trade-Journal und Event-Log
-- Watchlist-Repository ueber die neue Repository-API exportiert
-- Dependency Injection in die bestehenden Fachmodule
-- automatische Normalisierung persistierter Datensaetze
-- weiterhin lokaler Spiegel und Supabase-Fallback
-- erweiterte Regressionspruefungen fuer Modelle und Repositories
+- Sofortanalyse
+- Kandidaten-Radar
+- Watchlisten
+- Positionen / Exit
+- Trade-Journal
 
-## Neue Struktur
+Die Navigation verwendet `st.navigation` und `st.Page`. `app.py` ist jetzt ein kleiner Einstiegspunkt; die bewährte Oberfläche bleibt in `legacy_app.py` erhalten und wird von den Seiten kontrolliert ausgeführt.
 
-```text
-modules/
-    domain/
-        __init__.py
-        models.py
-    repositories/
-        __init__.py
-        base.py
-        position_repository.py
-        trade_journal_repository.py
-        event_repository.py
-        registry.py
-    storage/
-        ... unveraendert aus v28.0
-```
+## Upgrade
 
-Weitere Details stehen in `ARCHITECTURE_V28_1.md`.
+1. Vollständigen Inhalt des ZIP-Pakets ins Repository übernehmen.
+2. Bestehende Streamlit-Secrets unverändert lassen.
+3. Keine SQL-Migration ausführen.
+4. App neu starten.
+5. Jede Seite einmal öffnen und Positionen sowie Trade-Journal prüfen.
 
-## Upgrade von v28.0
-
-1. Den vollstaendigen Inhalt dieses Pakets in das Repository uebernehmen.
-2. Die vorhandenen Streamlit-Secrets unveraendert lassen.
-3. Keine neue SQL-Datei ausfuehren; das vorhandene `app_state`-Schema bleibt gueltig.
-4. Die App neu starten.
-5. Unter **Hilfen & Verwaltung > Speicherung v28.1** den Speichertest ausfuehren.
-6. Positionen, Trade-Journal und Watchlists kurz auf vorhandene Daten pruefen.
-
-## Deployment pruefen
+## Prüfung
 
 ```bash
 python verify_deployment.py
-```
-
-Start:
-
-```bash
 streamlit run app.py
 ```
+
+Weitere Details: `ARCHITECTURE_V28_2.md` und `RELEASE_NOTES_v28_2.md`.

@@ -24,6 +24,14 @@ if str(ROOT) not in sys.path:
 
 REQUIRED_FILES = [
     "app.py",
+    "legacy_app.py",
+    "modules/app_shell.py",
+    "modules/page_runtime.py",
+    "pages/analysis.py",
+    "pages/radar.py",
+    "pages/watchlists.py",
+    "pages/positions.py",
+    "pages/trade_journal.py",
     "modules/__init__.py",
     "modules/risk_calculator.py",
     "modules/position_monitor.py",
@@ -214,11 +222,29 @@ def test_radar_view(mod) -> None:
 
 
 def test_navigation_guards() -> None:
-    source = (ROOT / "app.py").read_text(encoding="utf-8")
-    check("v28.1" in source, "v28.1 Versionsstand fehlt in app.py")
-    check("query" in source.lower() and "workspace" in source.lower(), "Workspace-Query-State nicht auffindbar")
-    check("modules" in source and "radar_view" in source, "Radar-Modul ist nicht integriert")
-    check("modules" in source and "live_monitor" in source, "Live-Monitor-Modul ist nicht integriert")
+    entry_source = (ROOT / "app.py").read_text(encoding="utf-8")
+    shell_source = (ROOT / "modules/app_shell.py").read_text(encoding="utf-8")
+    runtime_source = (ROOT / "modules/page_runtime.py").read_text(encoding="utf-8")
+    legacy_source = (ROOT / "legacy_app.py").read_text(encoding="utf-8")
+
+    check("render_navigation" in entry_source, "Multipage-Einstieg fehlt in app.py")
+    check("st.navigation" in shell_source and "st.Page" in shell_source, "Native Streamlit-Navigation fehlt")
+    check("pages/trade_journal.py" in shell_source, "Trade-Journal-Seite ist nicht registriert")
+    check("workspace_mode" in runtime_source and "watchlist_cockpit_area_v2413" in runtime_source, "Workspace-Bruecke unvollstaendig")
+    check("CAPITAL_HILL_MULTIPAGE" in runtime_source and "CAPITAL_HILL_MULTIPAGE" in legacy_source, "Multipage-Bootstrap-Guard fehlt")
+    check('APP_VERSION = "v28.2"' in legacy_source, "v28.2 Versionsstand fehlt in legacy_app.py")
+    check(len(entry_source.splitlines()) < 80, "app.py ist nicht als schlanker Einstiegspunkt umgesetzt")
+
+    expected_pages = {
+        "pages/analysis.py": "Sofortanalyse",
+        "pages/radar.py": "Kandidaten-Radar",
+        "pages/watchlists.py": "Watchlisten",
+        "pages/positions.py": "Positionen",
+        "pages/trade_journal.py": "Trade-Journal",
+    }
+    for rel, marker in expected_pages.items():
+        page_source = (ROOT / rel).read_text(encoding="utf-8")
+        check("run_workspace_page" in page_source and marker in page_source, f"Seitencontroller unvollstaendig: {rel}")
 
 
 
@@ -369,7 +395,7 @@ def main() -> None:
     test_domain_models_and_repositories(mods)
     test_storage_layer(mods)
     test_navigation_guards()
-    print("v28.1 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v28.2 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

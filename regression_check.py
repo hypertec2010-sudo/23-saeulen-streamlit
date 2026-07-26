@@ -41,7 +41,7 @@ REQUIRED_FILES = [
     "modules/watchlist_storage.py",
     "modules/chart_overlays.py",
     "modules/radar_view.py",
-    "modules/analysis_view.py", "modules/analysis_engine.py", "modules/cache_layer.py",
+    "modules/analysis_view.py", "modules/analysis_engine.py", "modules/legacy_analysis_core.py", "modules/cache_layer.py",
     "modules/market_data.py", "modules/ticker_resolver.py", "modules/scoring_engine.py",
     "modules/storage/__init__.py", "modules/storage/base.py", "modules/storage/local_backend.py",
     "modules/storage/supabase_backend.py", "modules/storage/manager.py",
@@ -80,6 +80,7 @@ def import_modules():
         "modules.radar_view",
         "modules.analysis_view",
         "modules.analysis_engine",
+        "modules.legacy_analysis_core",
         "modules.cache_layer",
         "modules.market_data",
         "modules.ticker_resolver",
@@ -232,7 +233,7 @@ def test_navigation_guards() -> None:
     check("pages/trade_journal.py" in shell_source, "Trade-Journal-Seite ist nicht registriert")
     check("workspace_mode" in runtime_source and "watchlist_cockpit_area_v2413" in runtime_source, "Workspace-Bruecke unvollstaendig")
     check("CAPITAL_HILL_MULTIPAGE" in runtime_source and "CAPITAL_HILL_MULTIPAGE" in legacy_source, "Multipage-Bootstrap-Guard fehlt")
-    check('APP_VERSION = "v28.2"' in legacy_source, "v28.2 Versionsstand fehlt in legacy_app.py")
+    check('APP_VERSION = "v28.3"' in legacy_source, "v28.3 Versionsstand fehlt in legacy_app.py")
     check(len(entry_source.splitlines()) < 80, "app.py ist nicht als schlanker Einstiegspunkt umgesetzt")
 
     expected_pages = {
@@ -360,6 +361,33 @@ def test_storage_layer(mods) -> None:
         check(fallback_manager.status().get("degraded") is True, "Remote-Ausfall wird nicht als degradiert markiert")
 
 
+def test_analysis_core_extraction(mods) -> None:
+    legacy_core = mods["modules.legacy_analysis_core"]
+    legacy_source = (ROOT / "legacy_app.py").read_text(encoding="utf-8")
+    core_source = (ROOT / "modules/legacy_analysis_core.py").read_text(encoding="utf-8")
+
+    check("def _legacy_analyze_stock(" not in legacy_source, "Analyse-Pipeline liegt noch in legacy_app.py")
+    check("def _legacy_analyze_stock_impl(" in core_source, "Extrahierte Analyse-Pipeline fehlt")
+    check("legacy_analysis_core.legacy_analyze_stock" in legacy_source, "Analyse-Fallback ist nicht mit dem Modul verbunden")
+    check(len(legacy_source.splitlines()) < 25_000, "legacy_app.py wurde durch die Core-Extraktion nicht ausreichend verkleinert")
+
+    legacy_core.reset_context()
+    status = legacy_core.context_status()
+    check(status["required"] >= 90, "Kontextmanifest der Analyse-Pipeline ist unerwartet klein")
+    check(status["configured"] == 0, "Analyse-Kontext wurde beim Import unerwartet vorbelegt")
+    try:
+        legacy_core.legacy_analyze_stock("AAPL", "Test", 10_000, 1, 0, None, None, False)
+    except RuntimeError as exc:
+        check("Analyse-Kontext ist unvollstaendig" in str(exc), "Fehlender Kontext wird nicht klar gemeldet")
+    else:
+        raise AssertionError("Legacy-Core muss ohne gebundene Abhaengigkeiten abbrechen")
+
+    legacy_core.configure_context({"np": object(), "pd": object()})
+    status = legacy_core.context_status()
+    check(status["configured"] == 2, "Explizite Kontextbindung funktioniert nicht")
+    legacy_core.reset_context()
+
+
 def test_phase4_modules(mods) -> None:
     cache = mods["modules.cache_layer"]
     market = mods["modules.market_data"]
@@ -392,10 +420,11 @@ def main() -> None:
     test_event_log(mods["modules.event_log"])
     test_radar_view(mods["modules.radar_view"])
     test_phase4_modules(mods)
+    test_analysis_core_extraction(mods)
     test_domain_models_and_repositories(mods)
     test_storage_layer(mods)
     test_navigation_guards()
-    print("v28.2 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v28.3 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

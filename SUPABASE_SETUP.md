@@ -1,4 +1,4 @@
-# Supabase Setup fuer v28.0
+# Supabase Setup fuer v28.1
 
 ## 1. Tabelle anlegen
 
@@ -23,7 +23,7 @@ Nach einem Neustart der App:
 
 1. Sidebar oeffnen.
 2. **Hilfen & Verwaltung** oeffnen.
-3. Unter **Speicherung v28.0** auf **Speicher testen** klicken.
+3. Unter **Speicherung v28.1** auf **Speicher testen** klicken.
 4. **Legacy-JSON importieren** ausfuehren.
 5. **Google-Watchlists importieren** ausfuehren, sofern die bisherigen Google-Secrets noch vorhanden sind.
 6. Watchlist, Position und Journal testweise aendern und nach einem Reload kontrollieren.
@@ -31,3 +31,6 @@ Nach einem Neustart der App:
 ## 5. Rueckfallmodus
 
 Ohne gueltige Supabase-Konfiguration bleibt die App lauffaehig. Sie verwendet dann `.app_storage/` als lokalen JSON-Speicher. Auf kurzlebigen Cloud-Dateisystemen ist dieser Modus nur als Notfall-Fallback gedacht.
+
+
+Hinweis v28.1: Gegenueber v28.0 ist keine SQL-Aenderung erforderlich. Die Repository- und Domain-Schicht nutzt dieselbe Tabelle `app_state`.

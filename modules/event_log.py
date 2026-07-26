@@ -9,15 +9,18 @@ import streamlit as st
 _BASE_DIR = Path(__file__).resolve().parent.parent
 _time_provider = None
 _storage = None
+_repository = None
 
-def configure_context(*, base_dir=None, time_provider=None, storage=None):
-    global _BASE_DIR, _time_provider, _storage
+def configure_context(*, base_dir=None, time_provider=None, storage=None, repository=None):
+    global _BASE_DIR, _time_provider, _storage, _repository
     if base_dir is not None:
         _BASE_DIR = Path(base_dir)
     if time_provider is not None:
         _time_provider = time_provider
     if storage is not None:
         _storage = storage
+    if repository is not None:
+        _repository = repository
 
 
 if _time_provider is None:
@@ -32,7 +35,20 @@ def _v2416_event_store_path():
 
 
 def _v2416_load_event_store():
-    if _storage is not None:
+    if _repository is not None:
+        try:
+            data = _repository.load_store()
+            if isinstance(data, dict):
+                data.setdefault("events", [])
+                data.setdefault("last_signatures", {})
+                try:
+                    st.session_state.v2416_event_store = data
+                except Exception:
+                    pass
+                return data
+        except Exception:
+            pass
+    elif _storage is not None:
         try:
             data = _storage.load_namespace("event_log", default=None)
             if isinstance(data, dict):
@@ -75,7 +91,12 @@ def _v2416_save_event_store(store):
     except Exception:
         pass
     storage_ok = False
-    if _storage is not None:
+    if _repository is not None:
+        try:
+            storage_ok = bool(_repository.save_store(store))
+        except Exception:
+            storage_ok = False
+    elif _storage is not None:
         try:
             storage_ok = bool(_storage.save_namespace("event_log", store))
         except Exception:

@@ -12,6 +12,10 @@ required = [
     "modules/storage/__init__.py", "modules/storage/base.py", "modules/storage/local_backend.py",
     "modules/storage/supabase_backend.py", "modules/storage/manager.py",
     "modules/storage/watchlist_repository.py", "modules/storage/migration.py",
+    "modules/domain/__init__.py", "modules/domain/models.py",
+    "modules/repositories/__init__.py", "modules/repositories/base.py",
+    "modules/repositories/position_repository.py", "modules/repositories/trade_journal_repository.py",
+    "modules/repositories/event_repository.py", "modules/repositories/registry.py",
     "supabase_schema.sql", ".streamlit/secrets.example.toml", "migrate_storage.py", "regression_check.py",
 ]
 missing = [p for p in required if not Path(p).exists()]

@@ -2666,7 +2666,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.0"
+APP_VERSION = "v28.1"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -16813,6 +16813,14 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "storage" / "manager.py",
     _MODULE_DIR_V252 / "storage" / "watchlist_repository.py",
     _MODULE_DIR_V252 / "storage" / "migration.py",
+    _MODULE_DIR_V252 / "domain" / "__init__.py",
+    _MODULE_DIR_V252 / "domain" / "models.py",
+    _MODULE_DIR_V252 / "repositories" / "__init__.py",
+    _MODULE_DIR_V252 / "repositories" / "base.py",
+    _MODULE_DIR_V252 / "repositories" / "position_repository.py",
+    _MODULE_DIR_V252 / "repositories" / "trade_journal_repository.py",
+    _MODULE_DIR_V252 / "repositories" / "event_repository.py",
+    _MODULE_DIR_V252 / "repositories" / "registry.py",
 )
 _missing_module_files_v252 = [str(x.relative_to(_APP_DIR_V252)) for x in _REQUIRED_MODULE_FILES_V252 if not x.exists()]
 if _missing_module_files_v252:
@@ -16829,21 +16837,28 @@ from modules import trade_journal as _trade_journal_module
 from modules import live_monitor as _live_module
 from modules import watchlist_storage as _watchlist_module
 from modules.storage import (
-    WatchlistRepository as _WatchlistRepositoryV280,
     create_storage_manager as _create_storage_manager_v280,
     migrate_legacy_json_files as _migrate_legacy_json_files_v280,
     should_use_database_watchlists as _should_use_database_watchlists_v280,
 )
+from modules.repositories import (
+    WatchlistRepository as _WatchlistRepositoryV281,
+    create_repository_registry as _create_repository_registry_v281,
+)
 
 # ---------- v28.0: Zentrale Storage-Schicht ----------
 _storage_v280 = _create_storage_manager_v280(st_module=st, app_dir=_APP_DIR_V252)
+# v28.1: Fachmodule greifen nicht mehr direkt auf Storage-Namespaces zu.
+# Das Registry-Objekt stellt klar getrennte Repositories fuer Positionen,
+# Trade-Journal und Ereignisse bereit.
+_repositories_v281 = _create_repository_registry_v281(_storage_v280)
 _use_database_watchlists_v280 = _should_use_database_watchlists_v280(
     st_module=st,
     manager=_storage_v280,
 )
 _watchlist_repository_v280 = None
 if _use_database_watchlists_v280:
-    _watchlist_repository_v280 = _WatchlistRepositoryV280(
+    _watchlist_repository_v280 = _WatchlistRepositoryV281(
         _storage_v280,
         time_provider=get_current_berlin_time,
     )
@@ -16882,6 +16897,7 @@ _event_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
     time_provider=get_current_berlin_time,
     storage=_storage_v280,
+    repository=_repositories_v281.events,
 )
 _v2416_event_store_path = _event_module._v2416_event_store_path
 _v2416_load_event_store = _event_module._v2416_load_event_store
@@ -16896,6 +16912,7 @@ _position_module.configure_context(
     safe_float=_v230_safe_float,
     price_text=_v230_price_text,
     storage=_storage_v280,
+    repository=_repositories_v281.positions,
 )
 _v244_position_store_key = _position_module._v244_position_store_key
 _v245_positions_store_path = _position_module._v245_positions_store_path
@@ -16916,6 +16933,7 @@ _trade_journal_module.configure_context(
     safe_float=_v230_safe_float,
     event_logger=_v2416_log_event,
     storage=_storage_v280,
+    repository=_repositories_v281.trade_journal,
 )
 _v270_trade_journal_path = _trade_journal_module._v270_trade_journal_path
 _v270_load_trade_journal = _trade_journal_module._v270_load_trade_journal
@@ -17364,10 +17382,11 @@ with st.sidebar.expander("Hilfen & Verwaltung", expanded=False):
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
 
-    st.markdown("#### Speicherung v28.0")
+    st.markdown("#### Speicherung v28.1")
     _storage_status_v280 = _storage_v280.status()
     _storage_label_v280 = "Supabase + lokaler Spiegel" if _storage_status_v280.get("remote_enabled") else "Lokaler JSON-Fallback"
     st.caption(f"Aktiver Speicher: {_storage_label_v280} · Benutzerbereich: {_storage_status_v280.get('user_id', 'default')}")
+    st.caption("Datenzugriff: Repository-Schicht aktiv · Positionen, Journal und Events werden als validierte Domain-Modelle geladen.")
     if _storage_status_v280.get("requested_backend") == "supabase" and not _storage_status_v280.get("remote_enabled"):
         st.warning("Supabase ist ausgewählt, aber URL oder Service-Role-Key fehlen. Die App arbeitet bis dahin lokal weiter.")
     if _storage_status_v280.get("degraded") and _storage_status_v280.get("last_error"):
@@ -18692,12 +18711,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         elif cockpit_area == "📌 Positionen / Exit":
-                            st.markdown("### Positions-/Exit-Monitor v28.0")
+                            st.markdown("### Positions-/Exit-Monitor v28.1")
                             st.caption("Überwacht offene Positionen: R-Multiple, P/L, Stop-/Teilgewinn- und Exit-Hinweise. Mit dem Trade-Journal können Teilverkäufe, Stop-Anpassungen, Notizen und vollständige Schließungen dokumentiert werden. Die App eröffnet oder schließt keine Trades automatisch.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])
                             with pc1:
-                                st.markdown('<div class="compact-help">Positionsspeicher: lokal je Watchlist. Änderungen werden beim Speichern/Löschen direkt persistiert.</div>', unsafe_allow_html=True)
+                                st.markdown('<div class="compact-help">Positionsspeicher: zentral je Watchlist über die Repository-Schicht; bei aktivem Supabase dauerhaft remote mit lokalem Spiegel.</div>', unsafe_allow_html=True)
                             with pc2:
                                 if positions and st.button("Alle Positionen dieser Watchlist löschen", use_container_width=True, key="v245_clear_positions_for_watchlist"):
                                     _v245_delete_positions_for_watchlist(selected_watchlist_name)
@@ -19029,7 +19048,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.error(result_v270.get("error") or "Notiz konnte nicht gespeichert werden.")
 
                         elif cockpit_area == "📓 Trade-Journal":
-                            st.markdown("### Trade-Journal v28.0")
+                            st.markdown("### Trade-Journal v28.1")
                             st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Daten bilden später die Grundlage für das Lern-/Backtest-Dashboard.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             if journal_df_v270 is None or journal_df_v270.empty:

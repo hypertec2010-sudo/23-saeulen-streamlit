@@ -12,9 +12,10 @@ _event_logger = lambda **kwargs: False
 _v230_safe_float = None
 _v230_price_text = None
 _storage = None
+_repository = None
 
-def configure_context(*, base_dir=None, event_logger=None, safe_float=None, price_text=None, storage=None):
-    global _BASE_DIR, _event_logger, _v230_safe_float, _v230_price_text, _storage
+def configure_context(*, base_dir=None, event_logger=None, safe_float=None, price_text=None, storage=None, repository=None):
+    global _BASE_DIR, _event_logger, _v230_safe_float, _v230_price_text, _storage, _repository
     if base_dir is not None:
         _BASE_DIR = Path(base_dir)
     if event_logger is not None:
@@ -25,6 +26,8 @@ def configure_context(*, base_dir=None, event_logger=None, safe_float=None, pric
         _v230_price_text = price_text
     if storage is not None:
         _storage = storage
+    if repository is not None:
+        _repository = repository
 
 def _v244_position_store_key(watchlist_name=""):
     try:
@@ -62,7 +65,14 @@ def _v245_safe_json_load(path):
 
 def _v245_load_all_positions():
     storage_store = None
-    if _storage is not None:
+    if _repository is not None:
+        try:
+            candidate = _repository.load_all()
+            if isinstance(candidate, dict):
+                storage_store = candidate
+        except Exception:
+            storage_store = None
+    elif _storage is not None:
         try:
             candidate = _storage.load_namespace("positions", default=None)
             if isinstance(candidate, dict):
@@ -103,7 +113,12 @@ def _v245_save_all_positions(store):
     except Exception:
         pass
     storage_ok = False
-    if _storage is not None:
+    if _repository is not None:
+        try:
+            storage_ok = bool(_repository.save_all(store))
+        except Exception:
+            storage_ok = False
+    elif _storage is not None:
         try:
             storage_ok = bool(_storage.save_namespace("positions", store))
         except Exception:

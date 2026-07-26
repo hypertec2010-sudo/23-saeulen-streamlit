@@ -20,10 +20,11 @@ _time_provider = datetime.now
 _safe_float = None
 _event_logger = lambda **kwargs: False
 _storage = None
+_repository = None
 
 
-def configure_context(*, base_dir=None, time_provider=None, safe_float=None, event_logger=None, storage=None):
-    global _BASE_DIR, _time_provider, _safe_float, _event_logger, _storage
+def configure_context(*, base_dir=None, time_provider=None, safe_float=None, event_logger=None, storage=None, repository=None):
+    global _BASE_DIR, _time_provider, _safe_float, _event_logger, _storage, _repository
     if base_dir is not None:
         _BASE_DIR = Path(base_dir)
     if time_provider is not None:
@@ -34,6 +35,8 @@ def configure_context(*, base_dir=None, time_provider=None, safe_float=None, eve
         _event_logger = event_logger
     if storage is not None:
         _storage = storage
+    if repository is not None:
+        _repository = repository
 
 
 def _num(value: Any, default=None):
@@ -67,7 +70,14 @@ def _v270_trade_journal_path() -> Path:
 
 def _v270_load_trade_journal() -> dict:
     storage_store = None
-    if _storage is not None:
+    if _repository is not None:
+        try:
+            raw = _repository.load_store()
+            if isinstance(raw, dict):
+                storage_store = raw
+        except Exception:
+            storage_store = None
+    elif _storage is not None:
         try:
             raw = _storage.load_namespace("trade_journal", default=None)
             if isinstance(raw, dict):
@@ -113,7 +123,12 @@ def _v270_save_trade_journal(store: dict) -> bool:
     except Exception:
         pass
     storage_ok = False
-    if _storage is not None:
+    if _repository is not None:
+        try:
+            storage_ok = bool(_repository.save_store(store))
+        except Exception:
+            storage_ok = False
+    elif _storage is not None:
         try:
             storage_ok = bool(_storage.save_namespace("trade_journal", store))
         except Exception:

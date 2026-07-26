@@ -38,6 +38,10 @@ REQUIRED_FILES = [
     "modules/storage/__init__.py", "modules/storage/base.py", "modules/storage/local_backend.py",
     "modules/storage/supabase_backend.py", "modules/storage/manager.py",
     "modules/storage/watchlist_repository.py", "modules/storage/migration.py",
+    "modules/domain/__init__.py", "modules/domain/models.py",
+    "modules/repositories/__init__.py", "modules/repositories/base.py",
+    "modules/repositories/position_repository.py", "modules/repositories/trade_journal_repository.py",
+    "modules/repositories/event_repository.py", "modules/repositories/registry.py",
     "migrate_storage.py",
 ]
 
@@ -79,6 +83,14 @@ def import_modules():
         "modules.storage.manager",
         "modules.storage.watchlist_repository",
         "modules.storage.migration",
+        "modules.domain",
+        "modules.domain.models",
+        "modules.repositories",
+        "modules.repositories.base",
+        "modules.repositories.position_repository",
+        "modules.repositories.trade_journal_repository",
+        "modules.repositories.event_repository",
+        "modules.repositories.registry",
     ]
     return {name: importlib.import_module(name) for name in names}
 
@@ -203,13 +215,60 @@ def test_radar_view(mod) -> None:
 
 def test_navigation_guards() -> None:
     source = (ROOT / "app.py").read_text(encoding="utf-8")
-    check("v28.0" in source, "v28.0 Versionsstand fehlt in app.py")
+    check("v28.1" in source, "v28.1 Versionsstand fehlt in app.py")
     check("query" in source.lower() and "workspace" in source.lower(), "Workspace-Query-State nicht auffindbar")
     check("modules" in source and "radar_view" in source, "Radar-Modul ist nicht integriert")
     check("modules" in source and "live_monitor" in source, "Live-Monitor-Modul ist nicht integriert")
 
 
 
+
+
+def test_domain_models_and_repositories(mods) -> None:
+    models = mods["modules.domain.models"]
+    local_mod = mods["modules.storage.local_backend"]
+    manager_mod = mods["modules.storage.manager"]
+    registry_mod = mods["modules.repositories.registry"]
+
+    position = models.Position.from_legacy_dict({
+        "ticker": "aapl", "name": "Apple", "entry": "100", "stop": 95,
+        "shares": "10", "custom_flag": "legacy",
+    })
+    check(position.ticker == "AAPL", "Domain-Modell normalisiert Ticker nicht")
+    check(position.unit_risk == 5.0, "Domain-Modell berechnet Positionsrisiko falsch")
+    check(position.to_legacy_dict().get("custom_flag") == "legacy", "Unbekannte Legacy-Felder gehen verloren")
+
+    journal = models.JournalEntry.from_legacy_dict({
+        "ID": "j1", "Watchlist": "Test", "Ticker": "aapl", "Typ": "Trade-Notiz",
+        "Stück": 3, "Notiz": "Test",
+    })
+    check(journal.ticker == "AAPL" and journal.shares == 3, "Journal-Modell normalisiert Daten nicht")
+    check(journal.to_legacy_dict().get("Notiz") == "Test", "Journal-Legacy-Konvertierung fehlerhaft")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        manager = manager_mod.StorageManager(
+            user_id="repo-user",
+            local_backend=local_mod.LocalJsonBackend(tmp),
+            primary_backend=None,
+            requested_backend="local",
+        )
+        repos = registry_mod.create_repository_registry(manager)
+        check(repos.positions.save_for_watchlist("Test", {"AAPL": position.to_legacy_dict()}), "PositionRepository Write fehlgeschlagen")
+        loaded = repos.positions.get_for_watchlist("Test")
+        check(loaded.get("AAPL", {}).get("entry") == 100.0, "PositionRepository Read fehlerhaft")
+
+        check(repos.trade_journal.append(journal), "TradeJournalRepository Append fehlgeschlagen")
+        journal_store = repos.trade_journal.load_store()
+        check(len(journal_store.get("entries", [])) == 1, "TradeJournalRepository inkonsistent")
+
+        event = models.SignalEvent.from_legacy_dict({
+            "Zeit": "01.01.2026 10:00:00", "Watchlist": "Test", "Ticker": "aapl",
+            "Ereignis": "Testsignal", "Status": "Gruen",
+        })
+        check(repos.events.save_store({"events": [event.to_legacy_dict()], "last_signatures": {"x": "y"}}), "EventRepository Write fehlgeschlagen")
+        event_store = repos.events.load_store()
+        check(event_store["events"][0]["Ticker"] == "AAPL", "EventRepository normalisiert Ticker nicht")
+        check(event_store["last_signatures"].get("x") == "y", "Event-Signaturen gehen verloren")
 
 
 def test_storage_layer(mods) -> None:
@@ -307,9 +366,10 @@ def main() -> None:
     test_event_log(mods["modules.event_log"])
     test_radar_view(mods["modules.radar_view"])
     test_phase4_modules(mods)
+    test_domain_models_and_repositories(mods)
     test_storage_layer(mods)
     test_navigation_guards()
-    print("v28.0 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v28.1 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

@@ -2668,7 +2668,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.3"
+APP_VERSION = "v28.3.1"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -16462,7 +16462,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.error(result_v270.get("error") or "Notiz konnte nicht gespeichert werden.")
 
                         elif cockpit_area == "📓 Trade-Journal":
-                            st.markdown("### Trade-Journal v28.2")
+                            st.markdown("### Trade-Journal v28.3.1")
                             st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Daten bilden später die Grundlage für das Lern-/Backtest-Dashboard.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             if journal_df_v270 is None or journal_df_v270.empty:

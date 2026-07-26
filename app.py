@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v28.2 Streamlit entrypoint with native multipage navigation."""
+"""v28.3.1 Streamlit entrypoint with stable native multipage navigation."""
 
 import streamlit as st
 

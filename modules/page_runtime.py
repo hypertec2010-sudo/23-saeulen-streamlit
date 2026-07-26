@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Runtime bridge between native Streamlit pages and the stable v28.1 UI."""
+"""Runtime bridge between native Streamlit pages and the stable legacy UI."""
 
 from __future__ import annotations
 
@@ -33,6 +33,32 @@ def _clear_legacy_workspace_query() -> None:
     st.session_state["_v2411_live_query_restore_done"] = True
 
 
+def _activate_page_context(
+    workspace: str,
+    cockpit_area: Optional[str],
+    page_label: Optional[str],
+) -> bool:
+    """Activate a native page without overwriting in-page cockpit navigation.
+
+    Returns True when the user has actually entered another native page. Widget
+    reruns on the same page must preserve the cockpit radio selection.
+    """
+    requested_page = page_label or workspace
+    previous_page = st.session_state.get("active_native_page_v282")
+    page_changed = previous_page != requested_page
+
+    st.session_state["workspace_mode"] = workspace
+
+    if cockpit_area is not None:
+        current_cockpit = st.session_state.get("watchlist_cockpit_area_v2413")
+        invalid_cockpit = current_cockpit not in VALID_COCKPIT_AREAS
+        if page_changed or invalid_cockpit:
+            st.session_state["watchlist_cockpit_area_v2413"] = cockpit_area
+
+    st.session_state["active_native_page_v282"] = requested_page
+    return page_changed
+
+
 def run_workspace_page(
     workspace: str,
     *,
@@ -44,14 +70,11 @@ def run_workspace_page(
     if cockpit_area is not None and cockpit_area not in VALID_COCKPIT_AREAS:
         raise ValueError(f"Unbekannter Cockpit-Bereich: {cockpit_area}")
     if not LEGACY_APP.exists():
-        st.error("legacy_app.py fehlt. Bitte den vollständigen v28.2-Paketinhalt deployen.")
+        st.error("legacy_app.py fehlt. Bitte den vollständigen v28.3.1-Paketinhalt deployen.")
         st.stop()
 
     _clear_legacy_workspace_query()
-    st.session_state["workspace_mode"] = workspace
-    st.session_state["active_native_page_v282"] = page_label or workspace
-    if cockpit_area is not None:
-        st.session_state["watchlist_cockpit_area_v2413"] = cockpit_area
+    _activate_page_context(workspace, cockpit_area, page_label)
 
     os.environ["CAPITAL_HILL_MULTIPAGE"] = "1"
-    runpy.run_path(str(LEGACY_APP), run_name="__capital_hill_legacy_v282__")
+    runpy.run_path(str(LEGACY_APP), run_name="__capital_hill_legacy_v2831__")

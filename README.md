@@ -1,6 +1,10 @@
-# v28.3 Analysis Core Extraction
+# v28.3.1 Cockpit Navigation State Fix
 
-Diese Version baut auf v28.2 auf. Die native Multipage-Navigation, Supabase-Speicherung, Repositories und Datenmodelle bleiben kompatibel.
+Diese Version baut auf v28.3 auf. Die native Multipage-Navigation, Supabase-Speicherung, Repositories, Datenmodelle und die extrahierte Analyse-Pipeline bleiben kompatibel.
+
+## Navigations-Fix v28.3.1
+
+Der Startbereich einer nativen Seite wird nur noch beim tatsächlichen Seitenwechsel gesetzt. Manuelle Wechsel im Trading-Cockpit zwischen Live-Screener, Risiko-Rechner, Positionen / Exit, Trade-Journal und Historie bleiben dadurch bei Streamlit-Reruns erhalten.
 
 ## Wichtigste Änderung
 
@@ -27,4 +31,4 @@ python verify_deployment.py
 streamlit run app.py
 ```
 
-Weitere Details: `ARCHITECTURE_V28_3.md` und `RELEASE_NOTES_v28_3.md`.
+Weitere Details: `RELEASE_NOTES_v28_3_1.md`, `ARCHITECTURE_V28_3.md` und `RELEASE_NOTES_v28_3.md`.

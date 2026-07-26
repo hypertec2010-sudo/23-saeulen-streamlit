@@ -1,3 +1,1 @@
-v28.3 Analysis Core Extraction
-
-Based on v28.2. Supabase schema, secrets and existing data remain compatible.
+v28.3.1 Cockpit Navigation State Fix\n\nBased on v28.3. Cockpit selections now persist across widget reruns and are reset only when entering another native page.\n

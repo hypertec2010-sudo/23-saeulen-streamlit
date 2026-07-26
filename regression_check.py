@@ -70,6 +70,7 @@ def compile_and_parse() -> None:
 
 def import_modules():
     names = [
+        "modules.page_runtime",
         "modules.risk_calculator",
         "modules.position_monitor",
         "modules.trade_journal",
@@ -233,7 +234,7 @@ def test_navigation_guards() -> None:
     check("pages/trade_journal.py" in shell_source, "Trade-Journal-Seite ist nicht registriert")
     check("workspace_mode" in runtime_source and "watchlist_cockpit_area_v2413" in runtime_source, "Workspace-Bruecke unvollstaendig")
     check("CAPITAL_HILL_MULTIPAGE" in runtime_source and "CAPITAL_HILL_MULTIPAGE" in legacy_source, "Multipage-Bootstrap-Guard fehlt")
-    check('APP_VERSION = "v28.3"' in legacy_source, "v28.3 Versionsstand fehlt in legacy_app.py")
+    check('APP_VERSION = "v28.3.1"' in legacy_source, "v28.3.1 Versionsstand fehlt in legacy_app.py")
     check(len(entry_source.splitlines()) < 80, "app.py ist nicht als schlanker Einstiegspunkt umgesetzt")
 
     expected_pages = {
@@ -249,6 +250,46 @@ def test_navigation_guards() -> None:
 
 
 
+
+
+def test_cockpit_navigation_state(mod) -> None:
+    original_st = mod.st
+    try:
+        fake_st = types.SimpleNamespace(session_state={})
+        mod.st = fake_st
+
+        changed = mod._activate_page_context(
+            "Watchlisten", "📡 Live-Screener", "Watchlisten"
+        )
+        check(changed is True, "Erster Seitenaufruf wird nicht als Seitenwechsel erkannt")
+        check(
+            fake_st.session_state.get("watchlist_cockpit_area_v2413") == "📡 Live-Screener",
+            "Startbereich der Watchlisten-Seite wurde nicht gesetzt",
+        )
+
+        # Simuliert eine manuelle Cockpit-Auswahl und den darauf folgenden
+        # Streamlit-Rerun derselben nativen Seite. Die Auswahl muss erhalten bleiben.
+        fake_st.session_state["watchlist_cockpit_area_v2413"] = "📓 Trade-Journal"
+        changed = mod._activate_page_context(
+            "Watchlisten", "📡 Live-Screener", "Watchlisten"
+        )
+        check(changed is False, "Widget-Rerun derselben Seite wird faelschlich als Seitenwechsel erkannt")
+        check(
+            fake_st.session_state.get("watchlist_cockpit_area_v2413") == "📓 Trade-Journal",
+            "Cockpit-Auswahl wird beim Widget-Rerun auf den Startbereich zurueckgesetzt",
+        )
+
+        # Beim echten Wechsel auf die Positionsseite soll deren Startbereich gelten.
+        changed = mod._activate_page_context(
+            "Positionen", "📌 Positionen / Exit", "Positionen / Exit"
+        )
+        check(changed is True, "Echter nativer Seitenwechsel wird nicht erkannt")
+        check(
+            fake_st.session_state.get("watchlist_cockpit_area_v2413") == "📌 Positionen / Exit",
+            "Startbereich der neu geoeffneten Seite wurde nicht gesetzt",
+        )
+    finally:
+        mod.st = original_st
 
 
 def test_domain_models_and_repositories(mods) -> None:
@@ -424,7 +465,8 @@ def main() -> None:
     test_domain_models_and_repositories(mods)
     test_storage_layer(mods)
     test_navigation_guards()
-    print("v28.3 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    test_cockpit_navigation_state(mods["modules.page_runtime"])
+    print("v28.3.1 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

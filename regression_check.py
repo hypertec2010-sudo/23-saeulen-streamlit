@@ -35,6 +35,10 @@ REQUIRED_FILES = [
     "modules/radar_view.py",
     "modules/analysis_view.py", "modules/analysis_engine.py", "modules/cache_layer.py",
     "modules/market_data.py", "modules/ticker_resolver.py", "modules/scoring_engine.py",
+    "modules/storage/__init__.py", "modules/storage/base.py", "modules/storage/local_backend.py",
+    "modules/storage/supabase_backend.py", "modules/storage/manager.py",
+    "modules/storage/watchlist_repository.py", "modules/storage/migration.py",
+    "migrate_storage.py",
 ]
 
 
@@ -68,6 +72,13 @@ def import_modules():
         "modules.market_data",
         "modules.ticker_resolver",
         "modules.scoring_engine",
+        "modules.storage",
+        "modules.storage.base",
+        "modules.storage.local_backend",
+        "modules.storage.supabase_backend",
+        "modules.storage.manager",
+        "modules.storage.watchlist_repository",
+        "modules.storage.migration",
     ]
     return {name: importlib.import_module(name) for name in names}
 
@@ -192,11 +203,76 @@ def test_radar_view(mod) -> None:
 
 def test_navigation_guards() -> None:
     source = (ROOT / "app.py").read_text(encoding="utf-8")
-    check("v27.1" in source, "v27.1 Versionsstand fehlt in app.py")
+    check("v28.0" in source, "v28.0 Versionsstand fehlt in app.py")
     check("query" in source.lower() and "workspace" in source.lower(), "Workspace-Query-State nicht auffindbar")
     check("modules" in source and "radar_view" in source, "Radar-Modul ist nicht integriert")
     check("modules" in source and "live_monitor" in source, "Live-Monitor-Modul ist nicht integriert")
 
+
+
+
+
+def test_storage_layer(mods) -> None:
+    local_mod = mods["modules.storage.local_backend"]
+    manager_mod = mods["modules.storage.manager"]
+    repo_mod = mods["modules.storage.watchlist_repository"]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        local = local_mod.LocalJsonBackend(tmp)
+        manager = manager_mod.StorageManager(
+            user_id="regression-user",
+            local_backend=local,
+            primary_backend=None,
+            requested_backend="local",
+        )
+        check(manager.save_namespace("probe", {"value": 42}), "Lokaler Storage-Write fehlgeschlagen")
+        check(manager.load_namespace("probe", {}).get("value") == 42, "Lokaler Storage-Read fehlgeschlagen")
+        check(manager.delete_namespace("probe"), "Lokaler Storage-Delete fehlgeschlagen")
+        check(manager.load_namespace("probe", None) is None, "Geloeschter Namespace ist noch vorhanden")
+
+        repo = repo_mod.WatchlistRepository(manager)
+        ok, _ = repo.create_watchlist("Testliste", "Watchlist", check_frequency="4x täglich")
+        check(ok, "Watchlist konnte im Storage-Repository nicht erstellt werden")
+        ok, _ = repo.add_entries_to_watchlist("Testliste", "Watchlist", ["AAPL", "MSFT"], check_frequency="4x täglich")
+        check(ok, "Watchlist-Ticker konnten nicht gespeichert werden")
+        tickers, err = repo.get_watchlist_tickers("Testliste")
+        check(err is None and tickers == ["AAPL", "MSFT"], f"Unerwartete Watchlist-Ticker: {tickers}")
+        ok, _ = repo.update_watchlist_alert_mode("Testliste", "Konservativ")
+        check(ok and repo.get_watchlist_alert_mode("Testliste") == "Konservativ", "Alert-Modus nicht persistent")
+        due, err = repo.get_due_watchlists_for_slot("15:40")
+        check(err is None and len(due) == 1, "4x-taegliche Watchlist im 15:40-Slot nicht faellig")
+        ok, _ = repo.remove_ticker_from_watchlist("Testliste", "AAPL")
+        check(ok, "Ticker konnte nicht entfernt werden")
+        tickers, _ = repo.get_watchlist_tickers("Testliste")
+        check(tickers == ["MSFT"], "Ticker-Entfernung inkonsistent")
+
+        health = manager.health_check()
+        check(health.ok, f"Lokaler Storage-Healthcheck fehlgeschlagen: {health.error}")
+
+        class BrokenRemote:
+            name = "broken-remote"
+            def load(self, user_id, namespace):
+                from modules.storage.base import StorageResult
+                return StorageResult(ok=False, error="offline", backend=self.name)
+            def save(self, user_id, namespace, payload):
+                from modules.storage.base import StorageResult
+                return StorageResult(ok=False, error="offline", backend=self.name)
+            def delete(self, user_id, namespace):
+                from modules.storage.base import StorageResult
+                return StorageResult(ok=False, error="offline", backend=self.name)
+            def health_check(self):
+                from modules.storage.base import StorageResult
+                return StorageResult(ok=False, error="offline", backend=self.name)
+
+        fallback_manager = manager_mod.StorageManager(
+            user_id="fallback-user",
+            local_backend=local_mod.LocalJsonBackend(Path(tmp) / "fallback"),
+            primary_backend=BrokenRemote(),
+            requested_backend="supabase",
+        )
+        check(fallback_manager.save_namespace("journal", {"entries": [1]}), "Fallback-Write fehlgeschlagen")
+        check(fallback_manager.load_namespace("journal", {}).get("entries") == [1], "Fallback-Read fehlgeschlagen")
+        check(fallback_manager.status().get("degraded") is True, "Remote-Ausfall wird nicht als degradiert markiert")
 
 
 def test_phase4_modules(mods) -> None:
@@ -231,8 +307,9 @@ def main() -> None:
     test_event_log(mods["modules.event_log"])
     test_radar_view(mods["modules.radar_view"])
     test_phase4_modules(mods)
+    test_storage_layer(mods)
     test_navigation_guards()
-    print("v27.0 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v28.0 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

@@ -1,31 +1,68 @@
-# v27.1 Trade-Journal Navigation/Scan Fix
+# v28.0 Supabase Storage Migration
 
-Der Trade-Journal-Bereich nutzt beim Wechsel nur noch den letzten Live-Scan aus dem Cache. Ein automatischer Vollscan der Watchlist wird ausschließlich im aktiven Bereich **Live-Screener** ausgelöst.
+Diese Version fuehrt eine zentrale Speicherabstraktion ein. Ohne Supabase-Konfiguration arbeitet die App weiterhin mit einem atomaren lokalen JSON-Fallback. Sobald Supabase in den Streamlit-Secrets konfiguriert ist, werden die Daten remote gespeichert und zusaetzlich lokal gespiegelt.
 
-# v27.0 Trade-Journal
+## Migrierte Bereiche
 
-Neu in dieser Version:
+- Watchlists und Watchlist-Einstellungen
+- offene Positionen
+- Trade-Journal
+- Signal-/Trade-Event-Log
+- Watchlist-Startkurse
+- Live-Monitor-Statushistorie
 
-- Teilverkäufe aus offenen Positionen dokumentieren
-- Positionen vollständig schließen
-- Ausstiegskurs, Datum und Schließungsgrund speichern
-- realisierten Gewinn/Verlust und R-Multiple berechnen
-- Stop-Anpassungen mit Historie protokollieren
-- Trade-Notizen und Erkenntnisse speichern
-- persistentes Trade-Journal je Watchlist
-- Journal-Kennzahlen: geschlossene Trades, Teilverkäufe, realisiertes P/L, Trefferquote und durchschnittliches R
-- CSV-Export des Trade-Journals
+Google OIDC kann weiterhin fuer die Anmeldung verwendet werden. Die Anmeldung und die Datenspeicherung sind voneinander getrennt. Bestehende Google-Sheets-Analyse- und Auto-Run-Logs bleiben in v28.0 noch optional bestehen; die operativen Watchlists koennen bereits auf den neuen Speicher umgestellt werden.
 
-Neues Modul:
+## Neue Dateien
 
-- `modules/trade_journal.py`
+```text
+modules/storage/
+    __init__.py
+    base.py
+    local_backend.py
+    manager.py
+    migration.py
+    supabase_backend.py
+    watchlist_repository.py
 
-## Deployment
+supabase_schema.sql
+migrate_storage.py
+.streamlit/secrets.example.toml
+```
 
-Den vollständigen Inhalt dieses Ordners ins Repository übernehmen. Insbesondere muss
-`modules/trade_journal.py` direkt neben den übrigen Moduldateien liegen.
+## Supabase einrichten
 
-Optional prüfen:
+1. Ein Supabase-Projekt anlegen.
+2. `supabase_schema.sql` im Supabase SQL Editor ausfuehren.
+3. Die Werte aus `.streamlit/secrets.example.toml` in die Streamlit-App-Secrets uebernehmen.
+4. Die App neu starten.
+5. In der Sidebar unter **Hilfen & Verwaltung > Speicherung v28.0** den Speichertest ausfuehren.
+6. Zuerst **Legacy-JSON importieren**, danach bei Bedarf **Google-Watchlists importieren**.
+
+Der `service_role_key` darf nur in den serverseitigen Streamlit-Secrets liegen und niemals in GitHub eingecheckt oder in der Oberflaeche angezeigt werden.
+
+## Beispiel fuer Streamlit Secrets
+
+```toml
+[storage]
+backend = "supabase"
+use_for_watchlists = true
+mirror_local = true
+user_scope = "email_hash"
+local_dir = ".app_storage"
+
+[supabase]
+url = "https://YOUR_PROJECT.supabase.co"
+service_role_key = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+table = "app_state"
+timeout_seconds = 10
+```
+
+## Verhalten bei Ausfall
+
+Schlaegt ein Supabase-Zugriff fehl, speichert die App weiter in `.app_storage/`. Der Status wird in der Sidebar als degradierter Remote-Speicher angezeigt. Beim naechsten erfolgreichen Remote-Schreibvorgang wird Supabase wieder zur primaeren Ablage.
+
+## Deployment pruefen
 
 ```bash
 python verify_deployment.py

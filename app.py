@@ -201,6 +201,19 @@ from logging_utils import (
     update_watchlist_check_frequency,
 )
 
+# v28.0: Originale Google-Sheets-Funktionen fuer die einmalige Migration behalten.
+_legacy_load_watchlists_df_v280 = load_watchlists_df
+_legacy_get_watchlist_tickers_v280 = get_watchlist_tickers
+_legacy_create_watchlist_v280 = create_watchlist
+_legacy_delete_watchlist_v280 = delete_watchlist
+_legacy_add_entries_to_watchlist_v280 = add_entries_to_watchlist
+_legacy_remove_ticker_from_watchlist_v280 = remove_ticker_from_watchlist
+_legacy_update_watchlist_alert_mode_v280 = update_watchlist_alert_mode
+_legacy_update_watchlist_check_frequency_v280 = update_watchlist_check_frequency
+_legacy_get_watchlist_alert_mode_v280 = get_watchlist_alert_mode
+_legacy_get_watchlist_check_frequency_v280 = get_watchlist_check_frequency
+_legacy_get_due_watchlists_for_slot_v280 = get_due_watchlists_for_slot
+
 
 # ---------- v15.34: Asset-Modus (Aktie / ETF / Commodity / Index) ----------
 _COMMODITY_TICKER_MAP_V1534 = {
@@ -2653,7 +2666,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v27.1"
+APP_VERSION = "v28.0"
 
 st.set_page_config(
     page_title=f"Capital-Hill-Score-Modell {APP_VERSION}",
@@ -5291,9 +5304,8 @@ def setup_alert_summary_v210(result, style_name="Ausgewogen"):
 def _v2214_start_price_store_path():
     """Lokaler Sidecar-Speicher fuer Watchlist-Aufnahmekurse.
 
-    Google Sheets bleibt der primaere Watchlist-Katalog, aber Startkurse werden
-    bewusst lokal gepuffert, damit der Live-Monitor Performance-Kontext anzeigen
-    kann, ohne bei jedem Watchlist-Edit weitere Sheets-Writes zu erzeugen.
+    Ab v28.0 werden Startkurse ueber die zentrale Storage-Schicht gespeichert.
+    Die Sidecar-Datei bleibt nur als Rueckwaertskompatibilitaet und Notfallkopie.
     """
     try:
         base_dir = Path(__file__).resolve().parent
@@ -5303,6 +5315,19 @@ def _v2214_start_price_store_path():
 
 
 def _v2214_load_start_price_store():
+    # v28.0: Zuerst zentralen Storage pruefen; Legacy-Datei/Session bleiben Fallback.
+    try:
+        storage = globals().get("_storage_v280")
+        if storage is not None:
+            remote_store = storage.load_namespace("watchlist_start_prices", default=None)
+            if isinstance(remote_store, dict):
+                try:
+                    st.session_state.watchlist_start_price_store_v2214 = remote_store
+                except Exception:
+                    pass
+                return dict(remote_store)
+    except Exception:
+        pass
     # v23.6: Store robust gegen Cloud-/Reload-Situationen.
     # Primaer Sidecar-Datei, Fallback/Mirror in st.session_state.
     session_store = {}
@@ -5330,6 +5355,13 @@ def _v2214_load_start_price_store():
 
 
 def _v2214_save_start_price_store(store):
+    ok_storage = False
+    try:
+        storage = globals().get("_storage_v280")
+        if storage is not None:
+            ok_storage = bool(storage.save_namespace("watchlist_start_prices", dict(store or {})))
+    except Exception:
+        ok_storage = False
     ok_file = False
     try:
         st.session_state.watchlist_start_price_store_v2214 = dict(store or {})
@@ -5341,8 +5373,7 @@ def _v2214_save_start_price_store(store):
         ok_file = True
     except Exception:
         ok_file = False
-    # Session-State reicht zumindest fuer die geoeffnete App; Datei wenn moeglich fuer Persistenz.
-    return True if (store is not None) else ok_file
+    return bool(ok_storage or ok_file or store is not None)
 
 
 def _v2214_valid_price(value):
@@ -16775,6 +16806,13 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "trade_journal.py",
     _MODULE_DIR_V252 / "live_monitor.py",
     _MODULE_DIR_V252 / "watchlist_storage.py",
+    _MODULE_DIR_V252 / "storage" / "__init__.py",
+    _MODULE_DIR_V252 / "storage" / "base.py",
+    _MODULE_DIR_V252 / "storage" / "local_backend.py",
+    _MODULE_DIR_V252 / "storage" / "supabase_backend.py",
+    _MODULE_DIR_V252 / "storage" / "manager.py",
+    _MODULE_DIR_V252 / "storage" / "watchlist_repository.py",
+    _MODULE_DIR_V252 / "storage" / "migration.py",
 )
 _missing_module_files_v252 = [str(x.relative_to(_APP_DIR_V252)) for x in _REQUIRED_MODULE_FILES_V252 if not x.exists()]
 if _missing_module_files_v252:
@@ -16790,6 +16828,39 @@ from modules import position_monitor as _position_module
 from modules import trade_journal as _trade_journal_module
 from modules import live_monitor as _live_module
 from modules import watchlist_storage as _watchlist_module
+from modules.storage import (
+    WatchlistRepository as _WatchlistRepositoryV280,
+    create_storage_manager as _create_storage_manager_v280,
+    migrate_legacy_json_files as _migrate_legacy_json_files_v280,
+    should_use_database_watchlists as _should_use_database_watchlists_v280,
+)
+
+# ---------- v28.0: Zentrale Storage-Schicht ----------
+_storage_v280 = _create_storage_manager_v280(st_module=st, app_dir=_APP_DIR_V252)
+_use_database_watchlists_v280 = _should_use_database_watchlists_v280(
+    st_module=st,
+    manager=_storage_v280,
+)
+_watchlist_repository_v280 = None
+if _use_database_watchlists_v280:
+    _watchlist_repository_v280 = _WatchlistRepositoryV280(
+        _storage_v280,
+        time_provider=get_current_berlin_time,
+    )
+    # Die bestehende UI und der Auto-Run koennen unveraendert bleiben, weil das
+    # Repository bewusst dieselben Funktionssignaturen wie logging_utils anbietet.
+    load_watchlists_df = _watchlist_repository_v280.load_watchlists_df
+    get_watchlist_catalog_df = _watchlist_repository_v280.get_watchlist_catalog_df
+    get_watchlist_tickers = _watchlist_repository_v280.get_watchlist_tickers
+    create_watchlist = _watchlist_repository_v280.create_watchlist
+    delete_watchlist = _watchlist_repository_v280.delete_watchlist
+    add_entries_to_watchlist = _watchlist_repository_v280.add_entries_to_watchlist
+    remove_ticker_from_watchlist = _watchlist_repository_v280.remove_ticker_from_watchlist
+    update_watchlist_alert_mode = _watchlist_repository_v280.update_watchlist_alert_mode
+    update_watchlist_check_frequency = _watchlist_repository_v280.update_watchlist_check_frequency
+    get_watchlist_alert_mode = _watchlist_repository_v280.get_watchlist_alert_mode
+    get_watchlist_check_frequency = _watchlist_repository_v280.get_watchlist_check_frequency
+    get_due_watchlists_for_slot = _watchlist_repository_v280.get_due_watchlists_for_slot
 
 _risk_module.configure_context(
     build_professional_radar_decision_v18=build_professional_radar_decision_v18,
@@ -16810,6 +16881,7 @@ _v230_calculate_position_size = _risk_module._v230_calculate_position_size
 _event_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
     time_provider=get_current_berlin_time,
+    storage=_storage_v280,
 )
 _v2416_event_store_path = _event_module._v2416_event_store_path
 _v2416_load_event_store = _event_module._v2416_load_event_store
@@ -16823,6 +16895,7 @@ _position_module.configure_context(
     event_logger=_v2416_log_event,
     safe_float=_v230_safe_float,
     price_text=_v230_price_text,
+    storage=_storage_v280,
 )
 _v244_position_store_key = _position_module._v244_position_store_key
 _v245_positions_store_path = _position_module._v245_positions_store_path
@@ -16836,12 +16909,13 @@ _v244_row_price = _position_module._v244_row_price
 _v244_calc_trade_state = _position_module._v244_calc_trade_state
 _v244_positions_dataframe = _position_module._v244_positions_dataframe
 
-# v27.1: Persistentes Trade-Journal konfigurieren
+# v28.0: Persistentes Trade-Journal ueber zentrale Storage-Schicht konfigurieren
 _trade_journal_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
     time_provider=get_current_berlin_time,
     safe_float=_v230_safe_float,
     event_logger=_v2416_log_event,
+    storage=_storage_v280,
 )
 _v270_trade_journal_path = _trade_journal_module._v270_trade_journal_path
 _v270_load_trade_journal = _trade_journal_module._v270_load_trade_journal
@@ -16868,6 +16942,7 @@ _live_module.configure_context(
     analyze_stock_live_cached_v2414=analyze_stock_live_cached_v2414,
     _v2414_market_bucket=_v2414_market_bucket,
     _v2416_log_event=_v2416_log_event,
+    storage=_storage_v280,
 )
 _v212_monitor_status_from_decision = _live_module._v212_monitor_status_from_decision
 build_live_watchlist_monitor_v212 = _live_module.build_live_watchlist_monitor_v212
@@ -17288,6 +17363,60 @@ with st.sidebar.expander("Hilfen & Verwaltung", expanded=False):
             st.session_state.auto_run_requested = True
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
+
+    st.markdown("#### Speicherung v28.0")
+    _storage_status_v280 = _storage_v280.status()
+    _storage_label_v280 = "Supabase + lokaler Spiegel" if _storage_status_v280.get("remote_enabled") else "Lokaler JSON-Fallback"
+    st.caption(f"Aktiver Speicher: {_storage_label_v280} · Benutzerbereich: {_storage_status_v280.get('user_id', 'default')}")
+    if _storage_status_v280.get("requested_backend") == "supabase" and not _storage_status_v280.get("remote_enabled"):
+        st.warning("Supabase ist ausgewählt, aber URL oder Service-Role-Key fehlen. Die App arbeitet bis dahin lokal weiter.")
+    if _storage_status_v280.get("degraded") and _storage_status_v280.get("last_error"):
+        st.warning(f"Remote-Speicher nicht erreichbar; lokaler Spiegel aktiv: {_storage_status_v280.get('last_error')}")
+
+    _stc1_v280, _stc2_v280 = st.columns(2)
+    with _stc1_v280:
+        if st.button("Speicher testen", use_container_width=True, key="v280_storage_health"):
+            _health_v280 = _storage_v280.health_check()
+            if _health_v280.ok:
+                st.success(f"Verbindung zu {_health_v280.backend} funktioniert.")
+            else:
+                st.error(f"Speichertest fehlgeschlagen: {_health_v280.error}")
+    with _stc2_v280:
+        _overwrite_migration_v280 = st.checkbox("Vorhandenes Ziel überschreiben", key="v280_migration_overwrite")
+
+    _mig1_v280, _mig2_v280 = st.columns(2)
+    with _mig1_v280:
+        if st.button("Legacy-JSON importieren", use_container_width=True, key="v280_migrate_json"):
+            _migration_rows_v280 = _migrate_legacy_json_files_v280(
+                _APP_DIR_V252,
+                _storage_v280,
+                overwrite=_overwrite_migration_v280,
+            )
+            st.session_state.v280_migration_rows = _migration_rows_v280
+            st.success("Legacy-Dateien wurden geprüft.")
+    with _mig2_v280:
+        _google_migration_disabled_v280 = _watchlist_repository_v280 is None
+        if st.button(
+            "Google-Watchlists importieren",
+            use_container_width=True,
+            key="v280_migrate_google_watchlists",
+            disabled=_google_migration_disabled_v280,
+        ):
+            _legacy_df_v280, _legacy_err_v280 = _legacy_load_watchlists_df_v280()
+            if _legacy_err_v280:
+                st.error(f"Google-Watchlists konnten nicht gelesen werden: {_legacy_err_v280}")
+            else:
+                _ok_v280, _msg_v280 = _watchlist_repository_v280.import_dataframe(
+                    _legacy_df_v280,
+                    merge=not _overwrite_migration_v280,
+                )
+                if _ok_v280:
+                    st.success(_msg_v280)
+                else:
+                    st.error(_msg_v280)
+    _migration_rows_v280 = st.session_state.get("v280_migration_rows", [])
+    if _migration_rows_v280:
+        st.dataframe(pd.DataFrame(_migration_rows_v280), hide_index=True, use_container_width=True)
 
     st.markdown("#### Technik / Admin")
     test1, test2 = st.columns([1.2, 2.8])
@@ -18563,7 +18692,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         elif cockpit_area == "📌 Positionen / Exit":
-                            st.markdown("### Positions-/Exit-Monitor v27.1")
+                            st.markdown("### Positions-/Exit-Monitor v28.0")
                             st.caption("Überwacht offene Positionen: R-Multiple, P/L, Stop-/Teilgewinn- und Exit-Hinweise. Mit dem Trade-Journal können Teilverkäufe, Stop-Anpassungen, Notizen und vollständige Schließungen dokumentiert werden. Die App eröffnet oder schließt keine Trades automatisch.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])
@@ -18900,7 +19029,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.error(result_v270.get("error") or "Notiz konnte nicht gespeichert werden.")
 
                         elif cockpit_area == "📓 Trade-Journal":
-                            st.markdown("### Trade-Journal v27.1")
+                            st.markdown("### Trade-Journal v28.0")
                             st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Daten bilden später die Grundlage für das Lern-/Backtest-Dashboard.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             if journal_df_v270 is None or journal_df_v270.empty:

@@ -8,13 +8,16 @@ import streamlit as st
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
 _time_provider = None
+_storage = None
 
-def configure_context(*, base_dir=None, time_provider=None):
-    global _BASE_DIR, _time_provider
+def configure_context(*, base_dir=None, time_provider=None, storage=None):
+    global _BASE_DIR, _time_provider, _storage
     if base_dir is not None:
         _BASE_DIR = Path(base_dir)
     if time_provider is not None:
         _time_provider = time_provider
+    if storage is not None:
+        _storage = storage
 
 
 if _time_provider is None:
@@ -29,6 +32,19 @@ def _v2416_event_store_path():
 
 
 def _v2416_load_event_store():
+    if _storage is not None:
+        try:
+            data = _storage.load_namespace("event_log", default=None)
+            if isinstance(data, dict):
+                data.setdefault("events", [])
+                data.setdefault("last_signatures", {})
+                try:
+                    st.session_state.v2416_event_store = data
+                except Exception:
+                    pass
+                return data
+        except Exception:
+            pass
     path = _v2416_event_store_path()
     try:
         if path.exists():
@@ -58,13 +74,21 @@ def _v2416_save_event_store(store):
         st.session_state.v2416_event_store = store
     except Exception:
         pass
+    storage_ok = False
+    if _storage is not None:
+        try:
+            storage_ok = bool(_storage.save_namespace("event_log", store))
+        except Exception:
+            storage_ok = False
+    file_ok = False
     try:
         _v2416_event_store_path().write_text(
             json.dumps(store, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
-        return True
+        file_ok = True
     except Exception:
-        return False
+        file_ok = False
+    return bool(storage_ok or file_ok)
 
 
 def _v2416_log_event(*, event_type, ticker, watchlist_name="", source="", status="", price=None,

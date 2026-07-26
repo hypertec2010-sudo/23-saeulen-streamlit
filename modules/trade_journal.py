@@ -19,10 +19,11 @@ _BASE_DIR = Path(__file__).resolve().parent.parent
 _time_provider = datetime.now
 _safe_float = None
 _event_logger = lambda **kwargs: False
+_storage = None
 
 
-def configure_context(*, base_dir=None, time_provider=None, safe_float=None, event_logger=None):
-    global _BASE_DIR, _time_provider, _safe_float, _event_logger
+def configure_context(*, base_dir=None, time_provider=None, safe_float=None, event_logger=None, storage=None):
+    global _BASE_DIR, _time_provider, _safe_float, _event_logger, _storage
     if base_dir is not None:
         _BASE_DIR = Path(base_dir)
     if time_provider is not None:
@@ -31,6 +32,8 @@ def configure_context(*, base_dir=None, time_provider=None, safe_float=None, eve
         _safe_float = safe_float
     if event_logger is not None:
         _event_logger = event_logger
+    if storage is not None:
+        _storage = storage
 
 
 def _num(value: Any, default=None):
@@ -63,6 +66,14 @@ def _v270_trade_journal_path() -> Path:
 
 
 def _v270_load_trade_journal() -> dict:
+    storage_store = None
+    if _storage is not None:
+        try:
+            raw = _storage.load_namespace("trade_journal", default=None)
+            if isinstance(raw, dict):
+                storage_store = raw
+        except Exception:
+            storage_store = None
     path = _v270_trade_journal_path()
     file_store = {}
     try:
@@ -80,8 +91,10 @@ def _v270_load_trade_journal() -> dict:
     except Exception:
         session_store = {}
 
-    # The session copy may contain the most recent action; otherwise use file.
-    store = session_store if session_store.get("entries") else file_store
+    if storage_store is not None:
+        store = storage_store
+    else:
+        store = session_store if session_store.get("entries") else file_store
     if not isinstance(store, dict):
         store = {}
     store.setdefault("entries", [])
@@ -99,14 +112,22 @@ def _v270_save_trade_journal(store: dict) -> bool:
         st.session_state.v270_trade_journal_store = store
     except Exception:
         pass
+    storage_ok = False
+    if _storage is not None:
+        try:
+            storage_ok = bool(_storage.save_namespace("trade_journal", store))
+        except Exception:
+            storage_ok = False
+    file_ok = False
     try:
         _v270_trade_journal_path().write_text(
             json.dumps(store, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
         )
-        return True
+        file_ok = True
     except Exception:
-        return False
+        file_ok = False
+    return bool(storage_ok or file_ok)
 
 
 def _normalise_date(value=None) -> str:

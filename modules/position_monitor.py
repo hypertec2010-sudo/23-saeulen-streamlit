@@ -11,9 +11,10 @@ _BASE_DIR = Path(__file__).resolve().parent.parent
 _event_logger = lambda **kwargs: False
 _v230_safe_float = None
 _v230_price_text = None
+_storage = None
 
-def configure_context(*, base_dir=None, event_logger=None, safe_float=None, price_text=None):
-    global _BASE_DIR, _event_logger, _v230_safe_float, _v230_price_text
+def configure_context(*, base_dir=None, event_logger=None, safe_float=None, price_text=None, storage=None):
+    global _BASE_DIR, _event_logger, _v230_safe_float, _v230_price_text, _storage
     if base_dir is not None:
         _BASE_DIR = Path(base_dir)
     if event_logger is not None:
@@ -22,6 +23,8 @@ def configure_context(*, base_dir=None, event_logger=None, safe_float=None, pric
         _v230_safe_float = safe_float
     if price_text is not None:
         _v230_price_text = price_text
+    if storage is not None:
+        _storage = storage
 
 def _v244_position_store_key(watchlist_name=""):
     try:
@@ -58,6 +61,15 @@ def _v245_safe_json_load(path):
 
 
 def _v245_load_all_positions():
+    storage_store = None
+    if _storage is not None:
+        try:
+            candidate = _storage.load_namespace("positions", default=None)
+            if isinstance(candidate, dict):
+                storage_store = candidate
+        except Exception:
+            storage_store = None
+
     file_store = _v245_safe_json_load(_v245_positions_store_path())
     session_store = {}
     try:
@@ -67,14 +79,16 @@ def _v245_load_all_positions():
     except Exception:
         session_store = {}
 
-    merged = dict(file_store)
-    # Session kann neuere Aenderungen enthalten, Datei kann Persistenz enthalten.
-    try:
-        for k, v in session_store.items():
-            if isinstance(v, dict):
-                merged[k] = v
-    except Exception:
-        pass
+    # Zentraler Speicher ist die Quelle der Wahrheit. Legacy-Datei und Session
+    # bleiben als Rueckwaertskompatibilitaet erhalten, solange noch nicht migriert.
+    merged = dict(storage_store if storage_store is not None else file_store)
+    if storage_store is None:
+        try:
+            for k, v in session_store.items():
+                if isinstance(v, dict):
+                    merged[k] = v
+        except Exception:
+            pass
     try:
         st.session_state.v245_persistent_positions_store = merged
     except Exception:
@@ -88,12 +102,20 @@ def _v245_save_all_positions(store):
         st.session_state.v245_persistent_positions_store = store
     except Exception:
         pass
+    storage_ok = False
+    if _storage is not None:
+        try:
+            storage_ok = bool(_storage.save_namespace("positions", store))
+        except Exception:
+            storage_ok = False
+    file_ok = False
     try:
         path = _v245_positions_store_path()
         path.write_text(json.dumps(store, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-        return True
+        file_ok = True
     except Exception:
-        return False
+        file_ok = False
+    return bool(storage_ok or file_ok)
 
 
 def _v244_get_positions(watchlist_name=""):

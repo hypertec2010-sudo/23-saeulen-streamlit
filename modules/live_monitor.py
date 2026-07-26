@@ -1011,6 +1011,16 @@ def _v227_live_history_file_path():
 
 
 def _v227_load_persistent_live_history():
+    storage = _CONTEXT.get("storage")
+    if storage is not None:
+        try:
+            payload = storage.load_namespace("live_history", default=None)
+            if isinstance(payload, dict):
+                state = payload.get("state", {})
+                events = payload.get("events", [])
+                return (state if isinstance(state, dict) else {}), (events if isinstance(events, list) else [])[-500:]
+        except Exception:
+            pass
     path = _v227_live_history_file_path()
     if path is None or not path.exists():
         return {}, []
@@ -1028,11 +1038,17 @@ def _v227_load_persistent_live_history():
 
 
 def _v227_save_persistent_live_history(state, events):
+    payload = {"state": state if isinstance(state, dict) else {}, "events": (events or [])[-500:]}
+    storage = _CONTEXT.get("storage")
+    if storage is not None:
+        try:
+            storage.save_namespace("live_history", payload)
+        except Exception:
+            pass
     path = _v227_live_history_file_path()
     if path is None:
         return
     try:
-        payload = {"state": state if isinstance(state, dict) else {}, "events": (events or [])[-500:]}
         path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
     except Exception:
         pass
@@ -1041,6 +1057,12 @@ def _v227_save_persistent_live_history(state, events):
 def reset_live_watchlist_status_history_v227():
     st.session_state.live_watchlist_status_state_v220 = {}
     st.session_state.live_watchlist_status_events_v220 = []
+    storage = _CONTEXT.get("storage")
+    if storage is not None:
+        try:
+            storage.delete_namespace("live_history")
+        except Exception:
+            pass
     path = _v227_live_history_file_path()
     try:
         if path is not None and path.exists():

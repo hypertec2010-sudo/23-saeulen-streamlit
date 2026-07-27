@@ -2668,7 +2668,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.3.1"
+APP_VERSION = "v28.3.2"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15652,11 +15652,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 st.session_state.live_watchlist_refresh_interval = refresh_label
                 # v24.11: Die manuelle Auswahl sofort in der URL spiegeln, damit
                 # der naechste Browser-Refresh nicht wieder den alten Wert nutzt.
-                try:
-                    if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
-                        st.query_params["refresh"] = str(refresh_label).split()[0]
-                except Exception:
-                    pass
+                if not _MULTIPAGE_BOOTSTRAPPED_V282:
+                    try:
+                        if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
+                            st.query_params["refresh"] = str(refresh_label).split()[0]
+                    except Exception:
+                        pass
             with lm3:
                 horizon_options = ["Kurzfrist / Trading", "Swing / 1-4 Wochen"]
                 current_live_horizon = st.session_state.get("live_watchlist_horizon", "Kurzfrist / Trading")
@@ -15664,11 +15665,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     current_live_horizon = "Kurzfrist / Trading"
                 live_monitor_horizon = st.selectbox("Live-Zeithorizont", horizon_options, index=horizon_options.index(current_live_horizon), key="live_watchlist_horizon_widget")
                 st.session_state.live_watchlist_horizon = live_monitor_horizon
-                try:
-                    if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
-                        st.query_params["live_horizon"] = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
-                except Exception:
-                    pass
+                if not _MULTIPAGE_BOOTSTRAPPED_V282:
+                    try:
+                        if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
+                            st.query_params["live_horizon"] = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
+                    except Exception:
+                        pass
             with lm4:
                 only_active = st.checkbox("Nur grün/gelb", value=bool(st.session_state.get("live_watchlist_only_active", False)), key="live_watchlist_only_active_widget")
                 st.session_state.live_watchlist_only_active = only_active
@@ -15691,55 +15693,108 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     interval_ms = {"15 Minuten": 15 * 60 * 1000, "30 Minuten": 30 * 60 * 1000, "60 Minuten": 60 * 60 * 1000}.get(refresh_label, 30 * 60 * 1000)
                     refresh_minutes = {"15 Minuten": "15", "30 Minuten": "30", "60 Minuten": "60"}.get(refresh_label, "30")
                     live_horizon_param = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
-                    # v22.7: Reload-Ziel in der URL speichern, sonst startet Streamlit Cloud
-                    # nach einem Browser-Reload gelegentlich wieder im Startmenue.
-                    try:
-                        st.query_params["workspace"] = "Watchlisten"
-                        st.query_params["live_monitor"] = "1"
-                        st.query_params["refresh"] = refresh_minutes
-                        st.query_params["live_horizon"] = live_horizon_param
-                    except Exception:
-                        pass
-                    st.info(f"Live-Monitor aktiv: native Aktualisierung alle {refresh_label}, solange der Bereich Live-Screener geöffnet ist. Kein Browser-Reload; Risiko- und Positionsdaten bleiben erhalten.")
+                    # v22.7: Der URL-Restore wird nur noch im direkten Legacy-Modus
+                    # benoetigt. In der nativen Multipage-App verwaltet die Page-Runtime
+                    # den Workspace und die Cockpit-Auswahl ueber Session State.
+                    if not _MULTIPAGE_BOOTSTRAPPED_V282:
+                        try:
+                            st.query_params["workspace"] = "Watchlisten"
+                            st.query_params["live_monitor"] = "1"
+                            st.query_params["refresh"] = refresh_minutes
+                            st.query_params["live_horizon"] = live_horizon_param
+                        except Exception:
+                            pass
+                    st.info(f"Live-Monitor aktiv: automatische Prüfung alle {refresh_label}, solange der Bereich Live-Screener geöffnet und die Browser-Sitzung verbunden ist.")
 
-                    # v25.1: Nativer Streamlit-Refresh statt Browser-/JavaScript-Reload.
-                    # Das Fragment prueft nur im aktiven Live-Screener-Bereich zyklisch,
-                    # ob das Intervall abgelaufen ist, und startet dann einen normalen
-                    # Streamlit-App-Rerun. Session-State und Cockpit-Auswahl bleiben erhalten.
+                    # v28.3.2: Stabiler Heartbeat statt eines einzigen langen
+                    # Fragment-Intervalls. Das Fragment wacht jede Minute auf und
+                    # entscheidet anhand des echten Cache-Zeitstempels, ob ein Scan
+                    # faellig ist. Dadurch bleibt der Zeitplan auch nach nativen
+                    # Seiten-/Widget-Reruns und Intervallwechseln konsistent.
                     _native_refresh_seconds_v2415 = max(60, int(interval_ms / 1000))
+                    _native_refresh_poll_seconds_v2832 = 60
+                    _native_refresh_schedule_key_v2832 = "|".join([
+                        str(selected_watchlist_name or ""),
+                        ",".join(str(t).strip().upper() for t in (current_tickers or [])),
+                        str(monitor_style or ""),
+                        str(live_monitor_horizon or ""),
+                        str(_native_refresh_seconds_v2415),
+                    ])
 
-                    @st.fragment(run_every=_native_refresh_seconds_v2415)
-                    def _native_live_screener_refresh_v2415():
+                    @st.fragment(run_every=_native_refresh_poll_seconds_v2832)
+                    def _native_live_screener_refresh_v2832():
                         _active_area = str(st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener"))
                         _enabled = bool(st.session_state.get("live_watchlist_monitor_enabled", False))
                         _now = datetime.now()
-                        _last_raw = st.session_state.get("v2415_native_live_refresh_ts")
-                        try:
-                            _last = datetime.fromisoformat(str(_last_raw)) if _last_raw else None
-                        except Exception:
-                            _last = None
 
-                        # Beim ersten Rendern nur den Startzeitpunkt setzen; nicht sofort neu laden.
-                        if _last is None:
-                            st.session_state.v2415_native_live_refresh_ts = _now.isoformat()
+                        if not _enabled or _active_area != "📡 Live-Screener":
                             return
 
-                        _elapsed = (_now - _last).total_seconds()
-                        if _enabled and _active_area == "📡 Live-Screener" and _elapsed >= (_native_refresh_seconds_v2415 - 2):
-                            st.session_state.v2415_native_live_refresh_ts = _now.isoformat()
-                            st.session_state.v2415_native_refresh_due = True
-                            st.rerun(scope="app")
+                        _initialized_key = str(st.session_state.get("v2832_native_refresh_schedule_key", ""))
+                        if _initialized_key != _native_refresh_schedule_key_v2832:
+                            # Beim ersten Vollrendern darf das Fragment den folgenden
+                            # normalen Cache-Aufbau nicht durch einen vorzeitigen Rerun
+                            # abbrechen. Der Scheduler wird nur initialisiert.
+                            st.session_state.v2832_native_refresh_schedule_key = _native_refresh_schedule_key_v2832
+                            st.session_state.v2832_native_refresh_trigger_ts = ""
+                            st.caption("Auto-Refresh-Zeitplan initialisiert. Die nächste Prüfung richtet sich nach dem letzten erfolgreichen Live-Scan.")
+                            return
 
-                    _native_live_screener_refresh_v2415()
+                        _cache = st.session_state.get("v246_live_monitor_cache", {})
+                        _cache_key = _cache.get("key") if isinstance(_cache, dict) else None
+                        _expected_key = {
+                            "watchlist": str(selected_watchlist_name or ""),
+                            "tickers": tuple(str(t).strip().upper() for t in (current_tickers or [])),
+                            "style": str(monitor_style or ""),
+                            "horizon": str(live_monitor_horizon or ""),
+                        }
+                        _cache_matches = bool(_cache) and _cache_key == _expected_key
+                        try:
+                            _cache_ts = datetime.fromisoformat(str(_cache.get("ts"))) if _cache_matches and _cache.get("ts") else None
+                        except Exception:
+                            _cache_ts = None
+
+                        if _cache_ts is None:
+                            _due = True
+                            _remaining_seconds = 0
+                        else:
+                            _elapsed = max(0.0, (_now - _cache_ts).total_seconds())
+                            _remaining_seconds = max(0, int(_native_refresh_seconds_v2415 - _elapsed))
+                            _due = _elapsed >= (_native_refresh_seconds_v2415 - 2)
+
+                        if not _due:
+                            _next_due = _now + timedelta(seconds=_remaining_seconds)
+                            _remaining_minutes = max(1, int((_remaining_seconds + 59) // 60))
+                            st.caption(f"Nächster Auto-Scan ca. {_next_due.strftime('%H:%M:%S')} Uhr · noch {_remaining_minutes} Min.")
+                            return
+
+                        # Doppelte Voll-App-Reruns verhindern: Nach dem Trigger bekommt
+                        # der anschliessende App-Lauf Zeit, den fälligen Scan auszuführen.
+                        _last_trigger_raw = st.session_state.get("v2832_native_refresh_trigger_ts")
+                        try:
+                            _last_trigger = datetime.fromisoformat(str(_last_trigger_raw)) if _last_trigger_raw else None
+                        except Exception:
+                            _last_trigger = None
+                        _trigger_recent = bool(_last_trigger) and (_now - _last_trigger).total_seconds() < 120
+                        if not _trigger_recent:
+                            st.session_state.v2832_native_refresh_trigger_ts = _now.isoformat()
+                            st.session_state.v2415_native_refresh_due = True
+                            st.rerun()
+
+                    _native_live_screener_refresh_v2832()
                 else:
-                    # Wenn der Monitor ausgeschaltet wird, URL-Refreshmarker entfernen.
-                    try:
-                        if str(st.query_params.get("live_monitor", "")) in {"1", "true", "True"}:
-                            st.query_params.pop("live_monitor", None)
-                            st.query_params.pop("refresh", None)
-                            st.query_params.pop("live_horizon", None)
-                    except Exception:
-                        pass
+                    st.session_state.v2832_native_refresh_schedule_key = ""
+                    st.session_state.v2832_native_refresh_trigger_ts = ""
+                    # Wenn der Monitor ausgeschaltet wird, URL-Refreshmarker nur im
+                    # direkten Legacy-Modus entfernen.
+                    if not _MULTIPAGE_BOOTSTRAPPED_V282:
+                        try:
+                            if str(st.query_params.get("live_monitor", "")) in {"1", "true", "True"}:
+                                st.query_params.pop("live_monitor", None)
+                                st.query_params.pop("refresh", None)
+                                st.query_params.pop("live_horizon", None)
+                        except Exception:
+                            pass
 
             # v24.6: Live-Monitor-Scan-Cache.
             # Streamlit fuehrt das Skript bei jeder Auswahl neu aus. Ohne Cache startet
@@ -15835,12 +15890,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             live_errors_cache_v246 = live_errors.copy() if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
                         except Exception:
                             live_errors_cache_v246 = pd.DataFrame()
+                        _live_scan_completed_at_v2832 = datetime.now().isoformat()
                         st.session_state["v246_live_monitor_cache"] = {
                             "key": live_cache_key_v246,
-                            "ts": datetime.now().isoformat(),
+                            "ts": _live_scan_completed_at_v2832,
                             "live_df": live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame(),
                             "live_errors": live_errors_cache_v246,
                         }
+                        # Erfolgreicher Scan ist der neue Anker des Auto-Refresh-Zeitplans.
+                        st.session_state.v2415_native_live_refresh_ts = _live_scan_completed_at_v2832
+                        st.session_state.v2832_native_refresh_trigger_ts = ""
                     else:
                         try:
                             live_df = live_cache_v246.get("live_df", pd.DataFrame()).copy()

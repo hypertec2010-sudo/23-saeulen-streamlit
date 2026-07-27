@@ -19,7 +19,7 @@ required = [
     "modules/repositories/__init__.py", "modules/repositories/base.py",
     "modules/repositories/position_repository.py", "modules/repositories/trade_journal_repository.py",
     "modules/repositories/event_repository.py", "modules/repositories/registry.py",
-    "supabase_schema.sql", ".streamlit/secrets.example.toml", "migrate_storage.py", "regression_check.py",
+    "supabase_schema.sql", ".streamlit/secrets.example.toml", "migrate_storage.py", "regression_check.py", "RELEASE_NOTES_v28_3_2.md",
 ]
 missing = [p for p in required if not Path(p).exists()]
 if missing:

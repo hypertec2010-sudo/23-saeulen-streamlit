@@ -70,11 +70,15 @@ def run_workspace_page(
     if cockpit_area is not None and cockpit_area not in VALID_COCKPIT_AREAS:
         raise ValueError(f"Unbekannter Cockpit-Bereich: {cockpit_area}")
     if not LEGACY_APP.exists():
-        st.error("legacy_app.py fehlt. Bitte den vollständigen v28.3.1-Paketinhalt deployen.")
+        st.error("legacy_app.py fehlt. Bitte den vollständigen v28.3.2-Paketinhalt deployen.")
         st.stop()
 
-    _clear_legacy_workspace_query()
-    _activate_page_context(workspace, cockpit_area, page_label)
+    page_changed = _activate_page_context(workspace, cockpit_area, page_label)
+    # Query-Parameter nur beim echten nativen Seitenwechsel bereinigen. Eine
+    # Bereinigung bei jedem Widget- oder Auto-Refresh-Rerun kann den laufenden
+    # Fragment-Zeitplan des Live-Screeners unnoetig destabilisieren.
+    if page_changed:
+        _clear_legacy_workspace_query()
 
     os.environ["CAPITAL_HILL_MULTIPAGE"] = "1"
-    runpy.run_path(str(LEGACY_APP), run_name="__capital_hill_legacy_v2831__")
+    runpy.run_path(str(LEGACY_APP), run_name="__capital_hill_legacy_v2832__")

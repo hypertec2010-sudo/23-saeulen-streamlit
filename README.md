@@ -1,8 +1,8 @@
-# v28.3.1 Cockpit Navigation State Fix
+# v28.3.2 Cockpit Navigation State Fix
 
 Diese Version baut auf v28.3 auf. Die native Multipage-Navigation, Supabase-Speicherung, Repositories, Datenmodelle und die extrahierte Analyse-Pipeline bleiben kompatibel.
 
-## Navigations-Fix v28.3.1
+## Navigations-Fix v28.3.2
 
 Der Startbereich einer nativen Seite wird nur noch beim tatsächlichen Seitenwechsel gesetzt. Manuelle Wechsel im Trading-Cockpit zwischen Live-Screener, Risiko-Rechner, Positionen / Exit, Trade-Journal und Historie bleiben dadurch bei Streamlit-Reruns erhalten.
 
@@ -32,3 +32,8 @@ streamlit run app.py
 ```
 
 Weitere Details: `RELEASE_NOTES_v28_3_1.md`, `ARCHITECTURE_V28_3.md` und `RELEASE_NOTES_v28_3.md`.
+
+
+## v28.3.2
+
+Der Live-Screener nutzt einen 60-Sekunden-Heartbeat und den Cache-Zeitstempel für zuverlässige automatische Scans. Details: `RELEASE_NOTES_v28_3_2.md`.

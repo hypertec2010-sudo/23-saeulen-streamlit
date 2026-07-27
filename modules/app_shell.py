@@ -7,7 +7,7 @@ from pathlib import Path
 
 import streamlit as st
 
-APP_VERSION = "v28.3.1"
+APP_VERSION = "v28.3.2"
 ROOT = Path(__file__).resolve().parents[1]
 
 

@@ -234,8 +234,13 @@ def test_navigation_guards() -> None:
     check("pages/trade_journal.py" in shell_source, "Trade-Journal-Seite ist nicht registriert")
     check("workspace_mode" in runtime_source and "watchlist_cockpit_area_v2413" in runtime_source, "Workspace-Bruecke unvollstaendig")
     check("CAPITAL_HILL_MULTIPAGE" in runtime_source and "CAPITAL_HILL_MULTIPAGE" in legacy_source, "Multipage-Bootstrap-Guard fehlt")
-    check('APP_VERSION = "v28.3.1"' in legacy_source, "v28.3.1 Versionsstand fehlt in legacy_app.py")
+    check('APP_VERSION = "v28.3.2"' in legacy_source, "v28.3.2 Versionsstand fehlt in legacy_app.py")
     check(len(entry_source.splitlines()) < 80, "app.py ist nicht als schlanker Einstiegspunkt umgesetzt")
+    check("run_every=_native_refresh_poll_seconds_v2832" in legacy_source, "60-Sekunden-Heartbeat fuer Live-Refresh fehlt")
+    check("_native_refresh_poll_seconds_v2832 = 60" in legacy_source, "Heartbeat-Intervall ist nicht auf 60 Sekunden gesetzt")
+    check("v246_live_monitor_cache" in legacy_source and "Nächster Auto-Scan" in legacy_source, "Cache-basierter Refresh-Status fehlt")
+    check('st.rerun(scope="app")' not in legacy_source, "Veralteter expliziter App-Scope im Refresh-Fragment vorhanden")
+    check("if page_changed:" in runtime_source and "_clear_legacy_workspace_query()" in runtime_source, "Query-Cleanup ist nicht an echte Seitenwechsel gebunden")
 
     expected_pages = {
         "pages/analysis.py": "Sofortanalyse",
@@ -466,7 +471,7 @@ def main() -> None:
     test_storage_layer(mods)
     test_navigation_guards()
     test_cockpit_navigation_state(mods["modules.page_runtime"])
-    print("v28.3.1 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v28.3.2 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

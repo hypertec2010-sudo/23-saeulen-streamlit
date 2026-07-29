@@ -194,6 +194,38 @@ def _v244_row_price(row):
         return None
 
 
+def _v244_reference_stop(pos, entry=None, current_stop=None):
+    """Return the original risk stop used as the R-multiple denominator.
+
+    A trailing/current stop may legitimately move above the entry. In that case
+    it must not replace the original stop for R calculations. Older positions
+    can be recovered from the first valid stop-history value.
+    """
+    pos = pos or {}
+    if entry is None:
+        entry = _v230_safe_float(pos.get("entry"), default=None)
+    if current_stop is None:
+        current_stop = _v230_safe_float(pos.get("stop"), default=None)
+    if entry is None:
+        return None
+
+    candidates = [_v230_safe_float(pos.get("initial_stop"), default=None)]
+    try:
+        for item in list(pos.get("stop_history") or []):
+            if not isinstance(item, dict):
+                continue
+            candidates.append(_v230_safe_float(item.get("old_stop"), default=None))
+            candidates.append(_v230_safe_float(item.get("new_stop"), default=None))
+    except Exception:
+        pass
+    candidates.append(current_stop)
+
+    for candidate in candidates:
+        if candidate is not None and candidate > 0 and candidate < entry:
+            return candidate
+    return None
+
+
 def _v244_calc_trade_state(pos, live_row=None):
     pos = pos or {}
     live_row = live_row or {}
@@ -204,16 +236,16 @@ def _v244_calc_trade_state(pos, live_row=None):
     current = _v244_row_price(live_row)
     if current is None:
         current = _v230_safe_float(pos.get("last_price"), default=None)
+
+    reference_stop = _v244_reference_stop(pos, entry=entry, current_stop=stop)
     unit_risk = None
     r_mult = None
     pnl = None
     pnl_pct = None
-    if entry is not None and stop is not None and entry > stop and current is not None:
-        unit_risk = entry - stop
+    if entry is not None and reference_stop is not None and current is not None:
+        unit_risk = entry - reference_stop
         r_mult = (current - entry) / unit_risk if unit_risk > 0 else None
-        pnl = (current - entry) * shares if shares else None
-        pnl_pct = (current / entry - 1.0) * 100.0 if entry else None
-    elif entry is not None and current is not None:
+    if entry is not None and current is not None:
         pnl = (current - entry) * shares if shares else None
         pnl_pct = (current / entry - 1.0) * 100.0 if entry else None
 
@@ -228,8 +260,18 @@ def _v244_calc_trade_state(pos, live_row=None):
         stop_hint = "Stop ausgelöst oder unterschritten."
     elif r_mult is None:
         ampel = "⚪"
-        status = "Nicht berechenbar"
-        action = "Für R-Multiple werden Entry und Stop benötigt."
+        if entry is None:
+            status = "Entry fehlt"
+            action = "Für die Berechnung wird ein gültiger Entry benötigt."
+        elif current is None:
+            status = "Kurs fehlt"
+            action = "Für die Berechnung wird ein aktueller oder zuletzt gespeicherter Kurs benötigt."
+        elif reference_stop is None and stop is not None and stop >= entry:
+            status = "Initialrisiko fehlt"
+            action = "Der aktuelle Stop liegt auf/über Entry. Für R wird der ursprüngliche Initial-Stop benötigt."
+        else:
+            status = "Initial-Stop fehlt"
+            action = "Für R-Multiple werden Entry und ursprünglicher Initial-Stop benötigt."
     elif r_mult >= 2.0:
         ampel = "🟢"
         status = "2R+ erreicht"
@@ -256,7 +298,17 @@ def _v244_calc_trade_state(pos, live_row=None):
         action = "Positionsgröße/Stop-Regel prüfen; kein Nachkaufen ohne neuen Trigger."
         stop_hint = "Stop/Invalidierung eng beobachten."
 
-    if target is not None and current is not None and current >= target and target > entry:
+    if (
+        r_mult is not None
+        and entry is not None
+        and stop is not None
+        and stop >= entry
+        and current is not None
+        and current > stop
+    ):
+        stop_hint = "Gewinnschutz aktiv: aktueller Stop liegt auf/über Entry; R basiert weiter auf dem Initial-Stop."
+
+    if target is not None and entry is not None and current is not None and current >= target and target > entry:
         status = status + " · Ziel erreicht"
         action = "Ziel/Teilziel erreicht: Teilgewinn oder Trailing-Plan prüfen."
 
@@ -270,6 +322,7 @@ def _v244_calc_trade_state(pos, live_row=None):
         "P/L": pnl,
         "P/L %": pnl_pct,
         "Risiko je Aktie": unit_risk,
+        "R-Basis-Stop": reference_stop,
     }
 
 
@@ -321,6 +374,7 @@ def _v244_positions_dataframe(positions, live_df=None, watchlist_name=""):
             "Aktueller Kurs": _v230_price_text(calc.get("Aktueller Kurs")),
             "Entry": _v230_price_text(pos.get("entry")),
             "Stop": _v230_price_text(pos.get("stop")),
+            "Initial-Stop (R-Basis)": _v230_price_text(calc.get("R-Basis-Stop")),
             "Stück": int(_v230_safe_float(pos.get("shares"), default=0) or 0),
             "Initial-Stück": int(_v230_safe_float(pos.get("initial_shares"), default=pos.get("shares")) or 0),
             "Realisiert P/L": "n/a" if _v230_safe_float(pos.get("realized_pnl"), default=None) is None else f"{_v230_safe_float(pos.get('realized_pnl'), default=0.0):.2f}",

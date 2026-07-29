@@ -154,12 +154,34 @@ def _normalise_date(value=None) -> str:
     return text or _now().date().isoformat()
 
 
+def _infer_initial_stop(position: dict, entry=None):
+    position = position or {}
+    if entry is None:
+        entry = _num(position.get("entry"), None)
+    if entry is None:
+        return None
+
+    candidates = [_num(position.get("initial_stop"), None)]
+    try:
+        for item in list(position.get("stop_history") or []):
+            if not isinstance(item, dict):
+                continue
+            candidates.append(_num(item.get("old_stop"), None))
+            candidates.append(_num(item.get("new_stop"), None))
+    except Exception:
+        pass
+    candidates.append(_num(position.get("stop"), None))
+
+    for candidate in candidates:
+        if candidate is not None and candidate > 0 and candidate < entry:
+            return candidate
+    return None
+
+
 def _position_risk(position: dict):
     entry = _num(position.get("entry"), None)
-    initial_stop = _num(position.get("initial_stop"), None)
-    if initial_stop is None:
-        initial_stop = _num(position.get("stop"), None)
-    if entry is None or initial_stop is None or entry <= initial_stop:
+    initial_stop = _infer_initial_stop(position, entry=entry)
+    if entry is None or initial_stop is None:
         return entry, initial_stop, None
     return entry, initial_stop, entry - initial_stop
 
@@ -389,7 +411,12 @@ def _v270_adjust_stop(
         return {"ok": False, "error": "Gültigen neuen Stop eingeben.", "positions": positions}
     if old_stop is not None and abs(new_stop_value - old_stop) < 1e-12:
         return {"ok": False, "error": "Der neue Stop entspricht dem bisherigen Stop.", "positions": positions}
-    pos.setdefault("initial_stop", old_stop)
+    entry_value = _num(pos.get("entry"), None)
+    initial_stop_value = _infer_initial_stop(pos, entry=entry_value)
+    if initial_stop_value is None and old_stop is not None and entry_value is not None and old_stop < entry_value:
+        initial_stop_value = old_stop
+    if initial_stop_value is not None:
+        pos["initial_stop"] = initial_stop_value
     history = list(pos.get("stop_history") or [])
     history.append({
         "date": _normalise_date(action_date),

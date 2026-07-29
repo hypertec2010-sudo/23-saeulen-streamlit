@@ -70,7 +70,7 @@ def run_workspace_page(
     if cockpit_area is not None and cockpit_area not in VALID_COCKPIT_AREAS:
         raise ValueError(f"Unbekannter Cockpit-Bereich: {cockpit_area}")
     if not LEGACY_APP.exists():
-        st.error("legacy_app.py fehlt. Bitte den vollständigen v28.3.2-Paketinhalt deployen.")
+        st.error("legacy_app.py fehlt. Bitte den vollständigen v28.4.1-Paketinhalt deployen.")
         st.stop()
 
     page_changed = _activate_page_context(workspace, cockpit_area, page_label)

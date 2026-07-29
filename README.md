@@ -1,39 +1,54 @@
-# v28.3.2 Cockpit Navigation State Fix
+# v28.4.1 R-Multiple Initial-Risk Fix
 
-Diese Version baut auf v28.3 auf. Die native Multipage-Navigation, Supabase-Speicherung, Repositories, Datenmodelle und die extrahierte Analyse-Pipeline bleiben kompatibel.
+Diese Version baut auf **v28.3.2** auf. Multipage-Navigation, Supabase,
+Repositories, Trade-Journal und Live-Screener bleiben kompatibel.
 
-## Navigations-Fix v28.3.2
+## Qualitätssicherung
 
-Der Startbereich einer nativen Seite wird nur noch beim tatsächlichen Seitenwechsel gesetzt. Manuelle Wechsel im Trading-Cockpit zwischen Live-Screener, Risiko-Rechner, Positionen / Exit, Trade-Journal und Historie bleiben dadurch bei Streamlit-Reruns erhalten.
+Bei jedem Push auf `main` oder `master` sowie bei Pull Requests führt GitHub
+automatisch aus:
 
-## Wichtigste Änderung
-
-Die große Analyse-Pipeline befindet sich jetzt in:
-
-```text
-modules/legacy_analysis_core.py
+```bash
+python verify_deployment.py
+pytest -q
 ```
 
-`legacy_app.py` enthält diese rund 2.600 Zeilen nicht mehr. Der Aufruf erfolgt weiterhin über `modules/analysis_engine.py`, sodass die bestehende Oberfläche und das Ergebnisformat unverändert bleiben.
+Geprüft werden unter anderem:
+
+- Syntax und Deployment-Struktur
+- Cockpit-Navigation über normale Streamlit-Reruns
+- Live-Refresh-Fälligkeit aus dem letzten erfolgreichen Scan
+- Schutz vor doppelten Refresh-Triggern
+- Supabase-Ausfall mit lokalem Spiegel
+- Teilverkauf und vollständiger Trade-Abschluss
+- echter unauthentifizierter App-Einstieg über Streamlit AppTest
+- mögliche versehentlich eingecheckte produktive Secrets
+
+## Wichtige Dateien
+
+```text
+.github/workflows/quality.yml
+requirements-ci.txt
+pytest.ini
+tests/
+modules/live_refresh_policy.py
+```
 
 ## Upgrade
 
 1. Vollständigen Inhalt des ZIP-Pakets ins Repository übernehmen.
 2. Vorhandene Streamlit-Secrets unverändert lassen.
 3. Keine SQL-Migration ausführen.
-4. App neu starten.
-5. Eine Sofortanalyse, den Radar und eine Watchlist-Analyse testen.
+4. GitHub-Commit pushen und den Workflow **v28.4.1 Quality Gate** prüfen.
+5. App neu starten und Live-Screener, Exit und Trade-Journal kurz testen.
 
-## Prüfung
+## Lokale Prüfung
 
 ```bash
+python -m pip install -r requirements-ci.txt
 python verify_deployment.py
+pytest -q
 streamlit run app.py
 ```
 
-Weitere Details: `RELEASE_NOTES_v28_3_1.md`, `ARCHITECTURE_V28_3.md` und `RELEASE_NOTES_v28_3.md`.
-
-
-## v28.3.2
-
-Der Live-Screener nutzt einen 60-Sekunden-Heartbeat und den Cache-Zeitstempel für zuverlässige automatische Scans. Details: `RELEASE_NOTES_v28_3_2.md`.
+Details: `RELEASE_NOTES_v28_4.md` und `RELEASE_NOTES_v28_4_1.md`.

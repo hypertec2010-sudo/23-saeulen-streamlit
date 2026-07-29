@@ -178,6 +178,7 @@ from modules import cache_layer as _cache_layer
 from modules import market_data as _market_data_module
 from modules import ticker_resolver as _ticker_resolver_module
 from modules import scoring_engine as _scoring_engine_module
+from modules import live_refresh_policy as _live_refresh_policy
 import yfinance as yf
 from plotly.subplots import make_subplots
 import logging_utils as _logging_utils
@@ -2668,7 +2669,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.3.2"
+APP_VERSION = "v28.4.1"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15713,13 +15714,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     # Seiten-/Widget-Reruns und Intervallwechseln konsistent.
                     _native_refresh_seconds_v2415 = max(60, int(interval_ms / 1000))
                     _native_refresh_poll_seconds_v2832 = 60
-                    _native_refresh_schedule_key_v2832 = "|".join([
-                        str(selected_watchlist_name or ""),
-                        ",".join(str(t).strip().upper() for t in (current_tickers or [])),
-                        str(monitor_style or ""),
-                        str(live_monitor_horizon or ""),
-                        str(_native_refresh_seconds_v2415),
-                    ])
+                    _native_refresh_schedule_key_v2832 = _live_refresh_policy.build_schedule_key(
+                        selected_watchlist_name,
+                        current_tickers,
+                        monitor_style,
+                        live_monitor_horizon,
+                        _native_refresh_seconds_v2415,
+                    )
 
                     @st.fragment(run_every=_native_refresh_poll_seconds_v2832)
                     def _native_live_screener_refresh_v2832():
@@ -15741,28 +15742,21 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             return
 
                         _cache = st.session_state.get("v246_live_monitor_cache", {})
-                        _cache_key = _cache.get("key") if isinstance(_cache, dict) else None
-                        _expected_key = {
-                            "watchlist": str(selected_watchlist_name or ""),
-                            "tickers": tuple(str(t).strip().upper() for t in (current_tickers or [])),
-                            "style": str(monitor_style or ""),
-                            "horizon": str(live_monitor_horizon or ""),
-                        }
-                        _cache_matches = bool(_cache) and _cache_key == _expected_key
-                        try:
-                            _cache_ts = datetime.fromisoformat(str(_cache.get("ts"))) if _cache_matches and _cache.get("ts") else None
-                        except Exception:
-                            _cache_ts = None
+                        _expected_key = _live_refresh_policy.build_cache_key(
+                            selected_watchlist_name,
+                            current_tickers,
+                            monitor_style,
+                            live_monitor_horizon,
+                        )
+                        _refresh_decision = _live_refresh_policy.evaluate_refresh(
+                            now=_now,
+                            cache=_cache,
+                            expected_cache_key=_expected_key,
+                            interval_seconds=_native_refresh_seconds_v2415,
+                        )
+                        _remaining_seconds = _refresh_decision.remaining_seconds
 
-                        if _cache_ts is None:
-                            _due = True
-                            _remaining_seconds = 0
-                        else:
-                            _elapsed = max(0.0, (_now - _cache_ts).total_seconds())
-                            _remaining_seconds = max(0, int(_native_refresh_seconds_v2415 - _elapsed))
-                            _due = _elapsed >= (_native_refresh_seconds_v2415 - 2)
-
-                        if not _due:
+                        if not _refresh_decision.due:
                             _next_due = _now + timedelta(seconds=_remaining_seconds)
                             _remaining_minutes = max(1, int((_remaining_seconds + 59) // 60))
                             st.caption(f"Nächster Auto-Scan ca. {_next_due.strftime('%H:%M:%S')} Uhr · noch {_remaining_minutes} Min.")
@@ -15771,11 +15765,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         # Doppelte Voll-App-Reruns verhindern: Nach dem Trigger bekommt
                         # der anschliessende App-Lauf Zeit, den fälligen Scan auszuführen.
                         _last_trigger_raw = st.session_state.get("v2832_native_refresh_trigger_ts")
-                        try:
-                            _last_trigger = datetime.fromisoformat(str(_last_trigger_raw)) if _last_trigger_raw else None
-                        except Exception:
-                            _last_trigger = None
-                        _trigger_recent = bool(_last_trigger) and (_now - _last_trigger).total_seconds() < 120
+                        _trigger_recent = _live_refresh_policy.trigger_is_recent(
+                            now=_now,
+                            last_trigger=_last_trigger_raw,
+                            cooldown_seconds=120,
+                        )
                         if not _trigger_recent:
                             st.session_state.v2832_native_refresh_trigger_ts = _now.isoformat()
                             st.session_state.v2415_native_refresh_due = True
@@ -16301,6 +16295,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     if st.button("Position speichern/aktualisieren", use_container_width=True, key=f"v244_save_{pos_ticker}"):
                                         _initial_stop_v270 = _v230_safe_float(old_pos.get("initial_stop"), default=None)
                                         if _initial_stop_v270 is None:
+                                            try:
+                                                _initial_stop_v270 = _trade_journal_module._infer_initial_stop(
+                                                    old_pos,
+                                                    entry=_v230_safe_float(entry_v, default=None),
+                                                )
+                                            except Exception:
+                                                _initial_stop_v270 = None
+                                        if _initial_stop_v270 is None and float(stop_v or 0.0) < float(entry_v or 0.0):
                                             _initial_stop_v270 = float(stop_v or 0.0)
                                         _initial_shares_v270 = int(_v230_safe_float(old_pos.get("initial_shares"), default=0) or 0)
                                         if _initial_shares_v270 <= 0:

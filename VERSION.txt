@@ -1,3 +1,3 @@
-v28.3.2 Live-Screener Auto-Refresh Heartbeat Fix
+v28.4.1 R-Multiple Initial-Risk Fix
 
-Based on v28.3.1. Uses a one-minute fragment heartbeat and the live-cache timestamp to trigger due scans reliably across native multipage reruns.
+Based on v28.4. R-Multiple uses the original initial stop even after the current stop is trailed above entry.

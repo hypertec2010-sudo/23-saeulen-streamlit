@@ -179,6 +179,7 @@ from modules import market_data as _market_data_module
 from modules import ticker_resolver as _ticker_resolver_module
 from modules import scoring_engine as _scoring_engine_module
 from modules import live_refresh_policy as _live_refresh_policy
+from modules import live_screener_snapshot as _live_screener_snapshot
 import yfinance as yf
 from plotly.subplots import make_subplots
 import logging_utils as _logging_utils
@@ -2669,7 +2670,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.4.1"
+APP_VERSION = "v28.4.2"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14242,6 +14243,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "storage" / "manager.py",
     _MODULE_DIR_V252 / "storage" / "watchlist_repository.py",
     _MODULE_DIR_V252 / "storage" / "migration.py",
+    _MODULE_DIR_V252 / "live_screener_snapshot.py",
     _MODULE_DIR_V252 / "domain" / "__init__.py",
     _MODULE_DIR_V252 / "domain" / "models.py",
     _MODULE_DIR_V252 / "repositories" / "__init__.py",
@@ -15637,60 +15639,154 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v25.1")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v28.4.2")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             st.caption("Performance v25.1: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
-            lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
-            with lm1:
-                live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
+            # v28.4.2: Mobile-Modus und Einstellungen werden zentral gespeichert,
+            # damit ein durch Display-Sperre neu aufgebauter Browser-Run wieder mit
+            # derselben kompakten Darstellung startet.
+            _mobile_pref_namespace_v2842 = "live_screener_preferences"
+            if not bool(st.session_state.get("v2842_live_mobile_preferences_loaded", False)):
+                try:
+                    _mobile_prefs_v2842 = _storage_v280.load_namespace(_mobile_pref_namespace_v2842, default={}) or {}
+                except Exception:
+                    _mobile_prefs_v2842 = {}
+                if isinstance(_mobile_prefs_v2842, dict):
+                    if "v2842_mobile_mode_widget" not in st.session_state:
+                        st.session_state.v2842_mobile_mode_widget = bool(_mobile_prefs_v2842.get("mobile_mode", False))
+                    if "v2842_mobile_auto_scan_widget" not in st.session_state:
+                        st.session_state.v2842_mobile_auto_scan_widget = bool(_mobile_prefs_v2842.get("mobile_auto_scan", False))
+                st.session_state.v2842_live_mobile_preferences_loaded = True
+
+            mobile_mode_v2842 = st.checkbox(
+                "📱 Mobile-Modus",
+                value=bool(st.session_state.get("v2842_mobile_mode_widget", False)),
+                key="v2842_mobile_mode_widget",
+                help="Kompakte Karten, größere Bedienelemente und Snapshot-First-Wiederherstellung nach Display-Pausen.",
+            )
+            st.session_state.v2842_live_mobile_mode = bool(mobile_mode_v2842)
+
+            if mobile_mode_v2842:
+                st.caption("Mobile-Modus: Der letzte Supabase-Stand wird nach einer Display-Pause sofort angezeigt. Ein Vollscan startet nicht automatisch, sofern Mobile Auto-Scan ausgeschaltet ist.")
+                live_monitor_enabled = st.checkbox(
+                    "Live-Monitor aktiv",
+                    value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)),
+                    key="live_watchlist_monitor_enabled_widget",
+                )
                 st.session_state.live_watchlist_monitor_enabled = live_monitor_enabled
-            with lm2:
+                mobile_auto_scan_v2842 = st.checkbox(
+                    "Auto-Scan im Mobile-Modus",
+                    value=bool(st.session_state.get("v2842_mobile_auto_scan_widget", False)),
+                    key="v2842_mobile_auto_scan_widget",
+                    help="Aus: Scan nur über 'Jetzt prüfen'. An: Auto-Scan läuft nur bei aktiver Browser-Sitzung.",
+                )
                 refresh_options = ["15 Minuten", "30 Minuten", "60 Minuten"]
                 current_refresh = st.session_state.get("live_watchlist_refresh_interval", "30 Minuten")
                 if current_refresh not in refresh_options:
                     current_refresh = "30 Minuten"
-                refresh_label = st.selectbox("Refresh", refresh_options, index=refresh_options.index(current_refresh), key="live_watchlist_refresh_interval_widget")
+                refresh_label = st.selectbox(
+                    "Refresh",
+                    refresh_options,
+                    index=refresh_options.index(current_refresh),
+                    key="live_watchlist_refresh_interval_widget",
+                    disabled=not bool(mobile_auto_scan_v2842),
+                )
                 st.session_state.live_watchlist_refresh_interval = refresh_label
-                # v24.11: Die manuelle Auswahl sofort in der URL spiegeln, damit
-                # der naechste Browser-Refresh nicht wieder den alten Wert nutzt.
-                if not _MULTIPAGE_BOOTSTRAPPED_V282:
-                    try:
-                        if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
-                            st.query_params["refresh"] = str(refresh_label).split()[0]
-                    except Exception:
-                        pass
-            with lm3:
                 horizon_options = ["Kurzfrist / Trading", "Swing / 1-4 Wochen"]
                 current_live_horizon = st.session_state.get("live_watchlist_horizon", "Kurzfrist / Trading")
                 if current_live_horizon not in horizon_options:
                     current_live_horizon = "Kurzfrist / Trading"
-                live_monitor_horizon = st.selectbox("Live-Zeithorizont", horizon_options, index=horizon_options.index(current_live_horizon), key="live_watchlist_horizon_widget")
+                live_monitor_horizon = st.selectbox(
+                    "Live-Zeithorizont",
+                    horizon_options,
+                    index=horizon_options.index(current_live_horizon),
+                    key="live_watchlist_horizon_widget",
+                )
                 st.session_state.live_watchlist_horizon = live_monitor_horizon
-                if not _MULTIPAGE_BOOTSTRAPPED_V282:
-                    try:
-                        if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
-                            st.query_params["live_horizon"] = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
-                    except Exception:
-                        pass
-            with lm4:
-                only_active = st.checkbox("Nur grün/gelb", value=bool(st.session_state.get("live_watchlist_only_active", False)), key="live_watchlist_only_active_widget")
+                only_active = st.checkbox(
+                    "Nur grün/gelb",
+                    value=bool(st.session_state.get("live_watchlist_only_active", False)),
+                    key="live_watchlist_only_active_widget",
+                )
                 st.session_state.live_watchlist_only_active = only_active
                 st.caption("Prüfstil: Charttechnik")
+            else:
+                mobile_auto_scan_v2842 = True
+                lm1, lm2, lm3, lm4 = st.columns([1.05, 1.15, 1.35, 1.0])
+                with lm1:
+                    live_monitor_enabled = st.checkbox("Live-Monitor aktiv", value=bool(st.session_state.get("live_watchlist_monitor_enabled", False)), key="live_watchlist_monitor_enabled_widget")
+                    st.session_state.live_watchlist_monitor_enabled = live_monitor_enabled
+                with lm2:
+                    refresh_options = ["15 Minuten", "30 Minuten", "60 Minuten"]
+                    current_refresh = st.session_state.get("live_watchlist_refresh_interval", "30 Minuten")
+                    if current_refresh not in refresh_options:
+                        current_refresh = "30 Minuten"
+                    refresh_label = st.selectbox("Refresh", refresh_options, index=refresh_options.index(current_refresh), key="live_watchlist_refresh_interval_widget")
+                    st.session_state.live_watchlist_refresh_interval = refresh_label
+                    # v24.11: Die manuelle Auswahl sofort in der URL spiegeln, damit
+                    # der naechste Browser-Refresh nicht wieder den alten Wert nutzt.
+                    if not _MULTIPAGE_BOOTSTRAPPED_V282:
+                        try:
+                            if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
+                                st.query_params["refresh"] = str(refresh_label).split()[0]
+                        except Exception:
+                            pass
+                with lm3:
+                    horizon_options = ["Kurzfrist / Trading", "Swing / 1-4 Wochen"]
+                    current_live_horizon = st.session_state.get("live_watchlist_horizon", "Kurzfrist / Trading")
+                    if current_live_horizon not in horizon_options:
+                        current_live_horizon = "Kurzfrist / Trading"
+                    live_monitor_horizon = st.selectbox("Live-Zeithorizont", horizon_options, index=horizon_options.index(current_live_horizon), key="live_watchlist_horizon_widget")
+                    st.session_state.live_watchlist_horizon = live_monitor_horizon
+                    if not _MULTIPAGE_BOOTSTRAPPED_V282:
+                        try:
+                            if bool(st.session_state.get("live_watchlist_monitor_enabled", False)) or str(st.query_params.get("live_monitor", "")).lower() in {"1", "true", "yes", "on"}:
+                                st.query_params["live_horizon"] = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
+                        except Exception:
+                            pass
+                with lm4:
+                    only_active = st.checkbox("Nur grün/gelb", value=bool(st.session_state.get("live_watchlist_only_active", False)), key="live_watchlist_only_active_widget")
+                    st.session_state.live_watchlist_only_active = only_active
+                    st.caption("Prüfstil: Charttechnik")
+
+            _mobile_pref_payload_v2842 = {
+                "mobile_mode": bool(mobile_mode_v2842),
+                "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
+                "updated_at": datetime.now().isoformat(),
+            }
+            _mobile_pref_digest_v2842 = json.dumps(
+                {k: v for k, v in _mobile_pref_payload_v2842.items() if k != "updated_at"},
+                sort_keys=True,
+            )
+            if st.session_state.get("v2842_live_mobile_preferences_digest") != _mobile_pref_digest_v2842:
+                try:
+                    _storage_v280.save_namespace(_mobile_pref_namespace_v2842, _mobile_pref_payload_v2842)
+                except Exception:
+                    pass
+                st.session_state.v2842_live_mobile_preferences_digest = _mobile_pref_digest_v2842
+
             # v23.9: Pruefstil bleibt Charttechnik, aber der Live-Zeithorizont ist explizit waählbar.
             # Kurzfrist / Trading nutzt die neue Short-Term-Live-Engine; Swing bleibt als bisheriger Modus erhalten.
             monitor_style = "Charttechnik"
             st.session_state.live_watchlist_style = monitor_style
+            live_auto_scan_enabled_v2842 = bool(
+                live_monitor_enabled and (not mobile_mode_v2842 or mobile_auto_scan_v2842)
+            )
 
             run_live_monitor = False
             manual_live_run_v246 = False
-            lm_run1, lm_run2 = st.columns([1.0, 2.0])
+            if mobile_mode_v2842:
+                lm_run1 = st.container()
+                lm_run2 = st.container()
+            else:
+                lm_run1, lm_run2 = st.columns([1.0, 2.0])
             with lm_run1:
                 if st.button("Jetzt prüfen", use_container_width=True, key="run_live_watchlist_monitor_now"):
                     run_live_monitor = True
                     manual_live_run_v246 = True
                     st.session_state.live_watchlist_last_manual_run = datetime.now().isoformat()
             with lm_run2:
-                if live_monitor_enabled:
+                if live_auto_scan_enabled_v2842:
                     interval_ms = {"15 Minuten": 15 * 60 * 1000, "30 Minuten": 30 * 60 * 1000, "60 Minuten": 60 * 60 * 1000}.get(refresh_label, 30 * 60 * 1000)
                     refresh_minutes = {"15 Minuten": "15", "30 Minuten": "30", "60 Minuten": "60"}.get(refresh_label, "30")
                     live_horizon_param = "short" if str(live_monitor_horizon).startswith("Kurzfrist") else "swing"
@@ -15725,7 +15821,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     @st.fragment(run_every=_native_refresh_poll_seconds_v2832)
                     def _native_live_screener_refresh_v2832():
                         _active_area = str(st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener"))
-                        _enabled = bool(st.session_state.get("live_watchlist_monitor_enabled", False))
+                        _mobile_active = bool(st.session_state.get("v2842_live_mobile_mode", False))
+                        _mobile_auto = bool(st.session_state.get("v2842_mobile_auto_scan_widget", False))
+                        _enabled = bool(st.session_state.get("live_watchlist_monitor_enabled", False)) and (not _mobile_active or _mobile_auto)
                         _now = datetime.now()
 
                         if not _enabled or _active_area != "📡 Live-Screener":
@@ -15739,6 +15837,15 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             st.session_state.v2832_native_refresh_schedule_key = _native_refresh_schedule_key_v2832
                             st.session_state.v2832_native_refresh_trigger_ts = ""
                             st.caption("Auto-Refresh-Zeitplan initialisiert. Die nächste Prüfung richtet sich nach dem letzten erfolgreichen Live-Scan.")
+                            return
+
+                        _reconnect_remaining_v2842 = _live_refresh_policy.reconnect_grace_remaining(
+                            now=_now,
+                            restored_at=st.session_state.get("v2842_snapshot_restored_at"),
+                            grace_seconds=120,
+                        )
+                        if _reconnect_remaining_v2842 > 0:
+                            st.caption(f"Wiederverbunden · Auto-Scan noch {_reconnect_remaining_v2842} Sek. pausiert.")
                             return
 
                         _cache = st.session_state.get("v246_live_monitor_cache", {})
@@ -15777,6 +15884,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                     _native_live_screener_refresh_v2832()
                 else:
+                    if live_monitor_enabled and mobile_mode_v2842 and not mobile_auto_scan_v2842:
+                        st.info("📱 Mobile Auto-Scan pausiert. Der gespeicherte Stand bleibt sichtbar; ein neuer Scan startet nur über 'Jetzt prüfen'.")
                     st.session_state.v2832_native_refresh_schedule_key = ""
                     st.session_state.v2832_native_refresh_trigger_ts = ""
                     # Wenn der Monitor ausgeschaltet wird, URL-Refreshmarker nur im
@@ -15807,6 +15916,36 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 "horizon": str(live_monitor_horizon or ""),
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
+
+            # v28.4.2: Nach Browser-/WebSocket-Reconnect zuerst den letzten
+            # vollstaendigen Scan aus Supabase bzw. dem lokalen Spiegel laden.
+            # Dadurch bleibt die mobile Ansicht sofort nutzbar und startet nicht
+            # allein wegen einer Display-Pause erneut bei Ticker 1.
+            _snapshot_identity_v2842 = _live_screener_snapshot.snapshot_id(live_cache_key_v246)
+            _session_cache_matches_v2842 = bool(
+                isinstance(live_cache_v246, dict)
+                and live_cache_v246.get("key") == live_cache_key_v246
+                and isinstance(live_cache_v246.get("live_df"), pd.DataFrame)
+            )
+            if (
+                not _session_cache_matches_v2842
+                and st.session_state.get("v2842_snapshot_attempted_id") != _snapshot_identity_v2842
+            ):
+                st.session_state.v2842_snapshot_attempted_id = _snapshot_identity_v2842
+                try:
+                    _restored_snapshot_v2842 = _live_screener_snapshot.load_snapshot(
+                        _storage_v280,
+                        live_cache_key_v246,
+                    )
+                except Exception:
+                    _restored_snapshot_v2842 = None
+                if isinstance(_restored_snapshot_v2842, dict) and isinstance(_restored_snapshot_v2842.get("cache"), dict):
+                    live_cache_v246 = _restored_snapshot_v2842["cache"]
+                    st.session_state["v246_live_monitor_cache"] = live_cache_v246
+                    st.session_state.v2842_snapshot_restored_at = datetime.now().isoformat()
+                    st.session_state.v2842_snapshot_restored_id = _snapshot_identity_v2842
+                    st.session_state.v2842_snapshot_source_ts = str(live_cache_v246.get("ts") or "")
+
             cache_ok_v246 = False
             cache_stale_v246 = True
             try:
@@ -15818,6 +15957,28 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 cache_ok_v246 = False
                 cache_stale_v246 = True
             native_refresh_due_v2415 = bool(st.session_state.pop("v2415_native_refresh_due", False))
+            reconnect_grace_active_v2842 = False
+            reconnect_grace_remaining_v2842 = 0
+            if st.session_state.get("v2842_snapshot_restored_id") == _snapshot_identity_v2842:
+                reconnect_grace_remaining_v2842 = _live_refresh_policy.reconnect_grace_remaining(
+                    now=datetime.now(),
+                    restored_at=st.session_state.get("v2842_snapshot_restored_at"),
+                    grace_seconds=120,
+                )
+                reconnect_grace_active_v2842 = reconnect_grace_remaining_v2842 > 0
+
+            if cache_ok_v246 and st.session_state.get("v2842_snapshot_restored_id") == _snapshot_identity_v2842:
+                try:
+                    _snapshot_time_text_v2842 = datetime.fromisoformat(str(live_cache_v246.get("ts"))).strftime("%d.%m.%Y %H:%M:%S")
+                except Exception:
+                    _snapshot_time_text_v2842 = str(live_cache_v246.get("ts") or "unbekannt")
+                if reconnect_grace_active_v2842:
+                    st.info(
+                        f"🟡 Wiederverbunden – gespeicherter Live-Stand vom {_snapshot_time_text_v2842}. "
+                        f"Kein sofortiger Vollscan; Schutzpause noch {reconnect_grace_remaining_v2842} Sek."
+                    )
+                else:
+                    st.caption(f"🟢 Gespeicherter Live-Stand vom {_snapshot_time_text_v2842} wiederhergestellt.")
 
             # v27.1: Nur der Live-Screener darf einen automatischen Vollscan ausloesen.
             # Beim Wechsel in Risiko, Positionen, Trade-Journal oder Historie werden
@@ -15831,10 +15992,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             live_should_scan_v246 = bool(
                 manual_live_run_v246
                 or run_live_monitor
-                or (live_screener_active_v271 and native_refresh_due_v2415)
                 or (
                     live_screener_active_v271
-                    and live_monitor_enabled
+                    and live_auto_scan_enabled_v2842
+                    and native_refresh_due_v2415
+                    and not reconnect_grace_active_v2842
+                )
+                or (
+                    live_screener_active_v271
+                    and live_auto_scan_enabled_v2842
+                    and not reconnect_grace_active_v2842
                     and (not cache_ok_v246 or cache_stale_v246)
                 )
             )
@@ -15885,12 +16052,31 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         except Exception:
                             live_errors_cache_v246 = pd.DataFrame()
                         _live_scan_completed_at_v2832 = datetime.now().isoformat()
-                        st.session_state["v246_live_monitor_cache"] = {
+                        _live_cache_payload_v2842 = {
                             "key": live_cache_key_v246,
                             "ts": _live_scan_completed_at_v2832,
                             "live_df": live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame(),
                             "live_errors": live_errors_cache_v246,
                         }
+                        st.session_state["v246_live_monitor_cache"] = _live_cache_payload_v2842
+                        try:
+                            _snapshot_saved_v2842 = _live_screener_snapshot.save_snapshot(
+                                _storage_v280,
+                                _live_cache_payload_v2842,
+                                ui_state={
+                                    "mobile_mode": bool(mobile_mode_v2842),
+                                    "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
+                                    "only_active": bool(only_active),
+                                    "refresh_label": str(refresh_label),
+                                },
+                                max_snapshots=6,
+                            )
+                            st.session_state.v2842_snapshot_last_save_ok = bool(_snapshot_saved_v2842)
+                        except Exception:
+                            st.session_state.v2842_snapshot_last_save_ok = False
+                        st.session_state.v2842_snapshot_restored_at = ""
+                        st.session_state.v2842_snapshot_restored_id = ""
+                        st.session_state.v2842_snapshot_source_ts = ""
                         # Erfolgreicher Scan ist der neue Anker des Auto-Refresh-Zeitplans.
                         st.session_state.v2415_native_live_refresh_ts = _live_scan_completed_at_v2832
                         st.session_state.v2832_native_refresh_trigger_ts = ""
@@ -15937,7 +16123,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             "Trading-Cockpit",
                             cockpit_options,
                             index=cockpit_options.index(current_cockpit),
-                            horizontal=True,
+                            horizontal=not bool(mobile_mode_v2842),
                             key="watchlist_cockpit_area_v2413",
                             label_visibility="collapsed",
                         )
@@ -15983,14 +16169,104 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 if _col in live_display_df.columns:
                                     live_display_df[_col] = live_display_df[_col].apply(lambda x, m=_max: _v243_clip_cell(x, m))
 
-                            st.dataframe(live_display_df, hide_index=True, use_container_width=True, height=min(520, 42 * len(live_display_df) + 55))
-                            with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
-                                detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
-                                try:
-                                    detail_df = detail_df.applymap(lambda x: "-" if "column index out of bounds" in str(x).lower() else x)
-                                except Exception:
-                                    pass
-                                st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
+                            if mobile_mode_v2842:
+                                st.markdown(
+                                    """
+                                    <style>
+                                    div[data-testid="stVerticalBlock"] .v2842-mobile-card {
+                                        border: 1px solid rgba(128,128,128,.28);
+                                        border-radius: 14px;
+                                        padding: 13px 14px;
+                                        margin: 0 0 10px 0;
+                                    }
+                                    .v2842-mobile-head {display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
+                                    .v2842-mobile-title {font-size:1.05rem;font-weight:750;line-height:1.25;}
+                                    .v2842-mobile-name {opacity:.72;font-size:.86rem;margin-top:2px;}
+                                    .v2842-mobile-score {font-weight:750;white-space:nowrap;}
+                                    .v2842-mobile-grid {display:grid;grid-template-columns:1fr 1fr;gap:7px 14px;margin-top:11px;font-size:.9rem;}
+                                    .v2842-mobile-label {opacity:.68;font-size:.76rem;display:block;}
+                                    .v2842-mobile-status {margin-top:10px;font-weight:650;line-height:1.35;}
+                                    @media (max-width: 520px) {
+                                        .v2842-mobile-grid {grid-template-columns:1fr 1fr;gap:8px 10px;}
+                                    }
+                                    </style>
+                                    """,
+                                    unsafe_allow_html=True,
+                                )
+                                for _, _mobile_row_v2842 in live_display_df.iterrows():
+                                    _ampel_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ampel")))
+                                    _ticker_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ticker")))
+                                    _name_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Name"), 40))
+                                    _score_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Live-Score")))
+                                    _price_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kurs")))
+                                    _vol_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilität")))
+                                    _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
+                                    _status_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Status"), 52))
+                                    _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV")))
+                                    _distance_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Entry-Abstand")))
+                                    _change_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Änderung")))
+                                    st.markdown(
+                                        f"""
+                                        <div class="v2842-mobile-card">
+                                          <div class="v2842-mobile-head">
+                                            <div>
+                                              <div class="v2842-mobile-title">{_ampel_v2842} {_ticker_v2842}</div>
+                                              <div class="v2842-mobile-name">{_name_v2842}</div>
+                                            </div>
+                                            <div class="v2842-mobile-score">{_score_v2842}</div>
+                                          </div>
+                                          <div class="v2842-mobile-grid">
+                                            <div><span class="v2842-mobile-label">Kurs</span>{_price_v2842}</div>
+                                            <div><span class="v2842-mobile-label">Volatilität</span>{_vol_v2842}</div>
+                                            <div><span class="v2842-mobile-label">Trade-State</span>{_state_v2842}</div>
+                                            <div><span class="v2842-mobile-label">CRV</span>{_crv_v2842}</div>
+                                            <div><span class="v2842-mobile-label">Entry-Abstand</span>{_distance_v2842}</div>
+                                            <div><span class="v2842-mobile-label">Änderung</span>{_change_v2842}</div>
+                                          </div>
+                                          <div class="v2842-mobile-status">{_status_v2842}</div>
+                                        </div>
+                                        """,
+                                        unsafe_allow_html=True,
+                                    )
+
+                                _mobile_detail_tickers_v2842 = [
+                                    str(value).strip()
+                                    for value in live_df.get("Ticker", pd.Series(dtype=str)).tolist()
+                                    if str(value).strip()
+                                ]
+                                if _mobile_detail_tickers_v2842:
+                                    with st.expander("Ticker-Details", expanded=False):
+                                        _mobile_detail_ticker_v2842 = st.selectbox(
+                                            "Ticker auswählen",
+                                            options=_mobile_detail_tickers_v2842,
+                                            key="v2842_mobile_detail_ticker",
+                                        )
+                                        _mobile_detail_match_v2842 = live_df[
+                                            live_df["Ticker"].astype(str) == str(_mobile_detail_ticker_v2842)
+                                        ]
+                                        if not _mobile_detail_match_v2842.empty:
+                                            _mobile_detail_row_v2842 = _mobile_detail_match_v2842.iloc[0].to_dict()
+                                            _mobile_detail_df_v2842 = pd.DataFrame(
+                                                [
+                                                    {"Feld": str(key), "Wert": _v243_clean_cell(value)}
+                                                    for key, value in _mobile_detail_row_v2842.items()
+                                                    if not str(key).startswith("__")
+                                                ]
+                                            )
+                                            st.dataframe(
+                                                _mobile_detail_df_v2842,
+                                                hide_index=True,
+                                                use_container_width=True,
+                                            )
+                            else:
+                                st.dataframe(live_display_df, hide_index=True, use_container_width=True, height=min(520, 42 * len(live_display_df) + 55))
+                                with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
+                                    detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
+                                    try:
+                                        detail_df = detail_df.applymap(lambda x: "-" if "column index out of bounds" in str(x).lower() else x)
+                                    except Exception:
+                                        pass
+                                    st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
                             green_count = int((live_df["Ampel"] == "🟢").sum()) if "Ampel" in live_df.columns else 0
                             yellow_count = int((live_df["Ampel"] == "🟡").sum()) if "Ampel" in live_df.columns else 0
                             red_count = int((live_df["Ampel"] == "🔴").sum()) if "Ampel" in live_df.columns else 0

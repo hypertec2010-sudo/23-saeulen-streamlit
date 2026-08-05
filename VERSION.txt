@@ -1,3 +1,3 @@
-v28.4.1 R-Multiple Initial-Risk Fix
+v28.4.2 Mobile Screener Snapshot & Reconnect Fix
 
-Based on v28.4. R-Multiple uses the original initial stop even after the current stop is trailed above entry.
+Persistent Live-Screener snapshots, reconnect grace period and compact mobile cards.

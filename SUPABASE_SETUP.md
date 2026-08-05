@@ -34,3 +34,10 @@ Ohne gueltige Supabase-Konfiguration bleibt die App lauffaehig. Sie verwendet da
 
 
 Hinweis v28.1: Gegenueber v28.0 ist keine SQL-Aenderung erforderlich. Die Repository- und Domain-Schicht nutzt dieselbe Tabelle `app_state`.
+
+## v28.4.2 Live-Screener-Snapshots
+
+Für die mobile Wiederherstellung ist keine neue Tabelle erforderlich. Die App
+speichert den letzten Live-Screener-Stand im vorhandenen `app_state`-Schema
+unter dem Namespace `live_screener_snapshots`. Nach dem ersten abgeschlossenen
+Scan erscheint dafür automatisch ein Eintrag im Supabase Table Editor.

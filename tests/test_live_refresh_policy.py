@@ -7,6 +7,7 @@ from modules.live_refresh_policy import (
     build_schedule_key,
     evaluate_refresh,
     normalized_tickers,
+    reconnect_grace_remaining,
     trigger_is_recent,
 )
 
@@ -70,3 +71,14 @@ def test_duplicate_trigger_is_throttled() -> None:
     assert trigger_is_recent(now=now, last_trigger=(now - timedelta(seconds=30)).isoformat()) is True
     assert trigger_is_recent(now=now, last_trigger=(now - timedelta(seconds=121)).isoformat()) is False
     assert trigger_is_recent(now=now, last_trigger="invalid") is False
+
+
+def test_reconnect_grace_blocks_immediate_scan() -> None:
+    now = datetime(2026, 8, 5, 12, 0, 0)
+    assert reconnect_grace_remaining(
+        now=now, restored_at=(now - timedelta(seconds=20)).isoformat(), grace_seconds=120
+    ) == 100
+    assert reconnect_grace_remaining(
+        now=now, restored_at=(now - timedelta(seconds=121)).isoformat(), grace_seconds=120
+    ) == 0
+    assert reconnect_grace_remaining(now=now, restored_at="invalid") == 0

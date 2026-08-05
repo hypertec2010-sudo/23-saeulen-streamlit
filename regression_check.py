@@ -44,6 +44,7 @@ REQUIRED_FILES = [
     "modules/analysis_view.py", "modules/analysis_engine.py", "modules/legacy_analysis_core.py", "modules/cache_layer.py",
     "modules/market_data.py", "modules/ticker_resolver.py", "modules/scoring_engine.py",
     "modules/live_refresh_policy.py",
+    "modules/live_screener_snapshot.py",
     "modules/storage/__init__.py", "modules/storage/base.py", "modules/storage/local_backend.py",
     "modules/storage/supabase_backend.py", "modules/storage/manager.py",
     "modules/storage/watchlist_repository.py", "modules/storage/migration.py",
@@ -88,6 +89,7 @@ def import_modules():
         "modules.ticker_resolver",
         "modules.scoring_engine",
         "modules.live_refresh_policy",
+        "modules.live_screener_snapshot",
         "modules.storage",
         "modules.storage.base",
         "modules.storage.local_backend",
@@ -242,12 +244,14 @@ def test_navigation_guards() -> None:
     check("pages/trade_journal.py" in shell_source, "Trade-Journal-Seite ist nicht registriert")
     check("workspace_mode" in runtime_source and "watchlist_cockpit_area_v2413" in runtime_source, "Workspace-Bruecke unvollstaendig")
     check("CAPITAL_HILL_MULTIPAGE" in runtime_source and "CAPITAL_HILL_MULTIPAGE" in legacy_source, "Multipage-Bootstrap-Guard fehlt")
-    check('APP_VERSION = "v28.4.1"' in legacy_source, "v28.4.1 Versionsstand fehlt in legacy_app.py")
+    check('APP_VERSION = "v28.4.2"' in legacy_source, "v28.4.2 Versionsstand fehlt in legacy_app.py")
     check(len(entry_source.splitlines()) < 80, "app.py ist nicht als schlanker Einstiegspunkt umgesetzt")
     check("run_every=_native_refresh_poll_seconds_v2832" in legacy_source, "60-Sekunden-Heartbeat fuer Live-Refresh fehlt")
     check("_live_refresh_policy.evaluate_refresh" in legacy_source, "Testbare Refresh-Policy ist nicht verdrahtet")
     check("_native_refresh_poll_seconds_v2832 = 60" in legacy_source, "Heartbeat-Intervall ist nicht auf 60 Sekunden gesetzt")
     check("v246_live_monitor_cache" in legacy_source and "Nächster Auto-Scan" in legacy_source, "Cache-basierter Refresh-Status fehlt")
+    check("_live_screener_snapshot.load_snapshot" in legacy_source, "Persistenter Live-Snapshot ist nicht verdrahtet")
+    check("Mobile-Modus" in legacy_source and "v2842-mobile-card" in legacy_source, "Mobile-Screener-Oberfläche fehlt")
     check('st.rerun(scope="app")' not in legacy_source, "Veralteter expliziter App-Scope im Refresh-Fragment vorhanden")
     check("if page_changed:" in runtime_source and "_clear_legacy_workspace_query()" in runtime_source, "Query-Cleanup ist nicht an echte Seitenwechsel gebunden")
 
@@ -468,6 +472,41 @@ def test_live_refresh_policy(mods) -> None:
     )
     check(due.due is True, "Faelliger Refresh wird nicht erkannt")
     check(policy.trigger_is_recent(now=now, last_trigger=(now - timedelta(seconds=30)).isoformat()), "Trigger-Cooldown fehlerhaft")
+    check(policy.reconnect_grace_remaining(now=now, restored_at=(now - timedelta(seconds=20)).isoformat()) == 100, "Reconnect-Schutzpause fehlerhaft")
+
+
+def test_live_screener_snapshot(mods) -> None:
+    import pandas as pd
+
+    snapshot = mods["modules.live_screener_snapshot"]
+
+    class MemoryStorage:
+        def __init__(self):
+            self.data = {}
+        def load_namespace(self, namespace, default=None):
+            return self.data.get(namespace, default)
+        def save_namespace(self, namespace, payload):
+            self.data[namespace] = payload
+            return True
+
+    storage = MemoryStorage()
+    key = {
+        "watchlist": "Mobil",
+        "tickers": ("SAP.DE", "AAPL"),
+        "style": "Charttechnik",
+        "horizon": "Kurzfrist / Trading",
+    }
+    cache = {
+        "key": key,
+        "ts": "2026-08-05T11:30:00",
+        "live_df": pd.DataFrame([{"Ticker": "SAP.DE", "Kurs": 161.34}]),
+        "live_errors": pd.DataFrame(),
+    }
+    check(snapshot.save_snapshot(storage, cache, ui_state={"mobile_mode": True}), "Live-Snapshot konnte nicht gespeichert werden")
+    restored = snapshot.load_snapshot(storage, key)
+    check(restored is not None, "Live-Snapshot konnte nicht geladen werden")
+    check(restored["cache"]["key"] == key, "Live-Snapshot Cache-Key inkonsistent")
+    check(restored["cache"]["live_df"].iloc[0]["Ticker"] == "SAP.DE", "Live-Snapshot DataFrame inkonsistent")
 
 
 def test_phase4_modules(mods) -> None:
@@ -503,12 +542,13 @@ def main() -> None:
     test_radar_view(mods["modules.radar_view"])
     test_phase4_modules(mods)
     test_live_refresh_policy(mods)
+    test_live_screener_snapshot(mods)
     test_analysis_core_extraction(mods)
     test_domain_models_and_repositories(mods)
     test_storage_layer(mods)
     test_navigation_guards()
     test_cockpit_navigation_state(mods["modules.page_runtime"])
-    print("v28.4.1 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v28.4.2 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

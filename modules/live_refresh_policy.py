@@ -123,3 +123,18 @@ def trigger_is_recent(
     if parsed is None:
         return False
     return max(0.0, (now - parsed).total_seconds()) < max(1, int(cooldown_seconds))
+
+
+def reconnect_grace_remaining(
+    *,
+    now: datetime,
+    restored_at: Any,
+    grace_seconds: int = 120,
+) -> int:
+    """Return remaining reconnect protection time in whole seconds."""
+    parsed = _parse_timestamp(restored_at)
+    if parsed is None:
+        return 0
+    safe_grace = max(0, int(grace_seconds))
+    elapsed = max(0.0, (now - parsed).total_seconds())
+    return max(0, safe_grace - int(elapsed))

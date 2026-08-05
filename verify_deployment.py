@@ -13,6 +13,7 @@ REQUIRED = [
     "modules/app_shell.py",
     "modules/page_runtime.py",
     "modules/live_refresh_policy.py",
+    "modules/live_screener_snapshot.py",
     "pages/analysis.py",
     "pages/radar.py",
     "pages/watchlists.py",
@@ -33,12 +34,14 @@ REQUIRED = [
     "pytest.ini",
     "tests/test_streamlit_app.py",
     "tests/test_live_refresh_policy.py",
+    "tests/test_live_screener_snapshot.py",
     "tests/test_page_runtime_state.py",
     "tests/test_storage_fallback.py",
     "tests/test_trade_journal_flow.py",
     "tests/test_source_guards.py",
     "regression_check.py",
     "RELEASE_NOTES_v28_4.md",
+    "RELEASE_NOTES_v28_4_2.md",
 ]
 
 missing = [relative for relative in REQUIRED if not (ROOT / relative).exists()]
@@ -51,4 +54,4 @@ for path in ROOT.rglob("*.py"):
     py_compile.compile(str(path), doraise=True)
 
 subprocess.run([sys.executable, str(ROOT / "regression_check.py")], cwd=ROOT, check=True)
-print("v28.4.1 Deployment-Struktur, Syntax und deterministische Regressionstests OK")
+print("v28.4.2 Deployment-Struktur, Syntax und deterministische Regressionstests OK")

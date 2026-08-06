@@ -45,6 +45,7 @@ REQUIRED_FILES = [
     "modules/market_data.py", "modules/ticker_resolver.py", "modules/scoring_engine.py",
     "modules/live_refresh_policy.py",
     "modules/live_screener_snapshot.py",
+    "modules/live_change_explainer.py",
     "modules/storage/__init__.py", "modules/storage/base.py", "modules/storage/local_backend.py",
     "modules/storage/supabase_backend.py", "modules/storage/manager.py",
     "modules/storage/watchlist_repository.py", "modules/storage/migration.py",
@@ -90,6 +91,7 @@ def import_modules():
         "modules.scoring_engine",
         "modules.live_refresh_policy",
         "modules.live_screener_snapshot",
+        "modules.live_change_explainer",
         "modules.storage",
         "modules.storage.base",
         "modules.storage.local_backend",
@@ -144,6 +146,27 @@ def test_live_monitor(mod) -> None:
         {"ampel": "🟢", "status": "Trigger aktiv", "live_score": "80/100"},
     )
     check(red["Ampel"] == "🔴" and red["Signal-Stabilität"] == "Defensiv", "Invalidierung darf nicht weichgezeichnet werden")
+
+
+def test_live_change_explainer(mod) -> None:
+    text = mod.build_change_explanation(
+        {
+            "ampel": "🟡", "status": "Nahe am Trigger", "price": 100.0,
+            "live_score": "62/100", "radar_bucket": "Nahe am Trigger",
+            "entry_hard_gate": False, "final_release_ok": True,
+            "timing_component": 68, "conf_component": 64,
+        },
+        {
+            "ampel": "🔴", "status": "Setup blockiert", "price": 100.03,
+            "live_score": "38/100", "radar_bucket": "Warnsignale / meiden",
+            "entry_hard_gate": True, "final_release_ok": False,
+            "timing_component": 41, "conf_component": 46,
+        },
+        "Verschlechtert",
+    )
+    check("Kurs nahezu unverändert" in text, "Kurskontext der Statuswechsel-Erklaerung fehlt")
+    check("hartes Einstiegsgate" in text, "Harte Gate-Ursache wird nicht erklaert")
+    check("Live-Score 62→38" in text, "Score-Differenz wird nicht erklaert")
 
 
 def test_position_monitor(mod) -> None:
@@ -244,7 +267,7 @@ def test_navigation_guards() -> None:
     check("pages/trade_journal.py" in shell_source, "Trade-Journal-Seite ist nicht registriert")
     check("workspace_mode" in runtime_source and "watchlist_cockpit_area_v2413" in runtime_source, "Workspace-Bruecke unvollstaendig")
     check("CAPITAL_HILL_MULTIPAGE" in runtime_source and "CAPITAL_HILL_MULTIPAGE" in legacy_source, "Multipage-Bootstrap-Guard fehlt")
-    check('APP_VERSION = "v28.4.2"' in legacy_source, "v28.4.2 Versionsstand fehlt in legacy_app.py")
+    check('APP_VERSION = "v28.4.3"' in legacy_source, "v28.4.3 Versionsstand fehlt in legacy_app.py")
     check(len(entry_source.splitlines()) < 80, "app.py ist nicht als schlanker Einstiegspunkt umgesetzt")
     check("run_every=_native_refresh_poll_seconds_v2832" in legacy_source, "60-Sekunden-Heartbeat fuer Live-Refresh fehlt")
     check("_live_refresh_policy.evaluate_refresh" in legacy_source, "Testbare Refresh-Policy ist nicht verdrahtet")
@@ -252,6 +275,7 @@ def test_navigation_guards() -> None:
     check("v246_live_monitor_cache" in legacy_source and "Nächster Auto-Scan" in legacy_source, "Cache-basierter Refresh-Status fehlt")
     check("_live_screener_snapshot.load_snapshot" in legacy_source, "Persistenter Live-Snapshot ist nicht verdrahtet")
     check("Mobile-Modus" in legacy_source and "v2842-mobile-card" in legacy_source, "Mobile-Screener-Oberfläche fehlt")
+    check("Warum geändert?" in legacy_source, "Statuswechsel-Erklaerung fehlt in der Live-Screener-Oberfläche")
     check('st.rerun(scope="app")' not in legacy_source, "Veralteter expliziter App-Scope im Refresh-Fragment vorhanden")
     check("if page_changed:" in runtime_source and "_clear_legacy_workspace_query()" in runtime_source, "Query-Cleanup ist nicht an echte Seitenwechsel gebunden")
 
@@ -536,6 +560,7 @@ def main() -> None:
     mods = import_modules()
     test_risk_calculator(mods["modules.risk_calculator"])
     test_live_monitor(mods["modules.live_monitor"])
+    test_live_change_explainer(mods["modules.live_change_explainer"])
     test_position_monitor(mods["modules.position_monitor"])
     test_trade_journal(mods["modules.trade_journal"])
     test_event_log(mods["modules.event_log"])
@@ -548,7 +573,7 @@ def main() -> None:
     test_storage_layer(mods)
     test_navigation_guards()
     test_cockpit_navigation_state(mods["modules.page_runtime"])
-    print("v28.4.2 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v28.4.3 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

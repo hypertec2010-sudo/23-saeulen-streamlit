@@ -1,3 +1,1 @@
-v28.4.2 Mobile Screener Snapshot & Reconnect Fix
-
-Persistent Live-Screener snapshots, reconnect grace period and compact mobile cards.
+v28.4.3 Live Status Change Transparency

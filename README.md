@@ -1,59 +1,35 @@
-# v28.4.2 Mobile Screener Snapshot & Reconnect Fix
+# v28.4.3 Live Status Change Transparency
 
-Diese Version baut auf **v28.4.1** auf. Multipage-Navigation, Supabase,
-Repositories, Trade-Journal, R-Multiple-Berechnung und Desktop-Live-Screener
-bleiben kompatibel.
+Diese Version macht Ampelwechsel im Live-Screener nachvollziehbar. Ein Wert kann
+auch bei nahezu unveraendertem Kurs von Gelb auf Rot wechseln, wenn sich Trigger,
+Timing, Konfluenz, Radar-Bucket, finale Freigabe oder ein hartes Einstiegsgate
+aendern. Der konkrete Ausloeser wird jetzt direkt angezeigt und historisiert.
 
-## Mobile Live-Screener
+## Neu
 
-Der letzte abgeschlossene Live-Scan wird als Snapshot in Supabase und im lokalen
-Fallback gespeichert. Nach einer Display-Pause oder einem WebSocket-Reconnect
-wird dieser Stand sofort angezeigt, anstatt die gesamte Watchlist erneut ab
-Ticker 1 zu analysieren.
+- Spalte **Warum geändert?** in der Live-Screener-Haupttabelle
+- Erklaerung direkt auf mobilen Screener-Karten
+- Vergleich von Kurs und Live-Score zum vorherigen Scan
+- Vergleich der Komponenten Timing, Konfluenz, Chart, Trigger, Trend und CRV
+- klare Kennzeichnung neuer Invalidierungen und harter Einstiegsgates
+- Statuswechsel-Historie enthaelt dieselbe Erklaerung
+- Event-Log speichert den konkreten Ausloeser
+- bestehende Hysterese, Mobile-Snapshots und Supabase-Speicherung bleiben erhalten
 
-Im neuen `📱 Mobile-Modus`:
+## Beispiel
 
-- kompakte Karten statt breiter Tabelle
-- vertikale Cockpit-Navigation
-- größere, untereinander angeordnete Einstellungen
-- Auto-Scan standardmäßig aus
-- manueller Scan jederzeit über `Jetzt prüfen`
-- optionaler Auto-Scan bei aktiver Browser-Sitzung
-- 120 Sekunden Wiederverbindungs-Schutz vor einem sofortigen Vollscan
-
-Der Snapshot wird im bestehenden Storage-Namespace-System unter
-`live_screener_snapshots` abgelegt. Eine neue Supabase-Tabelle ist nicht nötig.
-
-## Qualitätssicherung
-
-Bei jedem Push auf `main` oder `master` sowie bei Pull Requests führt GitHub
-automatisch aus:
-
-```bash
-python verify_deployment.py
-pytest -q
+```text
+Kurs nahezu unverändert (+0,03 %). Auslöser: ein hartes Einstiegsgate wurde aktiv;
+Radar-Bucket Nahe am Trigger→Warnsignale / meiden; finale Freigabe ist entfallen;
+Live-Score 62→38 (-24); Timing 68→41.
 ```
 
-Zusätzlich geprüft werden Snapshot-Serialisierung, DataFrame-Roundtrip,
-Cache-Key-Trennung und Begrenzung der gespeicherten Snapshot-Anzahl.
+## Deployment
 
-## Upgrade
+1. Vollstaendigen ZIP-Inhalt in das Repository uebernehmen.
+2. Keine SQL-Migration ausfuehren.
+3. Streamlit-Secrets unveraendert lassen.
+4. Nach zwei Live-Scans stehen Vergleichsdaten fuer die neue Erklaerung bereit.
+5. GitHub Actions unter **v28.4.3 Quality Gate** kontrollieren.
 
-1. Vollständigen Inhalt des ZIP-Pakets ins Repository übernehmen.
-2. Vorhandene Streamlit-Secrets unverändert lassen.
-3. Keine SQL-Migration ausführen.
-4. GitHub-Commit pushen und den Workflow **v28.4.2 Quality Gate** prüfen.
-5. App auf dem Smartphone öffnen und `📱 Mobile-Modus` aktivieren.
-6. Einmal `Jetzt prüfen` ausführen, damit der erste Snapshot gespeichert wird.
-7. Display sperren, wieder entsperren und den wiederhergestellten Stand prüfen.
-
-## Lokale Prüfung
-
-```bash
-python -m pip install -r requirements-ci.txt
-python verify_deployment.py
-pytest -q
-streamlit run app.py
-```
-
-Details: `RELEASE_NOTES_v28_4_2.md`.
+Details: `RELEASE_NOTES_v28_4_3.md`.

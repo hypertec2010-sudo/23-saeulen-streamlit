@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from .live_change_explainer import build_change_explanation
+
 _CONTEXT = {}
 
 def configure_context(**kwargs):
@@ -698,6 +700,25 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Letztes Update": get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S"),
         "__prio": priority,
         "__score": live_score_int,
+        # v28.4.3: Diagnosewerte fuer nachvollziehbare Statuswechsel. Diese
+        # internen Felder werden nicht direkt angezeigt, aber im vorherigen
+        # Snapshot gespeichert und beim naechsten Scan verglichen.
+        "__timing_component": round(float(timing_component), 2),
+        "__conf_component": round(float(conf_component), 2),
+        "__chart_component": round(float(chart_component), 2),
+        "__trigger_component": round(float(trigger_component), 2),
+        "__trend_component": round(float(trend_component), 2),
+        "__crv_component": round(float(crv_component), 2),
+        "__entry_hard_gate": bool(entry_hard_gate),
+        "__invalidated": bool("Invalidierung gebrochen" in alert_types),
+        "__final_release_ok": bool(final_release_ok),
+        "__bucket_active": bool(bucket_active),
+        "__bucket_near": bool(bucket_near),
+        "__entry_reached": bool(entry_reached),
+        "__wave_active": bool(wave_active),
+        "__ma20_stretch_pct": None if ma20_stretch_pct is None else round(float(ma20_stretch_pct), 2),
+        "__gate": gate,
+        "__final_blockers": final_blocker_text,
     }
 
 
@@ -1174,7 +1195,30 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             "updated": now,
             "reason": str(row2.get("Grund") or ""),
             "trade_state": str(row2.get("Trade-State") or ""),
+            # v28.4.3: Die wichtigsten Score-/Gate-Bausteine werden je Ticker
+            # gespeichert. So kann ein Wechsel auch bei gleichem Kurs konkret
+            # auf Trigger, Timing, Konfluenz oder ein neues Gate zurueckgefuehrt werden.
+            "timing_component": row2.get("__timing_component"),
+            "conf_component": row2.get("__conf_component"),
+            "chart_component": row2.get("__chart_component"),
+            "trigger_component": row2.get("__trigger_component"),
+            "trend_component": row2.get("__trend_component"),
+            "crv_component": row2.get("__crv_component"),
+            "entry_hard_gate": bool(row2.get("__entry_hard_gate")),
+            "invalidated": bool(row2.get("__invalidated")),
+            "final_release_ok": bool(row2.get("__final_release_ok")),
+            "bucket_active": bool(row2.get("__bucket_active")),
+            "bucket_near": bool(row2.get("__bucket_near")),
+            "entry_reached": bool(row2.get("__entry_reached")),
+            "wave_active": bool(row2.get("__wave_active")),
+            "ma20_stretch_pct": row2.get("__ma20_stretch_pct"),
+            "gate": str(row2.get("__gate") or ""),
+            "final_blockers": str(row2.get("__final_blockers") or ""),
         }
+        change_explanation = build_change_explanation(prev, current_snapshot, change)
+        row2["Warum geändert?"] = change_explanation
+        enriched.at[idx, "Warum geändert?"] = change_explanation
+        current_snapshot["change_explanation"] = change_explanation
         if change != "Unverändert":
             events.append({
                 "Zeit": now,
@@ -1191,6 +1235,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                 "Bestätigungen": row2.get("Bestätigungen"),
                 "Trade-State": row2.get("Trade-State"),
                 "Trade-Aktion": row2.get("Trade-Aktion"),
+                "Warum geändert?": change_explanation,
                 "Grund": row2.get("Grund"),
                 "Nächste Handlung": row2.get("Nächste Handlung"),
             })
@@ -1214,8 +1259,13 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                 price=row2.get("Kurs"),
                 score=row2.get("Live-Score"),
                 trade_state=row2.get("Trade-State"),
-                details=str(row2.get("Grund") or row2.get("Nächste Handlung") or ""),
-                payload={"Vorher": prev_label, "Änderung": change, "CRV": row2.get("CRV")},
+                details=str(change_explanation or row2.get("Grund") or row2.get("Nächste Handlung") or ""),
+                payload={
+                    "Vorher": prev_label,
+                    "Änderung": change,
+                    "CRV": row2.get("CRV"),
+                    "Warum geändert?": change_explanation,
+                },
                 signature=f"{prev_ampel}|{prev_status}->{new_ampel}|{new_status}|{row2.get('Trade-State')}",
             )
         state[key] = current_snapshot

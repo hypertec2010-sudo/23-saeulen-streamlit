@@ -2670,7 +2670,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.4.2"
+APP_VERSION = "v28.4.3"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15639,7 +15639,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v28.4.2")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v28.4.3")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             st.caption("Performance v25.1: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
             # v28.4.2: Mobile-Modus und Einstellungen werden zentral gespeichert,
@@ -16135,6 +16135,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 if bool(override_mask.any()):
                                     st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
                             st.caption("Volatilität = ATR(14) in % des Kurses: typische tägliche Handelsspanne; höher bedeutet größere Chancen, aber auch größere Stop-/Positionsrisiken.")
+                            st.caption("Statuswechsel können auch ohne sichtbare Kursbewegung entstehen: Die neue Spalte 'Warum geändert?' vergleicht Score, Trigger, Timing, Konfluenz, Radar-Bucket und harte Gates mit dem vorherigen Scan.")
                             # v24.3: Lesbare operative Haupttabelle.
                             # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
@@ -16142,7 +16143,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             main_cols = [
                                 "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Live-Score",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
-                                "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung",
+                                "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
                             optional_cols = [c for c in main_cols if c in live_df.columns]
                             live_display_df = live_df[optional_cols].copy() if optional_cols else live_df.copy()
@@ -16165,7 +16166,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                             for _col in live_display_df.columns:
                                 live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)
-                            for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24}.items():
+                            for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24, "Warum geändert?": 96}.items():
                                 if _col in live_display_df.columns:
                                     live_display_df[_col] = live_display_df[_col].apply(lambda x, m=_max: _v243_clip_cell(x, m))
 
@@ -16186,6 +16187,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     .v2842-mobile-grid {display:grid;grid-template-columns:1fr 1fr;gap:7px 14px;margin-top:11px;font-size:.9rem;}
                                     .v2842-mobile-label {opacity:.68;font-size:.76rem;display:block;}
                                     .v2842-mobile-status {margin-top:10px;font-weight:650;line-height:1.35;}
+                                    .v2843-mobile-reason {margin-top:9px;padding-top:8px;border-top:1px solid rgba(128,128,128,.20);font-size:.84rem;line-height:1.4;opacity:.88;}
+                                    .v2843-mobile-reason-label {font-size:.74rem;opacity:.68;display:block;margin-bottom:2px;}
                                     @media (max-width: 520px) {
                                         .v2842-mobile-grid {grid-template-columns:1fr 1fr;gap:8px 10px;}
                                     }
@@ -16205,6 +16208,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV")))
                                     _distance_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Entry-Abstand")))
                                     _change_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Änderung")))
+                                    _why_changed_v2843 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Warum geändert?"), 220))
+                                    _why_block_v2843 = "" if _why_changed_v2843 in {"", "-"} else f'<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Warum geändert?</span>{_why_changed_v2843}</div>'
                                     st.markdown(
                                         f"""
                                         <div class="v2842-mobile-card">
@@ -16224,6 +16229,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             <div><span class="v2842-mobile-label">Änderung</span>{_change_v2842}</div>
                                           </div>
                                           <div class="v2842-mobile-status">{_status_v2842}</div>
+                                          {_why_block_v2843}
                                         </div>
                                         """,
                                         unsafe_allow_html=True,

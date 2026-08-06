@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Application shell for the v28.4.3 Streamlit multipage app."""
+"""Application shell for the v28.4.4 Streamlit multipage app."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import streamlit as st
 
-APP_VERSION = "v28.4.3"
+APP_VERSION = "v28.4.4"
 ROOT = Path(__file__).resolve().parents[1]
 
 

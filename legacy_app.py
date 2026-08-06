@@ -180,6 +180,7 @@ from modules import ticker_resolver as _ticker_resolver_module
 from modules import scoring_engine as _scoring_engine_module
 from modules import live_refresh_policy as _live_refresh_policy
 from modules import live_screener_snapshot as _live_screener_snapshot
+from modules import live_scan_batches as _live_scan_batches
 import yfinance as yf
 from plotly.subplots import make_subplots
 import logging_utils as _logging_utils
@@ -2670,7 +2671,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.4.3"
+APP_VERSION = "v28.4.4"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15639,7 +15640,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v28.4.3")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v28.4.4")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             st.caption("Performance v25.1: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
             # v28.4.2: Mobile-Modus und Einstellungen werden zentral gespeichert,
@@ -15656,6 +15657,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.session_state.v2842_mobile_mode_widget = bool(_mobile_prefs_v2842.get("mobile_mode", False))
                     if "v2842_mobile_auto_scan_widget" not in st.session_state:
                         st.session_state.v2842_mobile_auto_scan_widget = bool(_mobile_prefs_v2842.get("mobile_auto_scan", False))
+                    if "v2844_live_scan_scope_widget" not in st.session_state:
+                        _saved_scope_v2844 = str(_mobile_prefs_v2842.get("scan_scope") or _live_scan_batches.DEFAULT_SCAN_SCOPE)
+                        if _saved_scope_v2844 not in _live_scan_batches.SCAN_SCOPE_OPTIONS:
+                            _saved_scope_v2844 = _live_scan_batches.DEFAULT_SCAN_SCOPE
+                        st.session_state.v2844_live_scan_scope_widget = _saved_scope_v2844
                 st.session_state.v2842_live_mobile_preferences_loaded = True
 
             mobile_mode_v2842 = st.checkbox(
@@ -15749,9 +15755,52 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     st.session_state.live_watchlist_only_active = only_active
                     st.caption("Prüfstil: Charttechnik")
 
+            # v28.4.4: Das fruehere feste 40er-Limit wird durch eine sichtbare,
+            # bewusst waehlbare Scan-Reichweite ersetzt. Standard ist "Alle Werte".
+            _scan_scope_options_v2844 = list(_live_scan_batches.SCAN_SCOPE_OPTIONS)
+            _scan_scope_current_v2844 = str(
+                st.session_state.get("v2844_live_scan_scope_widget", _live_scan_batches.DEFAULT_SCAN_SCOPE)
+            )
+            if _scan_scope_current_v2844 not in _scan_scope_options_v2844:
+                _scan_scope_current_v2844 = _live_scan_batches.DEFAULT_SCAN_SCOPE
+            scan_scope_label_v2844 = st.selectbox(
+                "Scan-Umfang",
+                _scan_scope_options_v2844,
+                index=_scan_scope_options_v2844.index(_scan_scope_current_v2844),
+                key="v2844_live_scan_scope_widget",
+                help="Alle Werte analysiert die komplette eindeutige Watchlist. Kleinere Grenzen werden transparent als ausstehend angezeigt und nicht mehr still verworfen.",
+            )
+            st.session_state.v2844_live_scan_scope = scan_scope_label_v2844
+            scan_plan_v2844 = _live_scan_batches.build_scan_plan(current_tickers, scan_scope_label_v2844)
+            scan_tickers_v2844 = list(scan_plan_v2844.selected_tickers)
+            if mobile_mode_v2842:
+                _scan_count_row1_v2844 = st.columns(2)
+                _scan_count_row2_v2844 = st.columns(2)
+                _scan_count_row1_v2844[0].metric("Watchlist", scan_plan_v2844.source_count)
+                _scan_count_row1_v2844[1].metric("Eindeutig", len(scan_plan_v2844.unique_tickers))
+                _scan_count_row2_v2844[0].metric("Für Scan", len(scan_plan_v2844.selected_tickers))
+                _scan_count_row2_v2844[1].metric("Ausstehend", len(scan_plan_v2844.deferred_tickers))
+            else:
+                _scan_count_cols_v2844 = st.columns(4)
+                _scan_count_cols_v2844[0].metric("Watchlist", scan_plan_v2844.source_count)
+                _scan_count_cols_v2844[1].metric("Eindeutig", len(scan_plan_v2844.unique_tickers))
+                _scan_count_cols_v2844[2].metric("Für Scan", len(scan_plan_v2844.selected_tickers))
+                _scan_count_cols_v2844[3].metric("Ausstehend", len(scan_plan_v2844.deferred_tickers))
+            if scan_plan_v2844.deferred_tickers:
+                st.warning(
+                    f"Der gewählte Umfang analysiert {len(scan_plan_v2844.selected_tickers)} von "
+                    f"{len(scan_plan_v2844.unique_tickers)} eindeutigen Werten. "
+                    f"{len(scan_plan_v2844.deferred_tickers)} Werte bleiben bewusst ausstehend und werden unten separat genannt."
+                )
+            if scan_plan_v2844.duplicate_tickers:
+                st.caption(
+                    f"{len(scan_plan_v2844.duplicate_tickers)} doppelte Watchlist-Einträge werden nur einmal analysiert."
+                )
+
             _mobile_pref_payload_v2842 = {
                 "mobile_mode": bool(mobile_mode_v2842),
                 "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
+                "scan_scope": str(scan_scope_label_v2844),
                 "updated_at": datetime.now().isoformat(),
             }
             _mobile_pref_digest_v2842 = json.dumps(
@@ -15812,7 +15861,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     _native_refresh_poll_seconds_v2832 = 60
                     _native_refresh_schedule_key_v2832 = _live_refresh_policy.build_schedule_key(
                         selected_watchlist_name,
-                        current_tickers,
+                        scan_tickers_v2844,
                         monitor_style,
                         live_monitor_horizon,
                         _native_refresh_seconds_v2415,
@@ -15851,9 +15900,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         _cache = st.session_state.get("v246_live_monitor_cache", {})
                         _expected_key = _live_refresh_policy.build_cache_key(
                             selected_watchlist_name,
-                            current_tickers,
+                            scan_tickers_v2844,
                             monitor_style,
                             live_monitor_horizon,
+                        )
+                        _cache_scan_meta_v2844 = dict(_cache.get("scan_meta") or {}) if isinstance(_cache, dict) else {}
+                        _cache_incomplete_heartbeat_v2844 = bool(
+                            _cache_scan_meta_v2844
+                            and not bool(_cache_scan_meta_v2844.get("complete", True))
+                            and int(_cache_scan_meta_v2844.get("completed_count") or 0)
+                            < int(_cache_scan_meta_v2844.get("selected_count") or len(scan_tickers_v2844))
                         )
                         _refresh_decision = _live_refresh_policy.evaluate_refresh(
                             now=_now,
@@ -15861,9 +15917,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             expected_cache_key=_expected_key,
                             interval_seconds=_native_refresh_seconds_v2415,
                         )
-                        _remaining_seconds = _refresh_decision.remaining_seconds
+                        _remaining_seconds = 0 if _cache_incomplete_heartbeat_v2844 else _refresh_decision.remaining_seconds
 
-                        if not _refresh_decision.due:
+                        if not (_refresh_decision.due or _cache_incomplete_heartbeat_v2844):
                             _next_due = _now + timedelta(seconds=_remaining_seconds)
                             _remaining_minutes = max(1, int((_remaining_seconds + 59) // 60))
                             st.caption(f"Nächster Auto-Scan ca. {_next_due.strftime('%H:%M:%S')} Uhr · noch {_remaining_minutes} Min.")
@@ -15911,7 +15967,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 refresh_minutes_v246 = 30
             live_cache_key_v246 = {
                 "watchlist": str(selected_watchlist_name or ""),
-                "tickers": tuple([str(t).strip().upper() for t in (current_tickers or [])]),
+                "tickers": tuple(scan_tickers_v2844),
                 "style": str(monitor_style or ""),
                 "horizon": str(live_monitor_horizon or ""),
             }
@@ -15956,6 +16012,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             except Exception:
                 cache_ok_v246 = False
                 cache_stale_v246 = True
+            scan_meta_v2844 = dict(live_cache_v246.get("scan_meta") or {}) if cache_ok_v246 else {}
+            cache_incomplete_v2844 = bool(
+                cache_ok_v246
+                and scan_meta_v2844
+                and not bool(scan_meta_v2844.get("complete", True))
+                and int(scan_meta_v2844.get("completed_count") or 0) < int(scan_meta_v2844.get("selected_count") or len(scan_tickers_v2844))
+            )
             native_refresh_due_v2415 = bool(st.session_state.pop("v2415_native_refresh_due", False))
             reconnect_grace_active_v2842 = False
             reconnect_grace_remaining_v2842 = 0
@@ -16002,7 +16065,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     live_screener_active_v271
                     and live_auto_scan_enabled_v2842
                     and not reconnect_grace_active_v2842
-                    and (not cache_ok_v246 or cache_stale_v246)
+                    and (not cache_ok_v246 or cache_stale_v246 or cache_incomplete_v2844)
                 )
             )
             show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246)
@@ -16012,7 +16075,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     st.info("Diese Watchlist ist leer.")
                 else:
                     if live_should_scan_v246:
-                        with st.spinner(f"Live-Watchlist wird geprüft ({min(len(current_tickers), 40)} Werte) ..."):
+                        _resume_scan_v2844 = bool(cache_incomplete_v2844 and cache_ok_v246)
+                        _resume_label_v2844 = "fortgesetzt" if _resume_scan_v2844 else "gestartet"
+                        with st.spinner(
+                            f"Live-Watchlist wird in Batches {_resume_label_v2844} "
+                            f"({len(scan_tickers_v2844)} eindeutige Werte) ..."
+                        ):
                             current_watchlist_meta_by_ticker = {}
                             try:
                                 if current_watchlist_df is not None and not current_watchlist_df.empty:
@@ -16043,41 +16111,152 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         current_watchlist_meta_by_ticker[_tk] = merged
                             except Exception:
                                 pass
-                            live_df, live_errors = build_live_watchlist_monitor_v212(current_tickers, style_name=monitor_style, max_items=40, watchlist_meta_by_ticker=current_watchlist_meta_by_ticker, live_horizon=live_monitor_horizon)
-                        live_events_df = pd.DataFrame()
-                        if not live_df.empty:
-                            live_df, live_events_df = apply_live_watchlist_status_history_v220(live_df, watchlist_name=selected_watchlist_name, style_name=f"{monitor_style} | {live_monitor_horizon}")
-                        try:
-                            live_errors_cache_v246 = live_errors.copy() if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
-                        except Exception:
-                            live_errors_cache_v246 = pd.DataFrame()
-                        _live_scan_completed_at_v2832 = datetime.now().isoformat()
-                        _live_cache_payload_v2842 = {
-                            "key": live_cache_key_v246,
-                            "ts": _live_scan_completed_at_v2832,
-                            "live_df": live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame(),
-                            "live_errors": live_errors_cache_v246,
-                        }
-                        st.session_state["v246_live_monitor_cache"] = _live_cache_payload_v2842
-                        try:
-                            _snapshot_saved_v2842 = _live_screener_snapshot.save_snapshot(
-                                _storage_v280,
-                                _live_cache_payload_v2842,
-                                ui_state={
-                                    "mobile_mode": bool(mobile_mode_v2842),
-                                    "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
-                                    "only_active": bool(only_active),
-                                    "refresh_label": str(refresh_label),
-                                },
-                                max_snapshots=6,
+
+                            if _resume_scan_v2844:
+                                try:
+                                    live_df = live_cache_v246.get("live_df", pd.DataFrame()).copy()
+                                except Exception:
+                                    live_df = pd.DataFrame()
+                                try:
+                                    live_errors = live_cache_v246.get("live_errors", pd.DataFrame()).copy()
+                                except Exception:
+                                    live_errors = pd.DataFrame()
+                            else:
+                                live_df = pd.DataFrame()
+                                live_errors = pd.DataFrame()
+
+                            live_events_df = pd.DataFrame()
+                            _completed_before_v2844 = set(
+                                _live_scan_batches.completed_tickers(live_df, live_errors)
                             )
-                            st.session_state.v2842_snapshot_last_save_ok = bool(_snapshot_saved_v2842)
-                        except Exception:
-                            st.session_state.v2842_snapshot_last_save_ok = False
+                            _pending_scan_tickers_v2844 = [
+                                ticker for ticker in scan_tickers_v2844
+                                if ticker not in _completed_before_v2844
+                            ]
+                            if not _pending_scan_tickers_v2844 and scan_tickers_v2844 and not _resume_scan_v2844:
+                                _pending_scan_tickers_v2844 = list(scan_tickers_v2844)
+
+                            _batch_size_v2844 = _live_scan_batches.DEFAULT_BATCH_SIZE
+                            _progress_v2844 = st.progress(
+                                min(1.0, len(_completed_before_v2844) / max(1, len(scan_tickers_v2844)))
+                            )
+                            _progress_text_v2844 = st.empty()
+                            _progress_text_v2844.caption(
+                                f"Scan-Status: {len(_completed_before_v2844)} von {len(scan_tickers_v2844)} verarbeitet."
+                            )
+
+                            for _batch_v2844 in _live_scan_batches.split_batches(
+                                _pending_scan_tickers_v2844,
+                                _batch_size_v2844,
+                            ):
+                                _batch_df_v2844, _batch_errors_v2844 = build_live_watchlist_monitor_v212(
+                                    list(_batch_v2844),
+                                    style_name=monitor_style,
+                                    max_items=None,
+                                    watchlist_meta_by_ticker=current_watchlist_meta_by_ticker,
+                                    live_horizon=live_monitor_horizon,
+                                )
+                                _batch_events_v2844 = pd.DataFrame()
+                                if not _batch_df_v2844.empty:
+                                    _batch_df_v2844, _batch_events_v2844 = apply_live_watchlist_status_history_v220(
+                                        _batch_df_v2844,
+                                        watchlist_name=selected_watchlist_name,
+                                        style_name=f"{monitor_style} | {live_monitor_horizon}",
+                                    )
+                                live_df = _live_scan_batches.merge_frames(live_df, _batch_df_v2844)
+                                live_errors = _live_scan_batches.merge_frames(live_errors, _batch_errors_v2844)
+                                if isinstance(_batch_events_v2844, pd.DataFrame):
+                                    live_events_df = _batch_events_v2844.copy()
+                                live_df = _live_scan_batches.sort_live_frame(live_df)
+
+                                _completed_now_v2844 = _live_scan_batches.completed_tickers(live_df, live_errors)
+                                _partial_meta_v2844 = _live_scan_batches.build_scan_meta(
+                                    scan_plan_v2844,
+                                    completed=_completed_now_v2844,
+                                    complete=False,
+                                    batch_size=_batch_size_v2844,
+                                )
+                                _partial_cache_v2844 = {
+                                    "key": live_cache_key_v246,
+                                    "ts": datetime.now().isoformat(),
+                                    "live_df": live_df.copy(),
+                                    "live_errors": live_errors.copy(),
+                                    "scan_meta": _partial_meta_v2844,
+                                }
+                                st.session_state["v246_live_monitor_cache"] = _partial_cache_v2844
+                                try:
+                                    _live_screener_snapshot.save_snapshot(
+                                        _storage_v280,
+                                        _partial_cache_v2844,
+                                        ui_state={
+                                            "mobile_mode": bool(mobile_mode_v2842),
+                                            "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
+                                            "only_active": bool(only_active),
+                                            "refresh_label": str(refresh_label),
+                                            "scan_scope": str(scan_scope_label_v2844),
+                                            "scan_complete": False,
+                                        },
+                                        max_snapshots=6,
+                                    )
+                                except Exception:
+                                    pass
+                                _done_count_v2844 = int(_partial_meta_v2844.get("completed_count") or 0)
+                                _progress_v2844.progress(
+                                    min(1.0, _done_count_v2844 / max(1, len(scan_tickers_v2844)))
+                                )
+                                _progress_text_v2844.caption(
+                                    f"Scan-Status: {_done_count_v2844} von {len(scan_tickers_v2844)} verarbeitet "
+                                    f"· {len(live_errors)} nicht analysierbar."
+                                )
+
+                            live_df = _live_scan_batches.sort_live_frame(live_df)
+                            try:
+                                live_errors_cache_v246 = live_errors.copy() if isinstance(live_errors, pd.DataFrame) else pd.DataFrame(live_errors or [])
+                            except Exception:
+                                live_errors_cache_v246 = pd.DataFrame()
+                            _completed_final_v2844 = _live_scan_batches.completed_tickers(live_df, live_errors_cache_v246)
+                            _final_scan_meta_v2844 = _live_scan_batches.build_scan_meta(
+                                scan_plan_v2844,
+                                completed=_completed_final_v2844,
+                                complete=True,
+                                batch_size=_batch_size_v2844,
+                            )
+                            _live_scan_completed_at_v2832 = datetime.now().isoformat()
+                            _live_cache_payload_v2842 = {
+                                "key": live_cache_key_v246,
+                                "ts": _live_scan_completed_at_v2832,
+                                "live_df": live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame(),
+                                "live_errors": live_errors_cache_v246,
+                                "scan_meta": _final_scan_meta_v2844,
+                            }
+                            st.session_state["v246_live_monitor_cache"] = _live_cache_payload_v2842
+                            try:
+                                _snapshot_saved_v2842 = _live_screener_snapshot.save_snapshot(
+                                    _storage_v280,
+                                    _live_cache_payload_v2842,
+                                    ui_state={
+                                        "mobile_mode": bool(mobile_mode_v2842),
+                                        "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
+                                        "only_active": bool(only_active),
+                                        "refresh_label": str(refresh_label),
+                                        "scan_scope": str(scan_scope_label_v2844),
+                                        "scan_complete": True,
+                                    },
+                                    max_snapshots=6,
+                                )
+                                st.session_state.v2842_snapshot_last_save_ok = bool(_snapshot_saved_v2842)
+                            except Exception:
+                                st.session_state.v2842_snapshot_last_save_ok = False
+                            _progress_v2844.progress(1.0)
+                            _progress_text_v2844.success(
+                                f"Scan abgeschlossen: {int(_final_scan_meta_v2844.get('completed_count') or 0)} von "
+                                f"{len(scan_tickers_v2844)} verarbeitet · {len(live_errors_cache_v246)} nicht analysierbar."
+                            )
                         st.session_state.v2842_snapshot_restored_at = ""
                         st.session_state.v2842_snapshot_restored_id = ""
                         st.session_state.v2842_snapshot_source_ts = ""
-                        # Erfolgreicher Scan ist der neue Anker des Auto-Refresh-Zeitplans.
+                        # Nur ein vollstaendig abgeschlossener Scan ist der neue
+                        # Anker des Auto-Refresh-Zeitplans.
                         st.session_state.v2415_native_live_refresh_ts = _live_scan_completed_at_v2832
                         st.session_state.v2832_native_refresh_trigger_ts = ""
                     else:
@@ -16090,11 +16269,30 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         except Exception:
                             live_errors = pd.DataFrame()
                         live_events_df = pd.DataFrame()
+                        scan_meta_v2844 = dict(live_cache_v246.get("scan_meta") or {})
                         try:
                             cache_ts_txt_v246 = datetime.fromisoformat(str(live_cache_v246.get("ts"))).strftime("%d.%m.%Y %H:%M:%S")
                             st.caption(f"Zwischengespeicherte Live-Ergebnisse vom {cache_ts_txt_v246}. Neuer Scan erst nach Refresh-Intervall oder per 'Jetzt prüfen'.")
                         except Exception:
                             st.caption("Zwischengespeicherte Live-Ergebnisse. Neuer Scan erst nach Refresh-Intervall oder per 'Jetzt prüfen'.")
+                    _display_scan_meta_v2844 = dict(
+                        (st.session_state.get("v246_live_monitor_cache", {}) or {}).get("scan_meta") or scan_meta_v2844 or {}
+                    )
+                    if _display_scan_meta_v2844:
+                        _completed_display_v2844 = int(_display_scan_meta_v2844.get("completed_count") or 0)
+                        _selected_display_v2844 = int(_display_scan_meta_v2844.get("selected_count") or len(scan_tickers_v2844))
+                        _error_display_v2844 = len(live_errors) if isinstance(live_errors, pd.DataFrame) else 0
+                        if bool(_display_scan_meta_v2844.get("complete", False)):
+                            st.caption(
+                                f"Scan vollständig: {_completed_display_v2844}/{_selected_display_v2844} verarbeitet "
+                                f"· {_error_display_v2844} nicht analysierbar."
+                            )
+                        else:
+                            _pending_count_v2844 = len(_display_scan_meta_v2844.get("pending_tickers") or [])
+                            st.warning(
+                                f"Unvollständiger Scan-Checkpoint: {_completed_display_v2844}/{_selected_display_v2844} verarbeitet, "
+                                f"{_pending_count_v2844} noch offen. 'Jetzt prüfen' setzt beim nächsten Batch fort."
+                            )
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty:
@@ -16913,7 +17111,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         _live_errors_df_bottom = pd.DataFrame()
                     if _live_errors_df_bottom is not None and not _live_errors_df_bottom.empty:
                         with st.expander("Nicht prüfbare Watchlist-Werte", expanded=False):
+                            st.caption("Diese Werte wurden tatsächlich aufgerufen, konnten aber wegen Daten-/Tickerfehlern nicht analysiert werden.")
                             st.dataframe(_live_errors_df_bottom, hide_index=True, use_container_width=True)
+                    _deferred_values_v2844 = list(scan_plan_v2844.deferred_tickers)
+                    if _deferred_values_v2844:
+                        with st.expander(f"Bewusst ausstehende Watchlist-Werte ({len(_deferred_values_v2844)})", expanded=False):
+                            st.caption("Diese Werte wurden wegen des gewählten Scan-Umfangs noch nicht aufgerufen. Für eine vollständige Prüfung 'Alle Werte' wählen.")
+                            st.dataframe(
+                                pd.DataFrame({"Ticker": _deferred_values_v2844, "Status": "Ausstehend – Scan-Grenze"}),
+                                hide_index=True,
+                                use_container_width=True,
+                            )
 
 # ---------- Analyse-Steuerung im Hauptbereich ----------
 if workspace_mode:

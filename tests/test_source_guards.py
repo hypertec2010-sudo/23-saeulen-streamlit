@@ -10,13 +10,17 @@ def test_release_contains_ci_and_refresh_guards() -> None:
     runtime = (ROOT / "modules/page_runtime.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
 
-    assert 'APP_VERSION = "v28.4.3"' in legacy
+    assert 'APP_VERSION = "v28.4.4"' in legacy
     assert "_live_refresh_policy.evaluate_refresh" in legacy
     assert "run_every=_native_refresh_poll_seconds_v2832" in legacy
     assert "_live_screener_snapshot.load_snapshot" in legacy
     assert "Mobile-Modus" in legacy
     assert "Warum geändert?" in legacy
     assert (ROOT / "modules/live_change_explainer.py").exists()
+    assert (ROOT / "modules/live_scan_batches.py").exists()
+    assert "Scan-Umfang" in legacy
+    assert "_live_scan_batches.split_batches" in legacy
+    assert "max_items=40" not in legacy
     assert "if page_changed:" in runtime
     assert "python verify_deployment.py" in workflow
     assert "pytest -q" in workflow

@@ -45,6 +45,7 @@ REQUIRED_FILES = [
     "modules/market_data.py", "modules/ticker_resolver.py", "modules/scoring_engine.py",
     "modules/live_refresh_policy.py",
     "modules/live_screener_snapshot.py",
+    "modules/live_scan_batches.py",
     "modules/live_change_explainer.py",
     "modules/storage/__init__.py", "modules/storage/base.py", "modules/storage/local_backend.py",
     "modules/storage/supabase_backend.py", "modules/storage/manager.py",
@@ -91,6 +92,7 @@ def import_modules():
         "modules.scoring_engine",
         "modules.live_refresh_policy",
         "modules.live_screener_snapshot",
+        "modules.live_scan_batches",
         "modules.live_change_explainer",
         "modules.storage",
         "modules.storage.base",
@@ -267,7 +269,7 @@ def test_navigation_guards() -> None:
     check("pages/trade_journal.py" in shell_source, "Trade-Journal-Seite ist nicht registriert")
     check("workspace_mode" in runtime_source and "watchlist_cockpit_area_v2413" in runtime_source, "Workspace-Bruecke unvollstaendig")
     check("CAPITAL_HILL_MULTIPAGE" in runtime_source and "CAPITAL_HILL_MULTIPAGE" in legacy_source, "Multipage-Bootstrap-Guard fehlt")
-    check('APP_VERSION = "v28.4.3"' in legacy_source, "v28.4.3 Versionsstand fehlt in legacy_app.py")
+    check('APP_VERSION = "v28.4.4"' in legacy_source, "v28.4.4 Versionsstand fehlt in legacy_app.py")
     check(len(entry_source.splitlines()) < 80, "app.py ist nicht als schlanker Einstiegspunkt umgesetzt")
     check("run_every=_native_refresh_poll_seconds_v2832" in legacy_source, "60-Sekunden-Heartbeat fuer Live-Refresh fehlt")
     check("_live_refresh_policy.evaluate_refresh" in legacy_source, "Testbare Refresh-Policy ist nicht verdrahtet")
@@ -276,6 +278,9 @@ def test_navigation_guards() -> None:
     check("_live_screener_snapshot.load_snapshot" in legacy_source, "Persistenter Live-Snapshot ist nicht verdrahtet")
     check("Mobile-Modus" in legacy_source and "v2842-mobile-card" in legacy_source, "Mobile-Screener-Oberfläche fehlt")
     check("Warum geändert?" in legacy_source, "Statuswechsel-Erklaerung fehlt in der Live-Screener-Oberfläche")
+    check("Scan-Umfang" in legacy_source and "Alle Werte" in legacy_source, "Sichtbare Scan-Reichweite fehlt")
+    check("max_items=40" not in legacy_source, "Stilles 40er-Limit ist weiterhin verdrahtet")
+    check("_live_scan_batches.split_batches" in legacy_source, "Batch-Scanning ist nicht verdrahtet")
     check('st.rerun(scope="app")' not in legacy_source, "Veralteter expliziter App-Scope im Refresh-Fragment vorhanden")
     check("if page_changed:" in runtime_source and "_clear_legacy_workspace_query()" in runtime_source, "Query-Cleanup ist nicht an echte Seitenwechsel gebunden")
 
@@ -444,6 +449,20 @@ def test_storage_layer(mods) -> None:
         check(fallback_manager.status().get("degraded") is True, "Remote-Ausfall wird nicht als degradiert markiert")
 
 
+def test_live_scan_batches(mods) -> None:
+    batches = mods["modules.live_scan_batches"]
+    tickers = [f"T{index:03d}" for index in range(55)] + ["T010"]
+    all_plan = batches.build_scan_plan(tickers, "Alle Werte")
+    check(len(all_plan.selected_tickers) == 55, "Alle-Werte-Scan ist unvollstaendig")
+    check(len(all_plan.deferred_tickers) == 0, "Alle-Werte-Scan meldet unerwartet ausstehende Werte")
+    check(all_plan.duplicate_tickers == ("T010",), "Duplikat-Erkennung fehlerhaft")
+
+    limited_plan = batches.build_scan_plan(tickers, "40 Werte")
+    check(len(limited_plan.selected_tickers) == 40, "Explizites 40er-Limit fehlerhaft")
+    check(len(limited_plan.deferred_tickers) == 15, "Ausstehende Werte werden nicht transparent ausgewiesen")
+    check([len(chunk) for chunk in batches.split_batches(all_plan.selected_tickers, 20)] == [20, 20, 15], "Batch-Aufteilung fehlerhaft")
+
+
 def test_analysis_core_extraction(mods) -> None:
     legacy_core = mods["modules.legacy_analysis_core"]
     legacy_source = (ROOT / "legacy_app.py").read_text(encoding="utf-8")
@@ -568,12 +587,13 @@ def main() -> None:
     test_phase4_modules(mods)
     test_live_refresh_policy(mods)
     test_live_screener_snapshot(mods)
+    test_live_scan_batches(mods)
     test_analysis_core_extraction(mods)
     test_domain_models_and_repositories(mods)
     test_storage_layer(mods)
     test_navigation_guards()
     test_cockpit_navigation_state(mods["modules.page_runtime"])
-    print("v28.4.3 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v28.4.4 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

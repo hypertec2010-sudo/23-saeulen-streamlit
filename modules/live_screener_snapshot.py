@@ -16,7 +16,7 @@ from typing import Any, Mapping
 import pandas as pd
 
 SNAPSHOT_NAMESPACE = "live_screener_snapshots"
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
 
 
 def _json_safe(value: Any) -> Any:
@@ -111,6 +111,7 @@ def cache_to_snapshot(
         "saved_at": str(saved_at or datetime.now().isoformat()),
         "live_df": dataframe_to_payload(cache.get("live_df")),
         "live_errors": dataframe_to_payload(cache.get("live_errors")),
+        "scan_meta": _json_safe(dict(cache.get("scan_meta") or {})),
         "ui": _json_safe(dict(ui_state or {})),
     }
 
@@ -131,6 +132,7 @@ def snapshot_to_cache(snapshot: Any, expected_key: Mapping[str, Any]) -> dict[st
         "ts": str(snapshot.get("ts") or snapshot.get("saved_at") or ""),
         "live_df": live_df,
         "live_errors": dataframe_from_payload(snapshot.get("live_errors")),
+        "scan_meta": dict(snapshot.get("scan_meta") or {}) if isinstance(snapshot.get("scan_meta"), Mapping) else {},
     }
 
 

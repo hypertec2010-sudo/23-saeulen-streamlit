@@ -1,35 +1,26 @@
-# v28.4.3 Live Status Change Transparency
+# v28.4.4 Complete Batch Scanning
 
-Diese Version macht Ampelwechsel im Live-Screener nachvollziehbar. Ein Wert kann
-auch bei nahezu unveraendertem Kurs von Gelb auf Rot wechseln, wenn sich Trigger,
-Timing, Konfluenz, Radar-Bucket, finale Freigabe oder ein hartes Einstiegsgate
-aendern. Der konkrete Ausloeser wird jetzt direkt angezeigt und historisiert.
+Diese Version beseitigt das bisher stille 40er-Limit des Live-Screeners.
 
-## Neu
+## Wichtigste Änderungen
 
-- Spalte **Warum geändert?** in der Live-Screener-Haupttabelle
-- Erklaerung direkt auf mobilen Screener-Karten
-- Vergleich von Kurs und Live-Score zum vorherigen Scan
-- Vergleich der Komponenten Timing, Konfluenz, Chart, Trigger, Trend und CRV
-- klare Kennzeichnung neuer Invalidierungen und harter Einstiegsgates
-- Statuswechsel-Historie enthaelt dieselbe Erklaerung
-- Event-Log speichert den konkreten Ausloeser
-- bestehende Hysterese, Mobile-Snapshots und Supabase-Speicherung bleiben erhalten
-
-## Beispiel
-
-```text
-Kurs nahezu unverändert (+0,03 %). Auslöser: ein hartes Einstiegsgate wurde aktiv;
-Radar-Bucket Nahe am Trigger→Warnsignale / meiden; finale Freigabe ist entfallen;
-Live-Score 62→38 (-24); Timing 68→41.
-```
+- **Alle Werte** ist der Standard-Scanumfang.
+- Alternativ können 40, 80 oder 120 Werte bewusst gewählt werden.
+- Nicht enthaltene Ticker werden sichtbar als **ausstehend** ausgewiesen.
+- Der Scan läuft in 20er-Batches mit Fortschrittsanzeige.
+- Nach jedem Batch wird ein Supabase-/Local-Checkpoint gespeichert.
+- Nach einer Browser- oder Display-Unterbrechung kann der Scan fortgesetzt werden.
+- Nicht analysierbare Ticker und nicht aufgerufene Ticker sind klar getrennt.
+- Duplikate werden gezählt und nur einmal analysiert.
 
 ## Deployment
 
-1. Vollstaendigen ZIP-Inhalt in das Repository uebernehmen.
-2. Keine SQL-Migration ausfuehren.
-3. Streamlit-Secrets unveraendert lassen.
-4. Nach zwei Live-Scans stehen Vergleichsdaten fuer die neue Erklaerung bereit.
-5. GitHub Actions unter **v28.4.3 Quality Gate** kontrollieren.
+1. Vollständigen ZIP-Inhalt in das Repository übernehmen.
+2. Keine SQL-Migration ausführen.
+3. Streamlit-Secrets unverändert lassen.
+4. App neu starten.
+5. Im Live-Screener den gewünschten **Scan-Umfang** prüfen.
+6. Für vollständige Abdeckung **Alle Werte** verwenden.
+7. GitHub Actions unter **v28.4.4 Quality Gate** kontrollieren.
 
-Details: `RELEASE_NOTES_v28_4_3.md`.
+Details stehen in `RELEASE_NOTES_v28_4_4.md` und `ARCHITECTURE_V28_4_4.md`.

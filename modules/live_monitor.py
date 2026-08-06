@@ -722,7 +722,12 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     }
 
 
-def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=40, watchlist_meta_by_ticker=None, live_horizon="Swing / 1-4 Wochen"):
+def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=None, watchlist_meta_by_ticker=None, live_horizon="Swing / 1-4 Wochen"):
+    """Analyze a normalized ticker sequence without silently truncating it.
+
+    ``max_items`` remains available for explicit caller-side limits, but ``None``
+    means all unique values. v28.4.4 moves scope selection into the visible UI.
+    """
     rows = []
     errors = []
     unique = []
@@ -731,7 +736,14 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
         if tt and tt not in unique:
             unique.append(tt)
     meta_by_ticker = watchlist_meta_by_ticker or {}
-    for ticker in unique[:int(max_items or 40)]:
+    if max_items is None:
+        selected = unique
+    else:
+        try:
+            selected = unique[:max(0, int(max_items))]
+        except (TypeError, ValueError):
+            selected = unique
+    for ticker in selected:
         try:
             # v24.0: Die Kernanalyse kennt aktuell nur Swing/Langfrist als stabile
             # Horizon-Werte. v23.9 uebergab hier "Kurzfrist (1-7 Tage)" und

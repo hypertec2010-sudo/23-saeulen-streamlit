@@ -1,1 +1,1 @@
-v28.4.3 Live Status Change Transparency
+v28.4.4 Complete Batch Scanning

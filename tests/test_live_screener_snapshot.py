@@ -35,6 +35,12 @@ def test_snapshot_roundtrip_restores_dataframe_and_cache_key() -> None:
             ]
         ),
         "live_errors": pd.DataFrame([{"Ticker": "BAD", "Fehler": "Keine Daten"}]),
+        "scan_meta": {
+            "complete": False,
+            "selected_count": 3,
+            "completed_count": 2,
+            "pending_tickers": ["BAD"],
+        },
     }
 
     assert snapshot.save_snapshot(storage, cache, ui_state={"mobile_mode": True})
@@ -45,6 +51,8 @@ def test_snapshot_roundtrip_restores_dataframe_and_cache_key() -> None:
     assert restored["cache"]["ts"] == cache["ts"]
     assert restored["cache"]["live_df"].to_dict("records") == cache["live_df"].to_dict("records")
     assert restored["cache"]["live_errors"].iloc[0]["Ticker"] == "BAD"
+    assert restored["cache"]["scan_meta"]["complete"] is False
+    assert restored["cache"]["scan_meta"]["pending_tickers"] == ["BAD"]
     assert restored["ui"]["mobile_mode"] is True
 
 

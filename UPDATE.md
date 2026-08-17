@@ -1,11 +1,20 @@
-# Update v28.4.5b2/c1
+# v28.4.5b3 - Consolidated New-Listing Fix
 
-Geändert:
-- Yahoo-Chart-API-Fallback für neue Listings (SKHY/SPCX)
-- kontrollierte Retry-Logik bei HTTP 429 / Rate Limit
-- New-Listing-Mindesthistorie auf 10 Handelstage abgesenkt
-- SPCX-Historie bleibt ab aktuellem Listingstart begrenzt
+Dieses Update ersetzt die vier zusammengehoerigen Dateien gemeinsam, damit keine alte v28.4.4-Analyse-Engine mit dem neuen Provider gemischt laeuft.
 
-Keine Änderungen an Supabase, SQL oder Secrets.
+Geaendert:
+- legacy_app.py
+- modules/provider_manager.py
+- modules/ticker_resolver.py
+- modules/legacy_analysis_core.py
+- VERSION.txt
 
-Nach Upload testen: SKHY, SPCX, MRVL, AVGO, QRVO.
+Wichtig nach Upload:
+1. Alle Dateien ueberschreiben.
+2. Streamlit App rebooten.
+3. SKHY und SPCX erneut testen.
+
+Erwartete Fehlermeldung, falls weiterhin zu wenig Daten geliefert werden:
+`Noch zu wenig Kursdaten (X Handelstage)...`
+
+Wenn stattdessen weiterhin `Nicht genug Kursdaten fuer belastbare Analyse` erscheint, laeuft noch eine alte legacy_analysis_core.py im Repository/Deployment.

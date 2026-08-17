@@ -14,6 +14,8 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
+from modules.ticker_resolver import resolve_ticker
+
 
 class MarketDataError(RuntimeError):
     """Base exception for provider failures."""
@@ -96,6 +98,10 @@ class MarketDataProvider:
     def normalize_symbol(symbol: str) -> str:
         return str(symbol or "").strip().upper()
 
+    @staticmethod
+    def resolve_symbol(symbol: str) -> str:
+        return resolve_ticker(symbol).provider_symbol
+
     def _record(self, symbol: str, operation: str, ok: bool, message: str = "") -> None:
         key = f"{self.normalize_symbol(symbol)}::{operation}"
         status = ProviderStatus(
@@ -116,10 +122,11 @@ class MarketDataProvider:
 
     def get_ticker(self, symbol: str):
         clean = self.normalize_symbol(symbol)
-        if not clean:
+        resolved = self.resolve_symbol(clean)
+        if not resolved:
             raise MarketDataError("Ticker fehlt.")
         try:
-            obj = self.primary.ticker(clean)
+            obj = self.primary.ticker(resolved)
             self._record(clean, "ticker", True)
             return obj
         except Exception as exc:
@@ -130,10 +137,11 @@ class MarketDataProvider:
 
     def get_history(self, symbol: str, **kwargs) -> pd.DataFrame:
         clean = self.normalize_symbol(symbol)
-        if not clean:
+        resolved = self.resolve_symbol(clean)
+        if not resolved:
             return pd.DataFrame()
         try:
-            frame = self.primary.history(clean, **kwargs)
+            frame = self.primary.history(resolved, **kwargs)
             self._record(clean, "history", True, f"rows={len(frame)}")
             return frame
         except MarketDataRateLimitError as exc:

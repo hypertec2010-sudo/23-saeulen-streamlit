@@ -1,19 +1,33 @@
-"""Ticker normalization helpers; network search stays injectable."""
+"""Conservative ticker resolution for market-data providers (v28.4.5b)."""
 from __future__ import annotations
+from dataclasses import dataclass
 
+ALIASES = {
+    "SPX": "^GSPC", "S&P500": "^GSPC", "S&P 500": "^GSPC",
+    "NDX": "^NDX", "VIX": "^VIX", "DJI": "^DJI", "DOW": "^DJI",
+    "RUT": "^RUT",
+}
 
-def normalize_input(value: str) -> str:
-    return " ".join(str(value or "").strip().split())
+@dataclass(frozen=True)
+class ResolvedTicker:
+    original: str
+    provider_symbol: str
+    changed: bool
+    reason: str = ""
 
-
-def normalize_ticker(value: str) -> str:
-    return normalize_input(value).upper()
-
-
-def candidate_variants(value: str):
-    raw = normalize_input(value)
-    upper = raw.upper()
-    variants = [upper]
-    if upper and "." not in upper and "=" not in upper and not upper.startswith("^"):
-        variants.extend([f"{upper}.DE", f"{upper}.MI", f"{upper}.PA"])
-    return list(dict.fromkeys(v for v in variants if v))
+def resolve_ticker(symbol: str) -> ResolvedTicker:
+    original = str(symbol or "").strip().upper()
+    if not original:
+        return ResolvedTicker("", "", False, "empty")
+    if original in ALIASES:
+        target = ALIASES[original]
+        return ResolvedTicker(original, target, True, "index_alias")
+    # Yahoo uses a dash for share classes such as BRK.B / BF.B.
+    if "." in original and original.count(".") == 1:
+        left, right = original.split(".")
+        if right in {"A", "B"} and 1 <= len(left) <= 5:
+            target = f"{left}-{right}"
+            return ResolvedTicker(original, target, True, "share_class")
+    # Exchange-qualified symbols (.DE, .MI, .L, ...) and ordinary symbols,
+    # including new listings such as SKHY/SPCX, remain untouched.
+    return ResolvedTicker(original, original, False, "direct")

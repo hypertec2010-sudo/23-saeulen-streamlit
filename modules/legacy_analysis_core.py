@@ -65,8 +65,21 @@ def _legacy_analyze_stock_impl(
 ):
     df, info = load_data(ticker)
 
-    if df.empty or len(df) < 220:
-        raise ValueError("Nicht genug Kursdaten für belastbare Analyse. Prüfe den ausgewählten Ticker.")
+    # v28.4.5b: New listings are no longer rejected merely because MA200 is
+    # unavailable. 20 trading days are enough for a deliberately reduced
+    # short-term assessment; unavailable long-term indicators remain NaN and
+    # therefore cannot contribute positive long-term evidence.
+    history_days = int(len(df))
+    if df.empty or history_days < 20:
+        raise ValueError(f"Noch zu wenig Kursdaten ({history_days} Handelstage). Mindestens 20 werden für die reduzierte New-Listing-Analyse benötigt.")
+    if history_days >= 250:
+        history_mode = "Vollanalyse"
+    elif history_days >= 120:
+        history_mode = "Reduzierte Analyse · MA200 noch eingeschränkt"
+    elif history_days >= 60:
+        history_mode = "Reduzierte Swing-Analyse"
+    else:
+        history_mode = "New Listing · Kurzfristanalyse"
 
     benchmark_symbol, benchmark_label = select_benchmark(ticker, info)
     benchmark_df = load_benchmark_data(benchmark_symbol)
@@ -2596,6 +2609,9 @@ def _legacy_analyze_stock_impl(
         "ma50": ma50,
         "ma150": ma150,
         "ma200": ma200,
+        "history_days": history_days,
+        "history_mode": history_mode,
+        "new_listing": bool(history_days < 120),
         "rsi": rsi,
         "macd_v": macd_v,
         "signal_v": signal_v,

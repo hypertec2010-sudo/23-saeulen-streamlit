@@ -1,31 +1,19 @@
-# Update v28.4.5a – Smart Provider Manager
+# Update v28.4.5b
 
 ## Geändert
+- Smart Ticker Resolver: SPX, NDX, VIX, DJI, RUT und Share-Class-Symbole wie BRK.B.
+- Gültige normale Ticker wie SKHY und SPCX bleiben unverändert.
+- New-Listing-Unterstützung: ab 20 Handelstagen reduzierte Kurzfristanalyse statt pauschaler Ablehnung wegen fehlender MA200-Historie.
+- Langfristige Indikatoren, für die noch keine Historie existiert, bleiben neutral/nicht verfügbar und liefern keine künstlichen Pluspunkte.
 
-- `modules/provider_manager.py` neu: zentraler Marktdaten-Zugriff.
-- `legacy_app.py`: Daily-Historie, 60m-Historie und Benchmark-Historie nutzen den Provider Manager.
-- App-Version auf `v28.4.5a` gesetzt.
+## Upload
+Die Dateien dieses Patch-ZIPs über die vorhandenen Dateien im Repository legen. Es sind nur 6 Dateien.
 
-## Bewusst noch nicht enthalten
+## Keine Änderung nötig
+- Supabase
+- SQL
+- Streamlit Secrets
+- Watchlists / Positionen / Journal
 
-- Keine zweite Datenquelle / kein Stooq-Fallback.
-- Noch kein automatischer 429-Retry mit Wartequeue.
-- Noch keine neue Datenqualitäts-Spalte.
-- Noch keine erweiterten Index-Aliasse.
-
-Diese Punkte folgen in v28.4.5b–d. So bleibt der erste Infrastruktur-Schritt klein und risikoarm.
-
-## Keine Änderungen erforderlich
-
-- Supabase-Schema
-- Streamlit-Secrets
-- Watchlists
-- Positionen
-- Trade-Journal
-
-## Schnelltest nach Upload
-
-1. `AAPL` in der Sofortanalyse prüfen.
-2. Live-Screener einmal manuell starten.
-3. Prüfen, dass Kurse und Unternehmensdaten wie zuvor erscheinen.
-4. Radar kurz starten und einen Kandidaten öffnen.
+## Praxistest
+Nach Deployment bitte nacheinander prüfen: SKHY, SPCX, SPX, AAPL, SAP.DE, BRK.B.

@@ -62,4 +62,4 @@ for path in ROOT.rglob("*.py"):
     py_compile.compile(str(path), doraise=True)
 
 subprocess.run([sys.executable, str(ROOT / "regression_check.py")], cwd=ROOT, check=True)
-print("v28.4.4 Deployment-Struktur, Syntax und deterministische Regressionstests OK")
+print("v28.4.5a Deployment-Struktur, Syntax und deterministische Regressionstests OK")

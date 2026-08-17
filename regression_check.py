@@ -269,7 +269,7 @@ def test_navigation_guards() -> None:
     check("pages/trade_journal.py" in shell_source, "Trade-Journal-Seite ist nicht registriert")
     check("workspace_mode" in runtime_source and "watchlist_cockpit_area_v2413" in runtime_source, "Workspace-Bruecke unvollstaendig")
     check("CAPITAL_HILL_MULTIPAGE" in runtime_source and "CAPITAL_HILL_MULTIPAGE" in legacy_source, "Multipage-Bootstrap-Guard fehlt")
-    check('APP_VERSION = "v28.4.4"' in legacy_source, "v28.4.4 Versionsstand fehlt in legacy_app.py")
+    check('APP_VERSION = "v28.4.5a"' in legacy_source, "v28.4.5a Versionsstand fehlt in legacy_app.py")
     check(len(entry_source.splitlines()) < 80, "app.py ist nicht als schlanker Einstiegspunkt umgesetzt")
     check("run_every=_native_refresh_poll_seconds_v2832" in legacy_source, "60-Sekunden-Heartbeat fuer Live-Refresh fehlt")
     check("_live_refresh_policy.evaluate_refresh" in legacy_source, "Testbare Refresh-Policy ist nicht verdrahtet")
@@ -593,7 +593,7 @@ def main() -> None:
     test_storage_layer(mods)
     test_navigation_guards()
     test_cockpit_navigation_state(mods["modules.page_runtime"])
-    print("v28.4.4 Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    print("v28.4.5a Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

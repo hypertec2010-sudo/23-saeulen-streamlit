@@ -176,12 +176,17 @@ from modules import analysis_engine as _analysis_engine
 from modules import legacy_analysis_core as _legacy_analysis_core
 from modules import cache_layer as _cache_layer
 from modules import market_data as _market_data_module
+from modules import provider_manager as _provider_manager_module
 from modules import ticker_resolver as _ticker_resolver_module
 from modules import scoring_engine as _scoring_engine_module
 from modules import live_refresh_policy as _live_refresh_policy
 from modules import live_screener_snapshot as _live_screener_snapshot
 from modules import live_scan_batches as _live_scan_batches
 import yfinance as yf
+
+# v28.4.5a: zentraler Marktdaten-Provider. Yahoo/yfinance bleibt in dieser
+# Phase der aktive Backend-Provider; weitere Fallbacks folgen schrittweise.
+_market_provider_v2845a = _provider_manager_module.get_market_data_provider()
 from plotly.subplots import make_subplots
 import logging_utils as _logging_utils
 from logging_utils import (
@@ -2671,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.4.4"
+APP_VERSION = "v28.4.5a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -13476,12 +13481,12 @@ def load_intraday_hourly_data(ticker):
         if not ticker:
             return pd.DataFrame()
 
-        t = yf.Ticker(str(ticker).strip())
-        df = t.history(period="10d", interval="60m", auto_adjust=False, prepost=False)
+        _sym = str(ticker).strip()
+        df = _market_provider_v2845a.get_history(_sym, period="10d", interval="60m", auto_adjust=False, prepost=False)
 
         if df is None or df.empty:
             # zweiter Versuch mit kuerzerem Fenster
-            df = t.history(period="5d", interval="60m", auto_adjust=False, prepost=False)
+            df = _market_provider_v2845a.get_history(_sym, period="5d", interval="60m", auto_adjust=False, prepost=False)
 
         if df is None or df.empty:
             return pd.DataFrame()
@@ -13506,22 +13511,11 @@ def load_intraday_hourly_data(ticker):
 
 @st.cache_data(ttl=120, show_spinner=False)
 def load_data(ticker):
-    t = yf.Ticker(ticker)
-    hist = t.history(period="3y", auto_adjust=True)
-
-    info = {}
-    try:
-        info = merge_info(info, getattr(t, "fast_info", {}) or {})
-    except Exception:
-        pass
-    try:
-        info = merge_info(info, t.get_info() or {})
-    except Exception:
-        pass
-    try:
-        info = merge_info(info, t.info or {})
-    except Exception:
-        pass
+    # v28.4.5a: Haupt-Historie und Info-Zugriff laufen zentral ueber den
+    # Provider Manager. Die bestehende Fundamentalableitung bekommt weiterhin
+    # das native yfinance-Tickerobjekt und bleibt fachlich unveraendert.
+    t, info = _market_provider_v2845a.get_info_bundle(ticker)
+    hist = _market_provider_v2845a.get_history(ticker, period="3y", auto_adjust=True)
 
     info = derive_fundamentals_from_statements(t, info)
     info = extract_analyst_data(t, info)
@@ -13743,9 +13737,7 @@ def load_extended_market_quote(ticker):
 @st.cache_data(ttl=120, show_spinner=False)
 def load_benchmark_data(symbol):
     try:
-        t = yf.Ticker(symbol)
-        hist = t.history(period="1y", auto_adjust=True)
-        return hist
+        return _market_provider_v2845a.get_history(symbol, period="1y", auto_adjust=True)
     except Exception:
         return pd.DataFrame()
 
@@ -15640,7 +15632,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v28.4.4")
+            st.markdown("### Live-Watchlist / Trading-Cockpit v28.4.5a")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             st.caption("Performance v25.1: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
             # v28.4.2: Mobile-Modus und Einstellungen werden zentral gespeichert,

@@ -70,16 +70,18 @@ def _legacy_analyze_stock_impl(
     # short-term assessment; unavailable long-term indicators remain NaN and
     # therefore cannot contribute positive long-term evidence.
     history_days = int(len(df))
-    if df.empty or history_days < 20:
-        raise ValueError(f"Noch zu wenig Kursdaten ({history_days} Handelstage). Mindestens 20 werden für die reduzierte New-Listing-Analyse benötigt. Bei neuen Listings bitte den Smart-Provider-Datenpfad prüfen.")
+    if df.empty or history_days < 10:
+        raise ValueError(f"Noch zu wenig Kursdaten ({history_days} Handelstage). Mindestens 10 werden für die reduzierte New-Listing-Basisanalyse benötigt. Bei neuen Listings bitte den Smart-Provider-Datenpfad prüfen.")
     if history_days >= 250:
         history_mode = "Vollanalyse"
     elif history_days >= 120:
         history_mode = "Reduzierte Analyse · MA200 noch eingeschränkt"
     elif history_days >= 60:
         history_mode = "Reduzierte Swing-Analyse"
-    else:
+    elif history_days >= 20:
         history_mode = "New Listing · Kurzfristanalyse"
+    else:
+        history_mode = "Sehr junges Listing · Basis-/Momentum-Analyse"
 
     benchmark_symbol, benchmark_label = select_benchmark(ticker, info)
     benchmark_df = load_benchmark_data(benchmark_symbol)

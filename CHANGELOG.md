@@ -1,9 +1,6 @@
 # Changelog
 
-## v28.4.5b
-- Smart Ticker Resolver ergänzt.
-- Index-Aliasse und Yahoo-Share-Class-Symbole zentral aufgelöst.
-- New Listings ab 20 Handelstagen werden reduziert analysiert statt wegen fehlender Langfristhistorie abgelehnt.
-
-## v28.4.5a
-- Zentraler Smart Provider Manager eingeführt.
+## v28.4.5b1
+- Young/recycled listing history is loaded from the correct listing start date.
+- Added secondary yfinance download path for unexpectedly short history responses.
+- Prevented old SPCX ETF history from contaminating the current SPCX security.

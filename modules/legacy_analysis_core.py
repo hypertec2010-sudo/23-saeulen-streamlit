@@ -71,7 +71,7 @@ def _legacy_analyze_stock_impl(
     # therefore cannot contribute positive long-term evidence.
     history_days = int(len(df))
     if df.empty or history_days < 20:
-        raise ValueError(f"Noch zu wenig Kursdaten ({history_days} Handelstage). Mindestens 20 werden für die reduzierte New-Listing-Analyse benötigt.")
+        raise ValueError(f"Noch zu wenig Kursdaten ({history_days} Handelstage). Mindestens 20 werden für die reduzierte New-Listing-Analyse benötigt. Bei neuen Listings bitte den Smart-Provider-Datenpfad prüfen.")
     if history_days >= 250:
         history_mode = "Vollanalyse"
     elif history_days >= 120:

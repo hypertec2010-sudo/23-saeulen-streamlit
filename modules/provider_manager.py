@@ -102,6 +102,10 @@ class MarketDataProvider:
     def resolve_symbol(symbol: str) -> str:
         return resolve_ticker(symbol).provider_symbol
 
+    @staticmethod
+    def resolve(symbol: str):
+        return resolve_ticker(symbol)
+
     def _record(self, symbol: str, operation: str, ok: bool, message: str = "") -> None:
         key = f"{self.normalize_symbol(symbol)}::{operation}"
         status = ProviderStatus(
@@ -137,12 +141,80 @@ class MarketDataProvider:
 
     def get_history(self, symbol: str, **kwargs) -> pd.DataFrame:
         clean = self.normalize_symbol(symbol)
-        resolved = self.resolve_symbol(clean)
+        resolution = self.resolve(clean)
+        resolved = resolution.provider_symbol
         if not resolved:
             return pd.DataFrame()
+
+        request_kwargs = dict(kwargs)
+        # New/recycled listings must start at the current security's actual
+        # listing date. This is crucial for SPCX, whose ticker was previously
+        # used by a different ETF, and also avoids an empty long-period query
+        # on very young listings such as SKHY.
+        if resolution.history_start and not request_kwargs.get("interval"):
+            request_kwargs.pop("period", None)
+            request_kwargs["start"] = resolution.history_start
+
+        def _clean_frame(frame):
+            if not isinstance(frame, pd.DataFrame):
+                return pd.DataFrame()
+            out = frame.copy()
+            try:
+                if hasattr(out.columns, "nlevels") and out.columns.nlevels > 1:
+                    out.columns = [c[0] if isinstance(c, tuple) else c for c in out.columns]
+            except Exception:
+                pass
+            try:
+                out = out[~out.index.duplicated(keep="last")].sort_index()
+            except Exception:
+                pass
+            return out
+
         try:
-            frame = self.primary.history(resolved, **kwargs)
-            self._record(clean, "history", True, f"rows={len(frame)}")
+            frame = _clean_frame(self.primary.history(resolved, **request_kwargs))
+
+            # Defensive second path for young listings if Ticker.history()
+            # returns an unexpectedly short/empty frame. yf.download uses a
+            # separate yfinance path and often succeeds when Ticker.history
+            # temporarily does not. Do not use period=max for recycled tickers.
+            is_daily = str(request_kwargs.get("interval") or "1d").lower() in {"1d", "1day", "day"}
+            if is_daily and len(frame) < 20:
+                retry_kwargs = dict(request_kwargs)
+                retry_kwargs.setdefault("interval", "1d")
+                retry_kwargs.setdefault("progress", False)
+                retry_kwargs.setdefault("threads", False)
+                try:
+                    alt = _clean_frame(self.primary.download(resolved, **retry_kwargs))
+                    if len(alt) > len(frame):
+                        frame = alt
+                except MarketDataRateLimitError:
+                    raise
+                except Exception:
+                    pass
+
+            # For ordinary (non-recycled) symbols only, a final max-history
+            # retry can recover provider quirks without risking stale security
+            # history.
+            if is_daily and len(frame) < 20 and not resolution.history_start:
+                try:
+                    fallback_kwargs = dict(kwargs)
+                    fallback_kwargs.pop("start", None)
+                    fallback_kwargs.pop("end", None)
+                    fallback_kwargs["period"] = "max"
+                    alt = _clean_frame(self.primary.history(resolved, **fallback_kwargs))
+                    if len(alt) > len(frame):
+                        frame = alt
+                except MarketDataRateLimitError:
+                    raise
+                except Exception:
+                    pass
+
+            self._record(
+                clean,
+                "history",
+                True,
+                f"provider_symbol={resolved}; rows={len(frame)}; start={resolution.history_start or '-'}",
+            )
             return frame
         except MarketDataRateLimitError as exc:
             self._record(clean, "history", False, f"rate_limit: {exc}")

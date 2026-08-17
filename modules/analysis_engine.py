@@ -74,6 +74,27 @@ def analyze_stock(
     )
     try:
         result = core_engine(**kwargs)
+    except ValueError as exc:
+        # v28.4.5b4: The historical/core implementation still rejects young
+        # listings before the new-listing capable legacy pipeline can run.
+        # Route only the specific insufficient-history failure to the
+        # reduced-history engine; all other ValueErrors remain visible.
+        text = str(exc or "").lower()
+        insufficient_history = (
+            "nicht genug kursdaten" in text
+            or "belastbare analyse" in text
+            or "not enough price data" in text
+            or "insufficient price data" in text
+        )
+        if not insufficient_history:
+            raise
+        result = legacy_engine(**kwargs)
+        if isinstance(result, dict):
+            result["Analyse_Hinweis"] = (
+                "New-Listing-Fallback genutzt: die Standardanalyse verlangt mehr Historie; "
+                "die reduzierte Kurzfrist-/Momentum-Analyse wurde verwendet."
+            )
+            result["Analyse_Datenmodus"] = result.get("Analyse_Datenmodus") or "New-Listing-Fallback"
     except TypeError as exc:
         if "not supported between instances" not in str(exc):
             raise

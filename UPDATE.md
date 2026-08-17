@@ -1,20 +1,16 @@
-# v28.4.5b3 - Consolidated New-Listing Fix
+# v28.4.5b4 – New-Listing Core Routing Fix
 
-Dieses Update ersetzt die vier zusammengehoerigen Dateien gemeinsam, damit keine alte v28.4.4-Analyse-Engine mit dem neuen Provider gemischt laeuft.
+## Ursache
+Die App ruft zuerst einen älteren `analysis_core` auf. Dieser beendet SKHY/SPCX mit
+`Nicht genug Kursdaten für belastbare Analyse`, bevor die neue New-Listing-Logik erreicht wird.
 
-Geaendert:
-- legacy_app.py
-- modules/provider_manager.py
-- modules/ticker_resolver.py
-- modules/legacy_analysis_core.py
-- VERSION.txt
+## Fix
+`modules/analysis_engine.py` erkennt genau diesen Mindesthistorien-Fehler und leitet den Ticker
+an `legacy_analysis_core.py` weiter. Dort greift die reduzierte New-Listing-/Momentum-Analyse.
 
-Wichtig nach Upload:
-1. Alle Dateien ueberschreiben.
-2. Streamlit App rebooten.
-3. SKHY und SPCX erneut testen.
+## Hochladen
+Alle Dateien dieses ZIPs über die vorhandenen Dateien im Repository kopieren und Streamlit rebooten.
+Keine SQL-/Supabase-/Secrets-Änderung erforderlich.
 
-Erwartete Fehlermeldung, falls weiterhin zu wenig Daten geliefert werden:
-`Noch zu wenig Kursdaten (X Handelstage)...`
-
-Wenn stattdessen weiterhin `Nicht genug Kursdaten fuer belastbare Analyse` erscheint, laeuft noch eine alte legacy_analysis_core.py im Repository/Deployment.
+## Test
+SKHY, SPCX, AAPL, SPX

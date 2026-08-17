@@ -1,8 +1,5 @@
 # Changelog
 
-## v28.4.5b3
-- konsolidierter Provider/New-Listing-Patch
-- verhindert Mischung aus alter v28.4.4-Core-Analyse und neuer Provider-Schicht
-- SKHY/SPCX: reduzierte Analyse ab 10 Handelstagen
-- SPX/NDX/VIX/DJI/RUT Resolver bleibt aktiv
-- 429-Retry und direkter Yahoo-Chart-Fallback bleiben aktiv
+## v28.4.5b4
+- Analyse-Fassade routet Mindesthistorien-Fehler des alten Core automatisch in den New-Listing-fähigen Legacy-Core.
+- Provider/Resolver/New-Listing-Core aus b3 konsolidiert mitgeliefert.

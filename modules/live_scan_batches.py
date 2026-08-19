@@ -95,11 +95,19 @@ def completed_tickers(live_df: Any, live_errors: Any) -> tuple[str, ...]:
     """Read already processed symbols from a checkpoint cache."""
     ordered: list[str] = []
     seen: set[str] = set()
-    for frame in (live_df, live_errors):
+    for frame_index, frame in enumerate((live_df, live_errors)):
         df = frame if isinstance(frame, pd.DataFrame) else pd.DataFrame(frame or [])
         if "Ticker" not in df.columns:
             continue
-        for raw in df["Ticker"].tolist():
+        for row_index, raw in enumerate(df["Ticker"].tolist()):
+            # v28.4.5c: provider rate limits are temporary. Do not mark those
+            # tickers completed in the checkpoint; the next scan resumes them.
+            if frame_index == 1 and "Temporär" in df.columns:
+                try:
+                    if bool(df.iloc[row_index].get("Temporär", False)):
+                        continue
+                except Exception:
+                    pass
             ticker = str(raw or "").strip().upper()
             if ticker and ticker not in seen:
                 seen.add(ticker)

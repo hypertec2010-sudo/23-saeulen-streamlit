@@ -765,7 +765,17 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
             decision = build_professional_radar_decision_v18(result, style_name)
             rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name, watchlist_meta=meta_by_ticker.get(ticker, {}), live_horizon=live_horizon))
         except Exception as exc:
-            errors.append({"Ticker": ticker, "Fehler": str(exc)[:180]})
+            _err_text = str(exc or "")[:180]
+            _err_lower = _err_text.lower()
+            _is_rate_limit = any(token in _err_lower for token in (
+                "too many requests", "rate limit", "rate-limited", "ratelimit", "http 429", "status code 429"
+            ))
+            errors.append({
+                "Ticker": ticker,
+                "Fehler": _err_text,
+                "Status": "Temporär ausstehend (Rate-Limit)" if _is_rate_limit else "Nicht analysierbar",
+                "Temporär": bool(_is_rate_limit),
+            })
     if rows:
         df = pd.DataFrame(rows)
         # v23.6: Anzeige-Sortierung im Live-Monitor nach Ampel, nicht nach interner

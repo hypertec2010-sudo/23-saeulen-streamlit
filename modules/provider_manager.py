@@ -208,6 +208,30 @@ class MarketDataProvider:
         self.primary = primary or YahooProvider()
         self._lock = threading.Lock()
         self._status: Dict[str, ProviderStatus] = {}
+        # v28.4.5c: one shared throttle/cooldown for all Yahoo requests.
+        # This avoids a large watchlist hammering Yahoo immediately after a 429.
+        self._request_lock = threading.Lock()
+        self._last_request_at = 0.0
+        self._cooldown_until = 0.0
+        self._min_request_gap = 0.45
+
+    def _pace_request(self) -> None:
+        with self._request_lock:
+            now = time.monotonic()
+            wait_for = max(0.0, self._cooldown_until - now, self._min_request_gap - (now - self._last_request_at))
+            if wait_for > 0:
+                time.sleep(min(wait_for, 12.0))
+            self._last_request_at = time.monotonic()
+
+    def _note_rate_limit(self, attempt: int = 0) -> None:
+        # Short exponential cooldown. The scanner retries only the affected ticker;
+        # no full-watchlist restart is necessary.
+        cooldown = (2.0, 5.0, 10.0)[min(max(int(attempt), 0), 2)]
+        with self._request_lock:
+            self._cooldown_until = max(self._cooldown_until, time.monotonic() + cooldown)
+
+    def is_rate_limit_error(self, exc: BaseException) -> bool:
+        return isinstance(exc, MarketDataRateLimitError) or _looks_rate_limited(exc)
 
     @staticmethod
     def normalize_symbol(symbol: str) -> str:
@@ -290,15 +314,15 @@ class MarketDataProvider:
             last_rate_exc = None
             # Controlled retry: enough to survive a short Yahoo throttle without
             # blocking a whole watchlist scan for minutes.
-            for attempt, delay in enumerate((0.0, 2.0, 6.0)):
-                if delay:
-                    time.sleep(delay)
+            for attempt in range(3):
                 try:
+                    self._pace_request()
                     frame = _clean_frame(self.primary.history(resolved, **request_kwargs))
                     if not frame.empty:
                         break
                 except MarketDataRateLimitError as exc:
                     last_rate_exc = exc
+                    self._note_rate_limit(attempt)
                     continue
 
             is_daily = str(request_kwargs.get("interval") or "1d").lower() in {"1d", "1day", "day"}
@@ -307,6 +331,7 @@ class MarketDataProvider:
             # parser/cache and is the preferred recovery path for SKHY/SPCX.
             if is_daily and len(frame) < 10:
                 try:
+                    self._pace_request()
                     raw = _clean_frame(_raw_yahoo_chart_history(resolved, **request_kwargs))
                     if len(raw) > len(frame):
                         frame = raw
@@ -325,6 +350,7 @@ class MarketDataProvider:
                 retry_kwargs.setdefault("progress", False)
                 retry_kwargs.setdefault("threads", False)
                 try:
+                    self._pace_request()
                     alt = _clean_frame(self.primary.download(resolved, **retry_kwargs))
                     if len(alt) > len(frame):
                         frame = alt
@@ -342,6 +368,7 @@ class MarketDataProvider:
                     fallback_kwargs.pop("start", None)
                     fallback_kwargs.pop("end", None)
                     fallback_kwargs["period"] = "max"
+                    self._pace_request()
                     alt = _clean_frame(self.primary.history(resolved, **fallback_kwargs))
                     if len(alt) > len(frame):
                         frame = alt
@@ -361,6 +388,7 @@ class MarketDataProvider:
             )
             return frame
         except MarketDataRateLimitError as exc:
+            self._note_rate_limit(2)
             self._record(clean, "history", False, f"rate_limit: {exc}")
             raise
         except Exception as exc:
@@ -380,18 +408,21 @@ class MarketDataProvider:
             lambda: ticker.get_info() or {},
             lambda: ticker.info or {},
         ):
-            try:
-                part = getter()
-                if isinstance(part, dict):
-                    for key, value in part.items():
-                        if key not in info or info.get(key) in (None, ""):
-                            info[key] = value
-            except Exception as exc:
-                if _looks_rate_limited(exc):
-                    self._record(symbol, "info", False, f"rate_limit: {exc}")
-                    # Preserve partial information. The full retry policy comes
-                    # in v28.4.5c rather than aborting the analysis here.
-                    continue
+            for attempt in range(2):
+                try:
+                    self._pace_request()
+                    part = getter()
+                    if isinstance(part, dict):
+                        for key, value in part.items():
+                            if key not in info or info.get(key) in (None, ""):
+                                info[key] = value
+                    break
+                except Exception as exc:
+                    if _looks_rate_limited(exc):
+                        self._note_rate_limit(attempt)
+                        self._record(symbol, "info", False, f"rate_limit retry {attempt + 1}: {exc}")
+                        continue
+                    break
         self._record(symbol, "info", True, f"fields={len(info)}")
         return ticker, info
 

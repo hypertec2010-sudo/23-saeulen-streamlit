@@ -1,16 +1,16 @@
-# v28.4.5b4 – New-Listing Core Routing Fix
+# Update v28.4.5c - Rate-Limit & Retry
 
-## Ursache
-Die App ruft zuerst einen älteren `analysis_core` auf. Dieser beendet SKHY/SPCX mit
-`Nicht genug Kursdaten für belastbare Analyse`, bevor die neue New-Listing-Logik erreicht wird.
+Geaendert:
+- `modules/provider_manager.py`: zentrale Request-Drosselung, 429-Cooldown und kontrollierte Retries.
+- `modules/live_monitor.py`: Rate-Limits werden als `Temporär ausstehend` statt dauerhaft nicht analysierbar markiert.
+- `modules/live_scan_batches.py`: temporaere Rate-Limit-Ticker gelten im Checkpoint nicht als abgeschlossen und werden beim naechsten Scan erneut versucht.
+- `VERSION.txt`, `CHANGELOG.md`.
 
-## Fix
-`modules/analysis_engine.py` erkennt genau diesen Mindesthistorien-Fehler und leitet den Ticker
-an `legacy_analysis_core.py` weiter. Dort greift die reduzierte New-Listing-/Momentum-Analyse.
+Keine Aenderungen an Supabase, SQL, Secrets, Watchlists, Positionen oder Journal.
 
-## Hochladen
-Alle Dateien dieses ZIPs über die vorhandenen Dateien im Repository kopieren und Streamlit rebooten.
-Keine SQL-/Supabase-/Secrets-Änderung erforderlich.
-
-## Test
-SKHY, SPCX, AAPL, SPX
+Nach Update:
+1. Dateien in GitHub ueberschreiben.
+2. Streamlit komplett rebooten.
+3. Live-Screener starten.
+4. Falls Yahoo einen 429 liefert, muss der Wert als temporaer ausstehend erscheinen und bei einem Folgescan erneut versucht werden.
+5. MRVL, AVGO und QRVO gezielt pruefen.

@@ -1,17 +1,20 @@
-# v28.4.8.1 – Live-Screener Context Hotfix
+# v28.5a – Trading Engine 2.0 / Beobachtungsmodus
 
-## Ursache
-In v28.4.8 wurde `Volatilitäts-Details` berechnet, bevor `atr_pct_live` und `volatility_regime` erzeugt wurden. Dadurch scheiterte jeder Live-Screener-Ticker am selben gemeinsamen Codepfad.
+Neu:
+- Basis-Live-Score bleibt unverändert und steuert weiterhin die bestehende Ampel.
+- Zusätzlicher Context-Adjusted Engine-Score für den Vergleich.
+- Kontext-Anpassung wird transparent aufgeteilt in Relative Stärke, Marktregime und Volatilitätsregime.
+- Desktop zeigt Basis-Score, Kontext-Anpassung und Engine-Score nebeneinander.
+- Mobile zeigt `Basis → Engine` und die vollständige Erklärung im vorhandenen „Mehr anzeigen“-Bereich.
+- Detailansicht zeigt Basis, Kontext und Engine direkt unter dem Trading Context.
 
-## Fix
-- Volatilitäts-Validierung hinter die ATR-/Regime-Berechnung verschoben.
-- Live-Cache-Schema angehoben, damit der fehlerhafte 59/59-Scan nicht erneut geladen wird.
-- Keine Änderung an Score, Ampel oder Trading-Regeln.
+Gewichtung im Beobachtungsmodus:
+- Relative Stärke: -4 bis +4 Punkte.
+- Marktregime: -3 bis +3 Punkte.
+- Volatilitätsregime: 0 bis -2 Punkte; niedrig -1, hoch -2.
+- Maximaler theoretischer Kontextbereich aktuell: -9 bis +7 Punkte.
 
-## Nach Upload
-1. Dateien überschreiben.
-2. Streamlit komplett rebooten.
-3. Live-Screener öffnen.
-4. Einmal `Jetzt prüfen` starten.
-
-Keine Änderung an Supabase-Schema, SQL oder Secrets.
+Wichtig:
+- Ampel/Status werden NICHT vom Engine-Score verändert.
+- Keine Änderung an Supabase, SQL, Secrets, Positionen oder Journal.
+- Nach Upload Streamlit einmal rebooten und einen frischen Live-Scan starten.

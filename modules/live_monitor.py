@@ -843,10 +843,38 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         _score_brakes = "Hartes Einstiegsgate aktiv; " + _score_brakes
     _score_explanation = f"Treiber: {_score_drivers}. Bremsen: {_score_brakes}."
 
+    # v28.5a: Context-Adjusted Score im reinen Beobachtungsmodus.
+    # Die bestehende Ampel und der Live-Score bleiben unveraendert.
+    _ctx_rs_adj = 0
+    if _rs63 is not None:
+        if _rs63 >= 8: _ctx_rs_adj = 4
+        elif _rs63 >= 2: _ctx_rs_adj = 2
+        elif _rs63 <= -8: _ctx_rs_adj = -4
+        elif _rs63 <= -2: _ctx_rs_adj = -2
+    elif _rs_score is not None:
+        if _rs_score >= 70: _ctx_rs_adj = 2
+        elif _rs_score <= 35: _ctx_rs_adj = -2
+
+    _ctx_market_adj = {"Positiv": 3, "Negativ": -3}.get(_market_context, 0)
+    # Volatilitaet wird nur moderat bewertet: extreme ATR-Regime erschweren
+    # planbare Entries; Normal bleibt neutral.
+    _ctx_vol_adj = {"Hoch": -2, "Niedrig": -1, "Normal": 0, "Erhöht": 0}.get(volatility_regime, 0)
+    _context_adjustment = int(_ctx_rs_adj + _ctx_market_adj + _ctx_vol_adj)
+    _engine_score_int = int(round(_v2210_clip(live_score_int + _context_adjustment, 0.0, 100.0)))
+    _context_breakdown = f"RS {_ctx_rs_adj:+d} · Markt {_ctx_market_adj:+d} · Volatilität {_ctx_vol_adj:+d}"
+    _engine_explanation = (
+        f"Basis {live_score_int}/100 · Kontext {_context_adjustment:+d} · Engine {_engine_score_int}/100. "
+        f"{_context_breakdown}. Beobachtungsmodus: Ampel bleibt am Basis-Score."
+    )
+
     return {
         "Ampel": status_icon,
         "Status": status,
         "Live-Score": f"{live_score_int}/100",
+        "Kontext-Anpassung": f"{_context_adjustment:+d}",
+        "Engine-Score": f"{_engine_score_int}/100",
+        "Kontext-Beiträge": _context_breakdown,
+        "Engine-Erklärung": _engine_explanation,
         "Live-Horizont": "Kurzfrist" if live_short_term else "Swing",
         "Ticker": ticker,
         "Name": name,
@@ -971,7 +999,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Kontext-Beiträge", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

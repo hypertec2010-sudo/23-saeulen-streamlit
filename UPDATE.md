@@ -1,16 +1,15 @@
-# v28.5a1 – Engine Calibration & EU Benchmark Fallback Fix
+# v28.5a2 - Context Confidence + Missing-Data Guard
 
-Geändert:
-- Relative-Stärke-Gewichtung feiner kalibriert.
-- +2 bis +8 % 63T-Outperformance gibt nur noch +1 RS-Punkt.
-- +8 bis +15 % gibt +3, ab +15 % +4.
-- Negative RS wird analog stärker abgestuft.
-- Fehlt die konkrete 63T-Benchmark-RS, wird nicht mehr `Score 0/100` als Ersatz verwendet.
-- Stattdessen: `n/a · Benchmarkdaten fehlen` und RS-Beitrag = 0.
-- Cache-Schema angehoben, damit die neue Kalibrierung sofort sichtbar wird.
+Neu:
+- Kontext-Verlässlichkeit mit Sterneanzeige.
+- Fehlende Relative-Stärke-/Benchmarkdaten werden neutral behandelt.
+- Ein positiver Context-Adjustment wird bei unvollständigem Kontext neutralisiert.
+- Negative Risikoanpassungen bleiben auch bei fehlenden Daten möglich.
+- Basis-Score und echte Ampel bleiben unverändert (Beobachtungsmodus).
 
-Wichtig:
-- Ampel und Basis-Score bleiben unverändert (Beobachtungsmodus).
-- Keine SQL-/Supabase-/Secrets-Änderung.
+Erwarteter Test:
+- UNP / DT / MSFT / ACN / LITE: vollständiger Kontext, normale Engine-Anpassung.
+- IPS.PA / SAP.DE bei fehlender Benchmark-RS: kein positiver Kontextbonus; Engine-Score entspricht mindestens in diesen positiven Markt-Fällen dem Basis-Score.
 
-Testwerte nach frischem Scan vergleichen: UNP, DT, MSFT, LITE, ACN, IPS.PA, SAP.DE.
+Nach Upload Streamlit rebooten und einen frischen Live-Scan starten.
+Keine SQL-/Supabase-/Secrets-Aenderung.

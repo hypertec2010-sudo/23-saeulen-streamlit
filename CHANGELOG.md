@@ -16,3 +16,8 @@
 - Context-Engine-RS feiner kalibriert.
 - Ungültiges `Score 0/100`-Fallback bei fehlender Benchmark-RS entfernt.
 - Fehlende Benchmark-RS ist neutral und wird transparent als n/a angezeigt.
+
+## v28.5a2
+- Context Confidence im Engine-Beobachtungsmodus ergänzt.
+- Missing-Data Guard: unvollständiger Kontext darf keinen positiven Bonus erzeugen.
+- Kontext-Verlässlichkeit in Desktop, Mobile und Engine-Erklärung sichtbar.

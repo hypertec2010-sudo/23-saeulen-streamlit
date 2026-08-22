@@ -863,12 +863,37 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     # Volatilitaet wird nur moderat bewertet: extreme ATR-Regime erschweren
     # planbare Entries; Normal bleibt neutral.
     _ctx_vol_adj = {"Hoch": -2, "Niedrig": -1, "Normal": 0, "Erhöht": 0}.get(volatility_regime, 0)
-    _context_adjustment = int(_ctx_rs_adj + _ctx_market_adj + _ctx_vol_adj)
+
+    # v28.5a2: Context Confidence + Missing-Data Guard.
+    # Fehlende Kontextdaten sind neutral und duerfen niemals einen positiven
+    # Engine-Bonus erzeugen. Negative Risikohinweise bleiben dagegen wirksam.
+    _ctx_rs_available = _rs63 is not None
+    _ctx_market_available = _market_context not in {"", "n/a", "N/A", "Unbekannt"}
+    _ctx_vol_available = volatility_regime not in {"", "n/a", "N/A"}
+    _ctx_available_count = sum([_ctx_rs_available, _ctx_market_available, _ctx_vol_available])
+    _ctx_conf_stars = {0: 1, 1: 2, 2: 3, 3: 5}.get(_ctx_available_count, 1)
+    _ctx_conf_label = {0: "Sehr niedrig", 1: "Niedrig", 2: "Reduziert", 3: "Vollständig"}.get(_ctx_available_count, "Niedrig")
+    _ctx_confidence = "★" * _ctx_conf_stars + "☆" * (5 - _ctx_conf_stars) + f" {_ctx_conf_label}"
+    _ctx_missing = []
+    if not _ctx_rs_available: _ctx_missing.append("Relative Stärke/Benchmark")
+    if not _ctx_market_available: _ctx_missing.append("Marktregime")
+    if not _ctx_vol_available: _ctx_missing.append("Volatilitätsregime")
+
+    _context_adjustment_raw = int(_ctx_rs_adj + _ctx_market_adj + _ctx_vol_adj)
+    _missing_guard_active = bool(_ctx_missing and _context_adjustment_raw > 0)
+    _context_adjustment = 0 if _missing_guard_active else _context_adjustment_raw
     _engine_score_int = int(round(_v2210_clip(live_score_int + _context_adjustment, 0.0, 100.0)))
     _context_breakdown = f"RS {_ctx_rs_adj:+d} · Markt {_ctx_market_adj:+d} · Volatilität {_ctx_vol_adj:+d}"
+    if _missing_guard_active:
+        _context_breakdown += " · Missing-Data-Guard: positiver Bonus neutralisiert"
+    _ctx_conf_detail = (
+        "Alle Kern-Kontextdaten verfügbar." if not _ctx_missing
+        else "Fehlt: " + ", ".join(_ctx_missing) + ". Fehlende Daten werden neutral behandelt."
+    )
     _engine_explanation = (
         f"Basis {live_score_int}/100 · Kontext {_context_adjustment:+d} · Engine {_engine_score_int}/100. "
-        f"{_context_breakdown}. Beobachtungsmodus: Ampel bleibt am Basis-Score."
+        f"{_context_breakdown}. Kontext-Verlässlichkeit: {_ctx_confidence}. {_ctx_conf_detail} "
+        f"Beobachtungsmodus: Ampel bleibt am Basis-Score."
     )
 
     return {
@@ -878,6 +903,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Kontext-Anpassung": f"{_context_adjustment:+d}",
         "Engine-Score": f"{_engine_score_int}/100",
         "Kontext-Beiträge": _context_breakdown,
+        "Kontext-Verlässlichkeit": _ctx_confidence,
+        "Kontext-Verlässlichkeit Details": _ctx_conf_detail,
         "Engine-Erklärung": _engine_explanation,
         "Live-Horizont": "Kurzfrist" if live_short_term else "Swing",
         "Ticker": ticker,
@@ -1003,7 +1030,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Kontext-Beiträge", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

@@ -235,15 +235,6 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     }
     _market_context = _market_map.get(_market_raw, _market_raw.title() if _market_raw else "n/a")
 
-    # v28.4.8: Volatilitaets- und Marktregime transparent erklaeren.
-    if atr_pct_live is None:
-        _vol_validation = "ATR(14) nicht belastbar verfuegbar."
-    else:
-        _vol_validation = (
-            f"ATR(14) {atr_pct_live:.2f}% des Kurses · Einstufung {volatility_regime}. "
-            "Schwellen: <2,8% niedrig · 2,8–<5,5% normal · 5,5–<8,0% erhoeht · ≥8,0% hoch."
-        )
-
     _m_price = _v2847_num(_market_info_obj.get("price"))
     _m_ma50 = _v2847_num(_market_info_obj.get("ma50"))
     _m_ma200 = _v2847_num(_market_info_obj.get("ma200"))
@@ -395,6 +386,17 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         volatility_regime = "Erhöht"
     else:
         volatility_regime = "Hoch"
+
+    # v28.4.8.1: Validierung erst NACH Berechnung von ATR und Regime.
+    # In v28.4.8 stand dieser Block versehentlich weiter oben und erzeugte
+    # fuer jeden Ticker einen NameError auf atr_pct_live/volatility_regime.
+    if atr_pct_live is None:
+        _vol_validation = "ATR(14) nicht belastbar verfuegbar."
+    else:
+        _vol_validation = (
+            f"ATR(14) {atr_pct_live:.2f}% des Kurses · Einstufung {volatility_regime}. "
+            "Schwellen: <2,8% niedrig · 2,8–<5,5% normal · 5,5–<8,0% erhoeht · ≥8,0% hoch."
+        )
 
     # v22.13: Performance-Kontext seit Watchlist-Aufnahme.
     # Der Live-Score bleibt ein aktueller Chart-/Trigger-Score, aber stark gelaufene

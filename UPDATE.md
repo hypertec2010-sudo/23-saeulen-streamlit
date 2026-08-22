@@ -1,21 +1,17 @@
-# UPDATE v28.4.8 – Trading Context Validation
+# v28.4.8.1 – Live-Screener Context Hotfix
 
-Geändert:
-- `modules/live_monitor.py`
-- `legacy_app.py`
-- `VERSION.txt`
+## Ursache
+In v28.4.8 wurde `Volatilitäts-Details` berechnet, bevor `atr_pct_live` und `volatility_regime` erzeugt wurden. Dadurch scheiterte jeder Live-Screener-Ticker am selben gemeinsamen Codepfad.
 
-Neu:
-- Relative Stärke zeigt 63T-Aktienperformance, Benchmark-Performance und Outperformance.
-- Volatilitätsregime zeigt ATR(14)% und die verwendeten Schwellen.
-- Marktregime zeigt Benchmark, Kurs, MA50/MA200, 1T/5T-Performance und den Regime-Grund.
-- Mobile und Ticker-Details zeigen die vollständigen Berechnungen aufklappbar.
-- Score und Ampel bleiben unverändert.
+## Fix
+- Volatilitäts-Validierung hinter die ATR-/Regime-Berechnung verschoben.
+- Live-Cache-Schema angehoben, damit der fehlerhafte 59/59-Scan nicht erneut geladen wird.
+- Keine Änderung an Score, Ampel oder Trading-Regeln.
 
-Nach dem Upload:
+## Nach Upload
 1. Dateien überschreiben.
-2. Streamlit einmal rebooten.
-3. Live-Screener frisch scannen.
-4. Einen US-Wert, einen EU-Wert und ein New Listing prüfen.
+2. Streamlit komplett rebooten.
+3. Live-Screener öffnen.
+4. Einmal `Jetzt prüfen` starten.
 
-Keine Änderungen an Supabase, SQL oder Secrets.
+Keine Änderung an Supabase-Schema, SQL oder Secrets.

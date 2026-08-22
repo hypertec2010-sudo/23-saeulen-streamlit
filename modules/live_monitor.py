@@ -179,6 +179,43 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         return text, detail, stars
 
     data_quality_text, data_quality_detail, data_quality_stars = _v2845d_data_quality(r)
+
+    # v28.4.7: Trading Context. Rein informativ; diese Werte veraendern den
+    # bestehenden Live-Score und die Ampel bewusst nicht.
+    def _v2847_num(value):
+        try:
+            f = float(str(value).replace(",", ".").replace("%", "").strip())
+            return f if np.isfinite(f) and not pd.isna(f) else None
+        except Exception:
+            return None
+
+    _rs63 = _v2847_num(r.get("rs_vs_benchmark_63"))
+    _rs_score = _v2847_num(r.get("rs_benchmark_score"))
+    _benchmark_label = str(r.get("benchmark_label") or r.get("benchmark_symbol") or "Benchmark").strip()
+    if _rs63 is not None:
+        if _rs63 >= 8:
+            _rs_context = f"Stark ↑ ({_rs63:+.1f}% / 63T)"
+        elif _rs63 >= 2:
+            _rs_context = f"Positiv ↑ ({_rs63:+.1f}% / 63T)"
+        elif _rs63 > -2:
+            _rs_context = f"Neutral ({_rs63:+.1f}% / 63T)"
+        elif _rs63 > -8:
+            _rs_context = f"Schwach ↓ ({_rs63:+.1f}% / 63T)"
+        else:
+            _rs_context = f"Sehr schwach ↓ ({_rs63:+.1f}% / 63T)"
+    elif _rs_score is not None:
+        _rs_context = f"Score {_rs_score:.0f}/100"
+    else:
+        _rs_context = "n/a"
+    _rs_context_detail = f"vs. {_benchmark_label}" if _benchmark_label else ""
+
+    _market_raw = str(((r.get("market_info") or {}) if isinstance(r.get("market_info"), dict) else {}).get("regime") or r.get("market_regime_label") or r.get("regime_label") or "").strip().upper()
+    _market_map = {
+        "POSITIV": "Positiv", "POSITIVE": "Positiv", "BULL": "Positiv", "BULLISH": "Positiv",
+        "NEGATIV": "Negativ", "NEGATIVE": "Negativ", "BEAR": "Negativ", "BEARISH": "Negativ",
+        "NEUTRAL": "Neutral", "SEITWAERTS": "Seitwärts", "SEITWÄRTS": "Seitwärts", "SIDEWAYS": "Seitwärts",
+    }
+    _market_context = _market_map.get(_market_raw, _market_raw.title() if _market_raw else "n/a")
     wave_dist = _v210_alert_num(d.get("wave_trigger_distance_pct"), default=None)
     entry_distance = _v210_alert_num(d.get("entry_distance_pct"), default=None)
     next_step = str(d.get("next_step") or "-").strip()
@@ -304,6 +341,16 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         volatility_text = f"{atr_pct_live:.1f}% · erhöht"
     else:
         volatility_text = f"{atr_pct_live:.1f}% · hoch"
+    if atr_pct_live is None:
+        volatility_regime = "n/a"
+    elif atr_pct_live < 2.8:
+        volatility_regime = "Niedrig"
+    elif atr_pct_live < 5.5:
+        volatility_regime = "Normal"
+    elif atr_pct_live < 8.0:
+        volatility_regime = "Erhöht"
+    else:
+        volatility_regime = "Hoch"
 
     # v22.13: Performance-Kontext seit Watchlist-Aufnahme.
     # Der Live-Score bleibt ein aktueller Chart-/Trigger-Score, aber stark gelaufene
@@ -761,6 +808,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Volatilität": volatility_text,
         "Datenqualität": data_quality_text,
         "Datenbasis": data_quality_detail,
+        "Relative Stärke": _rs_context,
+        "RS-Benchmark": _rs_context_detail,
+        "Volatilitätsregime": volatility_regime,
+        "Marktregime": _market_context,
         "Score-Treiber": _score_drivers,
         "Score-Bremsen": _score_brakes,
         "Warum dieser Score?": _score_explanation,
@@ -871,7 +922,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Benchmark", "Volatilitätsregime", "Marktregime", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

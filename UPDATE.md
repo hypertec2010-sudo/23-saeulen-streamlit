@@ -1,10 +1,15 @@
-# v28.4.6 – Explainable Trading
+# Update v28.4.7 – Trading Context + Mobile Explainability UX
 
 Geändert:
-- Live-Screener zeigt Score-Treiber und Score-Bremsen.
-- Mobile Karten erklären den aktuellen Score kompakt.
-- Ticker-Details beginnen mit Unternehmensname + Ticker, danach Kurs, Ampel/Score und Datenqualität.
-- Cache-Schema wurde angehoben, damit alte Snapshots ohne Erklärfelder einmalig verworfen werden.
+- `modules/live_monitor.py`: Relative Stärke, Volatilitätsregime und Marktregime als rein informativer Kontext.
+- `legacy_app.py`: Kontextspalten Desktop/Mobile, vollständige Mobile-Erklärungen über „Mehr anzeigen“, Cache-Schema v28.4.7.
+- `VERSION.txt`
 
-Keine Änderungen an Supabase-Schema, SQL oder Secrets.
-Nach dem Upload Streamlit einmal rebooten und einen frischen Live-Scan starten.
+Wichtig:
+1. Alle Dateien über die vorhandenen Dateien in GitHub kopieren.
+2. Streamlit einmal komplett rebooten.
+3. Live-Screener einmal frisch scannen lassen.
+4. Desktop: neue Spalten Relative Stärke, Volatilitätsregime, Marktregime prüfen.
+5. Mobile: „Mehr anzeigen“ öffnen und prüfen, dass Erklärungen vollständig lesbar sind.
+
+Keine Änderungen an Supabase, SQL oder Secrets. Die neuen Kontextwerte verändern Score/Ampel noch nicht.

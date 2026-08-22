@@ -1,3 +1,10 @@
+## v28.4.7
+- Trading Context: Relative Stärke zum vorhandenen Benchmark, ATR-/Volatilitätsregime und Marktregime im Live-Screener.
+- Kontextwerte sind zunächst rein informativ und beeinflussen Score/Ampel nicht.
+- Mobile Explainability UX: kompakte Kurzfassung plus vollständige Erklärung über „Mehr anzeigen“.
+- Ticker-Detailansicht zeigt den Trading Context direkt unter Name/Ticker/Kurs.
+- Cache-Schema angehoben, damit ein frischer Scan die neuen Felder aufbaut.
+
 ## v28.4.5d1
 - Cache-Schema fuer Live-Screener versioniert.
 - Alte Snapshots ohne Datenqualitaet werden verworfen.

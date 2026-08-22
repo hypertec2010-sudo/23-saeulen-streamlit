@@ -15967,7 +15967,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.4.6-explainable",
+                "schema": "live-v28.4.7-trading-context",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16337,7 +16337,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Live-Score", "Score-Treiber", "Score-Bremsen",
+                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Relative Stärke", "Volatilitätsregime", "Marktregime", "Live-Score", "Score-Treiber", "Score-Bremsen",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -16400,12 +16400,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _price_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kurs")))
                                     _vol_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilität")))
                                     _dq_v2845d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Datenqualität")))
+                                    _rs_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Relative Stärke")))
+                                    _volreg_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilitätsregime")))
+                                    _market_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Marktregime")))
+                                    _why_score_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum dieser Score?"))
                                     _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
                                     _status_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Status"), 52))
                                     _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV")))
                                     _distance_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Entry-Abstand")))
                                     _change_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Änderung")))
-                                    _why_changed_v2843 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Warum geändert?"), 220))
+                                    _why_changed_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum geändert?"))
+                                    _why_changed_v2843 = html.escape(_v243_clip_cell(_why_changed_full_v2847, 135))
                                     _why_block_v2843 = "" if _why_changed_v2843 in {"", "-"} else f'<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Warum geändert?</span>{_why_changed_v2843}</div>'
                                     st.markdown(
                                         f"""
@@ -16421,18 +16426,32 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             <div><span class="v2842-mobile-label">Kurs</span>{_price_v2842}</div>
                                             <div><span class="v2842-mobile-label">Volatilität</span>{_vol_v2842}</div>
                                             <div><span class="v2842-mobile-label">Datenqualität</span>{_dq_v2845d}</div>
+                                            <div><span class="v2842-mobile-label">Relative Stärke</span>{_rs_v2847}</div>
+                                            <div><span class="v2842-mobile-label">Volatilitätsregime</span>{_volreg_v2847}</div>
+                                            <div><span class="v2842-mobile-label">Marktregime</span>{_market_v2847}</div>
                                             <div><span class="v2842-mobile-label">Trade-State</span>{_state_v2842}</div>
                                             <div><span class="v2842-mobile-label">CRV</span>{_crv_v2842}</div>
                                             <div><span class="v2842-mobile-label">Entry-Abstand</span>{_distance_v2842}</div>
                                             <div><span class="v2842-mobile-label">Änderung</span>{_change_v2842}</div>
                                           </div>
                                           <div class="v2842-mobile-status">{_status_v2842}</div>
-                                          <div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Warum dieser Score?</span>{html.escape(_v243_clip_cell(_mobile_row_v2842.get("Warum dieser Score?"), 220))}</div>
+                                          <div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Warum dieser Score?</span>{html.escape(_v243_clip_cell(_why_score_full_v2847, 135))}</div>
                                           {_why_block_v2843}
                                         </div>
                                         """,
                                         unsafe_allow_html=True,
                                     )
+                                    _ticker_key_v2847 = re.sub(r"[^A-Za-z0-9_-]+", "_", _v243_clean_cell(_mobile_row_v2842.get("Ticker")))
+                                    if _why_score_full_v2847 not in {"", "-"}:
+                                        with st.expander(f"Mehr anzeigen · Warum {_v243_clean_cell(_mobile_row_v2842.get('Ticker'))}?", expanded=False):
+                                            st.write(_why_score_full_v2847)
+                                            if _why_changed_full_v2847 not in {"", "-"}:
+                                                st.markdown("**Warum geändert?**")
+                                                st.write(_why_changed_full_v2847)
+                                            _driver_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Treiber"))
+                                            _brake_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
+                                            if _driver_full_v2847 not in {"", "-"}: st.markdown(f"**Treiber:** {_driver_full_v2847}")
+                                            if _brake_full_v2847 not in {"", "-"}: st.markdown(f"**Bremsen:** {_brake_full_v2847}")
 
                                 _mobile_detail_tickers_v2842 = [
                                     str(value).strip()
@@ -16459,6 +16478,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             _detail_dq_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Datenqualität"))
                                             st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
                                             st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
+                                            st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
                                             _why_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Warum dieser Score?"))
                                             if _why_score_v2846 not in {"", "-"}:
                                                 st.info(_why_score_v2846)

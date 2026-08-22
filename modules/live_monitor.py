@@ -118,6 +118,7 @@ def update_shadow_mode_history_v286(df, watchlist_name="", style_name=""):
                     "Abweichung": delta,
                     "Basis-Score": str(row.get("Live-Score") or ""),
                     "Guarded Engine": guarded,
+                    "Kurs": row.get("Kurs"),
                     "Engine-Empfehlung": str(row.get("Engine-Empfehlung") or ""),
                     "Kontext": str(row.get("Kontext-Beiträge") or ""),
                 })
@@ -126,6 +127,126 @@ def update_shadow_mode_history_v286(df, watchlist_name="", style_name=""):
     if changed:
         _v286_save_shadow_history(state, events)
     return pd.DataFrame(events[-200:])
+
+
+
+def build_shadow_validation_v286a(history_df, live_df=None):
+    """Verdichtet Shadow-Historie zu Dashboard-KPIs und Episoden.
+
+    Eine Episode beginnt mit einer echten Live/Shadow-Abweichung und endet beim
+    naechsten Zustandsereignis desselben Tickers. Fuer offene Episoden wird der
+    aktuelle Live-Kurs verwendet. Die Funktion beeinflusst keinerlei Ampel.
+    """
+    hist = history_df.copy() if isinstance(history_df, pd.DataFrame) else pd.DataFrame()
+    live = live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame()
+    now = pd.Timestamp.now(tz="Europe/Berlin")
+
+    empty_summary = {
+        "events": 0, "episodes": 0, "open": 0, "up": 0, "down": 0,
+        "same": 0, "resolved": 0, "median_hours": None,
+        "avg_return": None, "up_avg_return": None, "down_avg_return": None,
+    }
+    if hist.empty:
+        return empty_summary, pd.DataFrame(), pd.DataFrame()
+
+    for col in ["Zeit", "Ticker", "Live-Ampel", "Shadow-Ampel", "Abweichung", "Kurs"]:
+        if col not in hist.columns:
+            hist[col] = ""
+    hist["__time"] = pd.to_datetime(hist["Zeit"], errors="coerce", utc=True)
+    hist = hist.dropna(subset=["__time"]).sort_values(["Ticker", "__time"]).reset_index(drop=True)
+    if hist.empty:
+        return empty_summary, pd.DataFrame(), pd.DataFrame()
+
+    current_price = {}
+    if not live.empty and "Ticker" in live.columns:
+        for _, row in live.iterrows():
+            ticker = str(row.get("Ticker") or "").strip().upper()
+            try:
+                px = float(str(row.get("Kurs")).replace(",", "."))
+                if np.isfinite(px) and px > 0:
+                    current_price[ticker] = px
+            except Exception:
+                pass
+
+    episodes = []
+    for ticker, grp in hist.groupby(hist["Ticker"].astype(str).str.upper(), sort=False):
+        rows = grp.sort_values("__time").to_dict("records")
+        for i, ev in enumerate(rows):
+            delta = str(ev.get("Abweichung") or "")
+            if delta not in {"Aufwertung", "Abwertung"}:
+                continue
+            start_t = ev.get("__time")
+            next_ev = rows[i + 1] if i + 1 < len(rows) else None
+            end_t = next_ev.get("__time") if next_ev else None
+            open_episode = next_ev is None
+            if open_episode:
+                end_calc = now.tz_convert("UTC")
+            else:
+                end_calc = end_t
+            try:
+                hours = max(0.0, (end_calc - start_t).total_seconds() / 3600.0)
+            except Exception:
+                hours = None
+
+            def _num(v):
+                try:
+                    x = float(str(v).replace(",", ".").replace("%", "").strip())
+                    return x if np.isfinite(x) else None
+                except Exception:
+                    return None
+            start_px = _num(ev.get("Kurs"))
+            if open_episode:
+                end_px = current_price.get(str(ticker).upper())
+            else:
+                end_px = _num((next_ev or {}).get("Kurs"))
+            ret = None
+            if start_px and end_px and start_px > 0:
+                ret = (end_px / start_px - 1.0) * 100.0
+            episodes.append({
+                "Ticker": str(ticker).upper(),
+                "Richtung": delta,
+                "Start": start_t.tz_convert("Europe/Berlin").strftime("%d.%m.%Y %H:%M") if start_t is not None else "-",
+                "Ende": "offen" if open_episode else (end_t.tz_convert("Europe/Berlin").strftime("%d.%m.%Y %H:%M") if end_t is not None else "-"),
+                "Dauer h": None if hours is None else round(hours, 1),
+                "Live → Shadow": f"{ev.get('Live-Ampel','')} → {ev.get('Shadow-Ampel','')}",
+                "Basis": ev.get("Basis-Score", ""),
+                "Guarded": ev.get("Guarded Engine", ""),
+                "Startkurs": None if start_px is None else round(start_px, 4),
+                "Aktuell/Ende": None if end_px is None else round(end_px, 4),
+                "Kurs seit Event %": None if ret is None else round(ret, 2),
+                "Status": "Offen" if open_episode else "Abgeschlossen",
+            })
+
+    ep = pd.DataFrame(episodes)
+    if ep.empty:
+        summary = dict(empty_summary)
+        summary["events"] = int(len(hist))
+        return summary, ep, pd.DataFrame()
+
+    returns = pd.to_numeric(ep["Kurs seit Event %"], errors="coerce")
+    durations = pd.to_numeric(ep["Dauer h"], errors="coerce")
+    up_mask = ep["Richtung"].astype(str).eq("Aufwertung")
+    down_mask = ep["Richtung"].astype(str).eq("Abwertung")
+    summary = {
+        "events": int(len(hist)),
+        "episodes": int(len(ep)),
+        "open": int(ep["Status"].eq("Offen").sum()),
+        "up": int(up_mask.sum()),
+        "down": int(down_mask.sum()),
+        "same": int((hist["Abweichung"].astype(str) == "Gleich").sum()),
+        "resolved": int(ep["Status"].eq("Abgeschlossen").sum()),
+        "median_hours": None if durations.dropna().empty else round(float(durations.median()), 1),
+        "avg_return": None if returns.dropna().empty else round(float(returns.mean()), 2),
+        "up_avg_return": None if returns[up_mask].dropna().empty else round(float(returns[up_mask].mean()), 2),
+        "down_avg_return": None if returns[down_mask].dropna().empty else round(float(returns[down_mask].mean()), 2),
+    }
+
+    current_cols = [c for c in ["Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Live-Score", "Guarded Engine-Score", "Engine-Empfehlung"] if c in live.columns]
+    if current_cols and "Shadow-Abweichung" in live.columns:
+        current = live[live["Shadow-Abweichung"].astype(str) != "Gleich"][current_cols].copy()
+    else:
+        current = pd.DataFrame()
+    return summary, ep.sort_values(["Status", "Dauer h"], ascending=[True, False]), current
 
 def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None, live_horizon="Swing / 1-4 Wochen"):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.

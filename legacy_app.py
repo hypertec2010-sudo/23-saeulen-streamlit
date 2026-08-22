@@ -14398,6 +14398,7 @@ _v227_live_history_file_path = _live_module._v227_live_history_file_path
 _v227_load_persistent_live_history = _live_module._v227_load_persistent_live_history
 _v227_save_persistent_live_history = _live_module._v227_save_persistent_live_history
 update_shadow_mode_history_v286 = _live_module.update_shadow_mode_history_v286
+build_shadow_validation_v286a = _live_module.build_shadow_validation_v286a
 reset_live_watchlist_status_history_v227 = _live_module.reset_live_watchlist_status_history_v227
 apply_live_watchlist_status_history_v220 = _live_module.apply_live_watchlist_status_history_v220
 
@@ -15968,7 +15969,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.6-shadow-mode",
+                "schema": "live-v28.6a-shadow-validation",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16562,8 +16563,33 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption("Shadow Mode: aktuell keine Abweichung zwischen Live- und Engine-Ampel.")
                                 else:
                                     st.caption(f"Shadow Mode: {len(_shadow_diff_v286)} aktuelle Abweichung(en) · produktive Live-Ampel bleibt unverändert.")
+                            # v28.6a: Shadow Validation Dashboard. Rein analytisch,
+                            # keinerlei Einfluss auf Live-Ampel oder Engine-Guardrails.
                             if isinstance(shadow_events_df_v286, pd.DataFrame) and not shadow_events_df_v286.empty:
-                                with st.expander("Shadow-Mode Historie", expanded=False):
+                                _shadow_summary_v286a, _shadow_episodes_v286a, _shadow_current_v286a = build_shadow_validation_v286a(
+                                    shadow_events_df_v286, live_df
+                                )
+                                with st.expander("Shadow Validation Dashboard", expanded=False):
+                                    st.caption("Vergleicht produktive Live-Ampel und virtuelle Engine-Ampel. Kursauswertung basiert auf dem Kurs beim Shadow-Ereignis und dem aktuellen bzw. nächsten gespeicherten Zustandsereignis.")
+                                    _sc1, _sc2, _sc3, _sc4 = st.columns(4)
+                                    _sc1.metric("Shadow-Episoden", int(_shadow_summary_v286a.get("episodes", 0) or 0))
+                                    _sc2.metric("Aktuell offen", int(_shadow_summary_v286a.get("open", 0) or 0))
+                                    _sc3.metric("Aufwertungen", int(_shadow_summary_v286a.get("up", 0) or 0))
+                                    _sc4.metric("Abwertungen", int(_shadow_summary_v286a.get("down", 0) or 0))
+                                    _sr1, _sr2, _sr3 = st.columns(3)
+                                    _avg_ret_v286a = _shadow_summary_v286a.get("avg_return")
+                                    _up_ret_v286a = _shadow_summary_v286a.get("up_avg_return")
+                                    _down_ret_v286a = _shadow_summary_v286a.get("down_avg_return")
+                                    _sr1.metric("Ø Kurs seit Event", "n/a" if _avg_ret_v286a is None else f"{_avg_ret_v286a:+.2f}%")
+                                    _sr2.metric("Ø nach Aufwertung", "n/a" if _up_ret_v286a is None else f"{_up_ret_v286a:+.2f}%")
+                                    _sr3.metric("Ø nach Abwertung", "n/a" if _down_ret_v286a is None else f"{_down_ret_v286a:+.2f}%")
+                                    if isinstance(_shadow_current_v286a, pd.DataFrame) and not _shadow_current_v286a.empty:
+                                        st.markdown("**Aktuelle Live-vs-Shadow-Abweichungen**")
+                                        st.dataframe(_shadow_current_v286a, hide_index=True, use_container_width=True, height=min(420, 38 * len(_shadow_current_v286a) + 55))
+                                    if isinstance(_shadow_episodes_v286a, pd.DataFrame) and not _shadow_episodes_v286a.empty:
+                                        st.markdown("**Shadow-Episoden / Verlauf**")
+                                        st.dataframe(_shadow_episodes_v286a.tail(150).iloc[::-1].reset_index(drop=True), hide_index=True, use_container_width=True, height=min(520, 38 * len(_shadow_episodes_v286a) + 55))
+                                with st.expander("Shadow-Mode Rohhistorie", expanded=False):
                                     st.caption("Nur echte Zustandsänderungen werden gespeichert; identische Auto-Refreshes erzeugen keine Duplikate.")
                                     _shadow_hist_show_v286 = shadow_events_df_v286.tail(100).iloc[::-1].reset_index(drop=True)
                                     st.dataframe(_shadow_hist_show_v286, hide_index=True, use_container_width=True, height=min(520, 38 * len(_shadow_hist_show_v286) + 55))

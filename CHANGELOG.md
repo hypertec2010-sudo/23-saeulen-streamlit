@@ -47,3 +47,9 @@
 - Kontext kann fehlende Trigger/hart blockierte Setups nicht hochstufen.
 - Chart-/CRV-Bremsen begrenzen positive Kontextboni.
 - Guarded Engine-Score und Engine-Empfehlung in Desktop/Mobile/Detailansicht.
+
+## v28.6a
+- Shadow Validation Dashboard hinzugefuegt.
+- Shadow-Episoden mit Dauer, Richtung und Kursentwicklung auswertbar.
+- Neue Shadow-Events enthalten den Ereigniskurs.
+- Produktive Trading-Logik bleibt unveraendert.

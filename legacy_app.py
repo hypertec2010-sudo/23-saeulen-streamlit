@@ -15967,7 +15967,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.5c-rs-level-dynamics",
+                "schema": "live-v28.5d-engine-guardrails",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16337,7 +16337,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Volatilitätsregime", "Marktregime", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen",
+                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Volatilitätsregime", "Marktregime", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -16399,6 +16399,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _score_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Live-Score")))
                                     _ctx_adj_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Anpassung")))
                                     _engine_score_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Score")))
+                                    _guarded_engine_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Guarded Engine-Score")))
+                                    _engine_rec_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Empfehlung")))
                                     _ctx_conf_v285a2 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Verlässlichkeit")))
                                     _price_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kurs")))
                                     _vol_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilität")))
@@ -16435,6 +16437,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             <div><span class="v2842-mobile-label">Volatilitätsregime</span>{_volreg_v2847}</div>
                                             <div><span class="v2842-mobile-label">Marktregime</span>{_market_v2847}</div>
                                             <div><span class="v2842-mobile-label">Engine (Test)</span>{_score_v2842} → {_engine_score_v285a} ({_ctx_adj_v285a})</div>
+                                            <div><span class="v2842-mobile-label">Guarded Engine</span>{_guarded_engine_v285d} · {_engine_rec_v285d}</div>
                                             <div><span class="v2842-mobile-label">Kontext-Confidence</span>{_ctx_conf_v285a2}</div>
                                             <div><span class="v2842-mobile-label">Trade-State</span>{_state_v2842}</div>
                                             <div><span class="v2842-mobile-label">CRV</span>{_crv_v2842}</div>
@@ -16499,7 +16502,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
                                             st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
                                             st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · RS-Dynamik: {_v243_clean_cell(_mobile_detail_row_v2842.get('RS-Dynamik'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
-                                            st.caption(f"Engine 2.0 (Test): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
+                                            st.caption(f"Engine 2.0 (Test): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
                                             with st.expander("Trading Context · Berechnung anzeigen", expanded=False):
                                                 st.markdown("**Relative Stärke**")
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Details")))

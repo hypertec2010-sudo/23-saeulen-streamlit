@@ -1,15 +1,18 @@
-# v28.5c – RS Level + Dynamics Calibration
+# v28.5d – Engine Guardrails
 
 Neu:
-- 63T-RS-Level und 21T/63T-RS-Dynamik werden im Engine-Testscore gemeinsam bewertet.
-- Dynamik modifiziert den RS-Beitrag; sie wird nicht blind als separater Bonus addiert.
-- Starke Leader mit nachlassender Dynamik behalten einen positiven RS-Beitrag, aber reduziert.
-- Schwache Werte mit deutlichem Turnaround koennen ihren RS-Malus neutralisieren/reduzieren, erhalten aber nicht automatisch einen starken Bonus.
-- Kontext-Verlaesslichkeit wird sichtbar mit `Kontext` praefigiert, um sie von der Datenqualitaet zu unterscheiden.
-- Basis-Score und echte Ampel bleiben unveraendert (Beobachtungsmodus).
+- Guarded Engine-Score parallel zum bisherigen Roh-Engine-Score.
+- Positive Kontextboni koennen fehlende technische Trigger nicht ersetzen.
+- Hartes Einstiegsgate/Invalidierung blockiert eine positive Aufwertung.
+- Schwache Chart-/CRV-Komponenten begrenzen positive Kontext-Aufwertungen.
+- Neue Engine-Empfehlung: Aufwertung möglich, Aufwertung begrenzt, Keine Aufwertung · Guardrail, Abwertung, Abwertung / blockiert oder Bestätigt / keine Änderung.
+- Die echte Ampel und der Basis-Live-Score bleiben weiterhin unverändert.
 
-Nach Upload:
-1. Dateien in GitHub ueberschreiben.
+Test:
+1. Dateien in GitHub überschreiben.
 2. Streamlit rebooten.
-3. Frischen Live-Scan starten.
-4. UNP, QRVO, DT, MSFT, LITE und SAP.DE erneut vergleichen.
+3. Live-Screener frisch starten.
+4. UNP, QRVO, DT, MSFT, LITE und SAP.DE prüfen.
+5. Besonders auf Guarded Engine-Score und Engine-Empfehlung achten.
+
+Keine Änderungen an Supabase, SQL oder Secrets.

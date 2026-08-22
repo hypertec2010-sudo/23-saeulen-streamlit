@@ -940,9 +940,46 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Alle Kern-Kontextdaten verfügbar." if not _ctx_missing
         else "Fehlt: " + ", ".join(_ctx_missing) + ". Fehlende Daten werden neutral behandelt."
     )
+    # v28.5d: Engine Guardrails. Kontext darf ein vorhandenes technisches Setup
+    # verstaerken, aber weder fehlende Trigger noch harte technische Bremsen
+    # ueberstimmen. Die echte Ampel bleibt weiterhin unveraendert.
+    _guard_hard = bool(entry_hard_gate or "Invalidierung gebrochen" in alert_types)
+    _guard_trigger_ok = bool(trigger_component >= 70.0 or wave_active or entry_reached or bucket_active)
+    _guard_chart_brake = bool(chart_component < 55.0)
+    _guard_crv_brake = bool(crv_component < 55.0)
+    _guard_technical_brake = bool(_guard_chart_brake or _guard_crv_brake)
+    _guard_reasons = []
+    if _guard_hard: _guard_reasons.append("hartes Einstiegsgate/Invalidierung")
+    if not _guard_trigger_ok: _guard_reasons.append("kein bestätigter technischer Trigger")
+    if _guard_chart_brake: _guard_reasons.append(f"Chart {int(round(chart_component))}/100")
+    if _guard_crv_brake: _guard_reasons.append(f"CRV {int(round(crv_component))}/100")
+
+    _guarded_adjustment = int(_context_adjustment)
+    if _guarded_adjustment > 0 and (_guard_hard or not _guard_trigger_ok):
+        _guarded_adjustment = 0
+    elif _guarded_adjustment > 0 and _guard_technical_brake:
+        # Positiver Kontext darf eine technische Bremse nicht voll ueberstimmen.
+        _guarded_adjustment = min(_guarded_adjustment, 1)
+    _guarded_engine_score = int(round(_v2210_clip(live_score_int + _guarded_adjustment, 0.0, 100.0)))
+
+    if _guard_hard:
+        _engine_recommendation = "Abwertung / blockiert"
+    elif _context_adjustment < 0:
+        _engine_recommendation = "Abwertung"
+    elif _context_adjustment > 0 and _guarded_adjustment == 0:
+        _engine_recommendation = "Keine Aufwertung · Guardrail"
+    elif _context_adjustment > 0 and _guarded_adjustment < _context_adjustment:
+        _engine_recommendation = "Aufwertung begrenzt"
+    elif _context_adjustment > 0:
+        _engine_recommendation = "Aufwertung möglich"
+    else:
+        _engine_recommendation = "Bestätigt / keine Änderung"
+
+    _guardrail_text = "Keine Guardrail-Bremse aktiv." if not _guard_reasons else "Guardrail: " + "; ".join(_guard_reasons) + "."
     _engine_explanation = (
-        f"Basis {live_score_int}/100 · Kontext {_context_adjustment:+d} · Engine {_engine_score_int}/100. "
-        f"{_context_breakdown}. Kontext-Verlässlichkeit: {_ctx_confidence}. {_ctx_conf_detail} "
+        f"Basis {live_score_int}/100 · Kontext {_context_adjustment:+d} · Roh-Engine {_engine_score_int}/100 · "
+        f"Guarded Engine {_guarded_engine_score}/100. {_context_breakdown}. {_guardrail_text} "
+        f"Empfehlung: {_engine_recommendation}. Kontext-Verlässlichkeit: {_ctx_confidence}. {_ctx_conf_detail} "
         f"Beobachtungsmodus: Ampel bleibt am Basis-Score."
     )
 
@@ -952,6 +989,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Live-Score": f"{live_score_int}/100",
         "Kontext-Anpassung": f"{_context_adjustment:+d}",
         "Engine-Score": f"{_engine_score_int}/100",
+        "Guarded Engine-Score": f"{_guarded_engine_score}/100",
+        "Engine-Empfehlung": _engine_recommendation,
+        "Engine-Guardrail": _guardrail_text,
         "Kontext-Beiträge": _context_breakdown,
         "Kontext-Verlässlichkeit": _ctx_confidence,
         "Kontext-Verlässlichkeit Details": _ctx_conf_detail,
@@ -1082,7 +1122,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

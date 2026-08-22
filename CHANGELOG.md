@@ -34,3 +34,9 @@
 - RS-Dynamik modifiziert den Level-Beitrag statt eines pauschalen Add-ons.
 - Context Confidence eindeutig als `Kontext ★...` gekennzeichnet.
 - Ampel bleibt weiterhin am Basis-Score.
+
+## v28.5d
+- Engine Guardrails im Beobachtungsmodus ergänzt.
+- Kontext kann fehlende Trigger/hart blockierte Setups nicht hochstufen.
+- Chart-/CRV-Bremsen begrenzen positive Kontextboni.
+- Guarded Engine-Score und Engine-Empfehlung in Desktop/Mobile/Detailansicht.

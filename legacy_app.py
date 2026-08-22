@@ -15962,6 +15962,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 "tickers": tuple(scan_tickers_v2844),
                 "style": str(monitor_style or ""),
                 "horizon": str(live_monitor_horizon or ""),
+                # v28.4.5d1: Cache-/Snapshot-Schema versionieren.
+                # Alte v28.4.5c-Snapshots enthalten die neue Datenqualitaets-
+                # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
+                # werden. Eine neue Schema-ID erzwingt genau einmal einen
+                # frischen Scan; danach greift der normale Cache wieder.
+                "schema": "live-v28.4.5d1-data-quality",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 

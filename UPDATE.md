@@ -1,28 +1,20 @@
-# v28.4.5d - Datenqualitaet
+# v28.4.5d1 – Datenqualitaet Cache-Fix
 
 Geaendert:
-- modules/live_monitor.py
-- legacy_app.py
-- VERSION.txt
-- UPDATE.md
-- CHANGELOG.md
+- Live-Screener-Cache und Supabase-Snapshot erhalten eine neue Schema-Version.
+- Alte v28.4.5c-Scans ohne Datenqualitaets-Spalte werden nicht mehr wiederverwendet.
+- Nach dem Update wird einmalig ein frischer Live-Scan aufgebaut.
+- Danach zeigen Desktop-Tabelle und Mobile-Karten dieselben Datenqualitaetswerte.
 
-Neu:
-- Datenqualitaet getrennt vom Trading-Score
-- 1-5 Sterne anhand Historienlaenge und technischer Datenbasis
-- New Listings werden sichtbar als reduzierte Datenbasis gekennzeichnet
-- Datenqualitaet auch in der Mobile-Kartenansicht
-- Detailfeld `Datenbasis` bleibt in Historie/Details verfuegbar
-
-Keine Aenderungen:
-- Supabase / SQL
+Keine Aenderungen an:
+- Supabase-Schema
 - Secrets
 - Watchlists
-- Positionen / Trade-Journal
+- Positionen
+- Trade-Journal
 
-Test nach Upload:
-1. Streamlit rebooten.
-2. Live-Screener starten.
-3. AAPL und einen lang gelisteten Titel sollten typischerweise hohe Datenqualitaet zeigen.
-4. SKHY/SPCX muessen analysierbar bleiben und eine reduzierte/New-Listing-Datenqualitaet zeigen.
-5. Trading-Score/Ampel darf durch die neue Qualitaetsanzeige nicht veraendert werden.
+Nach Update:
+1. Dateien in GitHub ueberschreiben.
+2. Streamlit einmal rebooten.
+3. Live-Screener oeffnen und einen vollstaendigen Scan abwarten bzw. 'Jetzt pruefen' klicken.
+4. Desktop und Mobile vergleichen.

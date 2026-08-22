@@ -1,3 +1,8 @@
+## v28.4.5d1
+- Cache-Schema fuer Live-Screener versioniert.
+- Alte Snapshots ohne Datenqualitaet werden verworfen.
+- Desktop-/Mobile-Datenqualitaetsanzeige synchronisiert.
+
 # Changelog
 
 ## v28.4.5c

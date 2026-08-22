@@ -20,6 +20,113 @@ def configure_context(**kwargs):
     _CONTEXT.update(kwargs)
     globals().update(kwargs)
 
+
+# ---------- v28.6: Shadow Mode ----------
+def _v286_shadow_ampel_from_score(score):
+    """Virtuelle Engine-Ampel aus dem Guarded Engine-Score.
+
+    Die Schwellen spiegeln die beobachteten Live-Score-Baender wider. Die
+    produktive Live-Ampel bleibt davon vollstaendig unberuehrt.
+    """
+    try:
+        value = float(str(score).replace('/100', '').strip())
+    except Exception:
+        return "⚪"
+    if value >= 72:
+        return "🟢"
+    if value >= 55:
+        return "🟡"
+    if value >= 28:
+        return "⚪"
+    return "🔴"
+
+
+def _v286_shadow_delta(live_ampel, shadow_ampel):
+    rank = {"🔴": 0, "⚪": 1, "🟡": 2, "🟢": 3}
+    live_rank = rank.get(str(live_ampel), 1)
+    shadow_rank = rank.get(str(shadow_ampel), 1)
+    if shadow_rank > live_rank:
+        return "Aufwertung"
+    if shadow_rank < live_rank:
+        return "Abwertung"
+    return "Gleich"
+
+
+def _v286_load_shadow_history():
+    storage = _CONTEXT.get("storage")
+    if storage is not None:
+        try:
+            payload = storage.load_namespace("shadow_mode_history", default=None)
+            if isinstance(payload, dict):
+                state = payload.get("state", {})
+                events = payload.get("events", [])
+                return (state if isinstance(state, dict) else {}), (events if isinstance(events, list) else [])[-750:]
+        except Exception:
+            pass
+    return {}, []
+
+
+def _v286_save_shadow_history(state, events):
+    storage = _CONTEXT.get("storage")
+    if storage is not None:
+        try:
+            storage.save_namespace("shadow_mode_history", {
+                "state": state if isinstance(state, dict) else {},
+                "events": (events or [])[-750:],
+            })
+            return True
+        except Exception:
+            return False
+    return False
+
+
+def update_shadow_mode_history_v286(df, watchlist_name="", style_name=""):
+    """Persistiert nur echte Shadow-Zustandsaenderungen.
+
+    Identische Auto-Refreshes erzeugen keine neuen Events. Ein Event entsteht
+    beim ersten echten Live/Shadow-Unterschied sowie wenn sich Ampel,
+    Guarded-Score oder Abweichungsrichtung spaeter aendert.
+    """
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        _, events = _v286_load_shadow_history()
+        return pd.DataFrame(events[-200:])
+    state, events = _v286_load_shadow_history()
+    now = pd.Timestamp.now(tz="Europe/Berlin").isoformat()
+    changed = False
+    for _, row in df.iterrows():
+        ticker = str(row.get("Ticker") or "").strip().upper()
+        if not ticker:
+            continue
+        live_ampel = str(row.get("Ampel") or "⚪")
+        shadow_ampel = str(row.get("Shadow-Ampel") or "⚪")
+        guarded = str(row.get("Guarded Engine-Score") or "")
+        delta = str(row.get("Shadow-Abweichung") or _v286_shadow_delta(live_ampel, shadow_ampel))
+        key = f"{watchlist_name}|{style_name}|{ticker}"
+        current = {"live": live_ampel, "shadow": shadow_ampel, "guarded": guarded, "delta": delta}
+        previous = state.get(key) if isinstance(state.get(key), dict) else None
+        if previous != current:
+            # Baseline ohne Abweichung nur merken, aber nicht als Ereignis aufblasen.
+            # Spaetere Rueckkehr zu 'Gleich' nach einer Divergenz wird protokolliert.
+            prev_delta = str((previous or {}).get("delta") or "")
+            if delta != "Gleich" or (previous is not None and prev_delta != "Gleich"):
+                events.append({
+                    "Zeit": now,
+                    "Watchlist": str(watchlist_name or ""),
+                    "Ticker": ticker,
+                    "Live-Ampel": live_ampel,
+                    "Shadow-Ampel": shadow_ampel,
+                    "Abweichung": delta,
+                    "Basis-Score": str(row.get("Live-Score") or ""),
+                    "Guarded Engine": guarded,
+                    "Engine-Empfehlung": str(row.get("Engine-Empfehlung") or ""),
+                    "Kontext": str(row.get("Kontext-Beiträge") or ""),
+                })
+            state[key] = current
+            changed = True
+    if changed:
+        _v286_save_shadow_history(state, events)
+    return pd.DataFrame(events[-200:])
+
 def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None, live_horizon="Swing / 1-4 Wochen"):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
 
@@ -961,6 +1068,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         # Positiver Kontext darf eine technische Bremse nicht voll ueberstimmen.
         _guarded_adjustment = min(_guarded_adjustment, 1)
     _guarded_engine_score = int(round(_v2210_clip(live_score_int + _guarded_adjustment, 0.0, 100.0)))
+    _shadow_ampel = _v286_shadow_ampel_from_score(_guarded_engine_score)
+    _shadow_delta = _v286_shadow_delta(status_icon, _shadow_ampel)
 
     if _guard_hard:
         _engine_recommendation = "Abwertung / blockiert"
@@ -990,6 +1099,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Kontext-Anpassung": f"{_context_adjustment:+d}",
         "Engine-Score": f"{_engine_score_int}/100",
         "Guarded Engine-Score": f"{_guarded_engine_score}/100",
+        "Shadow-Ampel": _shadow_ampel,
+        "Shadow-Abweichung": _shadow_delta,
         "Engine-Empfehlung": _engine_recommendation,
         "Engine-Guardrail": _guardrail_text,
         "Kontext-Beiträge": _context_breakdown,
@@ -1122,7 +1233,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

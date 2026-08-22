@@ -1,3 +1,10 @@
+## v28.6
+- Shadow Mode eingeführt: Live-Ampel und virtuelle Engine-Ampel laufen parallel.
+- Shadow-Ampel basiert ausschließlich auf dem Guarded Engine-Score; produktive Ampel bleibt unverändert.
+- Abweichungen werden als Aufwertung/Abwertung/Gleich gekennzeichnet.
+- Deduplizierte persistente Shadow-Historie mit Zeitstempel ergänzt.
+- Desktop, Mobile und Ticker-Details zeigen den Shadow-Status.
+
 ## v28.5b
 - RS-Dynamik 21T/63T als Beobachtungswert ergänzt.
 - Dynamikschwellen: ab +5 Prozentpunkten verbessert, bis -5 verschlechtert, dazwischen stabil.

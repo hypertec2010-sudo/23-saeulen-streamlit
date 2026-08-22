@@ -14397,6 +14397,7 @@ _v240_live_trade_state = _live_module._v240_live_trade_state
 _v227_live_history_file_path = _live_module._v227_live_history_file_path
 _v227_load_persistent_live_history = _live_module._v227_load_persistent_live_history
 _v227_save_persistent_live_history = _live_module._v227_save_persistent_live_history
+update_shadow_mode_history_v286 = _live_module.update_shadow_mode_history_v286
 reset_live_watchlist_status_history_v227 = _live_module.reset_live_watchlist_status_history_v227
 apply_live_watchlist_status_history_v220 = _live_module.apply_live_watchlist_status_history_v220
 
@@ -15967,7 +15968,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.5d-engine-guardrails",
+                "schema": "live-v28.6-shadow-mode",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16291,6 +16292,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 f"Unvollständiger Scan-Checkpoint: {_completed_display_v2844}/{_selected_display_v2844} verarbeitet, "
                                 f"{_pending_count_v2844} noch offen. 'Jetzt prüfen' setzt beim nächsten Batch fort."
                             )
+                    # v28.6: Shadow-Historie aus dem vollstaendigen Live-Frame aktualisieren,
+                    # bevor ein UI-Filter (nur gruen/gelb) Zeilen ausblendet.
+                    try:
+                        shadow_events_df_v286 = update_shadow_mode_history_v286(
+                            live_df,
+                            watchlist_name=selected_watchlist_name,
+                            style_name=f"{monitor_style} | {live_monitor_horizon}",
+                        )
+                    except Exception:
+                        shadow_events_df_v286 = pd.DataFrame()
+
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty:
@@ -16337,7 +16349,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Volatilitätsregime", "Marktregime", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen",
+                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Volatilitätsregime", "Marktregime", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -16400,6 +16412,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _ctx_adj_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Anpassung")))
                                     _engine_score_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Score")))
                                     _guarded_engine_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Guarded Engine-Score")))
+                                    _shadow_ampel_v286 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Shadow-Ampel")))
+                                    _shadow_delta_v286 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Shadow-Abweichung")))
                                     _engine_rec_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Empfehlung")))
                                     _ctx_conf_v285a2 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Verlässlichkeit")))
                                     _price_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kurs")))
@@ -16438,6 +16452,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             <div><span class="v2842-mobile-label">Marktregime</span>{_market_v2847}</div>
                                             <div><span class="v2842-mobile-label">Engine (Test)</span>{_score_v2842} → {_engine_score_v285a} ({_ctx_adj_v285a})</div>
                                             <div><span class="v2842-mobile-label">Guarded Engine</span>{_guarded_engine_v285d} · {_engine_rec_v285d}</div>
+                                            <div><span class="v2842-mobile-label">Shadow</span>{_ampel_v2842} → {_shadow_ampel_v286} · {_shadow_delta_v286}</div>
                                             <div><span class="v2842-mobile-label">Kontext-Confidence</span>{_ctx_conf_v285a2}</div>
                                             <div><span class="v2842-mobile-label">Trade-State</span>{_state_v2842}</div>
                                             <div><span class="v2842-mobile-label">CRV</span>{_crv_v2842}</div>
@@ -16502,7 +16517,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
                                             st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
                                             st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · RS-Dynamik: {_v243_clean_cell(_mobile_detail_row_v2842.get('RS-Dynamik'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
-                                            st.caption(f"Engine 2.0 (Test): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
+                                            st.caption(f"Engine 2.0 (Shadow): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · Live {_detail_ampel_v2846} → Shadow {_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Ampel'))} ({_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Abweichung'))}) · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
                                             with st.expander("Trading Context · Berechnung anzeigen", expanded=False):
                                                 st.markdown("**Relative Stärke**")
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Details")))
@@ -16537,6 +16552,22 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     except Exception:
                                         pass
                                     st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
+                            # v28.6: Shadow Mode Zusammenfassung + deduplizierte Historie.
+                            if "Shadow-Abweichung" in live_df.columns:
+                                try:
+                                    _shadow_diff_v286 = live_df[live_df["Shadow-Abweichung"].astype(str) != "Gleich"].copy()
+                                except Exception:
+                                    _shadow_diff_v286 = pd.DataFrame()
+                                if _shadow_diff_v286.empty:
+                                    st.caption("Shadow Mode: aktuell keine Abweichung zwischen Live- und Engine-Ampel.")
+                                else:
+                                    st.caption(f"Shadow Mode: {len(_shadow_diff_v286)} aktuelle Abweichung(en) · produktive Live-Ampel bleibt unverändert.")
+                            if isinstance(shadow_events_df_v286, pd.DataFrame) and not shadow_events_df_v286.empty:
+                                with st.expander("Shadow-Mode Historie", expanded=False):
+                                    st.caption("Nur echte Zustandsänderungen werden gespeichert; identische Auto-Refreshes erzeugen keine Duplikate.")
+                                    _shadow_hist_show_v286 = shadow_events_df_v286.tail(100).iloc[::-1].reset_index(drop=True)
+                                    st.dataframe(_shadow_hist_show_v286, hide_index=True, use_container_width=True, height=min(520, 38 * len(_shadow_hist_show_v286) + 55))
+
                             green_count = int((live_df["Ampel"] == "🟢").sum()) if "Ampel" in live_df.columns else 0
                             yellow_count = int((live_df["Ampel"] == "🟡").sum()) if "Ampel" in live_df.columns else 0
                             red_count = int((live_df["Ampel"] == "🔴").sum()) if "Ampel" in live_df.columns else 0

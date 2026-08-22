@@ -1,3 +1,10 @@
+## v28.5b
+- RS-Dynamik 21T/63T als Beobachtungswert ergänzt.
+- Dynamikschwellen: ab +5 Prozentpunkten verbessert, bis -5 verschlechtert, dazwischen stabil.
+- Keine Score-/Ampelwirkung in diesem Release.
+- Kontext-Confidence in der mobilen Darstellung klarer benannt.
+- Cache-Schema auf v28.5b angehoben.
+
 ## v28.5a
 - Trading Engine 2.0 im Beobachtungsmodus eingeführt.
 - Context-Adjusted Score zusätzlich zum unveränderten Basis-Live-Score.

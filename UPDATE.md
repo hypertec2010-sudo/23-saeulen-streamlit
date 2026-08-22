@@ -1,15 +1,21 @@
-# v28.5a2 - Context Confidence + Missing-Data Guard
+# v28.5b – RS-Dynamik 21T/63T
 
 Neu:
-- Kontext-Verlässlichkeit mit Sterneanzeige.
-- Fehlende Relative-Stärke-/Benchmarkdaten werden neutral behandelt.
-- Ein positiver Context-Adjustment wird bei unvollständigem Kontext neutralisiert.
-- Negative Risikoanpassungen bleiben auch bei fehlenden Daten möglich.
-- Basis-Score und echte Ampel bleiben unverändert (Beobachtungsmodus).
+- RS-Dynamik vergleicht 21T- mit 63T-Benchmark-Outperformance.
+- Anzeige: Verbessert, Stabil oder Verschlechtert inklusive Differenz in Prozentpunkten.
+- Vollständige Berechnungsbasis in Mobile/Ticker-Details.
+- Mobile Bezeichnung `Kontext-Confidence` zur klaren Abgrenzung von `Datenqualität`.
+- Neues Live-Cache-Schema erzwingt einmalig einen frischen Scan.
 
-Erwarteter Test:
-- UNP / DT / MSFT / ACN / LITE: vollständiger Kontext, normale Engine-Anpassung.
-- IPS.PA / SAP.DE bei fehlender Benchmark-RS: kein positiver Kontextbonus; Engine-Score entspricht mindestens in diesen positiven Markt-Fällen dem Basis-Score.
+Wichtig:
+- RS-Dynamik ist in v28.5b rein informativ.
+- Sie verändert weder Kontext-Anpassung/Engine-Score noch die bestehende Ampel.
+- Missing-Data-Guard aus v28.5a2 bleibt aktiv.
+- Keine Änderungen an Supabase, SQL oder Secrets.
 
-Nach Upload Streamlit rebooten und einen frischen Live-Scan starten.
-Keine SQL-/Supabase-/Secrets-Aenderung.
+Test:
+1. Dateien in GitHub überschreiben.
+2. Streamlit komplett rebooten.
+3. Live-Screener frisch scannen.
+4. QRVO sowie UNP/DT/MSFT/LITE prüfen.
+5. SAP.DE/IPS.PA sollen bei fehlenden Vergleichsdaten `n/a · Vergleichsdaten fehlen` zeigen.

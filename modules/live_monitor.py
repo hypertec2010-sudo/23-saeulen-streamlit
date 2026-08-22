@@ -189,6 +189,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         except Exception:
             return None
 
+    _rs21 = _v2847_num(r.get("rs_vs_benchmark_21"))
     _rs63 = _v2847_num(r.get("rs_vs_benchmark_63"))
     _rs_score = _v2847_num(r.get("rs_benchmark_score"))
     _benchmark_label = str(r.get("benchmark_label") or r.get("benchmark_symbol") or "Benchmark").strip()
@@ -209,6 +210,26 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         # Fehlt rs_vs_benchmark_63, zeigen wir n/a und vergeben keinen RS-Bonus/Malus.
         _rs_context = "n/a · Benchmarkdaten fehlen"
     _rs_context_detail = f"vs. {_benchmark_label}" if _benchmark_label else ""
+
+    # v28.5b: RS-Dynamik vergleicht die kurzfristige 21T-Outperformance mit
+    # der etablierten 63T-Outperformance. Noch rein informativ: weder der
+    # Engine-Score noch die Ampel werden dadurch veraendert.
+    if _rs21 is not None and _rs63 is not None:
+        _rs_dyn_delta = _rs21 - _rs63
+        if _rs_dyn_delta >= 5:
+            _rs_dynamics = f"Verbessert ↑ ({_rs_dyn_delta:+.1f} PP)"
+        elif _rs_dyn_delta <= -5:
+            _rs_dynamics = f"Verschlechtert ↓ ({_rs_dyn_delta:+.1f} PP)"
+        else:
+            _rs_dynamics = f"Stabil ({_rs_dyn_delta:+.1f} PP)"
+        _rs_dynamics_detail = (
+            f"21T RS {_rs21:+.1f}% · 63T RS {_rs63:+.1f}% · Dynamik {_rs_dyn_delta:+.1f} Prozentpunkte. "
+            "Schwellen: ≥+5 PP verbessert, ≤-5 PP verschlechtert, dazwischen stabil."
+        )
+    else:
+        _rs_dyn_delta = None
+        _rs_dynamics = "n/a · Vergleichsdaten fehlen"
+        _rs_dynamics_detail = "Für die RS-Dynamik werden sowohl 21T- als auch 63T-Benchmarkdaten benötigt."
 
     # v28.4.8: konkrete Validierungswerte fuer Relative Staerke.
     _stock_ret63 = _v2847_num(r.get("ret63"))
@@ -914,6 +935,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Datenqualität": data_quality_text,
         "Datenbasis": data_quality_detail,
         "Relative Stärke": _rs_context,
+        "RS-Dynamik": _rs_dynamics,
+        "RS-Dynamik Details": _rs_dynamics_detail,
         "RS-Benchmark": _rs_context_detail,
         "RS-Details": _rs_validation,
         "Volatilitätsregime": volatility_regime,
@@ -1030,7 +1053,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

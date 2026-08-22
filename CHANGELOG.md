@@ -11,3 +11,8 @@
 - Behoben: gemeinsamer NameError im Trading-Context-Validierungspfad.
 - ATR-/Volatilitäts-Erklärung wird erst nach Berechnung der benötigten Werte erzeugt.
 - Cache-Schema erneuert, um fehlerhafte alte Live-Scans zu verwerfen.
+
+## v28.5a1
+- Context-Engine-RS feiner kalibriert.
+- Ungültiges `Score 0/100`-Fallback bei fehlender Benchmark-RS entfernt.
+- Fehlende Benchmark-RS ist neutral und wird transparent als n/a angezeigt.

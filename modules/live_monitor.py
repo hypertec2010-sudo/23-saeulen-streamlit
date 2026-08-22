@@ -203,10 +203,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             _rs_context = f"Schwach ↓ ({_rs63:+.1f}% / 63T)"
         else:
             _rs_context = f"Sehr schwach ↓ ({_rs63:+.1f}% / 63T)"
-    elif _rs_score is not None:
-        _rs_context = f"Score {_rs_score:.0f}/100"
     else:
-        _rs_context = "n/a"
+        # v28.5a1: Ein generischer RS-Score (insbesondere 0/100) ist kein
+        # belastbarer Ersatz fuer die konkrete Benchmark-Outperformance.
+        # Fehlt rs_vs_benchmark_63, zeigen wir n/a und vergeben keinen RS-Bonus/Malus.
+        _rs_context = "n/a · Benchmarkdaten fehlen"
     _rs_context_detail = f"vs. {_benchmark_label}" if _benchmark_label else ""
 
     # v28.4.8: konkrete Validierungswerte fuer Relative Staerke.
@@ -847,13 +848,16 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     # Die bestehende Ampel und der Live-Score bleiben unveraendert.
     _ctx_rs_adj = 0
     if _rs63 is not None:
-        if _rs63 >= 8: _ctx_rs_adj = 4
-        elif _rs63 >= 2: _ctx_rs_adj = 2
-        elif _rs63 <= -8: _ctx_rs_adj = -4
-        elif _rs63 <= -2: _ctx_rs_adj = -2
-    elif _rs_score is not None:
-        if _rs_score >= 70: _ctx_rs_adj = 2
-        elif _rs_score <= 35: _ctx_rs_adj = -2
+        # v28.5a1: feinere Kalibrierung. Kleine Outperformance bekommt nur
+        # einen kleinen Bonus; zweistellige RS wird sichtbar staerker belohnt.
+        if _rs63 >= 15: _ctx_rs_adj = 4
+        elif _rs63 >= 8: _ctx_rs_adj = 3
+        elif _rs63 >= 2: _ctx_rs_adj = 1
+        elif _rs63 > -2: _ctx_rs_adj = 0
+        elif _rs63 > -8: _ctx_rs_adj = -2
+        elif _rs63 > -15: _ctx_rs_adj = -3
+        else: _ctx_rs_adj = -4
+    # Keine konkrete 63T-Benchmark-RS => neutral, niemals aus Score 0/100 ableiten.
 
     _ctx_market_adj = {"Positiv": 3, "Negativ": -3}.get(_market_context, 0)
     # Volatilitaet wird nur moderat bewertet: extreme ATR-Regime erschweren

@@ -1,20 +1,16 @@
-# v28.5a – Trading Engine 2.0 / Beobachtungsmodus
+# v28.5a1 – Engine Calibration & EU Benchmark Fallback Fix
 
-Neu:
-- Basis-Live-Score bleibt unverändert und steuert weiterhin die bestehende Ampel.
-- Zusätzlicher Context-Adjusted Engine-Score für den Vergleich.
-- Kontext-Anpassung wird transparent aufgeteilt in Relative Stärke, Marktregime und Volatilitätsregime.
-- Desktop zeigt Basis-Score, Kontext-Anpassung und Engine-Score nebeneinander.
-- Mobile zeigt `Basis → Engine` und die vollständige Erklärung im vorhandenen „Mehr anzeigen“-Bereich.
-- Detailansicht zeigt Basis, Kontext und Engine direkt unter dem Trading Context.
-
-Gewichtung im Beobachtungsmodus:
-- Relative Stärke: -4 bis +4 Punkte.
-- Marktregime: -3 bis +3 Punkte.
-- Volatilitätsregime: 0 bis -2 Punkte; niedrig -1, hoch -2.
-- Maximaler theoretischer Kontextbereich aktuell: -9 bis +7 Punkte.
+Geändert:
+- Relative-Stärke-Gewichtung feiner kalibriert.
+- +2 bis +8 % 63T-Outperformance gibt nur noch +1 RS-Punkt.
+- +8 bis +15 % gibt +3, ab +15 % +4.
+- Negative RS wird analog stärker abgestuft.
+- Fehlt die konkrete 63T-Benchmark-RS, wird nicht mehr `Score 0/100` als Ersatz verwendet.
+- Stattdessen: `n/a · Benchmarkdaten fehlen` und RS-Beitrag = 0.
+- Cache-Schema angehoben, damit die neue Kalibrierung sofort sichtbar wird.
 
 Wichtig:
-- Ampel/Status werden NICHT vom Engine-Score verändert.
-- Keine Änderung an Supabase, SQL, Secrets, Positionen oder Journal.
-- Nach Upload Streamlit einmal rebooten und einen frischen Live-Scan starten.
+- Ampel und Basis-Score bleiben unverändert (Beobachtungsmodus).
+- Keine SQL-/Supabase-/Secrets-Änderung.
+
+Testwerte nach frischem Scan vergleichen: UNP, DT, MSFT, LITE, ACN, IPS.PA, SAP.DE.

@@ -15967,7 +15967,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.5a-context-adjusted-observation",
+                "schema": "live-v28.5a1-engine-calibration",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 

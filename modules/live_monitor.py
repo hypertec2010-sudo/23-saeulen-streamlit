@@ -894,17 +894,46 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _ctx_available_count = sum([_ctx_rs_available, _ctx_market_available, _ctx_vol_available])
     _ctx_conf_stars = {0: 1, 1: 2, 2: 3, 3: 5}.get(_ctx_available_count, 1)
     _ctx_conf_label = {0: "Sehr niedrig", 1: "Niedrig", 2: "Reduziert", 3: "Vollständig"}.get(_ctx_available_count, "Niedrig")
-    _ctx_confidence = "★" * _ctx_conf_stars + "☆" * (5 - _ctx_conf_stars) + f" {_ctx_conf_label}"
+    _ctx_confidence = "Kontext " + "★" * _ctx_conf_stars + "☆" * (5 - _ctx_conf_stars) + f" {_ctx_conf_label}"
     _ctx_missing = []
     if not _ctx_rs_available: _ctx_missing.append("Relative Stärke/Benchmark")
     if not _ctx_market_available: _ctx_missing.append("Marktregime")
     if not _ctx_vol_available: _ctx_missing.append("Volatilitätsregime")
 
+    # v28.5c: RS-Level und RS-Dynamik gemeinsam kalibrieren. Die Dynamik wird
+    # nicht blind addiert, sondern modifiziert nur den bestehenden RS-Beitrag.
+    # So bleibt ein starker Leader mit nachlassendem Momentum positiv, waehrend
+    # eine sehr schwache Aktie trotz Turnaround nicht sofort einen Bonus bekommt.
+    _ctx_rs_level_adj = int(_ctx_rs_adj)
+    _ctx_rs_dyn_adj = 0
+    if _rs63 is not None and _rs_dyn_delta is not None:
+        if _rs_dyn_delta >= 5:
+            if _ctx_rs_level_adj >= 3:
+                _ctx_rs_dyn_adj = 1       # stark + beschleunigend
+            elif _ctx_rs_level_adj == 1:
+                _ctx_rs_dyn_adj = 1       # leicht positiv + beschleunigend
+            elif _ctx_rs_level_adj == 0:
+                _ctx_rs_dyn_adj = 1       # neutral + Turnaround
+            elif _ctx_rs_level_adj == -2:
+                _ctx_rs_dyn_adj = 2       # schwach + klarer Turnaround => neutralisieren
+            elif _ctx_rs_level_adj <= -3:
+                _ctx_rs_dyn_adj = 1       # sehr schwach verbessert => Malus nur reduzieren
+        elif _rs_dyn_delta <= -5:
+            if _ctx_rs_level_adj >= 3:
+                _ctx_rs_dyn_adj = -1      # Leader verliert Momentum, bleibt aber positiv
+            elif _ctx_rs_level_adj == 1:
+                _ctx_rs_dyn_adj = -1      # kleiner Bonus faellt weg
+            elif _ctx_rs_level_adj == 0:
+                _ctx_rs_dyn_adj = -1
+            elif _ctx_rs_level_adj < 0:
+                _ctx_rs_dyn_adj = -1      # schwach + weiter schlechter
+    _ctx_rs_adj = int(max(-4, min(4, _ctx_rs_level_adj + _ctx_rs_dyn_adj)))
+
     _context_adjustment_raw = int(_ctx_rs_adj + _ctx_market_adj + _ctx_vol_adj)
     _missing_guard_active = bool(_ctx_missing and _context_adjustment_raw > 0)
     _context_adjustment = 0 if _missing_guard_active else _context_adjustment_raw
     _engine_score_int = int(round(_v2210_clip(live_score_int + _context_adjustment, 0.0, 100.0)))
-    _context_breakdown = f"RS {_ctx_rs_adj:+d} · Markt {_ctx_market_adj:+d} · Volatilität {_ctx_vol_adj:+d}"
+    _context_breakdown = f"RS {_ctx_rs_adj:+d} (Level {_ctx_rs_level_adj:+d} · Dynamik {_ctx_rs_dyn_adj:+d}) · Markt {_ctx_market_adj:+d} · Volatilität {_ctx_vol_adj:+d}"
     if _missing_guard_active:
         _context_breakdown += " · Missing-Data-Guard: positiver Bonus neutralisiert"
     _ctx_conf_detail = (

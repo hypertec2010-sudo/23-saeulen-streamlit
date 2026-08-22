@@ -28,3 +28,9 @@
 - Context Confidence im Engine-Beobachtungsmodus ergänzt.
 - Missing-Data Guard: unvollständiger Kontext darf keinen positiven Bonus erzeugen.
 - Kontext-Verlässlichkeit in Desktop, Mobile und Engine-Erklärung sichtbar.
+
+## v28.5c
+- RS-Level + RS-Dynamik gemeinsam im Engine-Beobachtungsscore kalibriert.
+- RS-Dynamik modifiziert den Level-Beitrag statt eines pauschalen Add-ons.
+- Context Confidence eindeutig als `Kontext ★...` gekennzeichnet.
+- Ampel bleibt weiterhin am Basis-Score.

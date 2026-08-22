@@ -1,21 +1,15 @@
-# v28.5b – RS-Dynamik 21T/63T
+# v28.5c – RS Level + Dynamics Calibration
 
 Neu:
-- RS-Dynamik vergleicht 21T- mit 63T-Benchmark-Outperformance.
-- Anzeige: Verbessert, Stabil oder Verschlechtert inklusive Differenz in Prozentpunkten.
-- Vollständige Berechnungsbasis in Mobile/Ticker-Details.
-- Mobile Bezeichnung `Kontext-Confidence` zur klaren Abgrenzung von `Datenqualität`.
-- Neues Live-Cache-Schema erzwingt einmalig einen frischen Scan.
+- 63T-RS-Level und 21T/63T-RS-Dynamik werden im Engine-Testscore gemeinsam bewertet.
+- Dynamik modifiziert den RS-Beitrag; sie wird nicht blind als separater Bonus addiert.
+- Starke Leader mit nachlassender Dynamik behalten einen positiven RS-Beitrag, aber reduziert.
+- Schwache Werte mit deutlichem Turnaround koennen ihren RS-Malus neutralisieren/reduzieren, erhalten aber nicht automatisch einen starken Bonus.
+- Kontext-Verlaesslichkeit wird sichtbar mit `Kontext` praefigiert, um sie von der Datenqualitaet zu unterscheiden.
+- Basis-Score und echte Ampel bleiben unveraendert (Beobachtungsmodus).
 
-Wichtig:
-- RS-Dynamik ist in v28.5b rein informativ.
-- Sie verändert weder Kontext-Anpassung/Engine-Score noch die bestehende Ampel.
-- Missing-Data-Guard aus v28.5a2 bleibt aktiv.
-- Keine Änderungen an Supabase, SQL oder Secrets.
-
-Test:
-1. Dateien in GitHub überschreiben.
-2. Streamlit komplett rebooten.
-3. Live-Screener frisch scannen.
-4. QRVO sowie UNP/DT/MSFT/LITE prüfen.
-5. SAP.DE/IPS.PA sollen bei fehlenden Vergleichsdaten `n/a · Vergleichsdaten fehlen` zeigen.
+Nach Upload:
+1. Dateien in GitHub ueberschreiben.
+2. Streamlit rebooten.
+3. Frischen Live-Scan starten.
+4. UNP, QRVO, DT, MSFT, LITE und SAP.DE erneut vergleichen.

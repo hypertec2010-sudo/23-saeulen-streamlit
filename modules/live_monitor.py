@@ -209,13 +209,57 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         _rs_context = "n/a"
     _rs_context_detail = f"vs. {_benchmark_label}" if _benchmark_label else ""
 
-    _market_raw = str(((r.get("market_info") or {}) if isinstance(r.get("market_info"), dict) else {}).get("regime") or r.get("market_regime_label") or r.get("regime_label") or "").strip().upper()
+    # v28.4.8: konkrete Validierungswerte fuer Relative Staerke.
+    _stock_ret63 = _v2847_num(r.get("ret63"))
+    _bench_ret63 = _v2847_num(r.get("bench_ret63"))
+    _benchmark_symbol = str(r.get("benchmark_symbol") or "").strip()
+    if _stock_ret63 is not None and _bench_ret63 is not None:
+        _rs_validation = (
+            f"63T: Aktie {_stock_ret63:+.1f}% · {_benchmark_label} {_bench_ret63:+.1f}% · "
+            f"Outperformance {(_stock_ret63 - _bench_ret63):+.1f}%"
+        )
+    elif _rs63 is not None:
+        _rs_validation = f"63T-Outperformance vs. {_benchmark_label}: {_rs63:+.1f}%"
+    else:
+        _rs_validation = f"Keine belastbare 63T-Vergleichsbasis vs. {_benchmark_label}."
+    if _benchmark_symbol:
+        _rs_validation += f" · Benchmark {_benchmark_symbol}"
+    _rs_validation += " · Schwellen: ≥+8 stark, ≥+2 positiv, >-2 neutral, >-8 schwach, sonst sehr schwach."
+
+    _market_info_obj = (r.get("market_info") or {}) if isinstance(r.get("market_info"), dict) else {}
+    _market_raw = str(_market_info_obj.get("regime") or r.get("market_regime_label") or r.get("regime_label") or "").strip().upper()
     _market_map = {
         "POSITIV": "Positiv", "POSITIVE": "Positiv", "BULL": "Positiv", "BULLISH": "Positiv",
         "NEGATIV": "Negativ", "NEGATIVE": "Negativ", "BEAR": "Negativ", "BEARISH": "Negativ",
         "NEUTRAL": "Neutral", "SEITWAERTS": "Seitwärts", "SEITWÄRTS": "Seitwärts", "SIDEWAYS": "Seitwärts",
     }
     _market_context = _market_map.get(_market_raw, _market_raw.title() if _market_raw else "n/a")
+
+    # v28.4.8: Volatilitaets- und Marktregime transparent erklaeren.
+    if atr_pct_live is None:
+        _vol_validation = "ATR(14) nicht belastbar verfuegbar."
+    else:
+        _vol_validation = (
+            f"ATR(14) {atr_pct_live:.2f}% des Kurses · Einstufung {volatility_regime}. "
+            "Schwellen: <2,8% niedrig · 2,8–<5,5% normal · 5,5–<8,0% erhoeht · ≥8,0% hoch."
+        )
+
+    _m_price = _v2847_num(_market_info_obj.get("price"))
+    _m_ma50 = _v2847_num(_market_info_obj.get("ma50"))
+    _m_ma200 = _v2847_num(_market_info_obj.get("ma200"))
+    _m_ret1 = _v2847_num(_market_info_obj.get("ret1"))
+    _m_ret5 = _v2847_num(_market_info_obj.get("ret5"))
+    _m_reason = str(_market_info_obj.get("shock_reason") or "").strip()
+    _market_parts = [f"Benchmark {_benchmark_label}" + (f" ({_benchmark_symbol})" if _benchmark_symbol else "")]
+    if _m_price is not None: _market_parts.append(f"Kurs {_m_price:.2f}")
+    if _m_ma50 is not None: _market_parts.append(f"MA50 {_m_ma50:.2f}")
+    if _m_ma200 is not None: _market_parts.append(f"MA200 {_m_ma200:.2f}")
+    if _m_ret1 is not None: _market_parts.append(f"1T {_m_ret1:+.1f}%")
+    if _m_ret5 is not None: _market_parts.append(f"5T {_m_ret5:+.1f}%")
+    _market_validation = " · ".join(_market_parts) + f" · Regime {_market_context}."
+    if _m_reason:
+        _market_validation += f" Grund: {_m_reason}"
+
     wave_dist = _v210_alert_num(d.get("wave_trigger_distance_pct"), default=None)
     entry_distance = _v210_alert_num(d.get("entry_distance_pct"), default=None)
     next_step = str(d.get("next_step") or "-").strip()
@@ -810,8 +854,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Datenbasis": data_quality_detail,
         "Relative Stärke": _rs_context,
         "RS-Benchmark": _rs_context_detail,
+        "RS-Details": _rs_validation,
         "Volatilitätsregime": volatility_regime,
+        "Volatilitäts-Details": _vol_validation,
         "Marktregime": _market_context,
+        "Marktregime-Details": _market_validation,
         "Score-Treiber": _score_drivers,
         "Score-Bremsen": _score_brakes,
         "Warum dieser Score?": _score_explanation,
@@ -922,7 +969,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Benchmark", "Volatilitätsregime", "Marktregime", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

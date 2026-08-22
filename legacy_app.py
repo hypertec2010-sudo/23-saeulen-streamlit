@@ -15967,7 +15967,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.4.7-trading-context",
+                "schema": "live-v28.4.8-trading-context",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16452,6 +16452,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             _brake_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
                                             if _driver_full_v2847 not in {"", "-"}: st.markdown(f"**Treiber:** {_driver_full_v2847}")
                                             if _brake_full_v2847 not in {"", "-"}: st.markdown(f"**Bremsen:** {_brake_full_v2847}")
+                                            _rs_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("RS-Details"))
+                                            _vol_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Volatilitäts-Details"))
+                                            _market_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Marktregime-Details"))
+                                            st.markdown("**Trading Context – Berechnungsbasis**")
+                                            if _rs_detail_v2848 not in {"", "-"}: st.write(_rs_detail_v2848)
+                                            if _vol_detail_v2848 not in {"", "-"}: st.write(_vol_detail_v2848)
+                                            if _market_detail_v2848 not in {"", "-"}: st.write(_market_detail_v2848)
 
                                 _mobile_detail_tickers_v2842 = [
                                     str(value).strip()
@@ -16479,6 +16486,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
                                             st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
                                             st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
+                                            with st.expander("Trading Context · Berechnung anzeigen", expanded=False):
+                                                st.markdown("**Relative Stärke**")
+                                                st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Details")))
+                                                st.markdown("**Volatilität**")
+                                                st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Volatilitäts-Details")))
+                                                st.markdown("**Marktregime**")
+                                                st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Marktregime-Details")))
+                                                st.caption("Diese Kontextwerte sind in v28.4.8 rein informativ und verändern Live-Score/Ampel nicht.")
                                             _why_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Warum dieser Score?"))
                                             if _why_score_v2846 not in {"", "-"}:
                                                 st.info(_why_score_v2846)

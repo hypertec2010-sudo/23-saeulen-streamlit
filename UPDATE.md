@@ -1,15 +1,21 @@
-# Update v28.4.7 – Trading Context + Mobile Explainability UX
+# UPDATE v28.4.8 – Trading Context Validation
 
 Geändert:
-- `modules/live_monitor.py`: Relative Stärke, Volatilitätsregime und Marktregime als rein informativer Kontext.
-- `legacy_app.py`: Kontextspalten Desktop/Mobile, vollständige Mobile-Erklärungen über „Mehr anzeigen“, Cache-Schema v28.4.7.
+- `modules/live_monitor.py`
+- `legacy_app.py`
 - `VERSION.txt`
 
-Wichtig:
-1. Alle Dateien über die vorhandenen Dateien in GitHub kopieren.
-2. Streamlit einmal komplett rebooten.
-3. Live-Screener einmal frisch scannen lassen.
-4. Desktop: neue Spalten Relative Stärke, Volatilitätsregime, Marktregime prüfen.
-5. Mobile: „Mehr anzeigen“ öffnen und prüfen, dass Erklärungen vollständig lesbar sind.
+Neu:
+- Relative Stärke zeigt 63T-Aktienperformance, Benchmark-Performance und Outperformance.
+- Volatilitätsregime zeigt ATR(14)% und die verwendeten Schwellen.
+- Marktregime zeigt Benchmark, Kurs, MA50/MA200, 1T/5T-Performance und den Regime-Grund.
+- Mobile und Ticker-Details zeigen die vollständigen Berechnungen aufklappbar.
+- Score und Ampel bleiben unverändert.
 
-Keine Änderungen an Supabase, SQL oder Secrets. Die neuen Kontextwerte verändern Score/Ampel noch nicht.
+Nach dem Upload:
+1. Dateien überschreiben.
+2. Streamlit einmal rebooten.
+3. Live-Screener frisch scannen.
+4. Einen US-Wert, einen EU-Wert und ein New Listing prüfen.
+
+Keine Änderungen an Supabase, SQL oder Secrets.

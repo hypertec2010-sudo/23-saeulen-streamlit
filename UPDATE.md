@@ -1,16 +1,28 @@
-# Update v28.4.5c - Rate-Limit & Retry
+# v28.4.5d - Datenqualitaet
 
 Geaendert:
-- `modules/provider_manager.py`: zentrale Request-Drosselung, 429-Cooldown und kontrollierte Retries.
-- `modules/live_monitor.py`: Rate-Limits werden als `Temporär ausstehend` statt dauerhaft nicht analysierbar markiert.
-- `modules/live_scan_batches.py`: temporaere Rate-Limit-Ticker gelten im Checkpoint nicht als abgeschlossen und werden beim naechsten Scan erneut versucht.
-- `VERSION.txt`, `CHANGELOG.md`.
+- modules/live_monitor.py
+- legacy_app.py
+- VERSION.txt
+- UPDATE.md
+- CHANGELOG.md
 
-Keine Aenderungen an Supabase, SQL, Secrets, Watchlists, Positionen oder Journal.
+Neu:
+- Datenqualitaet getrennt vom Trading-Score
+- 1-5 Sterne anhand Historienlaenge und technischer Datenbasis
+- New Listings werden sichtbar als reduzierte Datenbasis gekennzeichnet
+- Datenqualitaet auch in der Mobile-Kartenansicht
+- Detailfeld `Datenbasis` bleibt in Historie/Details verfuegbar
 
-Nach Update:
-1. Dateien in GitHub ueberschreiben.
-2. Streamlit komplett rebooten.
-3. Live-Screener starten.
-4. Falls Yahoo einen 429 liefert, muss der Wert als temporaer ausstehend erscheinen und bei einem Folgescan erneut versucht werden.
-5. MRVL, AVGO und QRVO gezielt pruefen.
+Keine Aenderungen:
+- Supabase / SQL
+- Secrets
+- Watchlists
+- Positionen / Trade-Journal
+
+Test nach Upload:
+1. Streamlit rebooten.
+2. Live-Screener starten.
+3. AAPL und einen lang gelisteten Titel sollten typischerweise hohe Datenqualitaet zeigen.
+4. SKHY/SPCX muessen analysierbar bleiben und eine reduzierte/New-Listing-Datenqualitaet zeigen.
+5. Trading-Score/Ampel darf durch die neue Qualitaetsanzeige nicht veraendert werden.

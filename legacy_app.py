@@ -16324,14 +16324,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
                                 if bool(override_mask.any()):
                                     st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
-                            st.caption("Volatilität = ATR(14) in % des Kurses: typische tägliche Handelsspanne; höher bedeutet größere Chancen, aber auch größere Stop-/Positionsrisiken.")
+                            st.caption("Volatilität = ATR(14) in % des Kurses. Datenqualität bewertet nur Vollständigkeit/Historie der Marktdaten und verändert den Trading-Score nicht.")
                             st.caption("Statuswechsel können auch ohne sichtbare Kursbewegung entstehen: Die neue Spalte 'Warum geändert?' vergleicht Score, Trigger, Timing, Konfluenz, Radar-Bucket und harte Gates mit dem vorherigen Scan.")
                             # v24.3: Lesbare operative Haupttabelle.
                             # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Live-Score",
+                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Live-Score",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -16393,6 +16393,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _score_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Live-Score")))
                                     _price_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kurs")))
                                     _vol_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilität")))
+                                    _dq_v2845d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Datenqualität")))
                                     _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
                                     _status_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Status"), 52))
                                     _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV")))
@@ -16413,6 +16414,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                           <div class="v2842-mobile-grid">
                                             <div><span class="v2842-mobile-label">Kurs</span>{_price_v2842}</div>
                                             <div><span class="v2842-mobile-label">Volatilität</span>{_vol_v2842}</div>
+                                            <div><span class="v2842-mobile-label">Datenqualität</span>{_dq_v2845d}</div>
                                             <div><span class="v2842-mobile-label">Trade-State</span>{_state_v2842}</div>
                                             <div><span class="v2842-mobile-label">CRV</span>{_crv_v2842}</div>
                                             <div><span class="v2842-mobile-label">Entry-Abstand</span>{_distance_v2842}</div>

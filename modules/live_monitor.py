@@ -123,6 +123,62 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         return "-" if not cleaned else "⚠️ " + " · ".join(cleaned[:2])
 
     fundamental_warning = _v2211_fundamental_warning_text(r)
+
+    # v28.4.5d: Data quality is deliberately separate from the trading score.
+    # It describes how complete the technical history is, not whether the setup is good.
+    def _v2845d_data_quality(src):
+        rr = src or {}
+        try:
+            history_days = int(rr.get("history_days") or len(rr.get("df")) or 0)
+        except Exception:
+            history_days = 0
+        mode = str(rr.get("history_mode") or "").strip()
+        dfq = rr.get("df")
+        def _finite(v):
+            try:
+                return bool(np.isfinite(float(v)) and not pd.isna(float(v)))
+            except Exception:
+                return False
+        ma20_ok = _finite(rr.get("ma20")) or history_days >= 20
+        ma50_ok = _finite(rr.get("ma50")) or history_days >= 50
+        ma200_ok = _finite(rr.get("ma200")) or history_days >= 200
+        atr_ok = _finite(rr.get("atr")) or _finite(rr.get("atr_pct")) or history_days >= 14
+        volume_ok = False
+        try:
+            if isinstance(dfq, pd.DataFrame) and not dfq.empty and "Volume" in dfq.columns:
+                vq = pd.to_numeric(dfq["Volume"], errors="coerce").dropna()
+                volume_ok = bool(len(vq) >= min(10, max(1, history_days)) and (vq > 0).any())
+        except Exception:
+            pass
+        provider = str(rr.get("data_provider") or rr.get("provider") or "Yahoo").strip()
+        fallback = bool(rr.get("provider_fallback") or rr.get("fallback_provider_used"))
+
+        if history_days >= 250 and ma20_ok and ma50_ok and ma200_ok and atr_ok and volume_ok and not fallback:
+            stars, label = 5, "Vollständig"
+        elif history_days >= 120 and ma20_ok and ma50_ok and atr_ok and volume_ok:
+            stars, label = 4, "Reduzierte Historie"
+        elif history_days >= 20 and ma20_ok and atr_ok:
+            stars, label = 3, "New Listing" if history_days < 120 else "Reduziert"
+        elif history_days >= 10:
+            stars, label = 2, "Eingeschränkt"
+        else:
+            stars, label = 1, "Unzureichend"
+        if fallback and stars > 1:
+            stars = min(stars, 3)
+            label = "Fallback-Quelle"
+        missing = []
+        if not ma20_ok: missing.append("MA20")
+        if not ma50_ok: missing.append("MA50")
+        if not ma200_ok: missing.append("MA200")
+        if not atr_ok: missing.append("ATR")
+        if not volume_ok: missing.append("Volumen")
+        text = "★" * stars + "☆" * (5 - stars) + " " + label
+        detail = f"{history_days} Handelstage · {mode or label} · Quelle {provider}"
+        if missing:
+            detail += " · eingeschränkt: " + ", ".join(missing)
+        return text, detail, stars
+
+    data_quality_text, data_quality_detail, data_quality_stars = _v2845d_data_quality(r)
     wave_dist = _v210_alert_num(d.get("wave_trigger_distance_pct"), default=None)
     entry_distance = _v210_alert_num(d.get("entry_distance_pct"), default=None)
     next_step = str(d.get("next_step") or "-").strip()
@@ -684,6 +740,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Name": name,
         "Kurs": "n/a" if (price is None or not np.isfinite(float(price)) or pd.isna(price)) else round(float(price), 4),
         "Volatilität": volatility_text,
+        "Datenqualität": data_quality_text,
+        "Datenbasis": data_quality_detail,
         "ATR-%": None if atr_pct_live is None else round(float(atr_pct_live), 2),
         "Startkurs": start_price_text,
         "Seit Aufnahme": perf_text,
@@ -791,7 +849,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

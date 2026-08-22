@@ -15967,7 +15967,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.4.5d1-data-quality",
+                "schema": "live-v28.4.6-explainable",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16337,7 +16337,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Live-Score",
+                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Live-Score", "Score-Treiber", "Score-Bremsen",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -16427,6 +16427,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             <div><span class="v2842-mobile-label">Änderung</span>{_change_v2842}</div>
                                           </div>
                                           <div class="v2842-mobile-status">{_status_v2842}</div>
+                                          <div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Warum dieser Score?</span>{html.escape(_v243_clip_cell(_mobile_row_v2842.get("Warum dieser Score?"), 220))}</div>
                                           {_why_block_v2843}
                                         </div>
                                         """,
@@ -16450,6 +16451,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         ]
                                         if not _mobile_detail_match_v2842.empty:
                                             _mobile_detail_row_v2842 = _mobile_detail_match_v2842.iloc[0].to_dict()
+                                            _detail_name_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Name"))
+                                            _detail_ticker_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Ticker"))
+                                            _detail_price_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Kurs"))
+                                            _detail_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Live-Score"))
+                                            _detail_ampel_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Ampel"))
+                                            _detail_dq_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Datenqualität"))
+                                            st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
+                                            st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
+                                            _why_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Warum dieser Score?"))
+                                            if _why_score_v2846 not in {"", "-"}:
+                                                st.info(_why_score_v2846)
                                             _mobile_detail_df_v2842 = pd.DataFrame(
                                                 [
                                                     {"Feld": str(key), "Wert": _v243_clean_cell(value)}

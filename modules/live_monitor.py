@@ -731,6 +731,25 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
 
     live_score_int = int(round(live_score))
 
+    # v28.4.6: Explainable Trading. Die Komponenten werden nicht nur intern
+    # gespeichert, sondern in eine kompakte, handlungsorientierte Erklaerung
+    # uebersetzt. Das aendert den Score nicht.
+    _explain_components = [
+        ("Trigger", trigger_component),
+        ("Timing", timing_component),
+        ("Konfluenz", conf_component),
+        ("Chart", chart_component),
+        ("Trend", trend_component),
+        ("CRV", crv_component),
+    ]
+    _explain_sorted = sorted(_explain_components, key=lambda x: float(x[1]), reverse=True)
+    _score_drivers = "; ".join(f"{label} {int(round(float(value)))}/100" for label, value in _explain_sorted[:3])
+    _score_brakes_list = [(label, value) for label, value in sorted(_explain_components, key=lambda x: float(x[1])) if float(value) < 60.0]
+    _score_brakes = "; ".join(f"{label} {int(round(float(value)))}/100" for label, value in _score_brakes_list[:3]) or "Keine deutliche Komponenten-Bremse"
+    if entry_hard_gate:
+        _score_brakes = "Hartes Einstiegsgate aktiv; " + _score_brakes
+    _score_explanation = f"Treiber: {_score_drivers}. Bremsen: {_score_brakes}."
+
     return {
         "Ampel": status_icon,
         "Status": status,
@@ -742,6 +761,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Volatilität": volatility_text,
         "Datenqualität": data_quality_text,
         "Datenbasis": data_quality_detail,
+        "Score-Treiber": _score_drivers,
+        "Score-Bremsen": _score_brakes,
+        "Warum dieser Score?": _score_explanation,
         "ATR-%": None if atr_pct_live is None else round(float(atr_pct_live), 2),
         "Startkurs": start_price_text,
         "Seit Aufnahme": perf_text,

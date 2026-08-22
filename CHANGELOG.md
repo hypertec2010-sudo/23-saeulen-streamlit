@@ -19,3 +19,8 @@
 - Datenqualitaet strikt vom Trading-Score getrennt.
 - Historienlaenge, MA-Verfuegbarkeit, ATR und Volumen werden fuer die Qualitaetsstufe beruecksichtigt.
 - Mobile Karten zeigen die Datenqualitaet direkt an.
+
+## v28.4.6
+- Explainable Trading: aktuelle Score-Treiber und Bremsen im Live-Screener.
+- Ticker-Detailkopf beginnt mit Name und Ticker.
+- Mobile und Desktop erhalten konsistente Erklärfelder.

@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.4.5a"
+APP_VERSION = "v28.6b"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14794,7 +14794,7 @@ with st.sidebar.expander("Hilfen & Verwaltung", expanded=False):
             st.session_state.auto_run_slot_label = selected_auto_slot
             st.rerun()
 
-    st.markdown("#### Speicherung v28.2")
+    st.markdown(f"#### Speicherung · {APP_VERSION}")
     _storage_status_v280 = _storage_v280.status()
     _storage_label_v280 = "Supabase + lokaler Spiegel" if _storage_status_v280.get("remote_enabled") else "Lokaler JSON-Fallback"
     st.caption(f"Aktiver Speicher: {_storage_label_v280} · Benutzerbereich: {_storage_status_v280.get('user_id', 'default')}")
@@ -15513,7 +15513,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             else:
                                 st.warning(msg)
                     with c_back5:
-                        st.caption("v23.9: Keine automatische +0.0%-Baseline mehr. Nutze 'Baseline ab jetzt setzen' bewusst fuer alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
+                        st.caption("Keine automatische +0.0%-Baseline: Nutze 'Baseline ab jetzt setzen' bewusst für alte Werte ohne Aufnahmedatum, oder setze Startkurs/Datum manuell.")
 
                     st.markdown("**Manuellen Startkurs / historisches Aufnahmedatum setzen**")
                     if current_tickers:
@@ -15634,9 +15634,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown("### Live-Watchlist / Trading-Cockpit v28.4.5a")
+            st.markdown(f"### Live-Watchlist / Trading-Cockpit · {APP_VERSION}")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
-            st.caption("Performance v25.1: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
+            st.caption("Performance: operative Tickeranalysen werden bis zu 15 Minuten wiederverwendet; langsamere Unternehmens-/Marktkontexte behalten ihre längeren Cache-Zeiten. Ein neuer Live-Scan aktualisiert gezielt statt alle Cockpit-Bereiche neu aufzubauen.")
             # v28.4.2: Mobile-Modus und Einstellungen werden zentral gespeichert,
             # damit ein durch Display-Sperre neu aufgebauter Browser-Run wieder mit
             # derselben kompakten Darstellung startet.
@@ -15969,7 +15969,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.6a-shadow-validation",
+                "schema": "live-v28.6b-shadow-compare-ui",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16350,7 +16350,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Volatilitätsregime", "Marktregime", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen",
+                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -16528,7 +16528,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Volatilitäts-Details")))
                                                 st.markdown("**Marktregime**")
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Marktregime-Details")))
-                                                st.caption("Diese Kontextwerte sind in v28.4.8 rein informativ und verändern Live-Score/Ampel nicht.")
+                                                st.caption("Die Context-/Shadow-Werte laufen parallel; die produktive Live-Ampel bleibt unverändert.")
                                             _why_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Warum dieser Score?"))
                                             if _why_score_v2846 not in {"", "-"}:
                                                 st.info(_why_score_v2846)
@@ -16610,7 +16610,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
                         elif cockpit_area == "📐 Risiko-Rechner":
-                            st.markdown("### Risiko-/Positionsgrößen-Rechner v24.14")
+                            st.markdown(f"### Risiko-/Positionsgrößen-Rechner · {APP_VERSION}")
                             st.caption("Für grüne und selektiv gelbe Live-Signale: Stückzahl aus Entry, Stop und Risiko pro Trade berechnen. Der Rechner erzeugt keine neue Kaufempfehlung, sondern übersetzt ein Setup in Risiko und Positionsgröße.")
                             calc_df = live_df.copy()
                             if not calc_df.empty and "Ampel" in calc_df.columns:
@@ -16781,7 +16781,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         elif cockpit_area == "📌 Positionen / Exit":
-                            st.markdown("### Positions-/Exit-Monitor v28.2")
+                            st.markdown(f"### Positions-/Exit-Monitor · {APP_VERSION}")
                             st.caption("Überwacht offene Positionen: R-Multiple, P/L, Stop-/Teilgewinn- und Exit-Hinweise. Mit dem Trade-Journal können Teilverkäufe, Stop-Anpassungen, Notizen und vollständige Schließungen dokumentiert werden. Die App eröffnet oder schließt keine Trades automatisch.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             pc1, pc2 = st.columns([0.72, 0.28])
@@ -17126,7 +17126,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.error(result_v270.get("error") or "Notiz konnte nicht gespeichert werden.")
 
                         elif cockpit_area == "📓 Trade-Journal":
-                            st.markdown("### Trade-Journal v28.3.1")
+                            st.markdown(f"### Trade-Journal · {APP_VERSION}")
                             st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Daten bilden später die Grundlage für das Lern-/Backtest-Dashboard.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             if journal_df_v270 is None or journal_df_v270.empty:
@@ -17206,7 +17206,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.rerun()
                             else:
                                 st.info("Noch keine Statuswechsel-Historie vorhanden. Nach weiteren Prüfungen erscheinen hier Änderungen.")
-                            st.markdown("#### Signal-/Trade-Event-Log v25.1")
+                            st.markdown(f"#### Signal-/Trade-Event-Log · {APP_VERSION}")
                             event_log_df_v2416 = _v2416_events_dataframe(selected_watchlist_name)
                             if event_log_df_v2416 is not None and not event_log_df_v2416.empty:
                                 ev_types = ["Alle"] + sorted(event_log_df_v2416["Ereignis"].dropna().astype(str).unique().tolist())
@@ -17683,7 +17683,7 @@ if workspace_mode:
                     save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
 
                 st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("v21.1: Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
+                st.caption("Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
 
                 sort_col1, sort_col2 = st.columns([1.4, 1.0])
                 with sort_col1:
@@ -17993,7 +17993,7 @@ if workspace_mode:
                     ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
 
                     st.markdown("### Beste heutige Chancen")
-                    st.caption("v21.1 zeigt hier nur noch echte heutige Chancen: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
+                    st.caption("Hier werden nur echte heutige Chancen gezeigt: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
                     if not _top_box_strict_df.empty:
                         _cols = st.columns(len(_top_box_strict_df))
                         for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
@@ -18128,7 +18128,7 @@ if workspace_mode:
                 if radar_result_map:
                     _alert_style_v210 = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
                     setup_alerts_df_v210 = build_setup_alerts_table_v210(list(radar_result_map.values()), style_name=_alert_style_v210, limit=30)
-                    st.markdown("### Setup-Alerts v21.10")
+                    st.markdown(f"### Setup-Alerts · {APP_VERSION}")
                     st.caption("Konservative Vorschau: Diese Alerts werden aus Entry, Wave-Trigger, Bucket, CRV und Invalidierung berechnet. Es wird noch nichts automatisch versendet.")
                     if setup_alerts_df_v210.empty:
                         st.info("Aktuell keine handlungsrelevanten Setup-Alerts. Warn-/Gate-/Watchlist-Hinweise werden bewusst nicht als Alerts angezeigt.")
@@ -21031,7 +21031,7 @@ if result is not None:
         st.caption(f"S/R-Basis: {chart_structures.get('sr_basis_label', '1 Jahr')}")
 
     with st.expander("Technische Chartdetails", expanded=False):
-        st.caption("v21.1: Diese technische Einordnung wird unabhängig von der gewählten Chart-Ansicht vollständig berechnet. Kompakt/Setup/Vollanalyse steuert nur die sichtbaren Overlays im Chart.")
+        st.caption("Diese technische Einordnung wird unabhängig von der gewählten Chart-Ansicht vollständig berechnet. Kompakt/Setup/Vollanalyse steuert nur die sichtbaren Overlays im Chart.")
         if chart_structures:
             chart_text_items = summarize_chart_structures(chart_df, chart_structures)
             if chart_text_items:
@@ -21075,7 +21075,7 @@ if result is not None:
                     result["wave_structure_label"] = wave_structure_pkg.get("label")
                     result["wave_structure_summary"] = wave_structure_pkg.get("summary")
                     result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
-            st.markdown("**Wellenanalyse v21.1 / Swing-Struktur**")
+            st.markdown(f"**Wellenanalyse / Swing-Struktur · {APP_VERSION}**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []
             _wave_driver_text = " · ".join([str(x) for x in _wave_drivers[:3]]) if _wave_drivers else "keine dominanten Strukturtreiber"
@@ -21144,7 +21144,7 @@ if result is not None:
             if _wave_zones:
                 _wave_cols = list(pd.DataFrame(_wave_zones).columns)
                 _render_wrapped_detail_table_v1533(_wave_zones, _wave_cols, table_class="wrapped-wave-table")
-                st.caption("v21.1: Regelbasierte Swing-/Wellenstruktur, jetzt in Handlungssprache. Keine dogmatische Elliott-Zaehllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
+                st.caption("Regelbasierte Swing-/Wellenstruktur in Handlungssprache. Keine dogmatische Elliott-Zähllogik; sie bewertet höhere/tiefere Hochs und Tiefs, Pullback-Tiefe, Trigger, Invalidierung und Zielzone.")
 
             # v16.2: High Tight Pivot / Power Play / High Tight Flag als weicher Setup-Muster-Kontext.
             setup_pattern_pkg = build_setup_pattern_context_v162(chart_sr_basis_df if "chart_sr_basis_df" in locals() else chart_df, result if "result" in locals() else {})

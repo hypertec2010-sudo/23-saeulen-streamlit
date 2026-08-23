@@ -1,3 +1,9 @@
+## v28.6b
+- Live- und Shadow-Ampel in der Haupttabelle direkt nebeneinander nach vorne verschoben.
+- Live-/Guarded-Score für schnelleren Vergleich weiter nach vorne gezogen.
+- Sichtbare App-/Bereichsversionen auf v28.6b vereinheitlicht.
+- Keine Änderung an Bewertungslogik oder produktiver Ampel.
+
 ## v28.6
 - Shadow Mode eingeführt: Live-Ampel und virtuelle Engine-Ampel laufen parallel.
 - Shadow-Ampel basiert ausschließlich auf dem Guarded Engine-Score; produktive Ampel bleibt unverändert.

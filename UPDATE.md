@@ -1,21 +1,18 @@
-# v28.6a – Shadow Validation Dashboard
+# v28.6b – Shadow Compare UI + Versionskonsistenz
 
 Neu:
-- Dashboard fuer Live-Ampel vs. Shadow-Ampel.
-- Anzahl Shadow-Episoden, offene Abweichungen, Auf-/Abwertungen.
-- Kursentwicklung seit Shadow-Ereignis, soweit Kursdaten vorhanden sind.
-- Episodendauer und aktueller/abgeschlossener Status.
-- Neue Shadow-Ereignisse speichern den Kurs zum Ereigniszeitpunkt.
-- Bestehende alte Shadow-Historie bleibt lesbar; alte Eintraege koennen bei Kursauswertung `n/a` zeigen.
+- Live-Ampel und Shadow-Ampel stehen in der Desktop-Tabelle direkt nebeneinander ganz vorne.
+- Shadow-Abweichung folgt direkt dahinter, danach erst Ticker/Name/Kurs.
+- Live-Score und Guarded Engine-Score stehen ebenfalls weiter vorne für den schnellen Vergleich.
+- Zentrale App-Version auf v28.6b angehoben.
+- Hauptbereiche zeigen konsistent dieselbe aktuelle Release-Version.
+- Veraltete sichtbare Versionspräfixe in Hinweistexen wurden bereinigt.
+- Cache-Schema angehoben, damit die neue Tabellenreihenfolge nach dem Update sofort greift.
 
-Unveraendert:
-- produktive Live-Ampel
-- Basis-Score
-- Engine-/Guardrail-Regeln
-- Supabase-Schema / SQL / Secrets
+Unverändert:
+- Live-Ampel-Logik
+- Shadow-/Engine-Regeln
+- Scores und Guardrails
+- Supabase/SQL/Secrets
 
-Nach Update:
-1. Dateien in GitHub ueberschreiben.
-2. Streamlit rebooten.
-3. Frischen Live-Scan starten.
-4. Im Screener `Shadow Validation Dashboard` oeffnen.
+Nach Upload: Streamlit einmal rebooten und einen frischen Scan starten.

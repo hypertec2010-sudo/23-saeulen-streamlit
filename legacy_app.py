@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.6b"
+APP_VERSION = "v28.6c"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15969,7 +15969,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.6b-shadow-compare-ui",
+                "schema": "live-v28.6c-shadow-compare-ui",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16350,7 +16350,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen",
+                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -16478,6 +16478,15 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             _brake_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
                                             if _driver_full_v2847 not in {"", "-"}: st.markdown(f"**Treiber:** {_driver_full_v2847}")
                                             if _brake_full_v2847 not in {"", "-"}: st.markdown(f"**Bremsen:** {_brake_full_v2847}")
+                                            _gates_full_v286c = _v243_clean_cell(_mobile_row_v2842.get("Aktive Einstiegsgates"))
+                                            _gate_details_full_v286c = _v243_clean_cell(_mobile_row_v2842.get("Gate-Details"))
+                                            if _gates_full_v286c not in {"", "-"}:
+                                                st.markdown(f"**Aktive Einstiegsgates:** {_gates_full_v286c}")
+                                                if _gate_details_full_v286c not in {"", "-"}:
+                                                    st.markdown("**Gate-Details:**")
+                                                    for _gate_detail_item_v286c in str(_gate_details_full_v286c).split(" | "):
+                                                        if str(_gate_detail_item_v286c).strip():
+                                                            st.write("• " + str(_gate_detail_item_v286c).strip())
                                             _engine_full_v285a = _v243_clean_cell(_mobile_row_v2842.get("Engine-Erklärung"))
                                             if _engine_full_v285a not in {"", "-"}:
                                                 st.markdown("**Engine 2.0 – Beobachtungsmodus**")
@@ -16519,6 +16528,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
                                             st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · RS-Dynamik: {_v243_clean_cell(_mobile_detail_row_v2842.get('RS-Dynamik'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
                                             st.caption(f"Engine 2.0 (Shadow): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · Live {_detail_ampel_v2846} → Shadow {_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Ampel'))} ({_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Abweichung'))}) · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
+                                            _detail_gates_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Aktive Einstiegsgates"))
+                                            _detail_gate_text_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Gate-Details"))
+                                            if _detail_gates_v286c not in {"", "-"}:
+                                                st.warning(f"Aktive Einstiegsgates: {_detail_gates_v286c}")
+                                                with st.expander("Einstiegsgates im Detail", expanded=True):
+                                                    for _gate_item_v286c in str(_detail_gate_text_v286c).split(" | "):
+                                                        if str(_gate_item_v286c).strip():
+                                                            st.write("• " + str(_gate_item_v286c).strip())
                                             with st.expander("Trading Context · Berechnung anzeigen", expanded=False):
                                                 st.markdown("**Relative Stärke**")
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Details")))

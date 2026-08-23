@@ -1,18 +1,16 @@
-# v28.6b – Shadow Compare UI + Versionskonsistenz
+# v28.6c – Gate Transparency
 
 Neu:
-- Live-Ampel und Shadow-Ampel stehen in der Desktop-Tabelle direkt nebeneinander ganz vorne.
-- Shadow-Abweichung folgt direkt dahinter, danach erst Ticker/Name/Kurs.
-- Live-Score und Guarded Engine-Score stehen ebenfalls weiter vorne für den schnellen Vergleich.
-- Zentrale App-Version auf v28.6b angehoben.
-- Hauptbereiche zeigen konsistent dieselbe aktuelle Release-Version.
-- Veraltete sichtbare Versionspräfixe in Hinweistexen wurden bereinigt.
-- Cache-Schema angehoben, damit die neue Tabellenreihenfolge nach dem Update sofort greift.
+- Score-Bremse nennt konkrete harte Einstiegsgates statt nur "Hartes Einstiegsgate aktiv".
+- Neue Spalten `Aktive Einstiegsgates` und `Gate-Details`.
+- Wo technisch moeglich werden Istwert und Schwelle angezeigt, z. B. CRV, Entry-Abstand, Distribution/Akkumulation.
+- Mobile-Erklaerung und Ticker-Detailansicht zeigen alle aktiven Gates vollstaendig.
+- Sichtbare Versionsnummer auf v28.6c synchronisiert.
 
-Unverändert:
-- Live-Ampel-Logik
-- Shadow-/Engine-Regeln
+Unveraendert:
+- Live-Ampel
+- Shadow-Ampel-Logik
 - Scores und Guardrails
 - Supabase/SQL/Secrets
 
-Nach Upload: Streamlit einmal rebooten und einen frischen Scan starten.
+Nach Upload Streamlit neu starten und einen frischen Scan ausfuehren.

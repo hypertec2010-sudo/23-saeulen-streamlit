@@ -315,6 +315,80 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     non_entry_fundamental_gate = bool(hard_gate and gate_low and any(t in gate_low for t in fundamental_gate_terms))
     entry_hard_gate = bool(hard_gate and not non_entry_exit_gate and not non_entry_fundamental_gate)
 
+    # v28.6c: Gate Transparency. Die Logik, ob ein Gate hart ist, bleibt
+    # unveraendert. Neu ist nur die nachvollziehbare Aufschluesselung der
+    # bereits von der Radar-Engine gesetzten gate_reasons.
+    def _v286c_gate_transparency(gate_text):
+        raw_items = [x.strip() for x in str(gate_text or '').split(';') if x.strip()]
+        unique = []
+        seen = set()
+        for item in raw_items:
+            key = item.lower()
+            if key in {"keine harten gates", "keine harten gate", "-", "nan", "none"} or key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+
+        details = []
+        active_names = []
+        for item in unique:
+            low = item.lower()
+            name = item
+            detail = item
+            if "risiko hoch" in low:
+                name = "Risiko/Volatilitaet zu hoch"
+                detail = f"Risiko = {risk or 'hoch'} · Gate aktiv bei 'hoch'"
+            elif "fomo kritisch" in low:
+                name = "FOMO kritisch"
+                _fomo_show = str(((r.get('fomo_smart_money_pkg') or {}) if isinstance(r.get('fomo_smart_money_pkg'), dict) else {}).get('label') or 'kritisch')
+                detail = f"FOMO = {_fomo_show} · erforderlich: unter kritisch"
+            elif "entry-abstand" in low and "fomo" not in low:
+                name = "Entry-Abstand zu gross"
+                if entry_distance is not None:
+                    detail = f"Entry-Abstand {float(entry_distance):+.1f}% · erlaubt <= 5.0%"
+                else:
+                    detail = "Entry-Abstand oberhalb der erlaubten 5.0%-Schwelle"
+            elif "crv unattraktiv" in low or "crv zu eng" in low:
+                name = "CRV zu niedrig"
+                if crv_float is not None:
+                    detail = f"CRV {crv_float:.2f} · harter Entry-Grenzwert >= 1.20; selektiv >= 1.50"
+                else:
+                    detail = "CRV unter dem harten Entry-Grenzwert 1.20"
+            elif "distribution dominiert" in low:
+                _acc = _v210_alert_num(r.get('accumulation_score'), default=None)
+                _dist = _v210_alert_num(r.get('distribution_pressure_score', r.get('distribution_score')), default=None)
+                name = "Distribution dominiert"
+                if _acc is not None and _dist is not None:
+                    detail = f"Distribution {_dist:.0f} vs. Akkumulation {_acc:.0f} · Gate bei > Akkumulation +14"
+                else:
+                    detail = "Distribution liegt mehr als 14 Punkte ueber Akkumulation"
+            elif low.startswith("typ "):
+                name = "Risikotyp/Hype-Setup"
+                detail = f"Kandidatentyp: {item[4:].strip()} · dieser Typ setzt ein hartes Radar-Gate"
+            elif "risk-off" in low:
+                name = "Risk-off + Setup-Typ"
+                detail = "Negatives Marktregime bremst Bounce/Hype/Risikotyp"
+            elif "nicht hinterherlaufen" in low:
+                name = "Chase-/FOMO-Gate"
+                _parts = []
+                if entry_distance is not None: _parts.append(f"Entry-Abstand {float(entry_distance):+.1f}%")
+                _parts.append("FOMO-Bremse aktiv")
+                detail = " · ".join(_parts) + " · kein Hinterherlaufen"
+            elif "wave" in low or "welle" in low or "struktur" in low:
+                name = "Wave-/Struktur-Gate"
+                detail = item
+            elif "mtf" in low or "timeframe" in low:
+                name = "Multi-Timeframe-Gate"
+                detail = item
+            active_names.append(name)
+            details.append(f"{name}: {detail}")
+
+        if not active_names:
+            return "-", "Keine harten Einstiegsgates aktiv."
+        return " · ".join(active_names), " | ".join(details)
+
+    active_entry_gates, entry_gate_details = _v286c_gate_transparency(gate)
+
     def _v2211_fundamental_warning_text(src):
         rr = src or {}
         candidates = []
@@ -1090,7 +1164,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _score_brakes_list = [(label, value) for label, value in sorted(_explain_components, key=lambda x: float(x[1])) if float(value) < 60.0]
     _score_brakes = "; ".join(f"{label} {int(round(float(value)))}/100" for label, value in _score_brakes_list[:3]) or "Keine deutliche Komponenten-Bremse"
     if entry_hard_gate:
-        _score_brakes = "Hartes Einstiegsgate aktiv; " + _score_brakes
+        _gate_prefix_v286c = active_entry_gates if active_entry_gates not in {"", "-"} else "Hartes Einstiegsgate aktiv"
+        _score_brakes = "Harte Gates: " + _gate_prefix_v286c + "; " + _score_brakes
     _score_explanation = f"Treiber: {_score_drivers}. Bremsen: {_score_brakes}."
 
     # v28.5a: Context-Adjusted Score im reinen Beobachtungsmodus.
@@ -1246,6 +1321,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Marktregime-Details": _market_validation,
         "Score-Treiber": _score_drivers,
         "Score-Bremsen": _score_brakes,
+        "Aktive Einstiegsgates": active_entry_gates if entry_hard_gate else "-",
+        "Gate-Details": entry_gate_details if entry_hard_gate else "Keine harten Einstiegsgates aktiv.",
         "Warum dieser Score?": _score_explanation,
         "ATR-%": None if atr_pct_live is None else round(float(atr_pct_live), 2),
         "Startkurs": start_price_text,

@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.6e"
+APP_VERSION = "v28.6e1"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15991,7 +15991,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.6e-regional-benchmark",
+                "schema": "live-v28.6e1-benchmark-diagnostics",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16372,7 +16372,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
+                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -16565,6 +16565,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Details")))
                                                 st.markdown("**RS-Dynamik 21T/63T**")
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Dynamik Details")))
+                                                st.markdown("**Benchmark-Diagnose**")
+                                                st.write(f"Primärbenchmark: {_v243_clean_cell(_mobile_detail_row_v2842.get('Primärbenchmark'))}")
+                                                st.write(f"Status: {_v243_clean_cell(_mobile_detail_row_v2842.get('Primärbenchmark-Status'))}")
+                                                st.write(f"Fallback-Grund: {_v243_clean_cell(_mobile_detail_row_v2842.get('Benchmark-Fallback-Grund'))}")
+                                                st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Benchmark-Diagnose")))
                                                 st.markdown("**Volatilität**")
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Volatilitäts-Details")))
                                                 st.markdown("**Marktregime**")

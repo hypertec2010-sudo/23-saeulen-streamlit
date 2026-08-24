@@ -509,6 +509,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _benchmark_label = str(r.get("benchmark_label") or r.get("benchmark_symbol") or "Benchmark").strip()
     _benchmark_symbol = str(r.get("benchmark_symbol") or "").strip()
     _regional_benchmark_source = "Analyse-Engine"
+    _benchmark_primary = "n/a"
+    _benchmark_primary_status = "Nicht benötigt"
+    _benchmark_fallback_reason = "-"
+    _benchmark_diagnostic = "Benchmarkdaten aus Analyse-Engine."
 
     # v28.6e: Regional Benchmark Recovery fuer europaeische Werte.
     # Falls die Kernanalyse keine konkrete 21T/63T-Benchmark-RS liefert,
@@ -550,28 +554,57 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             return None
 
     _regional_candidates = _v286e_benchmark_candidates(ticker)
+    if _regional_candidates:
+        _benchmark_primary = f"{_regional_candidates[0][1]} ({_regional_candidates[0][0]})"
     if (_rs21 is None or _rs63 is None) and _regional_candidates:
         _stock_df_reg = r.get("df") if isinstance(r.get("df"), pd.DataFrame) else None
         _stock_r21_reg = _v286e_last_return(_stock_df_reg, 21)
         _stock_r63_reg = _v286e_last_return(_stock_df_reg, 63)
         _load_benchmark = _CONTEXT.get("load_benchmark_data")
         _eval_market = _CONTEXT.get("evaluate_market_filter")
-        if callable(_load_benchmark):
-            for _cand_symbol, _cand_label in _regional_candidates:
+        _diag_attempts = []
+        if _stock_r63_reg is None:
+            _benchmark_primary_status = "Aktienhistorie < 64 Handelstage"
+            _benchmark_fallback_reason = "Kein Benchmark-Fallback: 63T-Aktienhistorie fehlt."
+            _benchmark_diagnostic = _benchmark_fallback_reason
+        elif not callable(_load_benchmark):
+            _benchmark_primary_status = "Benchmark-Loader nicht verfügbar"
+            _benchmark_fallback_reason = "Benchmark-Abruf technisch nicht verfügbar."
+            _benchmark_diagnostic = _benchmark_fallback_reason
+        else:
+            for _cand_idx, (_cand_symbol, _cand_label) in enumerate(_regional_candidates):
+                _load_error = ""
                 try:
                     _bench_df_reg = _load_benchmark(_cand_symbol)
-                except Exception:
+                except Exception as _bench_exc:
                     _bench_df_reg = pd.DataFrame()
+                    _load_error = f"{type(_bench_exc).__name__}: {str(_bench_exc)[:120]}"
                 _bench_r21_reg = _v286e_last_return(_bench_df_reg, 21)
                 _bench_r63_reg = _v286e_last_return(_bench_df_reg, 63)
+                if _load_error:
+                    _cand_status = f"Abruffehler · {_load_error}"
+                elif not isinstance(_bench_df_reg, pd.DataFrame) or _bench_df_reg.empty:
+                    _cand_status = "keine Kursdaten geliefert"
+                elif _bench_r63_reg is None:
+                    _cand_status = f"zu wenig 63T-Daten ({len(_bench_df_reg)} Zeilen)"
+                else:
+                    _cand_status = f"OK · 63T {_bench_r63_reg:+.1f}%"
+                _diag_attempts.append(f"{_cand_label} ({_cand_symbol}): {_cand_status}")
+                if _cand_idx == 0:
+                    _benchmark_primary_status = _cand_status
                 # 63T ist der Primaeranker; bei jungen Listings bleibt das Missing-Data-Guard korrekt aktiv.
-                if _stock_r63_reg is not None and _bench_r63_reg is not None:
+                if _bench_r63_reg is not None:
                     _rs63 = _stock_r63_reg - _bench_r63_reg
                     if _stock_r21_reg is not None and _bench_r21_reg is not None:
                         _rs21 = _stock_r21_reg - _bench_r21_reg
                     _benchmark_symbol = _cand_symbol
                     _benchmark_label = _cand_label
-                    _regional_benchmark_source = "Regional Benchmark Engine" if _cand_symbol == _regional_candidates[0][0] else "Europa-Fallback"
+                    _regional_benchmark_source = "Regional Benchmark Engine" if _cand_idx == 0 else "Europa-Fallback"
+                    if _cand_idx > 0:
+                        _benchmark_fallback_reason = f"Primärbenchmark nicht nutzbar: {_benchmark_primary_status}"
+                    else:
+                        _benchmark_fallback_reason = "-"
+                    _benchmark_diagnostic = " | ".join(_diag_attempts)
                     # Validierungswerte lokal bereitstellen.
                     r = dict(r)
                     r["ret21"] = _stock_r21_reg
@@ -590,6 +623,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
                         except Exception:
                             pass
                     break
+            else:
+                _benchmark_fallback_reason = "Alle regionalen Benchmark-Kandidaten ohne belastbare 63T-Daten."
+                _benchmark_diagnostic = " | ".join(_diag_attempts) if _diag_attempts else _benchmark_fallback_reason
     if _rs63 is not None:
         if _rs63 >= 8:
             _rs_context = f"Stark ↑ ({_rs63:+.1f}% / 63T)"
@@ -1411,6 +1447,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "RS-Dynamik Details": _rs_dynamics_detail,
         "RS-Benchmark": _rs_context_detail,
         "Benchmark": _rs_context_detail or "n/a",
+        "Primärbenchmark": _benchmark_primary,
+        "Primärbenchmark-Status": _benchmark_primary_status,
+        "Benchmark-Fallback-Grund": _benchmark_fallback_reason,
+        "Benchmark-Diagnose": _benchmark_diagnostic,
         "RS-Details": _rs_validation,
         "Volatilitätsregime": volatility_regime,
         "Volatilitäts-Details": _vol_validation,
@@ -1528,7 +1568,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "Benchmark", "Primärbenchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Benchmark-Diagnose", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

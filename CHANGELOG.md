@@ -15,3 +15,7 @@
 - Gate Transparency: konkrete Einstiegsgates inklusive Detailursache und Schwellenwerten.
 - Gate-Information in Desktop, Mobile und Ticker-Details sichtbar.
 - Keine Aenderung der Bewertungslogik.
+
+## v28.6e1 - Regional Benchmark Fallback Diagnostics
+- Zeigt Primaerbenchmark, Abrufstatus, Fallback-Grund und Diagnosekette.
+- Keine Aenderung an Score-, Ampel-, Shadow- oder Guardrail-Logik.

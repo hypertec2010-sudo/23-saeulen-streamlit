@@ -507,6 +507,89 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _rs63 = _v2847_num(r.get("rs_vs_benchmark_63"))
     _rs_score = _v2847_num(r.get("rs_benchmark_score"))
     _benchmark_label = str(r.get("benchmark_label") or r.get("benchmark_symbol") or "Benchmark").strip()
+    _benchmark_symbol = str(r.get("benchmark_symbol") or "").strip()
+    _regional_benchmark_source = "Analyse-Engine"
+
+    # v28.6e: Regional Benchmark Recovery fuer europaeische Werte.
+    # Falls die Kernanalyse keine konkrete 21T/63T-Benchmark-RS liefert,
+    # berechnet der Live-Monitor sie gegen einen Markt-/Laenderbenchmark nach.
+    # Das aendert weder Basis-Score noch Live-Ampel; es fuellt nur die bereits
+    # vorhandene Context-/Shadow-Engine mit belastbaren Vergleichsdaten.
+    def _v286e_benchmark_candidates(symbol):
+        t = str(symbol or "").strip().upper()
+        suffix = t.rsplit(".", 1)[1] if "." in t else ""
+        mapping = {
+            "DE": [("^GDAXI", "DAX"), ("^STOXX50E", "EURO STOXX 50")],
+            "F":  [("^GDAXI", "DAX"), ("^STOXX50E", "EURO STOXX 50")],
+            "PA": [("^FCHI", "CAC 40"), ("^STOXX50E", "EURO STOXX 50")],
+            "AS": [("^AEX", "AEX"), ("^STOXX50E", "EURO STOXX 50")],
+            "BR": [("^BFX", "BEL 20"), ("^STOXX50E", "EURO STOXX 50")],
+            "MI": [("FTSEMIB.MI", "FTSE MIB"), ("^STOXX50E", "EURO STOXX 50")],
+            "MC": [("^IBEX", "IBEX 35"), ("^STOXX50E", "EURO STOXX 50")],
+            "SW": [("^SSMI", "SMI"), ("^STOXX50E", "EURO STOXX 50")],
+            "L":  [("^FTSE", "FTSE 100"), ("^STOXX50E", "EURO STOXX 50")],
+            "ST": [("^OMX", "OMX Stockholm 30"), ("^STOXX50E", "EURO STOXX 50")],
+            "CO": [("^OMXC25", "OMX Copenhagen 25"), ("^STOXX50E", "EURO STOXX 50")],
+            "OL": [("^OSEAX", "Oslo All Share"), ("^STOXX50E", "EURO STOXX 50")],
+            "HE": [("^OMXH25", "OMX Helsinki 25"), ("^STOXX50E", "EURO STOXX 50")],
+            "VI": [("^ATX", "ATX"), ("^STOXX50E", "EURO STOXX 50")],
+            "LS": [("PSI20.LS", "PSI"), ("^STOXX50E", "EURO STOXX 50")],
+        }
+        return mapping.get(suffix, [])
+
+    def _v286e_last_return(frame, periods):
+        try:
+            if not isinstance(frame, pd.DataFrame) or frame.empty or "Close" not in frame.columns:
+                return None
+            close = pd.to_numeric(frame["Close"], errors="coerce").dropna()
+            if len(close) <= int(periods):
+                return None
+            val = (float(close.iloc[-1]) / float(close.iloc[-1-int(periods)]) - 1.0) * 100.0
+            return val if np.isfinite(val) else None
+        except Exception:
+            return None
+
+    _regional_candidates = _v286e_benchmark_candidates(ticker)
+    if (_rs21 is None or _rs63 is None) and _regional_candidates:
+        _stock_df_reg = r.get("df") if isinstance(r.get("df"), pd.DataFrame) else None
+        _stock_r21_reg = _v286e_last_return(_stock_df_reg, 21)
+        _stock_r63_reg = _v286e_last_return(_stock_df_reg, 63)
+        _load_benchmark = _CONTEXT.get("load_benchmark_data")
+        _eval_market = _CONTEXT.get("evaluate_market_filter")
+        if callable(_load_benchmark):
+            for _cand_symbol, _cand_label in _regional_candidates:
+                try:
+                    _bench_df_reg = _load_benchmark(_cand_symbol)
+                except Exception:
+                    _bench_df_reg = pd.DataFrame()
+                _bench_r21_reg = _v286e_last_return(_bench_df_reg, 21)
+                _bench_r63_reg = _v286e_last_return(_bench_df_reg, 63)
+                # 63T ist der Primaeranker; bei jungen Listings bleibt das Missing-Data-Guard korrekt aktiv.
+                if _stock_r63_reg is not None and _bench_r63_reg is not None:
+                    _rs63 = _stock_r63_reg - _bench_r63_reg
+                    if _stock_r21_reg is not None and _bench_r21_reg is not None:
+                        _rs21 = _stock_r21_reg - _bench_r21_reg
+                    _benchmark_symbol = _cand_symbol
+                    _benchmark_label = _cand_label
+                    _regional_benchmark_source = "Regional Benchmark Engine" if _cand_symbol == _regional_candidates[0][0] else "Europa-Fallback"
+                    # Validierungswerte lokal bereitstellen.
+                    r = dict(r)
+                    r["ret21"] = _stock_r21_reg
+                    r["ret63"] = _stock_r63_reg
+                    r["bench_ret21"] = _bench_r21_reg
+                    r["bench_ret63"] = _bench_r63_reg
+                    r["rs_vs_benchmark_21"] = _rs21
+                    r["rs_vs_benchmark_63"] = _rs63
+                    r["benchmark_symbol"] = _benchmark_symbol
+                    r["benchmark_label"] = _benchmark_label
+                    if callable(_eval_market):
+                        try:
+                            _regional_market = _eval_market(_bench_df_reg)
+                            if isinstance(_regional_market, dict) and _regional_market:
+                                r["market_info"] = _regional_market
+                        except Exception:
+                            pass
+                    break
     if _rs63 is not None:
         if _rs63 >= 8:
             _rs_context = f"Stark ↑ ({_rs63:+.1f}% / 63T)"
@@ -523,7 +606,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         # belastbarer Ersatz fuer die konkrete Benchmark-Outperformance.
         # Fehlt rs_vs_benchmark_63, zeigen wir n/a und vergeben keinen RS-Bonus/Malus.
         _rs_context = "n/a · Benchmarkdaten fehlen"
-    _rs_context_detail = f"vs. {_benchmark_label}" if _benchmark_label else ""
+    _rs_context_detail = (f"{_benchmark_label} ({_benchmark_symbol})" if _benchmark_symbol else f"{_benchmark_label}") if _benchmark_label else ""
+    if _regional_benchmark_source != "Analyse-Engine":
+        _rs_context_detail += f" · {_regional_benchmark_source}"
 
     # v28.5b: RS-Dynamik vergleicht die kurzfristige 21T-Outperformance mit
     # der etablierten 63T-Outperformance. Noch rein informativ: weder der
@@ -548,7 +633,6 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     # v28.4.8: konkrete Validierungswerte fuer Relative Staerke.
     _stock_ret63 = _v2847_num(r.get("ret63"))
     _bench_ret63 = _v2847_num(r.get("bench_ret63"))
-    _benchmark_symbol = str(r.get("benchmark_symbol") or "").strip()
     if _stock_ret63 is not None and _bench_ret63 is not None:
         _rs_validation = (
             f"63T: Aktie {_stock_ret63:+.1f}% · {_benchmark_label} {_bench_ret63:+.1f}% · "
@@ -1326,6 +1410,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "RS-Dynamik": _rs_dynamics,
         "RS-Dynamik Details": _rs_dynamics_detail,
         "RS-Benchmark": _rs_context_detail,
+        "Benchmark": _rs_context_detail or "n/a",
         "RS-Details": _rs_validation,
         "Volatilitätsregime": volatility_regime,
         "Volatilitäts-Details": _vol_validation,
@@ -1443,7 +1528,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "Benchmark", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

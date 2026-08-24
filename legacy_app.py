@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.6c1"
+APP_VERSION = "v28.6e"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -12193,25 +12193,45 @@ def previous_valid(series_like):
 
 
 def select_benchmark(ticker, info=None):
-    suffix = ticker.split(".")[-1].upper() if "." in ticker else ""
+    """v28.6e: Regionaler Primaerbenchmark fuer Aktie/Markt.
+
+    Die Live-Monitor-Recovery-Schicht besitzt zusaetzlich Europa-Fallbacks,
+    falls der Primaerindex beim Provider voruebergehend nicht verfuegbar ist.
+    """
+    t = str(ticker or "").strip().upper()
+    suffix = t.rsplit(".", 1)[1] if "." in t else ""
     exchange = str((info or {}).get("exchange", "") or "").upper()
 
-    german_suffixes = {"DE", "F", "HM", "BE", "DU", "MU", "SG"}
-    europe_suffixes = {"PA", "AS", "BR", "MI", "MC", "HE", "VI", "LS"}
-    swiss_suffixes = {"SW"}
-    uk_suffixes = {"L"}
-    nordic_suffixes = {"ST", "OL", "CO"}
-
-    if suffix in german_suffixes or exchange in {"XETRA", "GER"}:
+    if suffix in {"DE", "F", "HM", "BE", "DU", "MU", "SG"} or exchange in {"XETRA", "GER"}:
         return "^GDAXI", "DAX"
-    if suffix in europe_suffixes or exchange in {"PAR", "AMS", "MIL", "MAD", "HEL", "VIE", "BRU", "EURONEXT"}:
-        return "^STOXX50E", "STOXX 50"
-    if suffix in swiss_suffixes or exchange in {"SIX"}:
+    if suffix == "PA" or exchange in {"PAR"}:
+        return "^FCHI", "CAC 40"
+    if suffix == "AS" or exchange in {"AMS"}:
+        return "^AEX", "AEX"
+    if suffix == "BR" or exchange in {"BRU"}:
+        return "^BFX", "BEL 20"
+    if suffix == "MI" or exchange in {"MIL"}:
+        return "FTSEMIB.MI", "FTSE MIB"
+    if suffix == "MC" or exchange in {"MAD"}:
+        return "^IBEX", "IBEX 35"
+    if suffix == "SW" or exchange in {"SIX"}:
         return "^SSMI", "SMI"
-    if suffix in uk_suffixes or exchange in {"LSE"}:
+    if suffix == "L" or exchange in {"LSE"}:
         return "^FTSE", "FTSE 100"
-    if suffix in nordic_suffixes:
-        return "^STOXX50E", "STOXX 50"
+    if suffix == "ST":
+        return "^OMX", "OMX Stockholm 30"
+    if suffix == "CO":
+        return "^OMXC25", "OMX Copenhagen 25"
+    if suffix == "OL":
+        return "^OSEAX", "Oslo All Share"
+    if suffix == "HE" or exchange in {"HEL"}:
+        return "^OMXH25", "OMX Helsinki 25"
+    if suffix == "VI" or exchange in {"VIE"}:
+        return "^ATX", "ATX"
+    if suffix == "LS":
+        return "PSI20.LS", "PSI"
+    if suffix in {"PA", "AS", "BR", "MI", "MC", "HE", "VI", "LS"} or exchange in {"EURONEXT"}:
+        return "^STOXX50E", "EURO STOXX 50"
 
     return "SPY", "S&P 500"
 
@@ -14382,6 +14402,8 @@ _live_module.configure_context(
     radar_company_display_name_v15237=radar_company_display_name_v15237,
     shorten_text=shorten_text,
     analyze_stock_live_cached_v2414=analyze_stock_live_cached_v2414,
+    load_benchmark_data=load_benchmark_data,
+    evaluate_market_filter=evaluate_market_filter,
     _v2414_market_bucket=_v2414_market_bucket,
     _v2416_log_event=_v2416_log_event,
     storage=_storage_v280,
@@ -15969,7 +15991,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.6c1-shadow-compare-ui",
+                "schema": "live-v28.6e-regional-benchmark",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16350,7 +16372,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
+                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -16422,6 +16444,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _dq_v2845d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Datenqualität")))
                                     _rs_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Relative Stärke")))
                                     _rsdyn_v285b = html.escape(_v243_clean_cell(_mobile_row_v2842.get("RS-Dynamik")))
+                                    _bench_v286e = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Benchmark")))
                                     _volreg_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilitätsregime")))
                                     _market_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Marktregime")))
                                     _why_score_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum dieser Score?"))
@@ -16449,6 +16472,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             <div><span class="v2842-mobile-label">Datenqualität</span>{_dq_v2845d}</div>
                                             <div><span class="v2842-mobile-label">Relative Stärke</span>{_rs_v2847}</div>
                                             <div><span class="v2842-mobile-label">RS-Dynamik</span>{_rsdyn_v285b}</div>
+                                            <div><span class="v2842-mobile-label">Benchmark</span>{_bench_v286e}</div>
                                             <div><span class="v2842-mobile-label">Volatilitätsregime</span>{_volreg_v2847}</div>
                                             <div><span class="v2842-mobile-label">Marktregime</span>{_market_v2847}</div>
                                             <div><span class="v2842-mobile-label">Engine (Test)</span>{_score_v2842} → {_engine_score_v285a} ({_ctx_adj_v285a})</div>
@@ -16526,7 +16550,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             _detail_dq_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Datenqualität"))
                                             st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
                                             st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
-                                            st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · RS-Dynamik: {_v243_clean_cell(_mobile_detail_row_v2842.get('RS-Dynamik'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
+                                            st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · RS-Dynamik: {_v243_clean_cell(_mobile_detail_row_v2842.get('RS-Dynamik'))} · Benchmark: {_v243_clean_cell(_mobile_detail_row_v2842.get('Benchmark'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
                                             st.caption(f"Engine 2.0 (Shadow): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · Live {_detail_ampel_v2846} → Shadow {_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Ampel'))} ({_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Abweichung'))}) · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
                                             _detail_gates_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Aktive Einstiegsgates"))
                                             _detail_gate_text_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Gate-Details"))

@@ -1,16 +1,14 @@
-# v28.6c – Gate Transparency
+# v28.6c1 – Gate Transparency Hotfix
 
-Neu:
-- Score-Bremse nennt konkrete harte Einstiegsgates statt nur "Hartes Einstiegsgate aktiv".
-- Neue Spalten `Aktive Einstiegsgates` und `Gate-Details`.
-- Wo technisch moeglich werden Istwert und Schwelle angezeigt, z. B. CRV, Entry-Abstand, Distribution/Akkumulation.
-- Mobile-Erklaerung und Ticker-Detailansicht zeigen alle aktiven Gates vollstaendig.
-- Sichtbare Versionsnummer auf v28.6c synchronisiert.
+Behoben:
+- `entry_distance` wurde in einzelnen harten Gate-Pfaden vor seiner Initialisierung verwendet.
+- Die Gate-Transparenz liest Entry-Abstand und Risiko jetzt lokal direkt aus Decision/Result.
+- Damit brechen Ticker wie MRNA, HOOD, AXON, DHR und ZS nicht mehr ab.
 
-Unveraendert:
-- Live-Ampel
-- Shadow-Ampel-Logik
-- Scores und Guardrails
-- Supabase/SQL/Secrets
+Unverändert:
+- Score-Logik
+- Live-/Shadow-Ampel
+- Guardrails
+- Supabase / SQL / Secrets
 
-Nach Upload Streamlit neu starten und einen frischen Scan ausfuehren.
+Nach Upload Streamlit einmal rebooten und den Live-Screener frisch starten.

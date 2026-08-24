@@ -319,6 +319,18 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     # unveraendert. Neu ist nur die nachvollziehbare Aufschluesselung der
     # bereits von der Radar-Engine gesetzten gate_reasons.
     def _v286c_gate_transparency(gate_text):
+        # v28.6c1: self-contained values. Do not close over variables that are
+        # assigned later in _v212_monitor_status_from_decision; otherwise Python
+        # raises "cannot access free variable ..." for exactly those gate paths.
+        _entry_distance = _v210_alert_num(d.get("entry_distance_pct"), default=None)
+        _risk_show = str(
+            d.get("risk")
+            or d.get("risk_label")
+            or r.get("risk")
+            or r.get("final_risk_label")
+            or r.get("Risiko")
+            or "hoch"
+        ).strip()
         raw_items = [x.strip() for x in str(gate_text or '').split(';') if x.strip()]
         unique = []
         seen = set()
@@ -337,15 +349,15 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             detail = item
             if "risiko hoch" in low:
                 name = "Risiko/Volatilitaet zu hoch"
-                detail = f"Risiko = {risk or 'hoch'} · Gate aktiv bei 'hoch'"
+                detail = f"Risiko = {_risk_show or 'hoch'} · Gate aktiv bei 'hoch'"
             elif "fomo kritisch" in low:
                 name = "FOMO kritisch"
                 _fomo_show = str(((r.get('fomo_smart_money_pkg') or {}) if isinstance(r.get('fomo_smart_money_pkg'), dict) else {}).get('label') or 'kritisch')
                 detail = f"FOMO = {_fomo_show} · erforderlich: unter kritisch"
             elif "entry-abstand" in low and "fomo" not in low:
                 name = "Entry-Abstand zu gross"
-                if entry_distance is not None:
-                    detail = f"Entry-Abstand {float(entry_distance):+.1f}% · erlaubt <= 5.0%"
+                if _entry_distance is not None:
+                    detail = f"Entry-Abstand {float(_entry_distance):+.1f}% · erlaubt <= 5.0%"
                 else:
                     detail = "Entry-Abstand oberhalb der erlaubten 5.0%-Schwelle"
             elif "crv unattraktiv" in low or "crv zu eng" in low:
@@ -371,7 +383,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             elif "nicht hinterherlaufen" in low:
                 name = "Chase-/FOMO-Gate"
                 _parts = []
-                if entry_distance is not None: _parts.append(f"Entry-Abstand {float(entry_distance):+.1f}%")
+                if _entry_distance is not None: _parts.append(f"Entry-Abstand {float(_entry_distance):+.1f}%")
                 _parts.append("FOMO-Bremse aktiv")
                 detail = " · ".join(_parts) + " · kein Hinterherlaufen"
             elif "wave" in low or "welle" in low or "struktur" in low:

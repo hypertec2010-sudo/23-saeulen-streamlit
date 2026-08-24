@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.6c"
+APP_VERSION = "v28.6c1"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15969,7 +15969,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.6c-shadow-compare-ui",
+                "schema": "live-v28.6c1-shadow-compare-ui",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 

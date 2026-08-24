@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.6e1"
+APP_VERSION = "v28.6e22"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -12193,7 +12193,7 @@ def previous_valid(series_like):
 
 
 def select_benchmark(ticker, info=None):
-    """v28.6e: Regionaler Primaerbenchmark fuer Aktie/Markt.
+    """v28.6e2: Regionaler Primaerbenchmark fuer Aktie/Markt.
 
     Die Live-Monitor-Recovery-Schicht besitzt zusaetzlich Europa-Fallbacks,
     falls der Primaerindex beim Provider voruebergehend nicht verfuegbar ist.
@@ -15991,7 +15991,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.6e1-benchmark-diagnostics",
+                "schema": "live-v28.6e22-benchmark-diagnostics",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 

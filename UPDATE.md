@@ -1,12 +1,19 @@
-# Update v28.6e1
+# v28.6e2 – Regional Benchmark Priority Fix
 
-Regional Benchmark Fallback Diagnostics.
+## Ursache
+v28.6e1 startete den regionalen Benchmark-Recovery nur, wenn 21T/63T-RS fehlten.
+Bei IPS.PA, SU.PA und ADDT-B.ST lieferte die alte Analyse-Engine bereits RS gegen EURO STOXX 50.
+Dadurch wurden CAC 40 bzw. OMX Stockholm nie versucht und die Diagnose zeigte `Nicht benötigt`.
 
-Neu:
-- Primaerbenchmark und dessen Status sichtbar.
-- Konkreter Grund fuer Europa-Fallback sichtbar.
-- Diagnose zeigt jeden versuchten Benchmark und ob Daten fehlten, zu kurz waren oder ein Abruffehler auftrat.
-- Mobile Detailansicht zeigt die vollstaendige Benchmark-Diagnose.
+## Fix
+- Für europäische Ticker hat der definierte Landesbenchmark jetzt Vorrang vor einem bereits vorhandenen generischen Europa-Benchmark.
+- `.PA` versucht primär CAC 40 (`^FCHI`).
+- `.ST` versucht primär OMX Stockholm 30 (`^OMX`).
+- `.DE` bleibt bei DAX (`^GDAXI`), wenn dieser bereits aktiv ist.
+- Erst bei echtem Fehler/zu wenig Daten wird auf EURO STOXX 50 zurückgefallen.
+- Diagnose zeigt nun den tatsächlichen Abrufstatus des Primärbenchmarks.
 
-Keine Aenderung an Live-Ampel, Shadow-Ampel, Scores oder Guardrails.
-Nach Upload Streamlit rebooten und IPS.PA, SU.PA und ADDT-B.ST frisch scannen.
+Keine Änderung an Live-Ampel, Shadow-Ampel, Guardrails oder Basis-Score.
+
+## Test
+Nach Reboot frisch scannen: IPS.PA, SU.PA, ADDT-B.ST sowie SAP.DE als Kontrollwert.

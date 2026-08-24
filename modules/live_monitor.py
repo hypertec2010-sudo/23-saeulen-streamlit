@@ -554,9 +554,38 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             return None
 
     _regional_candidates = _v286e_benchmark_candidates(ticker)
+    _regional_primary_symbol = _regional_candidates[0][0] if _regional_candidates else ""
+    _regional_primary_label = _regional_candidates[0][1] if _regional_candidates else ""
     if _regional_candidates:
-        _benchmark_primary = f"{_regional_candidates[0][1]} ({_regional_candidates[0][0]})"
-    if (_rs21 is None or _rs63 is None) and _regional_candidates:
+        _benchmark_primary = f"{_regional_primary_label} ({_regional_primary_symbol})"
+
+    # v28.6e2: Regionaler Primaerbenchmark hat Vorrang vor einem bereits von
+    # der alten Analyse-Engine gelieferten generischen Europa-Benchmark.
+    # Bisher lief der Recovery-Pfad nur bei fehlender RS; dadurch blieben .PA
+    # und .ST auf STOXX50E, obwohl CAC40/OMX vorgesehen waren.
+    _current_benchmark_norm = str(_benchmark_symbol or "").strip().upper()
+    _primary_benchmark_norm = str(_regional_primary_symbol or "").strip().upper()
+    _regional_primary_already_used = bool(
+        _regional_candidates
+        and _primary_benchmark_norm
+        and _current_benchmark_norm == _primary_benchmark_norm
+        and _rs21 is not None
+        and _rs63 is not None
+    )
+    if _regional_primary_already_used:
+        _benchmark_primary_status = "Bereits aktiv · Analyse-Engine"
+        _benchmark_fallback_reason = "-"
+        _benchmark_diagnostic = f"{_regional_primary_label} ({_regional_primary_symbol}): bereits als Primärbenchmark aktiv."
+
+    _regional_recovery_needed = bool(
+        _regional_candidates
+        and (
+            _rs21 is None
+            or _rs63 is None
+            or not _regional_primary_already_used
+        )
+    )
+    if _regional_recovery_needed:
         _stock_df_reg = r.get("df") if isinstance(r.get("df"), pd.DataFrame) else None
         _stock_r21_reg = _v286e_last_return(_stock_df_reg, 21)
         _stock_r63_reg = _v286e_last_return(_stock_df_reg, 63)
@@ -599,7 +628,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
                         _rs21 = _stock_r21_reg - _bench_r21_reg
                     _benchmark_symbol = _cand_symbol
                     _benchmark_label = _cand_label
-                    _regional_benchmark_source = "Regional Benchmark Engine" if _cand_idx == 0 else "Europa-Fallback"
+                    if _cand_idx == 0:
+                        _regional_benchmark_source = "Regional Benchmark Engine · Primärbenchmark"
+                    else:
+                        _regional_benchmark_source = "Europa-Fallback"
                     if _cand_idx > 0:
                         _benchmark_fallback_reason = f"Primärbenchmark nicht nutzbar: {_benchmark_primary_status}"
                     else:

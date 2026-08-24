@@ -19,3 +19,8 @@
 ## v28.6e1 - Regional Benchmark Fallback Diagnostics
 - Zeigt Primaerbenchmark, Abrufstatus, Fallback-Grund und Diagnosekette.
 - Keine Aenderung an Score-, Ampel-, Shadow- oder Guardrail-Logik.
+
+## v28.6e2
+- Regionaler Landesbenchmark erhält Vorrang vor bereits vorhandenen generischen Europa-RS-Daten.
+- CAC 40 / OMX Stockholm werden bei .PA / .ST nun tatsächlich versucht.
+- Fallback-Diagnose zeigt echten Primärabruf statt `Nicht benötigt`.

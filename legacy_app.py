@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.6e22"
+APP_VERSION = "v28.6e32"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -12193,7 +12193,7 @@ def previous_valid(series_like):
 
 
 def select_benchmark(ticker, info=None):
-    """v28.6e2: Regionaler Primaerbenchmark fuer Aktie/Markt.
+    """v28.6e3: Regionaler Primaerbenchmark fuer Aktie/Markt.
 
     Die Live-Monitor-Recovery-Schicht besitzt zusaetzlich Europa-Fallbacks,
     falls der Primaerindex beim Provider voruebergehend nicht verfuegbar ist.
@@ -15991,7 +15991,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
                 # werden. Eine neue Schema-ID erzwingt genau einmal einen
                 # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.6e22-benchmark-diagnostics",
+                "schema": "live-v28.6e32-benchmark-diagnostics",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16448,6 +16448,24 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _volreg_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilitätsregime")))
                                     _market_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Marktregime")))
                                     _why_score_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum dieser Score?"))
+                                    # v28.6e3: Robuster Explainability-Fallback fuer alte/teilweise
+                                    # Snapshots. Wenn das zusammengesetzte Feld fehlt, wird die
+                                    # Erklaerung aus den ohnehin vorhandenen Treibern/Bremsen gebaut.
+                                    if _why_score_full_v2847 in {"", "-"}:
+                                        _why_driver_v286e3 = _v243_clean_cell(_mobile_row_v2842.get("Score-Treiber"))
+                                        _why_brake_v286e3 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
+                                        _why_parts_v286e3 = []
+                                        if _why_driver_v286e3 not in {"", "-"}:
+                                            _why_parts_v286e3.append("Treiber: " + _why_driver_v286e3)
+                                        if _why_brake_v286e3 not in {"", "-"}:
+                                            _why_parts_v286e3.append("Bremsen: " + _why_brake_v286e3)
+                                        _why_score_full_v2847 = ". ".join(_why_parts_v286e3)
+                                    _why_score_card_v286e3 = ""
+                                    if _why_score_full_v2847 not in {"", "-"}:
+                                        _why_score_card_v286e3 = (
+                                            '<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Warum dieser Score?</span>'
+                                            + html.escape(_v243_clip_cell(_why_score_full_v2847, 180)) + '</div>'
+                                        )
                                     _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
                                     _status_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Status"), 52))
                                     _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV")))
@@ -16485,7 +16503,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             <div><span class="v2842-mobile-label">Änderung</span>{_change_v2842}</div>
                                           </div>
                                           <div class="v2842-mobile-status">{_status_v2842}</div>
-                                          <div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Warum dieser Score?</span>{html.escape(_v243_clip_cell(_why_score_full_v2847, 135))}</div>
+                                          {_why_score_card_v286e3}
                                           {_why_block_v2843}
                                         </div>
                                         """,
@@ -16576,6 +16594,15 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Marktregime-Details")))
                                                 st.caption("Die Context-/Shadow-Werte laufen parallel; die produktive Live-Ampel bleibt unverändert.")
                                             _why_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Warum dieser Score?"))
+                                            if _why_score_v2846 in {"", "-"}:
+                                                _detail_driver_v286e3 = _v243_clean_cell(_mobile_detail_row_v2842.get("Score-Treiber"))
+                                                _detail_brake_v286e3 = _v243_clean_cell(_mobile_detail_row_v2842.get("Score-Bremsen"))
+                                                _detail_parts_v286e3 = []
+                                                if _detail_driver_v286e3 not in {"", "-"}:
+                                                    _detail_parts_v286e3.append("Treiber: " + _detail_driver_v286e3)
+                                                if _detail_brake_v286e3 not in {"", "-"}:
+                                                    _detail_parts_v286e3.append("Bremsen: " + _detail_brake_v286e3)
+                                                _why_score_v2846 = ". ".join(_detail_parts_v286e3)
                                             if _why_score_v2846 not in {"", "-"}:
                                                 st.info(_why_score_v2846)
                                             _mobile_detail_df_v2842 = pd.DataFrame(

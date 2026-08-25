@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.6e32"
+APP_VERSION = "v28.6e42"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -12193,7 +12193,7 @@ def previous_valid(series_like):
 
 
 def select_benchmark(ticker, info=None):
-    """v28.6e3: Regionaler Primaerbenchmark fuer Aktie/Markt.
+    """v28.6e4: Regionaler Primaerbenchmark fuer Aktie/Markt.
 
     Die Live-Monitor-Recovery-Schicht besitzt zusaetzlich Europa-Fallbacks,
     falls der Primaerindex beim Provider voruebergehend nicht verfuegbar ist.
@@ -15957,7 +15957,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     _native_live_screener_refresh_v2832()
                 else:
                     if live_monitor_enabled and mobile_mode_v2842 and not mobile_auto_scan_v2842:
-                        st.info("📱 Mobile Auto-Scan pausiert. Der gespeicherte Stand bleibt sichtbar; ein neuer Scan startet nur über 'Jetzt prüfen'.")
+                        st.info("📱 Mobile Auto-Scan pausiert. Ein neuer Scan startet nur über 'Jetzt prüfen'.")
                     st.session_state.v2832_native_refresh_schedule_key = ""
                     st.session_state.v2832_native_refresh_trigger_ts = ""
                     # Wenn der Monitor ausgeschaltet wird, URL-Refreshmarker nur im
@@ -15986,12 +15986,19 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 "tickers": tuple(scan_tickers_v2844),
                 "style": str(monitor_style or ""),
                 "horizon": str(live_monitor_horizon or ""),
-                # v28.4.5d1: Cache-/Snapshot-Schema versionieren.
-                # Alte v28.4.5c-Snapshots enthalten die neue Datenqualitaets-
-                # Spalte noch nicht und duerfen deshalb nicht wiederhergestellt
-                # werden. Eine neue Schema-ID erzwingt genau einmal einen
-                # frischen Scan; danach greift der normale Cache wieder.
-                "schema": "live-v28.6e32-benchmark-diagnostics",
+                "schema": "live-v28.6e4-visible-stand",
+            }
+            # v28.6e4: Zweiter, stabiler Snapshot-Key fuer den *sichtbaren letzten Stand*.
+            # Er ignoriert fluechtige Patch-/UI-Schemawechsel und normalisiert die
+            # Ticker-Reihenfolge. Dadurch kann derselbe letzte Scan nach Mobile-
+            # Display-Pause, WebSocket-Reconnect oder Desktop-Rerun wiederhergestellt
+            # werden, solange Watchlist, Ticker-Menge, Stil und Horizont identisch sind.
+            live_visible_key_v286e4 = {
+                "watchlist": str(selected_watchlist_name or "").strip(),
+                "tickers": tuple(sorted({str(t or "").strip().upper() for t in scan_tickers_v2844 if str(t or "").strip()})),
+                "style": str(monitor_style or "").strip(),
+                "horizon": str(live_monitor_horizon or "").strip(),
+                "schema": "live-visible-stand-v1",
             }
             live_cache_v246 = st.session_state.get("v246_live_monitor_cache", {})
 
@@ -16017,12 +16024,29 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     )
                 except Exception:
                     _restored_snapshot_v2842 = None
+                _restored_from_visible_v286e4 = False
+                if not (isinstance(_restored_snapshot_v2842, dict) and isinstance(_restored_snapshot_v2842.get("cache"), dict)):
+                    try:
+                        _restored_snapshot_v2842 = _live_screener_snapshot.load_snapshot(
+                            _storage_v280,
+                            live_visible_key_v286e4,
+                        )
+                        _restored_from_visible_v286e4 = bool(
+                            isinstance(_restored_snapshot_v2842, dict)
+                            and isinstance(_restored_snapshot_v2842.get("cache"), dict)
+                        )
+                    except Exception:
+                        _restored_snapshot_v2842 = None
                 if isinstance(_restored_snapshot_v2842, dict) and isinstance(_restored_snapshot_v2842.get("cache"), dict):
-                    live_cache_v246 = _restored_snapshot_v2842["cache"]
+                    live_cache_v246 = dict(_restored_snapshot_v2842["cache"])
+                    # Stable snapshot has a stable key by design. For the current UI
+                    # session it is re-bound to the exact current cache key.
+                    live_cache_v246["key"] = live_cache_key_v246
                     st.session_state["v246_live_monitor_cache"] = live_cache_v246
                     st.session_state.v2842_snapshot_restored_at = datetime.now().isoformat()
                     st.session_state.v2842_snapshot_restored_id = _snapshot_identity_v2842
                     st.session_state.v2842_snapshot_source_ts = str(live_cache_v246.get("ts") or "")
+                    st.session_state.v286e4_restored_from_visible = bool(_restored_from_visible_v286e4)
 
             cache_ok_v246 = False
             cache_stale_v246 = True
@@ -16091,6 +16115,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 )
             )
             show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246)
+
+            # v28.6e4: Die Pause-Meldung darf nicht behaupten, dass ein Stand
+            # sichtbar ist, wenn kein kompatibler Snapshot gefunden wurde.
+            if live_screener_active_v271 and not live_should_scan_v246 and not cache_ok_v246:
+                st.warning("Kein gespeicherter Live-Stand verfügbar. Bitte einmal 'Jetzt prüfen' ausführen; danach bleibt der letzte Stand auch bei pausiertem Auto-Scan sichtbar.")
+            elif live_screener_active_v271 and not live_should_scan_v246 and cache_ok_v246:
+                if bool(st.session_state.get("v286e4_restored_from_visible", False)):
+                    st.caption("🟢 Letzter sichtbarer Live-Stand wiederhergestellt. Auto-Scan bleibt pausiert.")
 
             if show_live_monitor_v246:
                 if not current_tickers:
@@ -16220,6 +16252,22 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         },
                                         max_snapshots=6,
                                     )
+                                    _visible_partial_v286e4 = dict(_partial_cache_v2844)
+                                    _visible_partial_v286e4["key"] = live_visible_key_v286e4
+                                    _live_screener_snapshot.save_snapshot(
+                                        _storage_v280,
+                                        _visible_partial_v286e4,
+                                        ui_state={
+                                            "mobile_mode": bool(mobile_mode_v2842),
+                                            "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
+                                            "only_active": bool(only_active),
+                                            "refresh_label": str(refresh_label),
+                                            "scan_scope": str(scan_scope_label_v2844),
+                                            "scan_complete": False,
+                                            "visible_stand": True,
+                                        },
+                                        max_snapshots=6,
+                                    )
                                 except Exception:
                                     pass
                                 _done_count_v2844 = int(_partial_meta_v2844.get("completed_count") or 0)
@@ -16266,7 +16314,23 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     },
                                     max_snapshots=6,
                                 )
-                                st.session_state.v2842_snapshot_last_save_ok = bool(_snapshot_saved_v2842)
+                                _visible_final_v286e4 = dict(_live_cache_payload_v2842)
+                                _visible_final_v286e4["key"] = live_visible_key_v286e4
+                                _visible_saved_v286e4 = _live_screener_snapshot.save_snapshot(
+                                    _storage_v280,
+                                    _visible_final_v286e4,
+                                    ui_state={
+                                        "mobile_mode": bool(mobile_mode_v2842),
+                                        "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
+                                        "only_active": bool(only_active),
+                                        "refresh_label": str(refresh_label),
+                                        "scan_scope": str(scan_scope_label_v2844),
+                                        "scan_complete": True,
+                                        "visible_stand": True,
+                                    },
+                                    max_snapshots=6,
+                                )
+                                st.session_state.v2842_snapshot_last_save_ok = bool(_snapshot_saved_v2842 or _visible_saved_v286e4)
                             except Exception:
                                 st.session_state.v2842_snapshot_last_save_ok = False
                             _progress_v2844.progress(1.0)
@@ -16448,7 +16512,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _volreg_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilitätsregime")))
                                     _market_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Marktregime")))
                                     _why_score_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum dieser Score?"))
-                                    # v28.6e3: Robuster Explainability-Fallback fuer alte/teilweise
+                                    # v28.6e4: Robuster Explainability-Fallback fuer alte/teilweise
                                     # Snapshots. Wenn das zusammengesetzte Feld fehlt, wird die
                                     # Erklaerung aus den ohnehin vorhandenen Treibern/Bremsen gebaut.
                                     if _why_score_full_v2847 in {"", "-"}:

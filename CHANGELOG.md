@@ -1,6 +1,5 @@
-# Changelog
-
-## v28.6e3
-- Explainability-Anzeige robust gegen fehlende Snapshot-Felder gemacht.
-- Leere `Warum dieser Score?`-Karten werden nicht mehr gerendert.
-- Fallback-Erklaerung aus Score-Treibern und Score-Bremsen.
+## v28.6e4
+- Stabiler, persistenter Last-Visible-Snapshot fuer Live-Screener.
+- Snapshot-Restore robust gegen Ticker-Reihenfolge und kleinere Cache-Schemawechsel.
+- Ehrliche Pause-Meldung bei fehlendem gespeicherten Stand.
+- Keine Aenderung an Trading-/Score-Logik.

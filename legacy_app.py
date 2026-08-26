@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.6e42"
+APP_VERSION = "v28.6e52"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -12193,7 +12193,7 @@ def previous_valid(series_like):
 
 
 def select_benchmark(ticker, info=None):
-    """v28.6e4: Regionaler Primaerbenchmark fuer Aktie/Markt.
+    """v28.6e5: Regionaler Primaerbenchmark fuer Aktie/Markt.
 
     Die Live-Monitor-Recovery-Schicht besitzt zusaetzlich Europa-Fallbacks,
     falls der Primaerindex beim Provider voruebergehend nicht verfuegbar ist.
@@ -15850,6 +15850,15 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     run_live_monitor = True
                     manual_live_run_v246 = True
                     st.session_state.live_watchlist_last_manual_run = datetime.now().isoformat()
+                    # v28.6e5: Ein manueller Scan ist ein echter Vollrefresh.
+                    # Nur den gecachten Live-Analyzer leeren (nicht st.cache_data global),
+                    # damit jeder Ticker frisch analysiert wird, waehrend langsamere
+                    # App-Caches/Fundamentaldaten unberuehrt bleiben.
+                    try:
+                        analyze_stock_live_cached_v2414.clear()
+                    except Exception:
+                        pass
+                    st.session_state.v286e5_manual_full_refresh = True
             with lm_run2:
                 if live_auto_scan_enabled_v2842:
                     interval_ms = {"15 Minuten": 15 * 60 * 1000, "30 Minuten": 30 * 60 * 1000, "60 Minuten": 60 * 60 * 1000}.get(refresh_label, 30 * 60 * 1000)
@@ -15986,9 +15995,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 "tickers": tuple(scan_tickers_v2844),
                 "style": str(monitor_style or ""),
                 "horizon": str(live_monitor_horizon or ""),
-                "schema": "live-v28.6e4-visible-stand",
+                "schema": "live-v28.6e5-manual-full-refresh",
             }
-            # v28.6e4: Zweiter, stabiler Snapshot-Key fuer den *sichtbaren letzten Stand*.
+            # v28.6e5: Zweiter, stabiler Snapshot-Key fuer den *sichtbaren letzten Stand*.
             # Er ignoriert fluechtige Patch-/UI-Schemawechsel und normalisiert die
             # Ticker-Reihenfolge. Dadurch kann derselbe letzte Scan nach Mobile-
             # Display-Pause, WebSocket-Reconnect oder Desktop-Rerun wiederhergestellt
@@ -16116,7 +16125,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             )
             show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246)
 
-            # v28.6e4: Die Pause-Meldung darf nicht behaupten, dass ein Stand
+            # v28.6e5: Die Pause-Meldung darf nicht behaupten, dass ein Stand
             # sichtbar ist, wenn kein kompatibler Snapshot gefunden wurde.
             if live_screener_active_v271 and not live_should_scan_v246 and not cache_ok_v246:
                 st.warning("Kein gespeicherter Live-Stand verfügbar. Bitte einmal 'Jetzt prüfen' ausführen; danach bleibt der letzte Stand auch bei pausiertem Auto-Scan sichtbar.")
@@ -16129,7 +16138,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     st.info("Diese Watchlist ist leer.")
                 else:
                     if live_should_scan_v246:
-                        _resume_scan_v2844 = bool(cache_incomplete_v2844 and cache_ok_v246)
+                        # v28.6e5: Auto-Scan darf einen unvollstaendigen Batch fortsetzen.
+                        # "Jetzt pruefen" muss dagegen immer alle Ticker neu berechnen,
+                        # sonst bleiben bereits abgeschlossene Zeilen aus dem alten Scan stehen.
+                        _resume_scan_v2844 = bool(
+                            cache_incomplete_v2844
+                            and cache_ok_v246
+                            and not manual_live_run_v246
+                        )
                         _resume_label_v2844 = "fortgesetzt" if _resume_scan_v2844 else "gestartet"
                         with st.spinner(
                             f"Live-Watchlist wird in Batches {_resume_label_v2844} "
@@ -16341,6 +16357,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.session_state.v2842_snapshot_restored_at = ""
                         st.session_state.v2842_snapshot_restored_id = ""
                         st.session_state.v2842_snapshot_source_ts = ""
+                        st.session_state.v286e5_manual_full_refresh = False
                         # Nur ein vollstaendig abgeschlossener Scan ist der neue
                         # Anker des Auto-Refresh-Zeitplans.
                         st.session_state.v2415_native_live_refresh_ts = _live_scan_completed_at_v2832
@@ -16512,7 +16529,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _volreg_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilitätsregime")))
                                     _market_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Marktregime")))
                                     _why_score_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum dieser Score?"))
-                                    # v28.6e4: Robuster Explainability-Fallback fuer alte/teilweise
+                                    # v28.6e5: Robuster Explainability-Fallback fuer alte/teilweise
                                     # Snapshots. Wenn das zusammengesetzte Feld fehlt, wird die
                                     # Erklaerung aus den ohnehin vorhandenen Treibern/Bremsen gebaut.
                                     if _why_score_full_v2847 in {"", "-"}:

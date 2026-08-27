@@ -1,13 +1,18 @@
-# v28.6e5 – Manual Full Refresh Fix
+# v28.6e6 – Rate-Limit-Safe Refresh
 
-## Ursache
-`Jetzt prüfen` startete zwar einen neuen Screenerlauf, aber der zentrale Live-Analyzer konnte bis zu 15 Minuten alte Tickeranalysen aus seinem Cache zurückgeben. Bei einem zuvor unvollständigen Batch wurde außerdem nur der Rest fortgesetzt; bereits abgeschlossene alte Zeilen blieben bestehen.
+Ursache:
+- v28.6e5 leerte bei `Jetzt prüfen` den kompletten Live-Analyzer-Cache.
+- Bei grossen Watchlists wurden dadurch sehr viele Yahoo-Abfragen auf einmal erzwungen.
+- Nach dem ersten HTTP 429 liefen oft fast alle folgenden Ticker ebenfalls in das Rate-Limit.
 
-## Fix
-- `Jetzt prüfen` leert gezielt nur den Cache von `analyze_stock_live_cached_v2414`.
-- Ein manueller Scan startet immer mit leerem Live-DataFrame und prüft alle ausgewählten Ticker neu.
-- Nur der automatische Batch-Scan darf einen unvollständigen vorherigen Lauf fortsetzen.
-- Der persistente `Last Visible Stand` bleibt weiterhin als Fallback erhalten, überschreibt aber keinen manuellen Vollrefresh.
-- Cache-Schema auf v28.6e5 angehoben.
+Fix:
+- `Jetzt prüfen` startet weiterhin einen Vollscan aller Ticker.
+- Der zentrale Provider-/Analyzer-Cache wird dabei nicht mehr global geloescht.
+- Der letzte gueltige Screenerstand bleibt waehrend des manuellen Refreshs als Fallback sichtbar.
+- Erfolgreich neu berechnete Ticker ersetzen ihren alten Stand tickerweise.
+- Ein temporaerer 429-Fehler loescht keinen zuletzt gueltigen Tickerstand mehr aus der Tabelle.
+- Alte Teil-Batches gelten bei manuellem Scan trotzdem nicht als abgeschlossen: alle Ticker werden erneut durchlaufen.
 
-Keine Änderungen an Score, Ampel, Shadow, Benchmarks, Guardrails, SQL oder Secrets.
+Keine Aenderung an Live-/Shadow-Ampel, Scores, Benchmarks, Guardrails, SQL oder Secrets.
+
+Nach Upload Streamlit einmal rebooten. Falls Yahoo aktuell bereits global gedrosselt hat, einige Minuten warten und dann einmal `Jetzt prüfen` ausfuehren.

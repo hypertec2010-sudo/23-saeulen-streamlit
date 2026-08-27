@@ -1,7 +1,7 @@
 # Changelog
 
-## v28.6e5
-- `Jetzt prüfen` ist jetzt ein echter Vollrefresh aller Ticker.
-- 15-Minuten-Live-Analysecache wird bei manuellem Scan gezielt geleert.
-- Unvollständige alte Batch-Ergebnisse werden bei manuellem Scan nicht fortgesetzt.
-- Persistenter sichtbarer Stand bleibt nur Fallback.
+## v28.6e6
+- aggressives globales Cache-Clear aus v28.6e5 entfernt
+- manueller Vollrefresh provider-sicher gemacht
+- letzter gueltiger Tickerstand bleibt bei temporaeren 429-Fehlern sichtbar
+- manuelle Vollpruefung laeuft weiterhin ueber alle Ticker

@@ -16,3 +16,6 @@ Fix:
 Keine Aenderung an Live-/Shadow-Ampel, Scores, Benchmarks, Guardrails, SQL oder Secrets.
 
 Nach Upload Streamlit einmal rebooten. Falls Yahoo aktuell bereits global gedrosselt hat, einige Minuten warten und dann einmal `Jetzt prüfen` ausfuehren.
+
+## v28.7 Shadow Performance Tracking
+Neuer Dashboard-Block im Shadow Validation Dashboard. Ereignisse werden automatisch gesammelt; Forward-Kurse werden bewusst nur über "Performance aktualisieren" geladen. Damit beeinflusst das Tracking den normalen Live-/Auto-Scan nicht und erzeugt keine zusätzlichen Provider-Aufrufe bei jedem Refresh.

@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.6e62"
+APP_VERSION = "v28.7"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14257,6 +14257,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "storage" / "watchlist_repository.py",
     _MODULE_DIR_V252 / "storage" / "migration.py",
     _MODULE_DIR_V252 / "live_screener_snapshot.py",
+    _MODULE_DIR_V252 / "shadow_performance.py",
     _MODULE_DIR_V252 / "domain" / "__init__.py",
     _MODULE_DIR_V252 / "domain" / "models.py",
     _MODULE_DIR_V252 / "repositories" / "__init__.py",
@@ -14278,6 +14279,7 @@ from modules import risk_calculator as _risk_module
 from modules import event_log as _event_module
 from modules import position_monitor as _position_module
 from modules import trade_journal as _trade_journal_module
+from modules import shadow_performance as _shadow_performance_v287
 from modules import live_monitor as _live_module
 from modules import watchlist_storage as _watchlist_module
 from modules.storage import (
@@ -16754,6 +16756,29 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     if isinstance(_shadow_episodes_v286a, pd.DataFrame) and not _shadow_episodes_v286a.empty:
                                         st.markdown("**Shadow-Episoden / Verlauf**")
                                         st.dataframe(_shadow_episodes_v286a.tail(150).iloc[::-1].reset_index(drop=True), hide_index=True, use_container_width=True, height=min(520, 38 * len(_shadow_episodes_v286a) + 55))
+                                # v28.7: Forward-Performance-Tracking. Keine automatische
+                                # Provider-Abfrage bei Auto-Refresh; Aktualisierung nur explizit
+                                # im Dashboard, um Yahoo-Rate-Limits nicht erneut zu provozieren.
+                                with st.expander("Shadow Performance Tracking · v28.7", expanded=False):
+                                    st.caption("Misst die reale Kursentwicklung nach Shadow-Ereignissen nach 1T / 3T / 5T / 10T / 20T. Die produktive Live-Ampel bleibt unverändert.")
+                                    _perf_events_v287 = _shadow_performance_v287.sync_events(shadow_events_df_v286)
+                                    _pc1, _pc2 = st.columns([1.0, 2.0])
+                                    with _pc1:
+                                        _refresh_perf_v287 = st.button("Performance aktualisieren", key="v287_refresh_shadow_performance")
+                                    with _pc2:
+                                        st.caption("Kursdaten werden nur über diesen Button nachgeladen – nicht bei jedem Auto-Scan.")
+                                    if _refresh_perf_v287:
+                                        with st.spinner("Forward-Performance wird aktualisiert ..."):
+                                            _perf_events_v287 = _shadow_performance_v287.refresh_forward_returns(_perf_events_v287, _market_provider_v2845a)
+                                    _perf_summary_v287, _perf_detail_v287 = _shadow_performance_v287.build_dashboard(_perf_events_v287)
+                                    if _perf_summary_v287.empty:
+                                        st.info("Noch keine auswertbaren Shadow-Ereignisse vorhanden. Die Historie wird ab jetzt gesammelt.")
+                                    else:
+                                        st.markdown("**Forward Performance nach Shadow-Richtung**")
+                                        st.dataframe(_perf_summary_v287, hide_index=True, use_container_width=True)
+                                        st.markdown("**Einzelereignisse**")
+                                        st.dataframe(_perf_detail_v287.tail(200).iloc[::-1].reset_index(drop=True), hide_index=True, use_container_width=True, height=min(520, 38 * len(_perf_detail_v287) + 55))
+
                                 with st.expander("Shadow-Mode Rohhistorie", expanded=False):
                                     st.caption("Nur echte Zustandsänderungen werden gespeichert; identische Auto-Refreshes erzeugen keine Duplikate.")
                                     _shadow_hist_show_v286 = shadow_events_df_v286.tail(100).iloc[::-1].reset_index(drop=True)

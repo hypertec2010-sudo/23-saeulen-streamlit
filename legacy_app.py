@@ -2676,7 +2676,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.7"
+APP_VERSION = "v28.7a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14386,6 +14386,7 @@ _v270_load_trade_journal = _trade_journal_module._v270_load_trade_journal
 _v270_save_trade_journal = _trade_journal_module._v270_save_trade_journal
 _v270_partial_exit = _trade_journal_module._v270_partial_exit
 _v270_close_position = _trade_journal_module._v270_close_position
+_v287a_undo_close_position = _trade_journal_module._v287a_undo_close_position
 _v270_adjust_stop = _trade_journal_module._v270_adjust_stop
 _v270_save_trade_note = _trade_journal_module._v270_save_trade_note
 _v270_journal_entries_dataframe = _trade_journal_module._v270_journal_entries_dataframe
@@ -16759,7 +16760,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # v28.7: Forward-Performance-Tracking. Keine automatische
                                 # Provider-Abfrage bei Auto-Refresh; Aktualisierung nur explizit
                                 # im Dashboard, um Yahoo-Rate-Limits nicht erneut zu provozieren.
-                                with st.expander("Shadow Performance Tracking · v28.7", expanded=False):
+                                with st.expander(f"Shadow Performance Tracking · {APP_VERSION}", expanded=False):
                                     st.caption("Misst die reale Kursentwicklung nach Shadow-Ereignissen nach 1T / 3T / 5T / 10T / 20T. Die produktive Live-Ampel bleibt unverändert.")
                                     _perf_events_v287 = _shadow_performance_v287.sync_events(shadow_events_df_v286)
                                     _pc1, _pc2 = st.columns([1.0, 2.0])
@@ -17235,35 +17236,131 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.error(result_v270.get("error") or "Teilverkauf konnte nicht gespeichert werden.")
 
                                 elif manage_action_v270 == "Position schließen":
-                                    with st.form(f"v270_close_form_{selected_watchlist_name}_{manage_ticker_v270}"):
-                                        q1, q2, q3 = st.columns(3)
-                                        with q1:
-                                            close_price_v270 = st.number_input("Ausstiegskurs", min_value=0.0, value=float(round(default_exit_price_v270, 4)), step=0.01)
-                                        with q2:
-                                            close_date_v270 = st.date_input("Ausstiegsdatum", value=today_v270)
-                                        with q3:
-                                            close_reason_v270 = st.selectbox("Grund", ["Manuell geschlossen", "Ziel erreicht", "Stop erreicht", "Signal abgeschwächt", "Zeit-Exit", "Sonstiger Grund"])
-                                        close_note_v270 = st.text_area("Trade-Notiz", placeholder="Ausführung, Marktumfeld, Abweichung vom Plan ...")
-                                        close_learning_v270 = st.text_area("Erkenntnis / Verbesserung", placeholder="Was lief gut, was sollte beim nächsten Trade anders sein?")
-                                        close_submit_v270 = st.form_submit_button("Position schließen und journalisieren", use_container_width=True)
-                                    if close_submit_v270:
-                                        result_v270 = _v270_close_position(
-                                            positions,
-                                            watchlist_name=selected_watchlist_name,
-                                            ticker=manage_ticker_v270,
-                                            exit_price=close_price_v270,
-                                            exit_date=close_date_v270,
-                                            reason=close_reason_v270,
-                                            note=close_note_v270,
-                                            learning=close_learning_v270,
+                                    # v28.7a: two-step close. The first submit only builds a
+                                    # preview; no position or journal data are changed yet.
+                                    _close_pending_key_v287a = f"v287a_close_pending::{selected_watchlist_name}::{manage_ticker_v270}"
+                                    _close_pending_v287a = st.session_state.get(_close_pending_key_v287a)
+                                    if not isinstance(_close_pending_v287a, dict):
+                                        _close_pending_v287a = None
+
+                                    if _close_pending_v287a is None:
+                                        with st.form(f"v287a_close_preview_form_{selected_watchlist_name}_{manage_ticker_v270}"):
+                                            q1, q2, q3 = st.columns(3)
+                                            with q1:
+                                                close_price_v270 = st.number_input("Ausstiegskurs", min_value=0.0, value=float(round(default_exit_price_v270, 4)), step=0.01)
+                                            with q2:
+                                                close_date_v270 = st.date_input("Ausstiegsdatum", value=today_v270)
+                                            with q3:
+                                                close_reason_v270 = st.selectbox("Grund", ["Manuell geschlossen", "Ziel erreicht", "Stop erreicht", "Signal abgeschwächt", "Zeit-Exit", "Sonstiger Grund"])
+                                            close_note_v270 = st.text_area("Trade-Notiz", placeholder="Ausführung, Marktumfeld, Abweichung vom Plan ...")
+                                            close_learning_v270 = st.text_area("Erkenntnis / Verbesserung", placeholder="Was lief gut, was sollte beim nächsten Trade anders sein?")
+                                            close_preview_submit_v287a = st.form_submit_button("Schließung prüfen", use_container_width=True)
+                                        if close_preview_submit_v287a:
+                                            if float(close_price_v270 or 0.0) <= 0:
+                                                st.error("Gültigen Ausstiegskurs eingeben.")
+                                            else:
+                                                st.session_state[_close_pending_key_v287a] = {
+                                                    "ticker": manage_ticker_v270,
+                                                    "name": manage_name_v270,
+                                                    "exit_price": float(close_price_v270),
+                                                    "exit_date": close_date_v270,
+                                                    "reason": close_reason_v270,
+                                                    "note": close_note_v270,
+                                                    "learning": close_learning_v270,
+                                                }
+                                                st.rerun()
+                                    else:
+                                        _pending_px_v287a = _v230_safe_float(_close_pending_v287a.get("exit_price"), default=None)
+                                        _pending_date_v287a = _close_pending_v287a.get("exit_date") or today_v270
+                                        _entry_v287a = _v230_safe_float(manage_pos_v270.get("entry"), default=None)
+                                        _prev_realized_v287a = _v230_safe_float(manage_pos_v270.get("realized_pnl"), default=0.0) or 0.0
+                                        _close_pnl_v287a = None
+                                        _close_pct_v287a = None
+                                        if _pending_px_v287a is not None and _entry_v287a is not None and _entry_v287a > 0:
+                                            _close_pnl_v287a = (_pending_px_v287a - _entry_v287a) * open_shares_v270
+                                            _close_pct_v287a = (_pending_px_v287a / _entry_v287a - 1.0) * 100.0
+                                        _total_pnl_v287a = _prev_realized_v287a + (_close_pnl_v287a or 0.0)
+
+                                        st.warning("Noch nicht geschlossen: Bitte die Abschlussdaten prüfen und erst danach endgültig bestätigen.")
+                                        _cp1_v287a, _cp2_v287a, _cp3_v287a, _cp4_v287a = st.columns(4)
+                                        with _cp1_v287a:
+                                            st.metric("Ticker", manage_ticker_v270)
+                                        with _cp2_v287a:
+                                            st.metric("Stück", open_shares_v270)
+                                        with _cp3_v287a:
+                                            st.metric("Exit-Kurs", "n/a" if _pending_px_v287a is None else f"{_pending_px_v287a:,.4f}".replace(",", "."))
+                                        with _cp4_v287a:
+                                            st.metric("P/L dieser Schließung", "n/a" if _close_pnl_v287a is None else f"{_close_pnl_v287a:,.2f}".replace(",", "."))
+                                        if _close_pct_v287a is not None:
+                                            st.caption(
+                                                f"Entry {_entry_v287a:.4f} · Ergebnis {_close_pct_v287a:+.2f}% · "
+                                                f"Gesamt realisiert nach Schließung {_total_pnl_v287a:+.2f} · "
+                                                f"Grund: {_close_pending_v287a.get('reason') or '-'}"
+                                            )
+
+                                        _suspicious_reasons_v287a = []
+                                        if _pending_px_v287a is not None and manage_live_price_v270 is not None and manage_live_price_v270 > 0:
+                                            _live_diff_v287a = abs(_pending_px_v287a / manage_live_price_v270 - 1.0) * 100.0
+                                            try:
+                                                _near_today_v287a = abs((today_v270 - _pending_date_v287a).days) <= 3
+                                            except Exception:
+                                                _near_today_v287a = True
+                                            if _near_today_v287a and _live_diff_v287a >= 12.0:
+                                                _suspicious_reasons_v287a.append(
+                                                    f"Exit-Kurs liegt {_live_diff_v287a:.1f}% vom aktuellen Kurs ({manage_live_price_v270:.4f}) entfernt"
+                                                )
+                                        if _close_pct_v287a is not None and (_close_pct_v287a >= 100.0 or _close_pct_v287a <= -50.0):
+                                            _suspicious_reasons_v287a.append(f"ungewöhnliches Ergebnis gegenüber Entry: {_close_pct_v287a:+.1f}%")
+
+                                        if _suspicious_reasons_v287a:
+                                            st.error("Plausibilitätswarnung: " + " · ".join(_suspicious_reasons_v287a))
+
+                                        _confirm_close_v287a = st.checkbox(
+                                            f"Ich bestätige: {manage_ticker_v270}, {open_shares_v270} Stück zum Exit-Kurs {_pending_px_v287a:.4f} schließen.",
+                                            key=f"v287a_confirm_close_{selected_watchlist_name}_{manage_ticker_v270}",
                                         )
-                                        if result_v270.get("ok"):
-                                            positions = result_v270.get("positions", positions)
-                                            _v244_save_positions(selected_watchlist_name, positions)
-                                            st.success(f"Position {manage_ticker_v270} geschlossen und im Trade-Journal gespeichert.")
-                                            st.rerun()
-                                        else:
-                                            st.error(result_v270.get("error") or "Position konnte nicht geschlossen werden.")
+                                        _confirm_unusual_v287a = True
+                                        if _suspicious_reasons_v287a:
+                                            _confirm_unusual_v287a = st.checkbox(
+                                                "Ich habe den auffälligen Ausstiegskurs ausdrücklich geprüft und bestätige ihn trotzdem.",
+                                                key=f"v287a_confirm_unusual_close_{selected_watchlist_name}_{manage_ticker_v270}",
+                                            )
+
+                                        _cb1_v287a, _cb2_v287a = st.columns(2)
+                                        with _cb1_v287a:
+                                            if st.button(
+                                                "Endgültig schließen",
+                                                disabled=not (_confirm_close_v287a and _confirm_unusual_v287a),
+                                                type="primary",
+                                                use_container_width=True,
+                                                key=f"v287a_final_close_{selected_watchlist_name}_{manage_ticker_v270}",
+                                            ):
+                                                result_v270 = _v270_close_position(
+                                                    positions,
+                                                    watchlist_name=selected_watchlist_name,
+                                                    ticker=manage_ticker_v270,
+                                                    exit_price=_pending_px_v287a,
+                                                    exit_date=_pending_date_v287a,
+                                                    reason=_close_pending_v287a.get("reason") or "Manuell geschlossen",
+                                                    note=_close_pending_v287a.get("note") or "",
+                                                    learning=_close_pending_v287a.get("learning") or "",
+                                                )
+                                                if result_v270.get("ok"):
+                                                    positions = result_v270.get("positions", positions)
+                                                    _v244_save_positions(selected_watchlist_name, positions)
+                                                    st.session_state.pop(_close_pending_key_v287a, None)
+                                                    st.success(f"Position {manage_ticker_v270} geschlossen und im Trade-Journal gespeichert.")
+                                                    st.rerun()
+                                                else:
+                                                    st.error(result_v270.get("error") or "Position konnte nicht geschlossen werden.")
+                                        with _cb2_v287a:
+                                            if st.button(
+                                                "Abbrechen / zurück zur Eingabe",
+                                                use_container_width=True,
+                                                key=f"v287a_cancel_close_{selected_watchlist_name}_{manage_ticker_v270}",
+                                            ):
+                                                st.session_state.pop(_close_pending_key_v287a, None)
+                                                st.rerun()
 
                                 elif manage_action_v270 == "Stop anpassen":
                                     old_stop_v270 = _v230_safe_float(manage_pos_v270.get("stop"), default=0.0) or 0.0
@@ -17317,6 +17414,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                         elif cockpit_area == "📓 Trade-Journal":
                             st.markdown(f"### Trade-Journal · {APP_VERSION}")
+                            _undo_flash_v287a = st.session_state.pop("v287a_undo_flash", None)
+                            if _undo_flash_v287a:
+                                st.success(_undo_flash_v287a)
                             st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Daten bilden später die Grundlage für das Lern-/Backtest-Dashboard.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             if journal_df_v270 is None or journal_df_v270.empty:
@@ -17361,6 +17461,134 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     use_container_width=True,
                                     height=min(600, 42 * len(journal_view_v270.head(500)) + 55),
                                 )
+
+                                # v28.7a: reversible full-close workflow. A close row is
+                                # neutralized for P/L statistics and the position is restored.
+                                _closed_for_undo_v287a = journal_df_v270[journal_df_v270["Typ"].astype(str) == "Position geschlossen"].copy()
+                                if not _closed_for_undo_v287a.empty:
+                                    with st.expander("↩️ Versehentliche Schließung rückgängig machen", expanded=False):
+                                        st.caption(
+                                            "Stellt die Position wieder als offen her und neutralisiert die versehentliche Schließung im Journal. "
+                                            "Es wird kein künstlicher Gegentrade erzeugt."
+                                        )
+                                        _undo_options_v287a = {}
+                                        for _, _undo_row_v287a in _closed_for_undo_v287a.head(100).iterrows():
+                                            _undo_id_v287a = str(_undo_row_v287a.get("ID") or "").strip()
+                                            if not _undo_id_v287a:
+                                                continue
+                                            _undo_ticker_v287a = str(_undo_row_v287a.get("Ticker") or "").strip().upper()
+                                            _undo_name_v287a = str(_undo_row_v287a.get("Name") or _undo_ticker_v287a).strip()
+                                            _undo_date_v287a = str(_undo_row_v287a.get("Datum") or "-")
+                                            _undo_px_v287a = _v230_safe_float(_undo_row_v287a.get("Kurs"), default=None)
+                                            _undo_px_text_v287a = "n/a" if _undo_px_v287a is None else f"{_undo_px_v287a:.4f}"
+                                            _undo_label_v287a = f"{_undo_date_v287a} · {_undo_ticker_v287a} · {_undo_name_v287a} · Exit {_undo_px_text_v287a} · {_undo_id_v287a[-6:]}"
+                                            _undo_options_v287a[_undo_label_v287a] = _undo_id_v287a
+
+                                        if _undo_options_v287a:
+                                            _undo_label_selected_v287a = st.selectbox(
+                                                "Geschlossene Position auswählen",
+                                                options=list(_undo_options_v287a.keys()),
+                                                key=f"v287a_undo_close_select_{selected_watchlist_name}",
+                                            )
+                                            _undo_id_selected_v287a = _undo_options_v287a[_undo_label_selected_v287a]
+                                            _undo_match_v287a = _closed_for_undo_v287a[
+                                                _closed_for_undo_v287a["ID"].astype(str) == _undo_id_selected_v287a
+                                            ]
+                                            _undo_entry_v287a = _undo_match_v287a.iloc[0].to_dict() if not _undo_match_v287a.empty else {}
+                                            _undo_ticker_selected_v287a = str(_undo_entry_v287a.get("Ticker") or "").strip().upper()
+                                            _undo_shares_selected_v287a = int(_v230_safe_float(_undo_entry_v287a.get("Stück"), default=0) or 0)
+                                            _undo_entry_price_v287a = _v230_safe_float(_undo_entry_v287a.get("Entry"), default=None)
+                                            _undo_wrong_exit_v287a = _v230_safe_float(_undo_entry_v287a.get("Kurs"), default=None)
+                                            _undo_realized_v287a = _v230_safe_float(_undo_entry_v287a.get("Realisiert P/L"), default=None)
+                                            _uj1_v287a, _uj2_v287a, _uj3_v287a, _uj4_v287a = st.columns(4)
+                                            with _uj1_v287a:
+                                                st.metric("Ticker", _undo_ticker_selected_v287a or "-")
+                                            with _uj2_v287a:
+                                                st.metric("Wieder offene Stück", _undo_shares_selected_v287a)
+                                            with _uj3_v287a:
+                                                st.metric("Entry", "n/a" if _undo_entry_price_v287a is None else f"{_undo_entry_price_v287a:.4f}")
+                                            with _uj4_v287a:
+                                                st.metric("Fehlerhafter Exit", "n/a" if _undo_wrong_exit_v287a is None else f"{_undo_wrong_exit_v287a:.4f}")
+                                            if _undo_realized_v287a is not None:
+                                                st.caption(f"Dieser Journal-Abschluss enthält aktuell {_undo_realized_v287a:+.2f} realisierte P/L und wird beim Rückgängig-Machen aus der Statistik neutralisiert.")
+
+                                            _undo_snapshot_v287a = _undo_entry_v287a.get("Position vorher")
+                                            _undo_has_snapshot_v287a = isinstance(_undo_snapshot_v287a, dict) and bool(_undo_snapshot_v287a)
+                                            if _undo_has_snapshot_v287a:
+                                                st.info("Exakter Positions-Snapshot vorhanden: Entry, Stop, Ziel, Stückzahl, Teilverkäufe, Stop-Historie und Notizen können verlustfrei wiederhergestellt werden.")
+                                            else:
+                                                st.warning(
+                                                    "Legacy-Schließung ohne Positions-Snapshot. Die App rekonstruiert Entry, Stop, Stückzahl und realisierte Teilverkäufe aus Journal/Event-Historie; "
+                                                    "Ziel und weitere Details bitte nach der Wiederherstellung kurz kontrollieren."
+                                                )
+
+                                            _positions_for_undo_v287a = _v244_get_positions(selected_watchlist_name)
+                                            _undo_already_open_v287a = _undo_ticker_selected_v287a in _positions_for_undo_v287a
+                                            if _undo_already_open_v287a:
+                                                st.info(f"{_undo_ticker_selected_v287a} ist bereits als offene Position vorhanden; dieser Abschluss wird deshalb nicht automatisch zurückgespielt.")
+
+                                            _undo_confirm_v287a = st.checkbox(
+                                                f"Ich möchte die Schließung von {_undo_ticker_selected_v287a} wirklich rückgängig machen.",
+                                                key=f"v287a_undo_confirm_{selected_watchlist_name}_{_undo_id_selected_v287a}",
+                                            )
+                                            if st.button(
+                                                "Schließung rückgängig machen",
+                                                type="primary",
+                                                disabled=not _undo_confirm_v287a or _undo_already_open_v287a,
+                                                use_container_width=True,
+                                                key=f"v287a_undo_close_button_{selected_watchlist_name}_{_undo_id_selected_v287a}",
+                                            ):
+                                                _restore_fallback_v287a = {
+                                                    "ticker": _undo_ticker_selected_v287a,
+                                                    "name": str(_undo_entry_v287a.get("Name") or _undo_ticker_selected_v287a),
+                                                }
+                                                try:
+                                                    _event_store_for_undo_v287a = _v2416_load_event_store()
+                                                    _event_rows_for_undo_v287a = list((_event_store_for_undo_v287a or {}).get("events") or [])
+                                                    for _event_v287a in reversed(_event_rows_for_undo_v287a):
+                                                        if str((_event_v287a or {}).get("Ticker") or "").strip().upper() != _undo_ticker_selected_v287a:
+                                                            continue
+                                                        if str((_event_v287a or {}).get("Watchlist") or "") != str(selected_watchlist_name):
+                                                            continue
+                                                        if str((_event_v287a or {}).get("Ereignis") or "") not in {"Position angelegt", "Position gespeichert"}:
+                                                            continue
+                                                        _restore_fallback_v287a.update({
+                                                            "entry": _v230_safe_float((_event_v287a or {}).get("Entry"), default=None),
+                                                            "stop": _v230_safe_float((_event_v287a or {}).get("Stop"), default=None),
+                                                            "initial_stop": _v230_safe_float((_event_v287a or {}).get("Stop"), default=None),
+                                                            "target": _v230_safe_float((_event_v287a or {}).get("Ziel"), default=0.0) or 0.0,
+                                                            "initial_shares": int(_v230_safe_float((_event_v287a or {}).get("Stück"), default=0) or 0),
+                                                            "created_at": str((_event_v287a or {}).get("Zeit") or ""),
+                                                        })
+                                                        break
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    _live_restore_match_v287a = live_df[live_df["Ticker"].astype(str).str.upper() == _undo_ticker_selected_v287a]
+                                                    if not _live_restore_match_v287a.empty:
+                                                        _restore_live_px_v287a = _v244_row_price(_live_restore_match_v287a.iloc[0].to_dict())
+                                                        if _restore_live_px_v287a is not None:
+                                                            _restore_fallback_v287a["last_price"] = _restore_live_px_v287a
+                                                except Exception:
+                                                    pass
+
+                                                _undo_result_v287a = _v287a_undo_close_position(
+                                                    _positions_for_undo_v287a,
+                                                    watchlist_name=selected_watchlist_name,
+                                                    journal_id=_undo_id_selected_v287a,
+                                                    fallback_position=_restore_fallback_v287a,
+                                                )
+                                                if _undo_result_v287a.get("ok"):
+                                                    _positions_for_undo_v287a = _undo_result_v287a.get("positions", _positions_for_undo_v287a)
+                                                    _v244_save_positions(selected_watchlist_name, _positions_for_undo_v287a)
+                                                    st.session_state["v287a_undo_flash"] = (
+                                                        f"{_undo_ticker_selected_v287a} ist wieder offen. "
+                                                        + ("Exakter Snapshot wiederhergestellt." if _undo_result_v287a.get("exact_snapshot") else "Legacy-Daten rekonstruiert – Position bitte kurz kontrollieren.")
+                                                    )
+                                                    st.rerun()
+                                                else:
+                                                    st.error(_undo_result_v287a.get("error") or "Schließung konnte nicht rückgängig gemacht werden.")
+
                                 csv_v270 = journal_view_v270.drop(columns=["ID"], errors="ignore").to_csv(index=False).encode("utf-8-sig")
                                 jc1, jc2 = st.columns(2)
                                 with jc1:

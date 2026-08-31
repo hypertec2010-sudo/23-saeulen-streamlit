@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -207,6 +208,7 @@ def _v270_record_journal_entry(
     note: str = "",
     learning: str = "",
     details: str = "",
+    position_snapshot: dict | None = None,
 ) -> dict:
     position = position or {}
     entry_price, initial_stop, _ = _position_risk(position)
@@ -234,6 +236,8 @@ def _v270_record_journal_entry(
         "Notiz": str(note or "").strip(),
         "Erkenntnis": str(learning or "").strip(),
         "Details": str(details or "").strip(),
+        # v28.7a: exact pre-close snapshot for lossless undo of future closes.
+        "Position vorher": deepcopy(position_snapshot) if isinstance(position_snapshot, dict) else None,
     }
     store = _v270_load_trade_journal()
     entries = list(store.get("entries") or [])
@@ -374,6 +378,7 @@ def _v270_close_position(
         note=note,
         learning=learning,
         details=str(reason or "Manuell geschlossen"),
+        position_snapshot=pos,
     )
     positions.pop(ticker, None)
     _event_logger(
@@ -390,6 +395,240 @@ def _v270_close_position(
     )
     return {"ok": True, "positions": positions, "entry": journal_entry}
 
+
+
+def _v287a_same_trade_entry(entry: dict, *, watchlist_name: str, ticker: str) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    return (
+        str(entry.get("Watchlist") or "Standard") == str(watchlist_name or "Standard")
+        and str(entry.get("Ticker") or "").strip().upper() == str(ticker or "").strip().upper()
+    )
+
+
+def _v287a_legacy_cycle_entries(entries: list[dict], close_index: int, *, watchlist_name: str, ticker: str) -> list[dict]:
+    """Entries of the current trade cycle preceding a legacy close record."""
+    start = 0
+    for idx in range(close_index - 1, -1, -1):
+        item = entries[idx]
+        if not _v287a_same_trade_entry(item, watchlist_name=watchlist_name, ticker=ticker):
+            continue
+        if str(item.get("Typ") or "") == "Position geschlossen":
+            start = idx + 1
+            break
+    return [
+        dict(item)
+        for item in entries[start:close_index]
+        if _v287a_same_trade_entry(item, watchlist_name=watchlist_name, ticker=ticker)
+    ]
+
+
+def _v287a_restore_position_from_close_entry(
+    entry: dict,
+    *,
+    prior_entries: list[dict] | None = None,
+    fallback_position: dict | None = None,
+) -> tuple[dict, bool]:
+    """Restore a position from a close journal row.
+
+    v28.7a+ close rows carry an exact ``Position vorher`` snapshot. Older rows
+    did not, so the legacy path rebuilds the position from the journal plus an
+    optional position/event fallback supplied by the UI.
+    """
+    entry = dict(entry or {})
+    snapshot = entry.get("Position vorher")
+    if isinstance(snapshot, dict) and snapshot:
+        pos = deepcopy(snapshot)
+        ticker = str(entry.get("Ticker") or pos.get("ticker") or "").strip().upper()
+        pos["ticker"] = ticker
+        pos.setdefault("name", str(entry.get("Name") or ticker).strip())
+        pos["updated_at"] = _now().strftime("%d.%m.%Y %H:%M")
+        return pos, True
+
+    fallback = deepcopy(fallback_position) if isinstance(fallback_position, dict) else {}
+    ticker = str(entry.get("Ticker") or fallback.get("ticker") or "").strip().upper()
+    name = str(entry.get("Name") or fallback.get("name") or ticker).strip()
+    prior_entries = list(prior_entries or [])
+
+    partial_rows = [x for x in prior_entries if str(x.get("Typ") or "") == "Teilverkauf"]
+    stop_rows = [x for x in prior_entries if str(x.get("Typ") or "") == "Stop angepasst"]
+    note_rows = [x for x in prior_entries if str(x.get("Typ") or "") == "Trade-Notiz"]
+
+    open_shares = int(_num(entry.get("Stück"), 0) or 0)
+    realized_shares = sum(max(0, int(_num(x.get("Stück"), 0) or 0)) for x in partial_rows)
+    initial_shares = open_shares + realized_shares
+    fallback_initial_shares = int(_num(fallback.get("initial_shares"), 0) or 0)
+    if fallback_initial_shares > initial_shares:
+        initial_shares = fallback_initial_shares
+
+    previous_pnl = sum((_num(x.get("Realisiert P/L"), 0.0) or 0.0) for x in partial_rows)
+    total_pnl = _num(entry.get("Gesamt P/L"), None)
+    close_pnl = _num(entry.get("Realisiert P/L"), None)
+    if total_pnl is not None and close_pnl is not None:
+        previous_pnl = total_pnl - close_pnl
+
+    previous_weighted_r = 0.0
+    for row in partial_rows:
+        row_r = _num(row.get("Realisiert R"), None)
+        row_shares = int(_num(row.get("Stück"), 0) or 0)
+        if row_r is not None and row_shares > 0:
+            previous_weighted_r += row_r * row_shares
+
+    stop_history = list(fallback.get("stop_history") or [])
+    if not stop_history:
+        for row in stop_rows:
+            stop_history.append({
+                "date": _normalise_date(row.get("Datum")),
+                "old_stop": _num(row.get("Alter Stop"), None),
+                "new_stop": _num(row.get("Neuer Stop"), None),
+                "note": str(row.get("Notiz") or "").strip(),
+            })
+
+    journal_notes = list(fallback.get("journal_notes") or [])
+    if not journal_notes:
+        for row in note_rows:
+            journal_notes.append({
+                "date": _normalise_date(row.get("Datum")),
+                "note": str(row.get("Notiz") or "").strip(),
+                "learning": str(row.get("Erkenntnis") or "").strip(),
+            })
+
+    entry_price = _num(entry.get("Entry"), _num(fallback.get("entry"), None))
+    initial_stop = _num(entry.get("Initial-Stop"), _num(fallback.get("initial_stop"), None))
+    current_stop = _num(entry.get("Aktueller Stop"), _num(fallback.get("stop"), initial_stop))
+    target = _num(fallback.get("target"), 0.0) or 0.0
+    last_price = _num(fallback.get("last_price"), None)
+
+    pos = dict(fallback)
+    pos.update({
+        "ticker": ticker,
+        "name": name,
+        "entry": entry_price or 0.0,
+        "stop": current_stop or 0.0,
+        "initial_stop": initial_stop,
+        "target": target,
+        "shares": open_shares,
+        "initial_shares": initial_shares or open_shares,
+        "realized_pnl": previous_pnl,
+        "realized_shares": realized_shares,
+        "realized_r_weighted": previous_weighted_r,
+        "stop_history": stop_history[-100:],
+        "journal_notes": journal_notes[-100:],
+        "created_at": fallback.get("created_at") or f"Wiederhergestellt aus Journal {entry.get('Datum') or ''}".strip(),
+        "updated_at": _now().strftime("%d.%m.%Y %H:%M"),
+        "last_price": last_price,
+    })
+    return pos, False
+
+
+def _v287a_undo_close_position(
+    positions: dict,
+    *,
+    watchlist_name: str,
+    journal_id: str,
+    fallback_position: dict | None = None,
+) -> dict:
+    """Undo one full close without creating a synthetic counter-trade.
+
+    The erroneous close is converted into an audit-only journal row so it no
+    longer contributes to realized P/L, hit rate or closed-trade statistics.
+    """
+    positions = dict(positions or {})
+    journal_id = str(journal_id or "").strip()
+    if not journal_id:
+        return {"ok": False, "error": "Journal-ID fehlt.", "positions": positions}
+
+    store = _v270_load_trade_journal()
+    entries = list(store.get("entries") or [])
+    close_index = None
+    close_entry = None
+    for idx, item in enumerate(entries):
+        if str((item or {}).get("ID") or "") == journal_id:
+            close_index = idx
+            close_entry = dict(item or {})
+            break
+    if close_entry is None or close_index is None:
+        return {"ok": False, "error": "Geschlossene Position im Journal nicht gefunden.", "positions": positions}
+    if str(close_entry.get("Typ") or "") != "Position geschlossen":
+        return {"ok": False, "error": "Dieser Journal-Eintrag ist keine aktive Schließung mehr.", "positions": positions}
+
+    ticker = str(close_entry.get("Ticker") or "").strip().upper()
+    row_watchlist = str(close_entry.get("Watchlist") or "Standard")
+    if row_watchlist != str(watchlist_name or "Standard"):
+        return {"ok": False, "error": "Journal-Eintrag gehört zu einer anderen Watchlist.", "positions": positions}
+    if not ticker:
+        return {"ok": False, "error": "Ticker im Journal-Eintrag fehlt.", "positions": positions}
+    if ticker in positions:
+        return {"ok": False, "error": f"{ticker} ist bereits als offene Position vorhanden.", "positions": positions}
+
+    cycle_entries = _v287a_legacy_cycle_entries(
+        entries,
+        close_index,
+        watchlist_name=row_watchlist,
+        ticker=ticker,
+    )
+    restored, exact_snapshot = _v287a_restore_position_from_close_entry(
+        close_entry,
+        prior_entries=cycle_entries,
+        fallback_position=fallback_position,
+    )
+    if int(_num(restored.get("shares"), 0) or 0) <= 0:
+        return {"ok": False, "error": "Offene Stückzahl konnte nicht wiederhergestellt werden.", "positions": positions}
+    if (_num(restored.get("entry"), 0.0) or 0.0) <= 0:
+        return {"ok": False, "error": "Entry konnte nicht wiederhergestellt werden.", "positions": positions}
+
+    wrong_price = _num(close_entry.get("Kurs"), None)
+    original_details = str(close_entry.get("Details") or "").strip()
+    audit_entry = dict(close_entry)
+    audit_entry["Ursprünglicher Typ"] = "Position geschlossen"
+    audit_entry["Ursprünglicher Kurs"] = wrong_price
+    audit_entry["Ursprünglich Realisiert P/L"] = close_entry.get("Realisiert P/L")
+    audit_entry["Ursprünglich Realisiert %"] = close_entry.get("Realisiert %")
+    audit_entry["Ursprünglich Realisiert R"] = close_entry.get("Realisiert R")
+    audit_entry["Ursprünglich Gesamt P/L"] = close_entry.get("Gesamt P/L")
+    audit_entry["Ursprünglich Gesamt R"] = close_entry.get("Gesamt R")
+    audit_entry["Typ"] = "Schließung rückgängig"
+    audit_entry["Kurs"] = None
+    audit_entry["Verbleibend"] = int(_num(restored.get("shares"), 0) or 0)
+    audit_entry["Realisiert P/L"] = None
+    audit_entry["Realisiert %"] = None
+    audit_entry["Realisiert R"] = None
+    audit_entry["Gesamt P/L"] = None
+    audit_entry["Gesamt R"] = None
+    audit_entry["Rückgängig am"] = _now().strftime("%d.%m.%Y %H:%M:%S")
+    audit_entry["Details"] = (
+        f"Schließung rückgängig gemacht; ursprünglicher Exit {wrong_price if wrong_price is not None else 'n/a'}."
+        + (f" Ursprünglicher Grund: {original_details}" if original_details else "")
+    )
+    entries[close_index] = audit_entry
+    store["entries"] = entries[-5000:]
+    if not _v270_save_trade_journal(store):
+        return {"ok": False, "error": "Trade-Journal konnte nicht aktualisiert werden.", "positions": positions}
+
+    positions[ticker] = restored
+    _event_logger(
+        event_type="Schließung rückgängig",
+        ticker=ticker,
+        watchlist_name=watchlist_name,
+        source="Trade-Journal",
+        status="Position wieder offen",
+        price=_num(restored.get("last_price"), _num(restored.get("entry"), None)),
+        trade_state="Offen",
+        details=f"Versehentliche Schließung rückgängig; {restored.get('shares')} Stück wieder offen.",
+        payload={
+            "Journal-ID": journal_id,
+            "Ursprünglicher Exit": wrong_price,
+            "Wiederherstellung": "Exakter Snapshot" if exact_snapshot else "Legacy-Rekonstruktion",
+        },
+        signature=f"undo-close|{journal_id}",
+    )
+    return {
+        "ok": True,
+        "positions": positions,
+        "restored_position": restored,
+        "journal_entry": audit_entry,
+        "exact_snapshot": exact_snapshot,
+    }
 
 def _v270_adjust_stop(
     positions: dict,

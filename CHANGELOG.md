@@ -1,5 +1,15 @@
 # Changelog
 
+## v28.7a
+- Zweistufiger, bestaetigungspflichtiger Workflow fuer vollstaendige Positionsschliessungen.
+- Vorschau vor dem Exit mit Ticker, Stueckzahl, Exit-Kurs und berechnetem P/L.
+- Plausibilitaetswarnung und zweite Bestaetigung bei auffaelligem Ausstiegskurs.
+- Neue Undo-Funktion fuer versehentlich geschlossene Trades.
+- Ab v28.7a wird vor jedem Full-Close ein kompletter Positions-Snapshot fuer verlustfreies Undo gespeichert.
+- Legacy-Schliessungen werden aus Journal- und Event-Historie rekonstruiert.
+- Rueckgaengig gemachte Abschluesse werden aus P/L-, Trefferquoten- und Closed-Trade-Statistik neutralisiert, bleiben aber als Audit-Historie erhalten.
+- Keine Aenderung an Screener-, Shadow-, Score-, Guardrail- oder Benchmark-Logik.
+
 ## v28.6e6
 - aggressives globales Cache-Clear aus v28.6e5 entfernt
 - manueller Vollrefresh provider-sicher gemacht

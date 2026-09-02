@@ -5,7 +5,7 @@ Analyse-Callbacks verbunden. Dadurch bleibt die Analyse-Engine kompatibel,
 waehrend der Live-Monitor separat wartbar ist.
 """
 from __future__ import annotations
-import json, os, re
+import json, os, re, time
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -1531,7 +1531,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     }
 
 
-def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=None, watchlist_meta_by_ticker=None, live_horizon="Swing / 1-4 Wochen"):
+def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_items=None, watchlist_meta_by_ticker=None, live_horizon="Swing / 1-4 Wochen", analysis_bucket_override=None, per_ticker_pause_seconds=0.0):
     """Analyze a normalized ticker sequence without silently truncating it.
 
     ``max_items`` remains available for explicit caller-side limits, but ``None``
@@ -1560,6 +1560,15 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
             # Kurzfrist wird deshalb als Live-Monitor-Modus in der Status-/Scorelogik
             # angewendet, die robuste technische Datenbasis bleibt Swing.
             analysis_horizon = "Swing (1-4 Wochen)"
+            # v28.7b: Ein manueller Atomic-Vollscan kann einen eigenen
+            # Analyse-Bucket vorgeben. Dadurch ist der Lauf wirklich frisch, ohne
+            # den globalen Streamlit-Cache zu leeren. Der gleiche Token gilt fuer
+            # den gesamten Lauf und ist damit reproduzierbar/retry-sicher.
+            _analysis_bucket_v287b = (
+                analysis_bucket_override
+                if analysis_bucket_override not in (None, "")
+                else _v2414_market_bucket(15)
+            )
             result = analyze_stock_live_cached_v2414(
                 ticker=ticker,
                 horizon=analysis_horizon,
@@ -1569,7 +1578,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
                 buy_in_override=0.0,
                 smart_money_default=True,
                 strict_mode=True,
-                market_bucket=_v2414_market_bucket(15),
+                market_bucket=_analysis_bucket_v287b,
             )
             decision = build_professional_radar_decision_v18(result, style_name)
             rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name, watchlist_meta=meta_by_ticker.get(ticker, {}), live_horizon=live_horizon))
@@ -1585,6 +1594,13 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
                 "Status": "Temporär ausstehend (Rate-Limit)" if _is_rate_limit else "Nicht analysierbar",
                 "Temporär": bool(_is_rate_limit),
             })
+        # v28.7b: Kleine Pause zwischen Titeln reduziert Burst-Last bei Yahoo.
+        try:
+            _pause_v287b = max(0.0, float(per_ticker_pause_seconds or 0.0))
+        except Exception:
+            _pause_v287b = 0.0
+        if _pause_v287b > 0:
+            time.sleep(_pause_v287b)
     if rows:
         df = pd.DataFrame(rows)
         # v23.6: Anzeige-Sortierung im Live-Monitor nach Ampel, nicht nach interner

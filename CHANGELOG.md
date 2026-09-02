@@ -1,5 +1,20 @@
 # Changelog
 
+## v28.7b
+- Live-Screener auf Atomic Complete Scan umgestellt.
+- Live-Screener scannt immer die komplette eindeutige Watchlist; 40/80/120-Teilmengen im Live-Screener entfernt.
+- Teil-Batches werden nicht mehr in Session oder persistente Snapshots geschrieben.
+- Alte Ergebniszeilen werden nicht mehr tickerweise in einen neuen Lauf hineingemischt.
+- Persistente Restore-Logik akzeptiert nur v28.7b-Atomic-Vollstaende.
+- Status-/Hysterese-Historie wird erst nach komplettem Rohscan atomar aktualisiert.
+- Manueller und automatischer Vollscan erhalten frische Analyse-Keys ohne globales Cache-Clear.
+- Provider-Drosselung mit kleineren Batches, Per-Ticker-Pause und zwei Cooldown-Retry-Runden fuer temporaere/429-Fehler.
+- Heartbeat-Cache-Key korrigiert: `schema` wird nun identisch verglichen; verhindert faelschlich dauernd faellige Auto-Scans.
+- Scan-Lock verhindert Auto-Rerun waehrend eines laufenden Vollscans.
+- 5-Minuten-Auto-Cooldown nach komplett fehlgeschlagenem Lauf.
+- Sichtbarer Scan-Status mit Datenzeit, Alter, Erfolg/Fehler, Dauer und `kein Mischstand`.
+- Keine Aenderung an Ampel-, Score-, Shadow-, Guardrail-, Benchmark-, Positions- oder Journal-Logik.
+
 ## v28.7a
 - Zweistufiger, bestaetigungspflichtiger Workflow fuer vollstaendige Positionsschliessungen.
 - Vorschau vor dem Exit mit Ticker, Stueckzahl, Exit-Kurs und berechnetem P/L.

@@ -1,5 +1,21 @@
 # Changelog
 
+## v29.1
+- Portfolio & Risk Engine als eigener Trading-Cockpit-Bereich eingefuehrt.
+- Gesamtdepot- und aktuelle-Watchlist-Sicht fuer offene Positionen.
+- Exposure, Cash/Reserve, Einzelpositionsgewicht, Top-3- und Cluster-Konzentration.
+- Portfolio-Risiko bis Stop sowie Stop-Abdeckung und Stop-Verletzungen.
+- Exit Engine 2.0 wird als bestehender Positions-Risikokontext auf Portfolioebene aggregiert.
+- Missing-Data-Guard verhindert gruene Portfolio-Freigabe bei unvollstaendiger Kurs-/FX-Basis.
+- Doppelte Ticker ueber Positions-Watchlists werden im Gesamtdepot dedupliziert statt doppelt gezaehlt.
+- Explizite Mehrwaehrungslogik; fehlende FX-Raten werden nicht geschaetzt.
+- Depot-Basis, Depotwert und FX-Raten koennen ueber die zentrale Storage-Schicht persistent gespeichert werden.
+- Persistente Portfolio-Gruppe/Sektor pro Position mit manueller Ueberschreibbarkeit.
+- Konservative Cluster-Heuristik fuer klar erkennbare Gruppen; Unbekannt bleibt sichtbar.
+- Pre-Trade Portfolio Guard simuliert Positionsgroesse, Exposure und Cluster-Konzentration vor einem neuen Trade.
+- Keine automatische Aenderung an Positionen, Orders, Live-/Shadow-Ampeln oder Scores.
+- Keine SQL-/Secrets-Aenderung und keine neuen Provider-Abfragen.
+
 ## v29.0
 - Trading Journal & Learning Engine im Beobachtungsmodus eingefuehrt.
 - Neue Positionen speichern einen strukturierten Entry-Kontext aus dem bereits abgeschlossenen Atomic-Live-Scan; keine Extra-Provider-Abfragen.

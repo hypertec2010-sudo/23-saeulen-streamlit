@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v29.0"
+APP_VERSION = "v29.1"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14250,6 +14250,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "position_monitor.py",
     _MODULE_DIR_V252 / "trade_journal.py",
     _MODULE_DIR_V252 / "trade_learning.py",
+    _MODULE_DIR_V252 / "portfolio_risk.py",
     _MODULE_DIR_V252 / "live_monitor.py",
     _MODULE_DIR_V252 / "watchlist_storage.py",
     _MODULE_DIR_V252 / "storage" / "__init__.py",
@@ -14283,6 +14284,7 @@ from modules import event_log as _event_module
 from modules import position_monitor as _position_module
 from modules import trade_journal as _trade_journal_module
 from modules import trade_learning as _trade_learning_module
+from modules import portfolio_risk as _portfolio_risk_module
 from modules import shadow_performance as _shadow_performance_v287
 from modules import live_monitor as _live_module
 from modules import watchlist_storage as _watchlist_module
@@ -14408,6 +14410,19 @@ _v270_reset_trade_journal = _trade_journal_module._v270_reset_trade_journal
 # v29.0: Trading Journal & Learning Engine (observational only)
 _v290_capture_entry_context = _trade_learning_module.capture_entry_context
 _v290_build_learning_package = _trade_learning_module.build_learning_package
+
+# v29.1: Portfolio & Risk Engine (advisory only)
+_portfolio_risk_module.configure_context(
+    position_exit_engine=_v289_position_exit_engine,
+    infer_quote_currency=_v2410_infer_quote_currency,
+    storage=_storage_v280,
+)
+_v291_build_portfolio_package = _portfolio_risk_module.build_portfolio_package
+_v291_load_portfolio_settings = _portfolio_risk_module.load_portfolio_settings
+_v291_save_portfolio_settings = _portfolio_risk_module.save_portfolio_settings
+_v291_portfolio_currencies = _portfolio_risk_module.portfolio_currencies
+_v291_assess_candidate = _portfolio_risk_module.assess_candidate
+_v291_infer_portfolio_group = _portfolio_risk_module.infer_portfolio_group
 
 # v25.3: Live-Monitor-Modul konfigurieren
 _live_module.configure_context(
@@ -16660,7 +16675,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         # Bereiche bei jedem Widget-Rerun aus. Risiko-/Positions-Eingaben
                         # starten dadurch keine teuren Analysen aus anderen Bereichen.
                         cockpit_options = [
-                            "📡 Live-Screener", "📐 Risiko-Rechner",
+                            "📡 Live-Screener", "📐 Risiko-Rechner", "🛡️ Portfolio-Risiko",
                             "📌 Positionen / Exit", "📓 Trade-Journal", "🧾 Historie & Details",
                         ]
                         current_cockpit = st.session_state.get("watchlist_cockpit_area_v2413", cockpit_options[0])
@@ -17280,6 +17295,251 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         else:
                                             st.success("Risiko-Plan rechnerisch plausibel. Vor Umsetzung Setup, Liquidität und Stop-Regel final prüfen.")
 
+                        # ---------- v29.1: Portfolio & Risk Engine ----------
+                        elif cockpit_area == "🛡️ Portfolio-Risiko":
+                            st.markdown(f"### Portfolio & Risk Engine · {APP_VERSION}")
+                            st.caption(
+                                "Bewertet das Gesamtdepot statt nur einzelne Setups: Exposure, Cash, Einzelpositions- und Cluster-Konzentration, "
+                                "Stop-Risiko, Exit-Druck und Datenabdeckung. Die Engine ist beratend und verändert keine Position oder Order automatisch."
+                            )
+
+                            _all_positions_v291 = _v245_load_all_positions()
+                            _scope_options_v291 = ["Gesamtdepot", "Aktuelle Positions-Watchlist"]
+                            _scope_v291 = st.radio(
+                                "Portfolio-Sicht",
+                                options=_scope_options_v291,
+                                horizontal=not bool(mobile_mode_v2842),
+                                key="v291_portfolio_scope",
+                            )
+                            _scope_watchlist_v291 = selected_watchlist_name if _scope_v291 == "Aktuelle Positions-Watchlist" else None
+
+                            _settings_v291 = _v291_load_portfolio_settings()
+                            _base_default_v291 = str(
+                                st.session_state.get(
+                                    "v291_portfolio_base_currency",
+                                    _settings_v291.get("base_currency", "EUR"),
+                                ) or "EUR"
+                            ).upper()
+                            _base_currency_v291 = st.text_input(
+                                "Depot-Basiswährung",
+                                value=_base_default_v291,
+                                key="v291_portfolio_base_currency_widget",
+                                help="Alle Portfolio-Beträge werden nur mit expliziter FX-Umrechnung in diese Basiswährung aggregiert.",
+                            ).strip().upper() or "EUR"
+                            st.session_state.v291_portfolio_base_currency = _base_currency_v291
+
+                            _account_default_v291 = float(
+                                st.session_state.get(
+                                    "v291_portfolio_account_size",
+                                    _settings_v291.get(
+                                        "account_size",
+                                        st.session_state.get("v230_account_size", 50000.0),
+                                    ),
+                                ) or 50000.0
+                            )
+                            _account_size_v291 = st.number_input(
+                                f"Gesamtdepotwert inkl. Cash ({_base_currency_v291})",
+                                min_value=0.0,
+                                value=_account_default_v291,
+                                step=1000.0,
+                                key="v291_portfolio_account_size_widget",
+                                help="Dient als Nenner für Exposure, Cashquote, Positionsgewicht und Risiko bis Stop.",
+                            )
+                            st.session_state.v291_portfolio_account_size = _account_size_v291
+
+                            _currencies_v291 = _v291_portfolio_currencies(
+                                _all_positions_v291,
+                                _live_df_complete_v289,
+                                scope_watchlist=_scope_watchlist_v291,
+                            )
+                            _fx_rates_v291 = {_base_currency_v291: 1.0}
+                            _foreign_v291 = [c for c in _currencies_v291 if c and c != _base_currency_v291]
+                            if _foreign_v291:
+                                with st.expander("FX-Umrechnung für Portfolio-Aggregation", expanded=False):
+                                    st.caption(
+                                        "Keine FX-Kurse werden automatisch geschätzt oder zusätzlich beim Marktprovider abgefragt. "
+                                        "Fehlende Umrechnung reduziert die Portfolio-Konfidenz statt Werte falsch zusammenzurechnen."
+                                    )
+                                    _fx_cols_v291 = st.columns(min(3, max(1, len(_foreign_v291))))
+                                    for _i_v291, _cur_v291 in enumerate(_foreign_v291):
+                                        _fx_key_v291 = f"v291_fx_{_cur_v291}_to_{_base_currency_v291}"
+                                        with _fx_cols_v291[_i_v291 % len(_fx_cols_v291)]:
+                                            _rate_v291 = st.number_input(
+                                                f"1 {_cur_v291} = ? {_base_currency_v291}",
+                                                min_value=0.0,
+                                                value=float(
+                                                    st.session_state.get(
+                                                        _fx_key_v291,
+                                                        (_settings_v291.get("fx_rates") or {}).get(_cur_v291, 0.0),
+                                                    ) or 0.0
+                                                ),
+                                                step=0.0001,
+                                                format="%.4f",
+                                                key=f"{_fx_key_v291}_widget",
+                                            )
+                                            st.session_state[_fx_key_v291] = _rate_v291
+                                            if float(_rate_v291 or 0.0) > 0:
+                                                _fx_rates_v291[_cur_v291] = float(_rate_v291)
+
+                            if st.button("Portfolio-Einstellungen speichern", use_container_width=False, key="v291_save_portfolio_settings"):
+                                _settings_ok_v291 = _v291_save_portfolio_settings({
+                                    "base_currency": _base_currency_v291,
+                                    "account_size": float(_account_size_v291 or 0.0),
+                                    "fx_rates": {k: float(v) for k, v in _fx_rates_v291.items() if k != _base_currency_v291 and float(v or 0.0) > 0},
+                                    "updated_at": get_current_berlin_time().isoformat(),
+                                })
+                                if _settings_ok_v291:
+                                    st.success("Portfolio-Basis und FX-Umrechnung gespeichert.")
+                                else:
+                                    st.warning("Portfolio-Einstellungen konnten nicht persistent gespeichert werden; sie bleiben in dieser Session aktiv.")
+
+                            _portfolio_pkg_v291 = _v291_build_portfolio_package(
+                                _all_positions_v291,
+                                _live_df_complete_v289,
+                                account_size=_account_size_v291,
+                                base_currency=_base_currency_v291,
+                                fx_rates=_fx_rates_v291,
+                                scope_watchlist=_scope_watchlist_v291,
+                            )
+                            _portfolio_rows_v291 = _portfolio_pkg_v291.get("rows")
+                            if not isinstance(_portfolio_rows_v291, pd.DataFrame) or _portfolio_rows_v291.empty:
+                                st.info("Noch keine offenen Positionen für die Portfolio-Auswertung vorhanden.")
+                            else:
+                                _pm_v291 = _portfolio_pkg_v291.get("metrics") or {}
+                                st.markdown(
+                                    f"## {_portfolio_pkg_v291.get('ampel','⚪')} {_portfolio_pkg_v291.get('status','-')} · "
+                                    f"{float(_portfolio_pkg_v291.get('score') or 0):.0f}/100"
+                                )
+                                st.write(f"**Nächste Portfolio-Handlung:** {_portfolio_pkg_v291.get('action','-')}")
+                                st.caption(f"Konfidenz: {_portfolio_pkg_v291.get('confidence','-')}")
+
+                                _mcols_v291 = st.columns(2 if mobile_mode_v2842 else 5)
+                                _metric_specs_v291 = [
+                                    ("Investiert", _pm_v291.get("total_value"), _base_currency_v291),
+                                    ("Exposure", _pm_v291.get("exposure_pct"), "%"),
+                                    ("Cash / Reserve", _pm_v291.get("cash"), _base_currency_v291),
+                                    ("Risiko bis Stop", _pm_v291.get("risk_to_stop_pct"), "% Depot"),
+                                    ("Aktuelle Kursabdeckung", _pm_v291.get("fresh_value_coverage_pct"), "%"),
+                                ]
+                                for _idx_v291, (_label_v291, _val_v291, _unit_v291) in enumerate(_metric_specs_v291):
+                                    with _mcols_v291[_idx_v291 % len(_mcols_v291)]:
+                                        if _val_v291 is None:
+                                            _txt_v291 = "n/a"
+                                        elif _unit_v291.startswith("%") or _unit_v291 == "%":
+                                            _txt_v291 = f"{float(_val_v291):.1f}%"
+                                        else:
+                                            _txt_v291 = f"{float(_val_v291):,.0f} {_unit_v291}".replace(",", ".")
+                                        st.metric(_label_v291, _txt_v291)
+
+                                if _portfolio_pkg_v291.get("duplicates"):
+                                    st.warning(
+                                        "Doppelte Ticker in mehreren Positions-Watchlists wurden im Gesamtdepot nur einmal gezählt: "
+                                        + ", ".join(_portfolio_pkg_v291.get("duplicates") or [])
+                                    )
+                                if float(_pm_v291.get("fx_value_coverage_pct") or 0.0) < 100:
+                                    st.warning(
+                                        f"FX-Abdeckung nur {float(_pm_v291.get('fx_value_coverage_pct') or 0):.0f}%. "
+                                        "Positionen ohne Umrechnung werden nicht in Depotwert/Cash/Exposure hineingeschätzt."
+                                    )
+                                if int(_pm_v291.get("stale_count") or 0) > 0:
+                                    st.warning(
+                                        f"{int(_pm_v291.get('stale_count') or 0)} Position(en) haben in dieser Portfolio-Sicht keinen aktuellen Atomic-Scanwert. "
+                                        "Gespeicherte Kurse bleiben sichtbar, erzeugen aber keine grüne Datenfreigabe."
+                                    )
+
+                                _drivers_v291 = _portfolio_pkg_v291.get("drivers") or []
+                                _actions_v291 = _portfolio_pkg_v291.get("actions") or []
+                                if _drivers_v291:
+                                    st.markdown("**Wichtigste Risikotreiber**")
+                                    for _d_v291 in _drivers_v291:
+                                        st.write(f"• {_d_v291}")
+                                if _actions_v291:
+                                    st.markdown("**Portfolio-Maßnahmen**")
+                                    for _a_v291 in _actions_v291:
+                                        st.write(f"• {_a_v291}")
+
+                                _clusters_v291 = _portfolio_pkg_v291.get("clusters")
+                                if isinstance(_clusters_v291, pd.DataFrame) and not _clusters_v291.empty:
+                                    with st.expander("Cluster-/Sektor-Konzentration", expanded=True):
+                                        st.caption(
+                                            "Manuell gespeicherte Portfolio-Gruppen haben Vorrang. Die automatische Heuristik ist bewusst konservativ; "
+                                            "unklare Titel bleiben als Sonstige/Unbekannt sichtbar."
+                                        )
+                                        st.dataframe(_clusters_v291, hide_index=True, use_container_width=True)
+
+                                with st.expander("Positionsbeiträge zum Portfolio-Risiko", expanded=not bool(mobile_mode_v2842)):
+                                    _show_cols_v291 = [
+                                        "Ticker", "Name", "Portfolio-Gruppe", "Gruppenquelle", "Währung", "Kursbasis",
+                                        "Positionswert Basis", "Gewicht Depot %", "P/L %", "Risiko bis Stop Basis",
+                                        "Stop verletzt", "Exit-Ampel", "Exit-Druck", "Führung",
+                                    ]
+                                    _show_cols_v291 = [c for c in _show_cols_v291 if c in _portfolio_rows_v291.columns]
+                                    st.dataframe(_portfolio_rows_v291[_show_cols_v291], hide_index=True, use_container_width=True)
+
+                                # Pre-trade portfolio guard: evaluate a hypothetical new allocation without
+                                # changing the candidate's live/shadow score.
+                                if isinstance(_live_df_complete_v289, pd.DataFrame) and not _live_df_complete_v289.empty and "Ticker" in _live_df_complete_v289.columns:
+                                    with st.expander("Neuen Trade gegen Portfolio prüfen", expanded=False):
+                                        _cand_df_v291 = _live_df_complete_v289.copy().reset_index(drop=True)
+                                        _cand_labels_v291 = [
+                                            f"{r.get('Ticker','-')} · {r.get('Name',r.get('Ticker','-'))} · {r.get('Ampel','-')} · Score {r.get('Live-Score','-')}"
+                                            for _, r in _cand_df_v291.iterrows()
+                                        ]
+                                        _cand_label_v291 = st.selectbox(
+                                            "Kandidat",
+                                            _cand_labels_v291,
+                                            key="v291_candidate_select",
+                                        )
+                                        _cand_row_v291 = _cand_df_v291.iloc[_cand_labels_v291.index(_cand_label_v291)].to_dict()
+                                        _cand_ticker_v291 = str(_cand_row_v291.get("Ticker") or "").upper()
+                                        _auto_group_v291, _auto_group_source_v291 = _v291_infer_portfolio_group(
+                                            _cand_ticker_v291, _cand_row_v291.get("Name"), ""
+                                        )
+                                        _cc1_v291, _cc2_v291 = st.columns(2)
+                                        with _cc1_v291:
+                                            _planned_default_v291 = max(0.0, float(_account_size_v291 or 0.0) * 0.05)
+                                            _planned_value_v291 = st.number_input(
+                                                f"Geplanter Positionswert ({_base_currency_v291})",
+                                                min_value=0.0,
+                                                value=float(round(_planned_default_v291, 2)),
+                                                step=500.0,
+                                                key=f"v291_candidate_value_{_cand_ticker_v291}",
+                                            )
+                                        with _cc2_v291:
+                                            _candidate_group_v291 = st.text_input(
+                                                "Portfolio-Gruppe / Sektor",
+                                                value=_auto_group_v291,
+                                                key=f"v291_candidate_group_{_cand_ticker_v291}",
+                                                help="Kann überschrieben werden. Dient nur der Konzentrationsprüfung.",
+                                            )
+                                        _candidate_pkg_v291 = _v291_assess_candidate(
+                                            _portfolio_pkg_v291,
+                                            _cand_row_v291,
+                                            _planned_value_v291,
+                                            group_override=_candidate_group_v291,
+                                        )
+                                        if not _candidate_pkg_v291.get("ok"):
+                                            st.warning(_candidate_pkg_v291.get("error") or "Kandidatencheck nicht möglich.")
+                                        else:
+                                            st.markdown(
+                                                f"### {_candidate_pkg_v291.get('ampel','⚪')} {_candidate_pkg_v291.get('verdict','-')}"
+                                            )
+                                            _kc1_v291, _kc2_v291, _kc3_v291 = st.columns(3)
+                                            with _kc1_v291:
+                                                st.metric("Ticker-Gewicht danach", f"{float(_candidate_pkg_v291.get('projected_ticker_weight_pct') or 0):.1f}% Depot")
+                                            with _kc2_v291:
+                                                st.metric("Exposure danach", f"{float(_candidate_pkg_v291.get('projected_exposure_pct') or 0):.1f}%")
+                                            with _kc3_v291:
+                                                st.metric(
+                                                    f"Cluster {_candidate_pkg_v291.get('group','-')}",
+                                                    f"{float(_candidate_pkg_v291.get('projected_cluster_invested_pct') or 0):.1f}% investiert",
+                                                )
+                                            for _reason_v291 in _candidate_pkg_v291.get("reasons") or []:
+                                                st.write(f"• {_reason_v291}")
+                                            st.caption(
+                                                "Dieser Portfolio-Check ist ein separates Risikogate. Er ändert weder Live-Ampel noch Shadow-Ampel oder Entry-Score."
+                                            )
+
                         # ---------- v24.4: Positions-/Exit-Monitor ----------
                         elif cockpit_area == "📌 Positionen / Exit":
                             st.markdown(f"### Positions-/Exit-Monitor · {APP_VERSION}")
@@ -17425,6 +17685,15 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     target_v = st.number_input("Ziel/Teilziel", min_value=0.0, value=float(round(d_target or 0.0, 4)), step=0.01, key=f"v244_target_{pos_ticker}")
                                 with p4:
                                     shares_v = st.number_input("Stückzahl", min_value=0, value=int(d_shares), step=1, key=f"v244_shares_{pos_ticker}")
+                                _group_default_v291 = str(old_pos.get("portfolio_group") or "").strip()
+                                if not _group_default_v291:
+                                    _group_default_v291, _ = _v291_infer_portfolio_group(pos_ticker, pos_name, "")
+                                portfolio_group_v291 = st.text_input(
+                                    "Portfolio-Gruppe / Sektor (v29.1)",
+                                    value=_group_default_v291,
+                                    key=f"v291_position_group_{pos_ticker}",
+                                    help="Für Cluster-/Klumpenrisiko. Du kannst die automatische Zuordnung jederzeit überschreiben.",
+                                )
                                 b1, b2, b3 = st.columns([1.0, 1.0, 1.0])
                                 with b1:
                                     if st.button("Position speichern/aktualisieren", use_container_width=True, key=f"v244_save_{pos_ticker}"):
@@ -17473,6 +17742,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             "opened_at_iso": _opened_at_iso_v290,
                                             "entry_context": dict(_entry_context_v290 or {}),
                                             "last_context": dict(_current_context_v290 or {}),
+                                            "portfolio_group": str(portfolio_group_v291 or "").strip(),
                                         }
                                         _v244_save_positions(selected_watchlist_name, positions)
                                         _v2416_log_event(
@@ -17493,6 +17763,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 "Entry Volatilitätsregime": _entry_context_v290.get("volatility_regime"),
                                                 "Entry RS-Dynamik": _entry_context_v290.get("rs_dynamics"),
                                                 "Entry Radar-Bucket": _entry_context_v290.get("radar_bucket"),
+                                                "Portfolio-Gruppe": str(portfolio_group_v291 or "").strip(),
                                             },
                                             signature=f"{entry_v:.4f}|{stop_v:.4f}|{target_v:.4f}|{int(shares_v or 0)}",
                                         )
@@ -17834,7 +18105,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             _undo_flash_v287a = st.session_state.pop("v287a_undo_flash", None)
                             if _undo_flash_v287a:
                                 st.success(_undo_flash_v287a)
-                            st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. v29.0 wertet diese Daten jetzt zusätzlich als beobachtende Learning Engine aus; produktive Regeln werden nicht automatisch verändert.")
+                            st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Learning Engine wertet diese Daten zusätzlich beobachtend aus; produktive Regeln werden nicht automatisch verändert.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             if journal_df_v270 is None or journal_df_v270.empty:
                                 st.info("Noch keine Journal-Einträge für diese Watchlist. Aktionen aus dem Positions-/Exit-Monitor erscheinen hier.")
@@ -17867,7 +18138,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Ampel, Schwelle, Gewichtung, Position oder Order automatisch."
                                     )
                                     if not isinstance(_learn_trades_v290, pd.DataFrame) or _learn_trades_v290.empty:
-                                        st.info("Noch keine gültig geschlossenen Trades für die Learning Engine. Neue Positionen speichern ab v29.0 automatisch ihren Entry-Kontext.")
+                                        st.info("Noch keine gültig geschlossenen Trades für die Learning Engine. Neue Positionen speichern automatisch ihren Entry-Kontext.")
                                     else:
                                         _lm1_v290, _lm2_v290, _lm3_v290, _lm4_v290, _lm5_v290 = st.columns(5)
                                         with _lm1_v290:

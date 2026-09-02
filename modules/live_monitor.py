@@ -1509,6 +1509,20 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Volatilitäts-Details": _vol_validation,
         "Marktregime": _market_context,
         "Marktregime-Details": _market_validation,
+        # v28.9: Positions-/Exit-Engine 2.0 nutzt diese bereits berechneten
+        # Rohkomponenten aus demselben Atomic-Vollscan. Sie werden nicht in der
+        # normalen Screener-Haupttabelle gezeigt und erzeugen keine Extra-Abfragen.
+        "Exit-Score": _v210_alert_num(r.get("exit_score"), default=None),
+        "Tactical-Exit-Risk": _v210_alert_num(r.get("tactical_exit_risk"), default=None),
+        "Trendbruch-Score": _v210_alert_num(r.get("trend_break_score"), default=None),
+        "Momentum-Collapse-Score": _v210_alert_num(r.get("momentum_collapse_score"), default=None),
+        "Distribution-Score": _v210_alert_num(
+            r.get("distribution_pressure_score"),
+            default=_v210_alert_num(r.get("distribution_score"), default=None),
+        ),
+        "Relative-Schwäche-Score": _v210_alert_num(r.get("relative_weakness_score"), default=None),
+        "Akkumulation-Score": _v210_alert_num(r.get("accumulation_score"), default=None),
+        "MA10-Abstand %": _v210_alert_num(r.get("ma10_dist_pct"), default=None),
         "Score-Treiber": _score_drivers,
         "Score-Bremsen": _score_brakes,
         "Aktive Einstiegsgates": active_entry_gates if entry_hard_gate else "-",
@@ -1637,7 +1651,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "Benchmark", "Primärbenchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Benchmark-Diagnose", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "Benchmark", "Primärbenchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Benchmark-Diagnose", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "Exit-Score", "Tactical-Exit-Risk", "Trendbruch-Score", "Momentum-Collapse-Score", "Distribution-Score", "Relative-Schwäche-Score", "Akkumulation-Score", "MA10-Abstand %", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

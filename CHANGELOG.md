@@ -1,5 +1,19 @@
 # Changelog
 
+## v28.9
+- Positions-/Exit-Engine 2.0 fuer offene Long-Positionen eingefuehrt.
+- Exit-Druck kombiniert Exit-Score, taktisches Risiko, Trendbruch, Momentum-Abbau, Distribution und relative Schwaeche.
+- Marktregime, Volatilitaetsregime und RS-Dynamik als moderater Positionskontext integriert.
+- Positionspuffer (P/L und R-Multiple) steuert, ob Warnungen eher Gewinnschutz/Teilgewinn oder Risikoabbau/Exit ausloesen.
+- Harte Floors fuer Stop-Verletzung sowie sehr starken Exit-/Trendbruchdruck.
+- Neue Fuehrungsstufen: Halten, Gewinnschutz, Stop enger, Teilgewinn, Risiko reduzieren, Exit pruefen.
+- Stop-Status, Stop-Plan, Gewinnschutz-Plan, Add-on-Bremse und Datenkonfidenz transparent sichtbar.
+- Technische Exit-Rohfelder werden ohne zusaetzliche Provider-Abfragen aus dem Atomic-Live-Scan an den Positionsmonitor weitergereicht.
+- Kritischer UI-Fix: 'nur aktive' filtert nur noch die Screener-Ansicht; Positions-/Exit-Monitor sieht immer den vollstaendigen Atomic-Stand.
+- Orange/rote Exit-Engine-Zustaende werden dedupliziert fuer die spaetere Learning Engine protokolliert.
+- Live-Cache-Schema fuer die neuen Positionsfelder auf v28.9 angehoben.
+- Keine Aenderung an Live-/Shadow-Ampel, Entry-Guardrails oder produktiven Score-Schwellen.
+
 ## v28.8
 - Engine Calibration & Backtest als neuer Analysebereich im Shadow-Dashboard.
 - Shadow-Edge eingefuehrt: Aufwertung erwartet positive, Abwertung negative Forward-Returns.

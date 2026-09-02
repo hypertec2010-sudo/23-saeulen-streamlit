@@ -2677,7 +2677,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.8"
+APP_VERSION = "v28.9"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14378,6 +14378,7 @@ _v244_save_positions = _position_module._v244_save_positions
 _v245_delete_positions_for_watchlist = _position_module._v245_delete_positions_for_watchlist
 _v244_row_price = _position_module._v244_row_price
 _v244_calc_trade_state = _position_module._v244_calc_trade_state
+_v289_position_exit_engine = _position_module._v289_position_exit_engine
 _v244_positions_dataframe = _position_module._v244_positions_dataframe
 
 # v28.0: Persistentes Trade-Journal ueber zentrale Storage-Schicht konfigurieren
@@ -15940,7 +15941,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         # enthaelt der echte Live-Cache ein Schema-Feld. Ohne dasselbe Feld
                         # im Heartbeat-Key galt der Cache faelschlich bei JEDEM Heartbeat
                         # als unpassend und konnte unnoetige Scans/Reruns ausloesen.
-                        _expected_key["schema"] = "live-v28.7b-atomic-complete-scan"
+                        _expected_key["schema"] = "live-v28.9-position-exit-engine"
                         _refresh_decision = _live_refresh_policy.evaluate_refresh(
                             now=_now,
                             cache=_cache,
@@ -16000,7 +16001,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 "tickers": tuple(scan_tickers_v2844),
                 "style": str(monitor_style or ""),
                 "horizon": str(live_monitor_horizon or ""),
-                "schema": "live-v28.7b-atomic-complete-scan",
+                "schema": "live-v28.9-position-exit-engine",
             }
             # v28.6e6: Zweiter, stabiler Snapshot-Key fuer den *sichtbaren letzten Stand*.
             # Er ignoriert fluechtige Patch-/UI-Schemawechsel und normalisiert die
@@ -16026,6 +16027,21 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     if not isinstance(_cache_v287b.get("live_df"), pd.DataFrame):
                         return False
                     _meta_v287b = dict(_cache_v287b.get("scan_meta") or {})
+                    # v28.9: Der stabile Last-Visible-Key ist absichtlich versionsarm.
+                    # Deshalb muss der Snapshot entweder explizit das neue
+                    # Daten-Schema tragen oder die Positions-Rohfelder enthalten.
+                    # Ein frischer Vollscan mit 100% Fehlern darf ueber data_schema
+                    # trotzdem als abgeschlossen gelten, ohne sofort eine Retry-Schleife
+                    # zu provozieren.
+                    _required_cols_v289 = {
+                        "Exit-Score", "Tactical-Exit-Risk", "Trendbruch-Score",
+                        "Momentum-Collapse-Score", "Distribution-Score",
+                        "Relative-Schwäche-Score",
+                    }
+                    _schema_ok_v289 = str(_meta_v287b.get("data_schema") or "") == "position-exit-v28.9"
+                    _cols_ok_v289 = _required_cols_v289.issubset(set(_cache_v287b.get("live_df").columns))
+                    if not (_schema_ok_v289 or _cols_ok_v289):
+                        return False
                     # Pre-v28.7b-Checkpoints koennen als "complete" markiert sein,
                     # obwohl sie tickerweise mit alten Fallback-Zeilen gemischt wurden.
                     # Diese Legacy-Staende werden bewusst NICHT als Atomic-Stand vertraut.
@@ -16442,6 +16458,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     "error_count": len(_v287b_ticker_set(_working_errors_v287b)),
                                     "fresh_analysis": True,
                                     "mixed_with_previous_scan": False,
+                                    "data_schema": "position-exit-v28.9",
                                 })
                                 if not bool(_final_scan_meta_v287b.get("complete", False)):
                                     raise RuntimeError("Atomic-Vollscan ist intern nicht als vollständig markiert.")
@@ -16619,11 +16636,18 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     except Exception:
                         shadow_events_df_v286 = pd.DataFrame()
 
+                    # v28.9: Positions-/Exit-Monitor muss IMMER den kompletten
+                    # abgeschlossenen Atomic-Stand sehen. Der UI-Filter "nur aktive"
+                    # darf rote/weisse Positionen nicht ausgerechnet aus dem
+                    # Risikomanagement entfernen.
+                    _live_df_complete_v289 = live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame()
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
-                    if live_df.empty:
-                        st.info("Aktuell keine grünen oder gelben Trigger in dieser Watchlist." if only_active else "Keine aktuellen Live-Watchlist-Ergebnisse verfügbar.")
+                    if live_df.empty and _live_df_complete_v289.empty:
+                        st.info("Keine aktuellen Live-Watchlist-Ergebnisse verfügbar.")
                     else:
+                        if live_df.empty and only_active:
+                            st.info("Im Filter 'nur aktive' gibt es aktuell keine grünen/gelben Trigger. Positionen/Exit nutzt trotzdem den vollständigen Atomic-Stand.")
                         # v24.14: Nur den aktiven Cockpit-Bereich rendern.
                         # Anders als st.tabs fuehrt diese Navigation nicht den Code aller
                         # Bereiche bei jedem Widget-Rerun aus. Risiko-/Positions-Eingaben
@@ -17254,6 +17278,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             st.markdown(f"### Positions-/Exit-Monitor · {APP_VERSION}")
                             st.caption("Überwacht offene Positionen: R-Multiple, P/L, Stop-/Teilgewinn- und Exit-Hinweise. Mit dem Trade-Journal können Teilverkäufe, Stop-Anpassungen, Notizen und vollständige Schließungen dokumentiert werden. Die App eröffnet oder schließt keine Trades automatisch.")
                             positions = _v244_get_positions(selected_watchlist_name)
+                            _position_live_df_v289 = (
+                                _live_df_complete_v289.copy()
+                                if isinstance(_live_df_complete_v289, pd.DataFrame)
+                                else live_df.copy()
+                            )
+                            st.caption("Exit Engine 2.0 nutzt den letzten vollständig abgeschlossenen Atomic-Scan. Der Live-Filter 'nur aktive' beeinflusst Positionswarnungen nicht.")
                             pc1, pc2 = st.columns([0.72, 0.28])
                             with pc1:
                                 st.markdown('<div class="compact-help">Positionsspeicher: zentral je Watchlist über die Repository-Schicht; bei aktivem Supabase dauerhaft remote mit lokalem Spiegel.</div>', unsafe_allow_html=True)
@@ -17262,11 +17292,36 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _v245_delete_positions_for_watchlist(selected_watchlist_name)
                                     positions = {}
                                     st.warning("Alle gespeicherten Positionen dieser Watchlist wurden gelöscht.")
-                            pos_df = _v244_positions_dataframe(positions, live_df, selected_watchlist_name)
+                            pos_df = _v244_positions_dataframe(positions, _position_live_df_v289, selected_watchlist_name)
                             if pos_df.empty:
                                 st.info("Noch keine aktiven Positionen erfasst. Unten ein Live-Signal auswählen und Entry/Stop/Stückzahl speichern.")
                             else:
-                                st.dataframe(pos_df, hide_index=True, use_container_width=True, height=min(420, 42 * len(pos_df) + 55))
+                                if mobile_mode_v2842:
+                                    for _, _pos_row_v289 in pos_df.iterrows():
+                                        with st.container(border=True):
+                                            _pt_v289 = str(_pos_row_v289.get("Ticker") or "-")
+                                            _pn_v289 = str(_pos_row_v289.get("Name") or _pt_v289)
+                                            _pa_v289 = str(_pos_row_v289.get("Exit-Ampel 2.0") or "⚪")
+                                            _pact_v289 = str(_pos_row_v289.get("Führung 2.0") or "-")
+                                            st.markdown(f"**{_pa_v289} {_pt_v289} · {_pn_v289}**")
+                                            st.markdown(f"**{_pact_v289}**")
+                                            _pmob1_v289, _pmob2_v289 = st.columns(2)
+                                            with _pmob1_v289:
+                                                st.caption("Exit-Druck")
+                                                st.write(str(_pos_row_v289.get("Exit-Druck 2.0") or "n/a"))
+                                                st.caption("Gewinnpuffer")
+                                                st.write(str(_pos_row_v289.get("Gewinnpuffer") or "n/a"))
+                                            with _pmob2_v289:
+                                                st.caption("Stop-Status")
+                                                st.write(str(_pos_row_v289.get("Stop-Status 2.0") or "-"))
+                                                st.caption("Aktueller Kurs")
+                                                st.write(str(_pos_row_v289.get("Aktueller Kurs") or "n/a"))
+                                            with st.expander("Warum / Details", expanded=False):
+                                                st.write(str(_pos_row_v289.get("Warum 2.0") or "-"))
+                                                st.write(f"Trade-Status: {_pos_row_v289.get('Trade-Status','-')}")
+                                                st.write(f"R: {_pos_row_v289.get('R','n/a')} · P/L: {_pos_row_v289.get('P/L %','n/a')}")
+                                else:
+                                    st.dataframe(pos_df, hide_index=True, use_container_width=True, height=min(420, 42 * len(pos_df) + 55))
                                 existing_position_tickers = sorted([str(t).strip().upper() for t in positions.keys() if str(t).strip()])
                                 delete_position_tickers = st.multiselect(
                                     "Positionen zum Löschen auswählen",
@@ -17447,16 +17502,22 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 manage_pos_v270 = dict(positions.get(manage_ticker_v270) or {})
                                 manage_name_v270 = str(manage_pos_v270.get("name") or manage_ticker_v270)
                                 manage_live_price_v270 = _v230_safe_float(manage_pos_v270.get("last_price"), default=None)
+                                _manage_live_row_v289 = {}
                                 try:
-                                    _manage_match_v270 = live_df[live_df["Ticker"].astype(str).str.upper() == manage_ticker_v270]
+                                    _manage_match_v270 = _position_live_df_v289[_position_live_df_v289["Ticker"].astype(str).str.upper() == manage_ticker_v270]
                                     if not _manage_match_v270.empty:
-                                        manage_live_price_v270 = _v244_row_price(_manage_match_v270.iloc[0].to_dict()) or manage_live_price_v270
+                                        _manage_live_row_v289 = _manage_match_v270.iloc[0].to_dict()
+                                        manage_live_price_v270 = _v244_row_price(_manage_live_row_v289) or manage_live_price_v270
                                 except Exception:
-                                    pass
+                                    _manage_live_row_v289 = {}
+                                if manage_live_price_v270 is not None:
+                                    _manage_live_row_v289 = dict(_manage_live_row_v289 or {})
+                                    _manage_live_row_v289.setdefault("Kurs", manage_live_price_v270)
                                 manage_calc_v270 = _v244_calc_trade_state(
                                     manage_pos_v270,
-                                    {"Kurs": manage_live_price_v270} if manage_live_price_v270 is not None else {},
+                                    _manage_live_row_v289,
                                 )
+                                manage_exit_engine_v289 = _v289_position_exit_engine(manage_pos_v270, _manage_live_row_v289)
                                 jm1, jm2, jm3, jm4 = st.columns(4)
                                 with jm1:
                                     st.metric("Offene Stück", int(_v230_safe_float(manage_pos_v270.get("shares"), default=0) or 0))
@@ -17467,6 +17528,52 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.metric("Aktuelles R", "n/a" if _manage_r_v270 is None else f"{_manage_r_v270:.2f}R")
                                 with jm4:
                                     st.metric("Status", str(manage_calc_v270.get("Status") or "-"))
+
+                                # ---------- v28.9: Exit Engine 2.0 ----------
+                                st.markdown("##### Exit Engine 2.0")
+                                _engine_metrics_v289 = [
+                                    ("Führung", f"{manage_exit_engine_v289.get('ampel','⚪')} {manage_exit_engine_v289.get('action','-')}"),
+                                    ("Exit-Druck", f"{float(manage_exit_engine_v289.get('score') or 0):.0f}/100"),
+                                    ("Gewinnpuffer", str(manage_exit_engine_v289.get("buffer_text") or "n/a")),
+                                    ("Stop", str(manage_exit_engine_v289.get("stop_status") or "-")),
+                                    ("Datenbasis", str(manage_exit_engine_v289.get("confidence") or "-")),
+                                ]
+                                _engine_cols_v289 = st.columns(2 if mobile_mode_v2842 else 5)
+                                for _idx_v289, (_label_v289, _value_v289) in enumerate(_engine_metrics_v289):
+                                    with _engine_cols_v289[_idx_v289 % len(_engine_cols_v289)]:
+                                        st.metric(_label_v289, _value_v289)
+
+                                _engine_level_v289 = str(manage_exit_engine_v289.get("level") or "green")
+                                _engine_msg_v289 = (
+                                    f"{manage_exit_engine_v289.get('why_text','-')} · "
+                                    f"Stop-Plan: {manage_exit_engine_v289.get('stop_plan','-')}"
+                                )
+                                if _engine_level_v289 == "red":
+                                    st.error(_engine_msg_v289)
+                                elif _engine_level_v289 == "orange":
+                                    st.warning(_engine_msg_v289)
+                                elif _engine_level_v289 == "yellow":
+                                    st.info(_engine_msg_v289)
+                                else:
+                                    st.success(_engine_msg_v289)
+                                st.caption(
+                                    "Die Engine gibt eine Management-Empfehlung, fuehrt aber weder Verkauf noch Stop-Aenderung automatisch aus. "
+                                    f"Gewinnschutz: {manage_exit_engine_v289.get('profit_plan','-')} · "
+                                    f"Aufstocken: {manage_exit_engine_v289.get('add_plan','-')}"
+                                )
+                                with st.expander("Exit Engine 2.0 · Faktoren", expanded=False):
+                                    _factors_v289 = manage_exit_engine_v289.get("factors") or []
+                                    if _factors_v289:
+                                        st.dataframe(pd.DataFrame(_factors_v289), hide_index=True, use_container_width=True)
+                                    st.write(f"**Marktregime:** {manage_exit_engine_v289.get('market','n/a')}")
+                                    st.write(f"**Volatilitätsregime:** {manage_exit_engine_v289.get('volatility','n/a')}")
+                                    st.write(f"**RS-Dynamik:** {manage_exit_engine_v289.get('rs_dynamics','n/a')}")
+                                    _risk_to_stop_v289 = manage_exit_engine_v289.get("risk_to_stop")
+                                    _locked_pnl_v289 = manage_exit_engine_v289.get("locked_pnl")
+                                    if _risk_to_stop_v289 is not None:
+                                        st.write(f"**Abstandswert bis Stop:** ca. {_risk_to_stop_v289:,.2f}".replace(",", "."))
+                                    if _locked_pnl_v289 is not None:
+                                        st.write(f"**Am aktuellen Stop rechnerisch gesicherter Gewinn:** ca. {_locked_pnl_v289:,.2f}".replace(",", "."))
 
                                 manage_action_v270 = st.radio(
                                     "Journal-Aktion",

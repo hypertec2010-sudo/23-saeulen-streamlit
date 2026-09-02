@@ -19,6 +19,7 @@ import base64
 import hashlib
 import warnings
 import time
+import math
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
 import html
@@ -2677,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.9"
+APP_VERSION = "v29.0"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14248,6 +14249,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "event_log.py",
     _MODULE_DIR_V252 / "position_monitor.py",
     _MODULE_DIR_V252 / "trade_journal.py",
+    _MODULE_DIR_V252 / "trade_learning.py",
     _MODULE_DIR_V252 / "live_monitor.py",
     _MODULE_DIR_V252 / "watchlist_storage.py",
     _MODULE_DIR_V252 / "storage" / "__init__.py",
@@ -14280,6 +14282,7 @@ from modules import risk_calculator as _risk_module
 from modules import event_log as _event_module
 from modules import position_monitor as _position_module
 from modules import trade_journal as _trade_journal_module
+from modules import trade_learning as _trade_learning_module
 from modules import shadow_performance as _shadow_performance_v287
 from modules import live_monitor as _live_module
 from modules import watchlist_storage as _watchlist_module
@@ -14401,6 +14404,10 @@ _v270_save_trade_note = _trade_journal_module._v270_save_trade_note
 _v270_journal_entries_dataframe = _trade_journal_module._v270_journal_entries_dataframe
 _v270_journal_summary = _trade_journal_module._v270_journal_summary
 _v270_reset_trade_journal = _trade_journal_module._v270_reset_trade_journal
+
+# v29.0: Trading Journal & Learning Engine (observational only)
+_v290_capture_entry_context = _trade_learning_module.capture_entry_context
+_v290_build_learning_package = _trade_learning_module.build_learning_package
 
 # v25.3: Live-Monitor-Modul konfigurieren
 _live_module.configure_context(
@@ -17435,6 +17442,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _initial_shares_v270 = int(_v230_safe_float(old_pos.get("initial_shares"), default=0) or 0)
                                         if _initial_shares_v270 <= 0:
                                             _initial_shares_v270 = int(shares_v or 0)
+                                        # v29.0: Capture the atomic screener context once at trade entry.
+                                        # Existing positions retain their original entry context; only last_context
+                                        # follows later manual updates. No extra provider request is triggered.
+                                        _current_context_v290 = _v290_capture_entry_context(selected_pos_row)
+                                        if old_pos:
+                                            # Do not backfill a historical entry with today's context.
+                                            _entry_context_v290 = dict(old_pos.get("entry_context") or {}) if isinstance(old_pos.get("entry_context"), dict) else {}
+                                            _opened_at_iso_v290 = old_pos.get("opened_at_iso") or ""
+                                        else:
+                                            _entry_context_v290 = dict(_current_context_v290 or {})
+                                            _opened_at_iso_v290 = get_current_berlin_time().isoformat()
                                         positions[pos_ticker] = {
                                             "ticker": pos_ticker,
                                             "name": pos_name,
@@ -17452,6 +17470,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             "created_at": old_pos.get("created_at") or get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
                                             "updated_at": get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
                                             "last_price": default_price,
+                                            "opened_at_iso": _opened_at_iso_v290,
+                                            "entry_context": dict(_entry_context_v290 or {}),
+                                            "last_context": dict(_current_context_v290 or {}),
                                         }
                                         _v244_save_positions(selected_watchlist_name, positions)
                                         _v2416_log_event(
@@ -17462,7 +17483,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             status="Offene Position",
                                             price=default_price,
                                             details=f"Entry {entry_v:.4f} · Stop {stop_v:.4f} · Ziel {target_v:.4f} · Stück {int(shares_v or 0)}",
-                                            payload={"Entry": entry_v, "Stop": stop_v, "Ziel": target_v, "Stück": int(shares_v or 0)},
+                                            payload={
+                                                "Entry": entry_v, "Stop": stop_v, "Ziel": target_v, "Stück": int(shares_v or 0),
+                                                "Entry Live-Ampel": _entry_context_v290.get("live_ampel"),
+                                                "Entry Shadow-Ampel": _entry_context_v290.get("shadow_ampel"),
+                                                "Entry Live-Score": _entry_context_v290.get("live_score"),
+                                                "Entry Guarded Score": _entry_context_v290.get("guarded_score"),
+                                                "Entry Marktregime": _entry_context_v290.get("market_regime"),
+                                                "Entry Volatilitätsregime": _entry_context_v290.get("volatility_regime"),
+                                                "Entry RS-Dynamik": _entry_context_v290.get("rs_dynamics"),
+                                                "Entry Radar-Bucket": _entry_context_v290.get("radar_bucket"),
+                                            },
                                             signature=f"{entry_v:.4f}|{stop_v:.4f}|{target_v:.4f}|{int(shares_v or 0)}",
                                         )
                                         st.success(f"Position {pos_ticker} gespeichert.")
@@ -17803,7 +17834,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             _undo_flash_v287a = st.session_state.pop("v287a_undo_flash", None)
                             if _undo_flash_v287a:
                                 st.success(_undo_flash_v287a)
-                            st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Daten bilden später die Grundlage für das Lern-/Backtest-Dashboard.")
+                            st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. v29.0 wertet diese Daten jetzt zusätzlich als beobachtende Learning Engine aus; produktive Regeln werden nicht automatisch verändert.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             if journal_df_v270 is None or journal_df_v270.empty:
                                 st.info("Noch keine Journal-Einträge für diese Watchlist. Aktionen aus dem Positions-/Exit-Monitor erscheinen hier.")
@@ -17822,6 +17853,109 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 with js5:
                                     _avg_r_v270 = summary_v270.get("avg_r")
                                     st.metric("Ø R geschlossen", "n/a" if _avg_r_v270 is None else f"{_avg_r_v270:.2f}R")
+
+                                # ---------- v29.0: Trading Journal & Learning Engine ----------
+                                _event_df_v290 = _v2416_events_dataframe(selected_watchlist_name)
+                                _learning_v290 = _v290_build_learning_package(journal_df_v270, _event_df_v290)
+                                _learn_summary_v290 = _learning_v290.get("summary") or {}
+                                _learn_trades_v290 = _learning_v290.get("trades")
+                                with st.container(border=True):
+                                    st.markdown(f"#### 🧠 Trading Journal & Learning Engine · {APP_VERSION}")
+                                    st.caption(
+                                        "Beobachtungsmodus: Die Engine verbindet reale Trade-Ergebnisse mit dem beim Entry gespeicherten "
+                                        "Live-/Shadow-/Regime-Kontext sowie Exit-Engine-Events. Sie liefert Lernhinweise, ändert aber keine "
+                                        "Ampel, Schwelle, Gewichtung, Position oder Order automatisch."
+                                    )
+                                    if not isinstance(_learn_trades_v290, pd.DataFrame) or _learn_trades_v290.empty:
+                                        st.info("Noch keine gültig geschlossenen Trades für die Learning Engine. Neue Positionen speichern ab v29.0 automatisch ihren Entry-Kontext.")
+                                    else:
+                                        _lm1_v290, _lm2_v290, _lm3_v290, _lm4_v290, _lm5_v290 = st.columns(5)
+                                        with _lm1_v290:
+                                            st.metric("Trades", int(_learn_summary_v290.get("closed_trades") or 0))
+                                        with _lm2_v290:
+                                            _lwr_v290 = _learn_summary_v290.get("win_rate")
+                                            st.metric("Trefferquote", "n/a" if _lwr_v290 is None else f"{_lwr_v290:.1f}%")
+                                        with _lm3_v290:
+                                            _lar_v290 = _learn_summary_v290.get("avg_r")
+                                            st.metric("Ø R / Trade", "n/a" if _lar_v290 is None else f"{_lar_v290:+.2f}R")
+                                        with _lm4_v290:
+                                            _lpf_v290 = _learn_summary_v290.get("profit_factor")
+                                            if _lpf_v290 is None:
+                                                _lpf_text_v290 = "n/a"
+                                            elif math.isinf(float(_lpf_v290)):
+                                                _lpf_text_v290 = "∞"
+                                            else:
+                                                _lpf_text_v290 = f"{float(_lpf_v290):.2f}"
+                                            st.metric("Profit Factor", _lpf_text_v290)
+                                        with _lm5_v290:
+                                            st.metric("Entry-Kontext", f"{float(_learn_summary_v290.get('context_coverage') or 0):.0f}%")
+
+                                        st.caption(
+                                            f"Stichprobe: {_learn_summary_v290.get('sample_label','Zu klein')} · "
+                                            f"Gesamt P/L: {float(_learn_summary_v290.get('total_pnl') or 0):+,.2f} · "
+                                            f"Ø Haltedauer: " + (
+                                                "n/a" if _learn_summary_v290.get("avg_hold_days") is None
+                                                else f"{float(_learn_summary_v290.get('avg_hold_days')):.1f} Tage"
+                                            )
+                                        )
+
+                                        _insights_v290 = list(_learning_v290.get("insights") or [])
+                                        if _insights_v290:
+                                            st.markdown("**Aktuelle Lernhinweise**")
+                                            for _insight_v290 in _insights_v290:
+                                                st.write(f"• {_insight_v290}")
+
+                                        _segments_v290 = _learning_v290.get("segments") or {}
+                                        if _segments_v290:
+                                            st.markdown("**Setup- und Kontextvergleich**")
+                                            _segment_name_v290 = st.selectbox(
+                                                "Lernsegment",
+                                                options=list(_segments_v290.keys()),
+                                                key=f"v290_learning_segment_{selected_watchlist_name}",
+                                            )
+                                            _segment_df_v290 = _segments_v290.get(_segment_name_v290)
+                                            if isinstance(_segment_df_v290, pd.DataFrame) and not _segment_df_v290.empty:
+                                                st.dataframe(_segment_df_v290, hide_index=True, use_container_width=True, height=min(360, 42 * len(_segment_df_v290) + 55))
+                                            st.caption("Segmente unter 5 Trades bleiben ausdrücklich als kleine Stichprobe markiert. Daraus werden keine automatischen Regeländerungen abgeleitet.")
+
+                                        _exit_summary_v290 = _learning_v290.get("exit_summary")
+                                        _exit_detail_v290 = _learning_v290.get("exit_detail")
+                                        with st.expander("Exit Engine 2.0 · Lerncheck", expanded=False):
+                                            st.caption(
+                                                "Ordnet Exit-Engine-Warnungen nur dann einem geschlossenen Trade zu, wenn Entry- und Exit-Zeit sicher bekannt sind. "
+                                                "Die R-Veränderung danach misst, ob sich der Trade nach der Erstwarnung weiter verbessert oder verschlechtert hat; sie ist kein hypothetischer Backtest-Exit."
+                                            )
+                                            if isinstance(_exit_summary_v290, pd.DataFrame) and not _exit_summary_v290.empty:
+                                                st.dataframe(_exit_summary_v290, hide_index=True, use_container_width=True, height=min(320, 42 * len(_exit_summary_v290) + 55))
+                                                if isinstance(_exit_detail_v290, pd.DataFrame) and not _exit_detail_v290.empty:
+                                                    st.caption("Zugeordnete Trades")
+                                                    st.dataframe(_exit_detail_v290.head(100), hide_index=True, use_container_width=True, height=min(360, 42 * len(_exit_detail_v290.head(100)) + 55))
+                                            else:
+                                                st.info("Noch keine sicher zuordenbaren Exit-Engine-Warnungen. Bei alten Trades fehlt häufig ein belastbarer Entry-Zeitpunkt.")
+
+                                        _manual_tags_v290 = _learning_v290.get("manual_tags")
+                                        if isinstance(_manual_tags_v290, pd.DataFrame) and not _manual_tags_v290.empty:
+                                            with st.expander("Manuelle Erkenntnisse · wiederkehrende Themen", expanded=False):
+                                                st.caption("Einfache Themenzählung aus deinen selbst eingetragenen Erkenntnis-Texten; keine automatische Interpretation oder Regeländerung.")
+                                                st.dataframe(_manual_tags_v290, hide_index=True, use_container_width=True)
+
+                                        with st.expander("Learning-Datensatz · einzelne Trades", expanded=False):
+                                            _learn_cols_v290 = [
+                                                "Exit-Zeit", "Ticker", "Name", "Outcome", "Gesamt P/L", "Gesamt R", "Kapitalrendite %", "Haltedauer Tage",
+                                                "Entry Live-Ampel", "Entry Shadow-Ampel", "Shadow vs Live", "Entry Live-Score", "Entry Guarded Score",
+                                                "Entry Radar-Bucket", "Entry Marktregime", "Entry Volatilitätsregime", "Entry RS-Dynamik", "Entry Guardrail", "Erkenntnis",
+                                            ]
+                                            _learn_cols_v290 = [c for c in _learn_cols_v290 if c in _learn_trades_v290.columns]
+                                            st.dataframe(_learn_trades_v290[_learn_cols_v290].head(500), hide_index=True, use_container_width=True, height=min(520, 42 * len(_learn_trades_v290.head(500)) + 55))
+                                            _learn_csv_v290 = _learn_trades_v290.drop(columns=["Entry-Zeit", "Exit-Zeit"], errors="ignore").to_csv(index=False).encode("utf-8-sig")
+                                            st.download_button(
+                                                "Learning-Datensatz als CSV",
+                                                data=_learn_csv_v290,
+                                                file_name=f"trade_learning_{selected_watchlist_name}.csv",
+                                                mime="text/csv",
+                                                use_container_width=True,
+                                                key=f"v290_learning_csv_{selected_watchlist_name}",
+                                            )
 
                                 jf1, jf2 = st.columns(2)
                                 with jf1:

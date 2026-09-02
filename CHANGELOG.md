@@ -1,5 +1,22 @@
 # Changelog
 
+## v29.0
+- Trading Journal & Learning Engine im Beobachtungsmodus eingefuehrt.
+- Neue Positionen speichern einen strukturierten Entry-Kontext aus dem bereits abgeschlossenen Atomic-Live-Scan; keine Extra-Provider-Abfragen.
+- Historische Positionen ohne Entry-Kontext werden nicht mit aktuellen Daten rueckwirkend aufgefuellt.
+- Journalzeilen enthalten ab v29.0 Live-/Shadow-/Score-/Regime-/RS-/Guardrail-/Setup-Kontext als eigenstaendige Exportfelder.
+- Learning-Datensatz mit einer Zeile pro gueltig geschlossenem Trade-Zyklus; Teilverkaeufe werden dem Full-Close zugerechnet.
+- Rueckgaengig gemachte Fehlschliessungen bleiben Audit-Historie und werden nicht als abgeschlossene Trades gezaehlt.
+- Kennzahlen: Trefferquote, Gesamt P/L, durchschnittliches/medianes R, Profit Factor, Kapitalrendite, Haltedauer und Kontextabdeckung.
+- Segmentauswertung nach Radar-Bucket, Marktregime, Volatilitaet, RS-Dynamik, Live-Ampel, Shadow-vs-Live, Score-Baendern, Guardrail und Grade.
+- Exit Engine 2.0 Lerncheck verknuepft Warnungen nur bei sicherem Entry-/Exit-Zeitfenster mit dem spaeteren Trade-Ergebnis.
+- R-Veraenderung nach Erstwarnung und Warnvorlauf als neue Management-Lernmetriken.
+- Wiederkehrende Themen aus manuellen Erkenntnis-Texten werden transparent gezaehlt.
+- Stichproben-Guard verhindert, dass kleine Datenmengen als belastbare Kalibrierung erscheinen.
+- Learning-Datensatz als CSV exportierbar.
+- Keine automatische Aenderung an Live-/Shadow-Ampel, Scores, Guardrails, Positionen oder Orders.
+- Keine SQL-/Secrets-Aenderung; Live-Cache-Schema absichtlich unveraendert.
+
 ## v28.9
 - Positions-/Exit-Engine 2.0 fuer offene Long-Positionen eingefuehrt.
 - Exit-Druck kombiniert Exit-Score, taktisches Risiko, Trendbruch, Momentum-Abbau, Distribution und relative Schwaeche.

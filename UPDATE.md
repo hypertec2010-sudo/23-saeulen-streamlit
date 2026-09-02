@@ -1,49 +1,69 @@
-# v28.9 - Positions-/Exit-Engine 2.0
+# v29.0 - Trading Journal & Learning Engine
 
-v28.9 baut auf v28.8 und dem Atomic Complete Scan auf. Die produktive Live-/Shadow-Screenerlogik bleibt unveraendert. Neu ist eine eigene, konservative Management-Engine fuer bereits offene Positionen.
+v29.0 baut auf dem stabilen v28.9 Positions-/Exit-Engine-Stand auf. Die neue Learning Engine ist bewusst beobachtend: Sie wertet reale Trades und Management-Ereignisse aus, veraendert aber keine produktive Ampel, Score-Schwelle, Gewichtung, Position oder Order automatisch.
 
-## Grundprinzip
-- Positionsentscheidungen werden nicht mehr nur aus R-Multiple oder einem einzelnen Exit-Score abgeleitet.
-- Exit Engine 2.0 kombiniert Exit-Druck, taktisches Ruecksetzerrisiko, Trendbruch, Momentum-Abbau, Distribution und relative Schwaeche.
-- Marktregime, Volatilitaetsregime und RS-Dynamik wirken moderat als Kontext.
-- Der reale Positionspuffer entscheidet, wie ein Warnsignal umgesetzt werden soll: Gewinner werden eher geschuetzt/teilrealisiert, Verlierer mit gleichem Druck eher reduziert.
-- Stop-Verletzungen und starke Trendbruch-/Exit-Signale besitzen harte Score-Floors und koennen durch ein positives Marktumfeld nicht neutralisiert werden.
+## Entry-Kontext wird ab jetzt mit dem Trade gespeichert
+Neue Positionen erhalten beim erstmaligen Speichern einen strukturierten Snapshot des bereits vorhandenen Atomic-Screener-Kontexts. Dazu gehoeren unter anderem:
+- Live- und Shadow-Ampel
+- Live-, Engine- und Guarded Score
+- Engine-Empfehlung und Guardrail
+- Markt- und Volatilitaetsregime
+- RS-Dynamik und Relative Staerke
+- Radar-Bucket, Grade und CRV
+- Benchmark, Entry-Abstand, Setup-Alert und aktive Gates
 
-## Fuehrungsaktionen
-Die Engine unterscheidet jetzt zwischen:
-- Halten / laufen lassen
-- Gewinnschutz nachziehen
-- Stop enger / eng beobachten
-- Teilgewinn pruefen
-- Teilgewinn / Risiko reduzieren
-- Risiko reduzieren / Exit vorbereiten
-- Exit / deutlichen Risikoabbau pruefen
+Dafuer wird kein neuer Provider-Call gestartet. Die Daten stammen aus dem bereits vollstaendig abgeschlossenen Atomic-Scan.
 
-Es werden keine Orders ausgefuehrt und keine Stops automatisch veraendert.
+Wichtig: Bei alten, bereits vor v29.0 angelegten Positionen wird der historische Entry-Kontext nicht mit heutigen Daten aufgefuellt. Er bleibt als unbekannt markiert. So werden keine kuenstlichen Backtest-Daten erzeugt.
 
-## Positionspuffer
-Fuer jede offene Position werden P/L, R-Multiple, aktueller Stop und Ziel gemeinsam betrachtet. Die Anzeige zeigt zusaetzlich:
-- Exit-Ampel 2.0
-- Fuehrungsaktion 2.0
-- Exit-Druck 0-100
-- Gewinnpuffer in Prozent und R
-- Stop-Status
-- Datenbasis/Konfidenz
-- konkrete Haupttreiber
+## Journal-Datensatz pro geschlossenem Trade
+Die Learning Engine baut aus dem bestehenden Journal einen Trade-Datensatz mit genau einer Zeile pro gueltig geschlossenem Trade-Zyklus. Teilverkaeufe werden dem spaeteren Full-Close zugerechnet. Rueckgaengig gemachte Fehlschliessungen bleiben Audit-Historie und zaehlen nicht als abgeschlossener Trade.
 
-## Atomic-Live-Daten statt Extra-Abfragen
-Die benoetigten technischen Rohsignale werden ab v28.9 direkt im bestehenden Atomic-Vollscan mitgefuehrt. Der Positionsmonitor startet dafuer keine zusaetzlichen Yahoo-/Provider-Abfragen. Der Live-Cache-Schema-Key wurde auf v28.9 angehoben, damit nach dem Update kein alter Snapshot ohne diese Felder als neue Positionsbasis verwendet wird.
+Ausgewertet werden unter anderem:
+- Gesamt P/L
+- Gesamt-R
+- rekonstruierte Kapitalrendite, sofern Entry und Initial-Stueckzahl belastbar vorliegen
+- Haltedauer, sofern ein echter Entry-Zeitpunkt vorhanden ist
+- Win Rate und Profit Factor
+- Entry-Kontext und Shadow-vs-Live-Beziehung
 
-## Wichtiger Filter-Fix
-Der UI-Filter **nur aktive / gruen-gelb** gilt ab v28.9 ausschliesslich fuer die Screener-Anzeige. Der Positions-/Exit-Monitor verwendet immer den kompletten letzten Atomic-Stand. Eine rote oder weisse offene Position kann dadurch nicht mehr ausgerechnet aus der Exit-Ueberwachung verschwinden.
+## Segment-Lernen
+Trades koennen im Journal-Dashboard nach folgenden Segmenten verglichen werden:
+- Setup / Radar-Bucket
+- Marktregime
+- Volatilitaetsregime
+- RS-Dynamik
+- Live-Ampel
+- Shadow vs Live
+- Live-Score-Band
+- Guarded-Score-Band
+- Guardrail
+- Grade
 
-## Event-Grundlage fuer v29.0
-Orange/rote Exit-Engine-Zustaende werden dedupliziert im bestehenden Event-Log protokolliert. Damit kann die geplante Journal & Learning Engine spaeter auswerten, ob Managementwarnungen tatsaechlich nuetzlich waren.
+Jedes Segment zeigt Trades, Trefferquote, durchschnittliches und medianes R, durchschnittliche Kapitalrendite, Profit Factor und Stichprobenstatus.
 
-## Unveraendert
-- Live-Ampel und Shadow-Ampel
-- Guardrails und Score-Schwellen
-- Regional Benchmarks und RS-Kalibrierung
-- Atomic Complete Scan und Rate-Limit-Schutz
-- Trade-Close Undo/Sicherheitsworkflow aus v28.7a
+## Exit Engine 2.0 Lerncheck
+Die v28.9 Exit-Engine-Events werden konservativ mit spaeter geschlossenen Trades verknuepft. Ein Match erfolgt nur, wenn Entry- und Exit-Zeitpunkt sicher bekannt sind. Ausgewertet werden:
+- erste Exit-Engine-Aktion im Trade
+- maximaler Exit-Druck
+- R und P/L bei Erstwarnung
+- Schluss-R
+- R-Veraenderung nach der Erstwarnung
+- Vorlauf bis zum tatsaechlichen Exit
+
+Die R-Veraenderung danach ist kein hypothetischer Backtest-Exit. Sie zeigt nur, ob sich der Trade nach der Warnung weiter verbessert oder verschlechtert hat.
+
+## Manuelle Erkenntnisse
+Selbst eingetragene Erkenntnis-Texte werden zusaetzlich nach wiederkehrenden Themen wie Entry/Timing, Stop/Risiko, Exit, FOMO, Positionsgroesse, Marktumfeld, Earnings und Disziplin gezaehlt. Es erfolgt keine automatische Interpretation oder Regelanpassung.
+
+## Stichproben-Guard
+Die Learning Engine kennzeichnet Datenmengen als Zu klein, Fruehphase, Mittel, Gut oder Breiter. Beobachtungen unter 5 Trades werden nicht als Kalibrierungsbasis dargestellt. Historische Trades ohne Entry-Kontext bleiben fuer P/L/R nutzbar, werden aber nicht in Setup-/Regime-Vergleiche hineinerfunden.
+
+## Technisch unveraendert
+- Atomic Complete Scan / Rate-Limit-Schutz
+- Live- und Shadow-Ampel
+- v28.8 Shadow Calibration
+- v28.9 Exit Engine 2.0
+- v28.7a Trade-Close Undo
 - keine SQL- oder Secrets-Aenderung
+- Live-Screener-Cache-Schema bleibt absichtlich auf dem v28.9-Datenschema, weil v29.0 keine neuen Live-Rohfelder benoetigt

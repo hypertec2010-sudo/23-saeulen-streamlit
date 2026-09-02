@@ -187,6 +187,43 @@ def _position_risk(position: dict):
     return entry, initial_stop, entry - initial_stop
 
 
+def _v290_entry_context_columns(position: dict) -> dict:
+    """Flatten the v29.0 entry-context snapshot into journal columns.
+
+    Legacy positions simply return empty values. No missing historical context is
+    synthesized, which keeps later learning statistics honest.
+    """
+    position = position or {}
+    ctx = position.get("entry_context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+    return {
+        "Entry Kontext-Zeit": str(ctx.get("captured_at") or "").strip(),
+        "Entry Status": str(ctx.get("status") or "").strip(),
+        "Entry Live-Ampel": str(ctx.get("live_ampel") or "").strip(),
+        "Entry Shadow-Ampel": str(ctx.get("shadow_ampel") or "").strip(),
+        "Entry Live-Score": _num(ctx.get("live_score"), None),
+        "Entry Engine-Score": _num(ctx.get("engine_score"), None),
+        "Entry Guarded Score": _num(ctx.get("guarded_score"), None),
+        "Entry Engine-Empfehlung": str(ctx.get("engine_recommendation") or "").strip(),
+        "Entry Guardrail": str(ctx.get("guardrail") or "").strip(),
+        "Entry Kontext-Anpassung": _num(ctx.get("context_adjustment"), None),
+        "Entry Kontext-Verlässlichkeit": str(ctx.get("context_confidence") or "").strip(),
+        "Entry Marktregime": str(ctx.get("market_regime") or "").strip(),
+        "Entry Volatilitätsregime": str(ctx.get("volatility_regime") or "").strip(),
+        "Entry RS-Dynamik": str(ctx.get("rs_dynamics") or "").strip(),
+        "Entry Relative Stärke": str(ctx.get("relative_strength") or "").strip(),
+        "Entry Radar-Bucket": str(ctx.get("radar_bucket") or "").strip(),
+        "Entry Grade": str(ctx.get("grade") or "").strip(),
+        "Entry CRV": _num(ctx.get("crv"), None),
+        "Entry Abstand": str(ctx.get("entry_distance") or "").strip(),
+        "Entry Setup-Alert": str(ctx.get("setup_alert") or "").strip(),
+        "Entry Gates": str(ctx.get("active_gates") or "").strip(),
+        "Entry Benchmark": str(ctx.get("benchmark") or "").strip(),
+        "Entry Horizont": str(ctx.get("live_horizon") or "").strip(),
+    }
+
+
 def _v270_record_journal_entry(
     *,
     watchlist_name: str,
@@ -239,6 +276,10 @@ def _v270_record_journal_entry(
         # v28.7a: exact pre-close snapshot for lossless undo of future closes.
         "Position vorher": deepcopy(position_snapshot) if isinstance(position_snapshot, dict) else None,
     }
+    # v29.0: make entry context self-contained in every journal row. This lets
+    # CSV exports and the Learning Engine analyze trades without reaching back
+    # into live screener state. Legacy rows remain blank rather than guessed.
+    record.update(_v290_entry_context_columns(position))
     store = _v270_load_trade_journal()
     entries = list(store.get("entries") or [])
     entries.append(record)

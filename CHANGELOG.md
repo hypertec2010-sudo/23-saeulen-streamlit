@@ -1,5 +1,22 @@
 # Changelog
 
+## v28.8
+- Engine Calibration & Backtest als neuer Analysebereich im Shadow-Dashboard.
+- Shadow-Edge eingefuehrt: Aufwertung erwartet positive, Abwertung negative Forward-Returns.
+- Trefferquote fuer Shadow-Abwertungen korrigiert.
+- 1T/3T/5T/10T/20T Horizon-Vergleich mit durchschnittlichem und medianem Edge.
+- Directional MFE/MAE fuer favorable/adverse excursion ergaenzt.
+- Divergenz-Zustandsaenderungen werden fuer die Kalibrierung zu Episoden de-clustert.
+- Guarded-Score-Baender 0-27 / 28-54 / 55-71 / 72-100 separat auswertbar.
+- Segmentauswertung nach Guardrails, RS-Dynamik, Marktregime und Volatilitaetsregime.
+- Guardrail-Backtest fuer messbare Differenz zwischen Raw Engine Score und Guarded Engine Score.
+- Kalibrierungsurteil mit Stichprobenstatus; keinerlei automatische Aenderung an Live-Logik.
+- Neue Shadow-Ereignisse speichern erweiterten Kontext und technische Komponenten fuer spaetere Kalibrierung.
+- Shadow-Performance bevorzugt nun die zentrale Storage-Schicht; lokales JSON bleibt Fallback.
+- Nicht-Handelstag-Indizierung im Forward-Return-Tracking korrigiert.
+- Performance-Refresh bleibt manuell und rate-limit-sicher.
+- Atomic Complete Scan aus v28.7b unveraendert beibehalten.
+
 ## v28.7b
 - Live-Screener auf Atomic Complete Scan umgestellt.
 - Live-Screener scannt immer die komplette eindeutige Watchlist; 40/80/120-Teilmengen im Live-Screener entfernt.

@@ -2677,7 +2677,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v28.7b"
+APP_VERSION = "v28.8"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14295,6 +14295,13 @@ from modules.repositories import (
 
 # ---------- v28.0: Zentrale Storage-Schicht ----------
 _storage_v280 = _create_storage_manager_v280(st_module=st, app_dir=_APP_DIR_V252)
+# v28.8: Shadow forward-performance/calibration uses the same persistent
+# storage layer as the rest of the app. Local JSON remains a fallback inside
+# the module for backwards compatibility.
+try:
+    _shadow_performance_v287.configure_storage(_storage_v280)
+except Exception:
+    pass
 # v28.1: Fachmodule greifen nicht mehr direkt auf Storage-Namespaces zu.
 # Das Registry-Objekt stellt klar getrennte Repositories fuer Positionen,
 # Trade-Journal und Ereignisse bereit.
@@ -15662,7 +15669,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
             st.markdown(f"### Live-Watchlist / Trading-Cockpit · {APP_VERSION}")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
-            st.caption("Scan-Logik v28.7b: Der Live-Screener veröffentlicht nur vollständig abgeschlossene Vollscans. Interne Batches dienen ausschließlich dem Provider-Schutz und werden nie als Teilstand gespeichert oder angezeigt. Ein manueller Vollscan erzwingt einen frischen Analyse-Lauf mit Drosselung und Retry-Schutz.")
+            st.caption(f"Scan-Logik {APP_VERSION}: Der Live-Screener veröffentlicht nur vollständig abgeschlossene Vollscans. Interne Batches dienen ausschließlich dem Provider-Schutz und werden nie als Teilstand gespeichert oder angezeigt. Ein manueller Vollscan erzwingt einen frischen Analyse-Lauf mit Drosselung und Retry-Schutz.")
             # v28.4.2: Mobile-Modus und Einstellungen werden zentral gespeichert,
             # damit ein durch Display-Sperre neu aufgebauter Browser-Run wieder mit
             # derselben kompakten Darstellung startet.
@@ -16962,6 +16969,95 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         st.dataframe(_perf_summary_v287, hide_index=True, use_container_width=True)
                                         st.markdown("**Einzelereignisse**")
                                         st.dataframe(_perf_detail_v287.tail(200).iloc[::-1].reset_index(drop=True), hide_index=True, use_container_width=True, height=min(520, 38 * len(_perf_detail_v287) + 55))
+
+                                # v28.8: Event-basierte Engine-Kalibrierung. Es werden nur
+                                # tatsaechlich gespeicherte Shadow-Ereignisse gegen ihre
+                                # spaetere Kursentwicklung getestet. Keine Schwelle und kein
+                                # produktiver Score wird hier automatisch veraendert.
+                                with st.expander(f"Engine Calibration & Backtest · {APP_VERSION}", expanded=False):
+                                    st.caption("Kalibriert die Shadow-Engine gegen echte Forward-Returns. Positiver Shadow-Edge bedeutet: Aufwertungen stiegen bzw. Abwertungen fielen. Das ist ein Event-Backtest der gespeicherten Signale, keine nachträgliche Rekonstruktion historischer Scores.")
+                                    if not isinstance(_perf_events_v287, pd.DataFrame) or _perf_events_v287.empty:
+                                        st.info("Noch keine Shadow-Ereignisse für die Kalibrierung vorhanden.")
+                                    else:
+                                        _h_opts_v288 = [1, 3, 5, 10, 20]
+                                        _default_h_v288 = _shadow_performance_v287.best_mature_horizon(_perf_events_v287, minimum=5, default=5)
+                                        if st.session_state.get("v288_calibration_horizon") not in _h_opts_v288:
+                                            st.session_state["v288_calibration_horizon"] = _default_h_v288
+                                        _cal_h_v288 = st.selectbox(
+                                            "Kalibrierungshorizont",
+                                            options=_h_opts_v288,
+                                            format_func=lambda x: f"{x}T",
+                                            key="v288_calibration_horizon",
+                                            help="Alle Segmenttabellen darunter verwenden denselben Forward-Horizont.",
+                                        )
+                                        _cal_v288 = _shadow_performance_v287.build_calibration(_perf_events_v287, horizon=_cal_h_v288)
+                                        _ov_v288 = _cal_v288.get("overview", {}) or {}
+                                        _eval_n_v288 = int(_ov_v288.get("events_evaluable", 0) or 0)
+                                        if _eval_n_v288 <= 0:
+                                            st.info("Für diesen Horizont sind noch keine Forward-Returns auswertbar. Im Bereich Shadow Performance zuerst 'Performance aktualisieren' verwenden oder einen kürzeren Horizont wählen.")
+                                        _cm1, _cm2, _cm3, _cm4 = st.columns(4)
+                                        _cm1.metric("Auswertbare Episoden", _eval_n_v288)
+                                        _hit_v288 = _ov_v288.get("hit_rate")
+                                        _edge_v288 = _ov_v288.get("avg_edge")
+                                        _cm2.metric("Shadow-Trefferquote", "n/a" if _hit_v288 is None else f"{float(_hit_v288) * 100:.0f}%")
+                                        _cm3.metric("Ø Shadow-Edge", "n/a" if _edge_v288 is None else f"{float(_edge_v288):+.2f}%")
+                                        _cm4.metric("Stichprobe", str(_ov_v288.get("sample") or "Zu klein"))
+                                        _raw_n_v288 = int(_ov_v288.get("events_raw", 0) or 0)
+                                        _episode_n_v288 = int(_ov_v288.get("events_total", 0) or 0)
+                                        st.caption(f"Kalibrierungsbasis: {_raw_n_v288} Shadow-Zustandsereignisse -> {_episode_n_v288} Divergenz-Episoden. Mehrere Score-Aenderungen innerhalb derselben laufenden Divergenz werden nicht mehrfach als unabhängige Stichprobe gezählt.")
+                                        _cx1, _cx2, _cx3, _cx4 = st.columns(4)
+                                        _mfe_v288 = _ov_v288.get("avg_mfe")
+                                        _mae_v288 = _ov_v288.get("avg_mae")
+                                        _cx1.metric("Aufwertungen", int(_ov_v288.get("up", 0) or 0))
+                                        _cx2.metric("Abwertungen", int(_ov_v288.get("down", 0) or 0))
+                                        _cx3.metric("Ø MFE", "n/a" if _mfe_v288 is None else f"{float(_mfe_v288):+.2f}%")
+                                        _cx4.metric("Ø MAE", "n/a" if _mae_v288 is None else f"{float(_mae_v288):+.2f}%")
+                                        st.caption("MFE = beste Bewegung in Shadow-Richtung; MAE = stärkste Gegenbewegung gegen die Shadow-Richtung innerhalb des gewählten Horizonts.")
+
+                                        _hz_v288 = _cal_v288.get("horizons")
+                                        if isinstance(_hz_v288, pd.DataFrame) and not _hz_v288.empty:
+                                            st.markdown("**1T / 3T / 5T / 10T / 20T Vergleich**")
+                                            st.dataframe(_hz_v288, hide_index=True, use_container_width=True)
+
+                                        _tab_score_v288, _tab_guard_v288, _tab_context_v288, _tab_rec_v288 = st.tabs([
+                                            "Score-Bänder", "Guardrails", "RS & Regime", "Kalibrierungsurteil"
+                                        ])
+                                        with _tab_score_v288:
+                                            _score_v288 = _cal_v288.get("score_bands")
+                                            if isinstance(_score_v288, pd.DataFrame) and not _score_v288.empty:
+                                                st.caption("Prüft die aktuellen Shadow-Grenzen: Rot <28, Weiß 28-54, Gelb 55-71, Grün ab 72.")
+                                                st.dataframe(_score_v288, hide_index=True, use_container_width=True)
+                                            else:
+                                                st.info("Noch nicht genügend Events mit Guarded Engine-Score für diese Auswertung.")
+                                        with _tab_guard_v288:
+                                            _guard_seg_v288 = _cal_v288.get("guardrails")
+                                            _guard_bt_v288 = _cal_v288.get("guardrail_backtest")
+                                            if isinstance(_guard_seg_v288, pd.DataFrame) and not _guard_seg_v288.empty:
+                                                st.markdown("**Performance nach Guardrail-Segment**")
+                                                st.dataframe(_guard_seg_v288, hide_index=True, use_container_width=True)
+                                            if isinstance(_guard_bt_v288, pd.DataFrame) and not _guard_bt_v288.empty:
+                                                st.markdown("**Guardrail-Backtest: hat die Score-Bremse defensiv geholfen?**")
+                                                st.dataframe(_guard_bt_v288, hide_index=True, use_container_width=True)
+                                            if (not isinstance(_guard_seg_v288, pd.DataFrame) or _guard_seg_v288.empty) and (not isinstance(_guard_bt_v288, pd.DataFrame) or _guard_bt_v288.empty):
+                                                st.info("Guardrail-Metadaten werden ab v28.8 vollständig mit jedem neuen Shadow-Ereignis gespeichert. Alte Events bleiben bewusst als 'Daten fehlen' markiert.")
+                                        with _tab_context_v288:
+                                            for _title_v288, _key_v288 in [("RS-Dynamik", "rs"), ("Marktregime", "market"), ("Volatilitätsregime", "volatility")]:
+                                                _tbl_v288 = _cal_v288.get(_key_v288)
+                                                st.markdown(f"**{_title_v288}**")
+                                                if isinstance(_tbl_v288, pd.DataFrame) and not _tbl_v288.empty:
+                                                    st.dataframe(_tbl_v288, hide_index=True, use_container_width=True)
+                                                else:
+                                                    st.caption("Noch keine ausreichenden Metadaten in den gespeicherten Events.")
+                                        with _tab_rec_v288:
+                                            _rec_v288 = _cal_v288.get("recommendations")
+                                            if isinstance(_rec_v288, pd.DataFrame) and not _rec_v288.empty:
+                                                st.markdown("**Kalibrierungsdiagnose**")
+                                                st.dataframe(_rec_v288, hide_index=True, use_container_width=True)
+                                            _coverage_v288 = _cal_v288.get("coverage")
+                                            if isinstance(_coverage_v288, pd.DataFrame) and not _coverage_v288.empty:
+                                                st.markdown("**Datenabdeckung**")
+                                                st.dataframe(_coverage_v288, hide_index=True, use_container_width=True)
+                                            st.warning("v28.8 arbeitet ausschließlich im Beobachtungsmodus. Selbst ein positives Kalibrierungsurteil ändert weder Live-Ampel noch Score-Schwellen automatisch.")
 
                                 with st.expander("Shadow-Mode Rohhistorie", expanded=False):
                                     st.caption("Nur echte Zustandsänderungen werden gespeichert; identische Auto-Refreshes erzeugen keine Duplikate.")

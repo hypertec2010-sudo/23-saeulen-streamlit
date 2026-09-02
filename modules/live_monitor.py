@@ -89,7 +89,7 @@ def update_shadow_mode_history_v286(df, watchlist_name="", style_name=""):
     """
     if not isinstance(df, pd.DataFrame) or df.empty:
         _, events = _v286_load_shadow_history()
-        return pd.DataFrame(events[-200:])
+        return pd.DataFrame(events[-750:])
     state, events = _v286_load_shadow_history()
     now = pd.Timestamp.now(tz="Europe/Berlin").isoformat()
     changed = False
@@ -121,12 +121,33 @@ def update_shadow_mode_history_v286(df, watchlist_name="", style_name=""):
                     "Kurs": row.get("Kurs"),
                     "Engine-Empfehlung": str(row.get("Engine-Empfehlung") or ""),
                     "Kontext": str(row.get("Kontext-Beiträge") or ""),
+                    # v28.8: Snapshot the context that actually produced this
+                    # Shadow event. Legacy events remain valid; missing fields
+                    # are shown as missing rather than reconstructed.
+                    "Engine-Score": str(row.get("Engine-Score") or ""),
+                    "Kontext-Anpassung": str(row.get("Kontext-Anpassung") or ""),
+                    "Kontext-Verlässlichkeit": str(row.get("Kontext-Verlässlichkeit") or ""),
+                    "Engine-Guardrail": str(row.get("Engine-Guardrail") or ""),
+                    "RS-Dynamik": str(row.get("RS-Dynamik") or ""),
+                    "Marktregime": str(row.get("Marktregime") or ""),
+                    "Volatilitätsregime": str(row.get("Volatilitätsregime") or ""),
+                    "Live-Horizont": str(row.get("Live-Horizont") or ""),
+                    "Benchmark": str(row.get("Benchmark") or ""),
+                    "Primärbenchmark": str(row.get("Primärbenchmark") or ""),
+                    "Aktive Einstiegsgates": str(row.get("Aktive Einstiegsgates") or ""),
+                    "Gate-Details": str(row.get("Gate-Details") or ""),
+                    "CRV": row.get("CRV"),
+                    "Trigger-Komponente": row.get("__trigger_component"),
+                    "Chart-Komponente": row.get("__chart_component"),
+                    "Trend-Komponente": row.get("__trend_component"),
+                    "Timing-Komponente": row.get("__timing_component"),
+                    "CRV-Komponente": row.get("__crv_component"),
                 })
             state[key] = current
             changed = True
     if changed:
         _v286_save_shadow_history(state, events)
-    return pd.DataFrame(events[-200:])
+    return pd.DataFrame(events[-750:])
 
 
 

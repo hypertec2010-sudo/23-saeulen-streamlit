@@ -1,49 +1,33 @@
-# v28.7b - Atomic Complete Scan
+# v28.8 - Engine Calibration & Backtest
 
-Dieses Update baut die Live-Screener-Scanlogik grundlegend um. Ziel: lieber etwas langsamer, dafuer immer ein eindeutig vollstaendiger und nachvollziehbarer Stand.
+v28.8 baut auf dem stabilen Atomic Complete Scan aus v28.7b auf. Die produktive Live-Ampel, Score-Schwellen und Guardrails bleiben unveraendert. Neu ist eine belastbare, event-basierte Kalibrierung der Shadow-Engine gegen spaetere Kursentwicklung.
 
-## Behobene Ursachen
-1. **Teil-Batches wurden bisher bereits in Session/Snapshot gespeichert.** Dadurch konnte ein Reconnect oder Rerun einen halbfertigen Scan als sichtbaren Stand wiederherstellen.
-2. **Manuelle Scans starteten mit alten Ergebniszeilen als Fallback.** Erfolgreiche neue Ticker ersetzten diese nur tickerweise; bei Fehlern konnte eine alte Zeile im vermeintlich neuen Scan stehen bleiben.
-3. **Der Auto-Refresh-Heartbeat verglich unterschiedliche Cache-Keys.** Der echte Cache enthielt ein `schema`-Feld, der Heartbeat-Key nicht. Dadurch konnte ein gueltiger Cache bei jedem Heartbeat als unpassend gelten und unnoetige Scans/Reruns ausloesen.
-4. **Unvollstaendige Batch-Checkpoints wurden fortgesetzt.** Das machte schwer erkennbar, welche Zeile aus welchem Lauf stammt.
-5. **Scan-Grenzen 40/80/120 konnten bewusst Teilmengen erzeugen.** Fuer den Live-Screener ist jetzt immer die komplette eindeutige Watchlist aktiv.
+## Kalibrierungsprinzip
+- Shadow-Aufwertungen gelten als Treffer, wenn der Kurs danach steigt.
+- Shadow-Abwertungen gelten als Treffer, wenn der Kurs danach faellt.
+- Daraus entsteht der **Shadow-Edge**: Forward-Return mit der Richtung des Shadow-Signals normiert. Positiver Edge bedeutet, dass die Shadow-Abweichung gegenueber der Live-Ampel in die richtige Richtung zeigte.
+- Auswertung fuer 1T / 3T / 5T / 10T / 20T.
+- Mehrere Score-Aenderungen innerhalb derselben laufenden Divergenz werden zu einer Episode zusammengefasst, damit ein einzelner Ticker die Statistik nicht kuenstlich aufblaeht.
 
-## Neue Logik: Atomic Complete Scan
-- Jeder Live-Scan verarbeitet **alle eindeutigen Ticker** der Watchlist.
-- Batches existieren nur noch intern fuer Fortschritt und Provider-Schutz.
-- **Kein Teil-Batch wird mehr als Live-Stand gespeichert.**
-- Session-Cache und persistenter Snapshot werden erst nach dem gesamten Lauf aktualisiert.
-- Wird ein Lauf technisch abgebrochen, bleibt der letzte vollstaendig abgeschlossene Atomic-Stand erhalten.
-- Alte v28.6/v28.7a-Snapshots werden beim ersten Start bewusst nicht als Atomic-Stand vertraut. Nach dem Update deshalb einmal einen neuen Vollscan ausfuehren.
+## Neue Auswertungen
+- Trefferquote und durchschnittlicher/medianer Shadow-Edge je Horizont.
+- Directional MFE/MAE: bestes und schlechtestes Kursfenster nach dem Signal, jeweils in Shadow-Richtung normiert.
+- Kalibrierung der aktuellen Guarded-Score-Baender: Rot <28, Weiss 28-54, Gelb 55-71, Gruen ab 72.
+- Segmentierung nach Guardrails, RS-Dynamik, Marktregime und Volatilitaetsregime.
+- Separater Guardrail-Backtest, wenn Raw Engine Score und Guarded Engine Score fuer ein Ereignis vorliegen.
+- Stichprobenstatus von 'Zu klein' bis 'Breiter' statt vorschneller Schlussfolgerungen.
+- Kalibrierungsdiagnose mit Beobachtung und Konsequenz - rein analytisch, keine automatische Parameter-Aenderung.
 
-## Frische Daten ohne 429-Sturm
-- `Jetzt vollständig aktualisieren` erzeugt einen frischen Analyse-Key, ohne den globalen Streamlit-/Yahoo-Cache zu leeren.
-- Der Lauf wird bewusst gedrosselt: kleine interne Batches und kurze Pausen zwischen Titeln.
-- Bei 429/temporären Providerfehlern gibt es bis zu zwei spaetere Retry-Runden mit Cooldown.
-- Ein versehentlicher Doppelklick innerhalb von zwei Minuten nutzt denselben Freshness-Key und startet keinen zweiten Provider-Sturm.
-- Auto-Vollscans nutzen ebenfalls einen frischen, intervallgebundenen Analyse-Key.
+## Verbesserte Datengrundlage ab v28.8
+Neue Shadow-Ereignisse speichern zusaetzlich den damaligen Kontext: Raw Engine Score, Kontext-Anpassung, Kontext-Verlaesslichkeit, Guardrail, RS-Dynamik, Markt-/Volatilitaetsregime, Benchmark, aktive Gates sowie technische Komponenten. Alte Ereignisse werden nicht nachtraeglich mit erfundenen Daten aufgefuellt; fehlende Legacy-Metadaten bleiben sichtbar.
 
-## Keine Mischdaten mehr
-Ein Ticker hat im neuen Stand genau zwei Moeglichkeiten:
-- aktuelle Ergebniszeile aus diesem Vollscan, oder
-- aktueller Fehlerstatus aus diesem Vollscan.
+## Persistenz
+Shadow-Performance und Kalibrierungsdaten nutzen nun bevorzugt die zentrale Storage-Schicht (`shadow_performance_v288`). Die bisherige lokale JSON-Datei bleibt als Fallback/Migrationsquelle erhalten. Keine SQL- oder Secrets-Aenderung erforderlich.
 
-Ein fehlgeschlagener Ticker wird **nicht** mit seiner alten Ergebniszeile aufgefuellt. Fehler werden immer sichtbar ausgewiesen.
+## Forward-Performance Fixes
+- Trefferquote fuer Abwertungen korrigiert: fallende Kurse sind dort jetzt korrekt ein Treffer.
+- Nicht-Handelstage werden bei 1T/3T/... korrekt indiziert.
+- Performance-Aktualisierung bleibt explizit per Button; kein zusaetzlicher Yahoo-Traffic durch Auto-Scans.
 
-## Sichtbarer Datenstand
-Nach jedem Lauf zeigt die App:
-- Zeit des letzten vollstaendig abgeschlossenen Scans,
-- Alter des Datenstands,
-- verarbeitet / erfolgreich / aktuelle Fehler,
-- Scan-Dauer,
-- Scan-Modus,
-- Kennzeichnung `kein Mischstand`.
-
-## Auto-Refresh
-- Heartbeat und Cache verwenden jetzt denselben Schema-Key.
-- Waehren eines Vollscans darf der Minuten-Heartbeat keinen zweiten Scan triggern.
-- Nach einem komplett fehlgeschlagenen Auto-Lauf gilt eine 5-Minuten-Schutzpause; ein manueller Vollscan bleibt jederzeit moeglich.
-
-Keine Aenderung an Live-/Shadow-Ampel, Scores, Guardrails, regionalen Benchmarks, Positionen oder Trade-Journal-Logik.
-Keine SQL-/Secrets-Aenderung erforderlich.
+## Wichtig
+v28.8 ist weiterhin Beobachtungsmodus. Auch eine gute Statistik aendert die produktive Live-Ampel nicht. Ein spaeterer Cutover kommt erst nach ausreichend Daten und der geplanten Validierung.

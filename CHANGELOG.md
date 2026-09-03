@@ -1,5 +1,18 @@
 # Changelog
 
+## v30.0
+- Validated Trading Engine / Controlled Cutover als transparente Release-Gate-Schicht eingefuehrt.
+- Produktive Live-Ampel bleibt Kontrollgruppe; v30.0 schaltet keine Engine automatisch um.
+- Automatische Auswahl eines reifen Primaerhorizonts aus 1T / 3T / 5T / 10T / 20T.
+- Harte Gates fuer Stichprobe, Gesamt-Edge, Richtungsbalance, Horizont-Stabilitaet, Kontextabdeckung, Guardrail-Nachweis und Marktregime-Abdeckung.
+- Validation Score 0-100 als Orientierung; offene harte Gates koennen dadurch nicht ueberstimmt werden.
+- Separate Freigabe-Matrix fuer Guarded Engine Score, Aufwertungen, Abwertungen, Guardrails, RS-Kontext, Regime, Trading Learning, Exit Engine 2.0 und Portfolio-Risikogate.
+- Reale v29.0 Trade-Lerndaten werden als zusaetzliche Freigabe-Evidenz eingebunden, ohne alte Trades mit aktuellem Kontext aufzufuellen.
+- Exit Engine 2.0 erhaelt einen eigenen Reifegrad anhand sicher zugeordneter Warnung-vs-Exit-Verlaeufe.
+- v29.1 Portfolio-Gate wird als operative beratende Schutzschicht in der Cutover-Matrix sichtbar.
+- Regime-Stabilitaet und Horizont-Stabilitaet werden separat im Dashboard angezeigt.
+- Keine neuen Provider-Abfragen, keine Aenderung am Atomic-Screener-Cache-Schema, keine SQL-/Secrets-Aenderung.
+
 ## v29.1
 - Portfolio & Risk Engine als eigener Trading-Cockpit-Bereich eingefuehrt.
 - Gesamtdepot- und aktuelle-Watchlist-Sicht fuer offene Positionen.

@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v29.1"
+APP_VERSION = "v30.0"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14251,6 +14251,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "trade_journal.py",
     _MODULE_DIR_V252 / "trade_learning.py",
     _MODULE_DIR_V252 / "portfolio_risk.py",
+    _MODULE_DIR_V252 / "validated_engine.py",
     _MODULE_DIR_V252 / "live_monitor.py",
     _MODULE_DIR_V252 / "watchlist_storage.py",
     _MODULE_DIR_V252 / "storage" / "__init__.py",
@@ -14285,6 +14286,7 @@ from modules import position_monitor as _position_module
 from modules import trade_journal as _trade_journal_module
 from modules import trade_learning as _trade_learning_module
 from modules import portfolio_risk as _portfolio_risk_module
+from modules import validated_engine as _validated_engine_v300
 from modules import shadow_performance as _shadow_performance_v287
 from modules import live_monitor as _live_module
 from modules import watchlist_storage as _watchlist_module
@@ -17104,6 +17106,101 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.markdown("**Datenabdeckung**")
                                                 st.dataframe(_coverage_v288, hide_index=True, use_container_width=True)
                                             st.warning("v28.8 arbeitet ausschließlich im Beobachtungsmodus. Selbst ein positives Kalibrierungsurteil ändert weder Live-Ampel noch Score-Schwellen automatisch.")
+
+                                # v30.0: Controlled Cutover. This release gate is read-only:
+                                # it decides whether individual engine components have enough
+                                # real evidence for a future A/B cutover, but never switches the
+                                # productive Live-Ampel automatically.
+                                with st.expander(f"Validated Trading Engine / Controlled Cutover · {APP_VERSION}", expanded=False):
+                                    st.caption(
+                                        "Release-Gate für den Übergang von Shadow zu produktiver Engine. Bewertet Stichprobe, Forward-Edge, "
+                                        "Auf-/Abwertungen, Horizont-Stabilität, Guardrails, Regime-Abdeckung sowie reale Trade-/Portfolio-Evidenz. "
+                                        "Ein grünes Urteil ist nur eine Freigabe für einen späteren kontrollierten A/B-Cutover – kein automatisches Umschalten."
+                                    )
+                                    try:
+                                        _journal_all_v300 = _v270_journal_entries_dataframe()
+                                        _events_all_v300 = _v2416_events_dataframe()
+                                        _learning_all_v300 = _v290_build_learning_package(_journal_all_v300, _events_all_v300)
+                                        _learning_summary_v300 = _learning_all_v300.get("summary") or {}
+                                        _exit_detail_v300 = _learning_all_v300.get("exit_detail")
+                                    except Exception:
+                                        _learning_summary_v300 = {}
+                                        _exit_detail_v300 = pd.DataFrame()
+                                    try:
+                                        _portfolio_settings_v300 = _v291_load_portfolio_settings() or {}
+                                    except Exception:
+                                        _portfolio_settings_v300 = {}
+
+                                    _cutover_v300 = _validated_engine_v300.build_cutover_report(
+                                        _perf_events_v287,
+                                        learning_summary=_learning_summary_v300,
+                                        exit_detail=_exit_detail_v300,
+                                        portfolio_settings=_portfolio_settings_v300,
+                                    )
+                                    _ov_v300 = _cutover_v300.get("overview") or {}
+                                    st.markdown(
+                                        f"## {_ov_v300.get('status','⚪')} · {_ov_v300.get('verdict','Noch keine Freigabe')}"
+                                    )
+                                    _v300m1, _v300m2, _v300m3, _v300m4 = st.columns(4)
+                                    _v300m1.metric("Validation Score", f"{float(_ov_v300.get('validation_score') or 0):.0f}/100")
+                                    _v300m2.metric("Primärhorizont", f"{int(_ov_v300.get('primary_horizon') or 5)}T")
+                                    _v300m3.metric("Auswertbare Episoden", int(_ov_v300.get("evaluable") or 0))
+                                    _v300m4.metric(
+                                        "Harte Gates",
+                                        f"{int(_ov_v300.get('hard_passed') or 0)}/{int(_ov_v300.get('hard_total') or 0)}",
+                                    )
+                                    _v300s1, _v300s2, _v300s3 = st.columns(3)
+                                    _hit_v300 = _ov_v300.get("hit_rate")
+                                    _edge_v300 = _ov_v300.get("avg_edge")
+                                    _median_v300 = _ov_v300.get("median_edge")
+                                    _v300s1.metric("Trefferquote", "n/a" if _hit_v300 is None else f"{float(_hit_v300)*100:.1f}%")
+                                    _v300s2.metric("Ø Shadow-Edge", "n/a" if _edge_v300 is None else f"{float(_edge_v300):+.2f}%")
+                                    _v300s3.metric("Median Edge", "n/a" if _median_v300 is None else f"{float(_median_v300):+.2f}%")
+                                    st.info(f"Produktiver Modus bleibt: {_ov_v300.get('productive_mode','Live-Ampel')}.")
+
+                                    if bool(_ov_v300.get("cutover_candidate")):
+                                        st.success(_ov_v300.get("next_action") or "Kontrollierter Cutover-Kandidat. Keine automatische Umschaltung.")
+                                    else:
+                                        _blockers_v300 = list(_ov_v300.get("blockers") or [])
+                                        st.warning(_ov_v300.get("next_action") or "Noch keine Cutover-Freigabe.")
+                                        if _blockers_v300:
+                                            st.caption("Noch blockierend: " + " · ".join(_blockers_v300))
+
+                                    _gates_v300 = _cutover_v300.get("gates")
+                                    if isinstance(_gates_v300, pd.DataFrame) and not _gates_v300.empty:
+                                        st.markdown("**Release-Gates**")
+                                        st.dataframe(_gates_v300, hide_index=True, use_container_width=True)
+
+                                    _components_v300 = _cutover_v300.get("components")
+                                    if isinstance(_components_v300, pd.DataFrame) and not _components_v300.empty:
+                                        st.markdown("**Freigabe-Matrix nach Engine-Baustein**")
+                                        st.dataframe(_components_v300, hide_index=True, use_container_width=True)
+
+                                    _v300tab_h, _v300tab_r = st.tabs(["Horizont-Stabilität", "Regime-Stabilität"])
+                                    with _v300tab_h:
+                                        _horizon_v300 = _cutover_v300.get("horizons")
+                                        if isinstance(_horizon_v300, pd.DataFrame) and not _horizon_v300.empty:
+                                            st.dataframe(_horizon_v300, hide_index=True, use_container_width=True)
+                                        else:
+                                            st.info("Noch keine auswertbaren Forward-Horizonte.")
+                                    with _v300tab_r:
+                                        _market_v300 = _cutover_v300.get("market_regimes")
+                                        _vol_v300 = _cutover_v300.get("volatility_regimes")
+                                        st.markdown("**Marktregime**")
+                                        if isinstance(_market_v300, pd.DataFrame) and not _market_v300.empty:
+                                            st.dataframe(_market_v300, hide_index=True, use_container_width=True)
+                                        else:
+                                            st.caption("Noch keine belastbare Marktregime-Abdeckung.")
+                                        st.markdown("**Volatilitätsregime**")
+                                        if isinstance(_vol_v300, pd.DataFrame) and not _vol_v300.empty:
+                                            st.dataframe(_vol_v300, hide_index=True, use_container_width=True)
+                                        else:
+                                            st.caption("Noch keine belastbare Volatilitätsregime-Abdeckung.")
+
+                                    st.caption(
+                                        "v30.0 verändert keine Live-/Shadow-Schwellen, Gewichte, Positionen oder Orders. "
+                                        "Der Validation Score ist nur Orientierung; ein Voll-Cutover bleibt gesperrt, solange auch nur ein hartes Release-Gate offen ist."
+                                    )
 
                                 with st.expander("Shadow-Mode Rohhistorie", expanded=False):
                                     st.caption("Nur echte Zustandsänderungen werden gespeichert; identische Auto-Refreshes erzeugen keine Duplikate.")

@@ -1,65 +1,56 @@
-# v29.1 - Portfolio & Risk Engine
+# v30.0 - Validated Trading Engine / Controlled Cutover
 
-v29.1 baut auf dem stabilen v29.0 Trading Journal & Learning Engine auf. Die neue Portfolio Engine betrachtet erstmals das Gesamtrisiko der offenen Positionen statt nur den einzelnen Trade. Sie ist bewusst beratend: Es werden keine Positionen, Orders, Live-/Shadow-Ampeln oder Entry-/Exit-Schwellen automatisch veraendert.
+v30.0 baut auf dem stabilen v29.1 Portfolio & Risk Engine auf. Diese Version ist bewusst kein automatisches Umschalten der produktiven Ampel. Sie fuehrt einen transparenten Release-Gate-Prozess ein, der aus real gespeicherten Shadow-Forward-Returns, Guardrail-Ereignissen, Regime-Metadaten, Trading-Journal-Lerndaten und der Portfolio-Konfiguration ableitet, welche Engine-Bausteine fuer einen spaeteren kontrollierten Cutover ausreichend belegt sind.
 
-## Eigener Portfolio-Risiko-Bereich
-Im Trading-Cockpit gibt es den neuen Bereich `Portfolio-Risiko`. Dort kann zwischen dem gesamten Positionsspeicher und der aktuell ausgewaehlten Positions-Watchlist gewechselt werden.
+## Neue Cutover-Zentrale
+Im Live-Screener / Shadow-Bereich gibt es den neuen Expander `Validated Trading Engine / Controlled Cutover`. Dort werden die vorhandenen Daten in eine Freigabeentscheidung uebersetzt.
 
-Die Engine berechnet unter anderem:
-- investierten Positionswert und Exposure relativ zum Gesamtdepot
-- rechnerische Cash-/Reservequote
-- groesste Einzelposition und Top-3-Konzentration
-- Cluster-/Sektor-Konzentration
-- Risiko bis zu den aktuell gesetzten Stops
-- Stop-Abdeckung des Portfolios
-- Anteil des Exposures mit orange/roter Exit Engine 2.0
-- aktuelle Atomic-Kursabdeckung und FX-Abdeckung
-- unrealisiertes P/L auf Portfolioebene, sofern die Waehrungsumrechnung vollstaendig ist
+Die produktive Betriebsart bleibt in v30.0 immer die bestehende Live-Ampel. Auch ein gruener Validierungsstatus schaltet keine Schwelle, Gewichtung oder Ampel automatisch um.
 
-## Portfolio-Risikoampel
-Eine separate Portfolio-Ampel bewertet Exposure, Einzelpositions-Klumpen, Cluster-Konzentration, Stop-Risiko, Stop-Verletzungen und defensiven Exit-Druck. Die Ampel ist ein separates Risikogate und veraendert weder Live-Score noch Shadow-Score.
+## Harte Release-Gates
+Ein Voll-Cutover bleibt gesperrt, solange eines der harten Gates offen ist:
+- mindestens 40 auswertbare Divergenz-Episoden auf dem automatisch gewaehlten Primaerhorizont
+- Shadow-Trefferquote mindestens 56 Prozent
+- durchschnittliche Shadow-Edge mindestens +0,40 Prozent und positiver Median
+- mindestens 10 Aufwertungen und 10 Abwertungen mit jeweils mindestens 52 Prozent Richtungs-Trefferquote
+- mindestens zwei stabile Forward-Horizonte mit n>=10
+- mindestens 70 Prozent Kontextabdeckung ueber Guardrail, RS-Dynamik, Markt- und Volatilitaetsregime
+- mindestens 10 messbar gebremste Guardrail-Ereignisse und mindestens 55 Prozent defensiv bestaetigte Verlaeufe
+- mindestens zwei Marktregime mit jeweils mindestens fuenf auswertbaren Episoden
 
-Die Engine zeigt neben dem Score konkrete Risikotreiber und priorisierte Portfolio-Massnahmen, zum Beispiel:
-- kein weiteres Risiko in einem bereits uebergewichteten Cluster
-- groesste Einzelposition pruefen
-- fehlende Stops/Invalidierungen ergaenzen
-- neue Kaeufe pausieren, solange ein grosser Teil des bestehenden Exposures bereits Exit-Druck zeigt
-- Exposure/Cash normalisieren
+Der Validation Score von 0 bis 100 dient nur als Orientierung. Er kann kein offenes hartes Gate ueberstimmen.
 
-## Missing-Data-Guard auf Portfolioebene
-v29.1 rechnet keine alten oder unvollstaendigen Daten schoen:
-- Nur Ticker aus dem aktuell abgeschlossenen Atomic-Scan gelten als aktuelle Kursbasis.
-- Positionen anderer Watchlists koennen im Gesamtdepot mit ihrem gespeicherten letzten Kurs sichtbar bleiben, werden aber als nicht aktuell markiert.
-- Bei zu niedriger aktueller Kursabdeckung wird keine gruene Portfolio-Freigabe gezeigt.
-- Doppelte Ticker in mehreren Positions-Watchlists werden im Gesamtdepot nicht doppelt gezaehlt; verwendet wird der zuletzt aktualisierte Positionsdatensatz und der Konflikt wird sichtbar gemeldet.
+## Freigabe-Matrix pro Engine-Baustein
+v30.0 bewertet separat:
+- Guarded Engine Score
+- Shadow-Aufwertungen
+- Shadow-Abwertungen
+- Engine Guardrails
+- RS-Dynamik / Kontext
+- Markt- und Volatilitaetsregime
+- Trading Journal & Learning Engine
+- Exit Engine 2.0
+- Portfolio-Risikogate
 
-## Korrekte Mehrwaehrungslogik
-US-, Europa-, Schweiz-, Schweden- oder UK-Positionen werden nicht stillschweigend in einer gemeinsamen Waehrung addiert. Die Basiswaehrung des Depots ist einstellbar. Fuer Fremdwaehrungen wird eine explizite Umrechnung `1 Fremdwaehrung = x Basiswaehrung` verwendet.
+Moegliche Stati sind `Shadow only`, `Daten sammeln`, `Teilfreigabe-Kandidat`, `Freigabereif` sowie beim Portfolio-Gate `Beratend aktiv`.
 
-Wichtig: v29.1 ruft dafuer bewusst keinen weiteren Marktprovider automatisch auf. Fehlt ein FX-Kurs, wird die betroffene Position nicht in Depotwert, Cash oder Exposure hineingeschaetzt und die FX-Abdeckung sinkt sichtbar.
+## Mehrere Horizonte statt Einzelwert
+Die Freigabeentscheidung betrachtet 1T / 3T / 5T / 10T / 20T gemeinsam. Der Primaerhorizont wird automatisch nach Datenreife gewaehlt, wobei ein sinnvoller Swing-Horizont gegenueber einem rauschenden 1T-Ergebnis bevorzugt wird.
 
-Depot-Basiswaehrung, Gesamtdepotwert und eingegebene FX-Raten koennen ueber die bestehende zentrale Storage-Schicht persistent gespeichert werden. Dafuer ist keine neue SQL-Tabelle erforderlich.
+Mehrere Score-Aenderungen innerhalb derselben laufenden Live-vs-Shadow-Divergenz werden weiterhin nicht als unabhaengige Stichproben doppelt gezaehlt.
 
-## Portfolio-Gruppen / Cluster
-Offene Positionen erhalten ein neues persistentes Feld `portfolio_group`. Beim Speichern kann eine Portfolio-Gruppe bzw. ein Sektor manuell gesetzt oder die konservative automatische Zuordnung uebernommen werden.
+## Reale Trading-Evidenz als zusaetzliche Stuetze
+Die v29.0 Learning Engine wird als zusaetzliche, aber nicht harte Freigabe-Evidenz genutzt. Beruecksichtigt werden Anzahl geschlossener Trades, durchschnittliches R und Entry-Kontextabdeckung. Die Exit Engine 2.0 bekommt einen eigenen Reifegrad auf Basis sicher zugeordneter Warnung-vs-Exit-Verlaeufe.
 
-Manuelle Gruppen haben immer Vorrang. Nur klar zuordenbare Titel werden automatisch in breite Gruppen wie Halbleiter, Cloud/Cyber/Software, Mega-Cap Tech, Finanzen, Industrie, Gesundheit oder Konsum eingeordnet. Unklare Titel bleiben transparent als `Sonstige/Unbekannt` markiert.
+Historische Trades oder Shadow-Events ohne damals gespeicherten Kontext werden weiterhin nicht mit heutigen Daten aufgefuellt.
 
-## Pre-Trade Portfolio Guard
-Der neue Abschnitt `Neuen Trade gegen Portfolio pruefen` simuliert einen geplanten Positionswert, ohne einen Trade anzulegen. Gezeigt werden:
-- Anteil der neuen Position am Gesamtdepot
-- Exposure nach dem Kauf
-- Cluster-Konzentration nach dem Kauf
-- Portfolio-Ampel fuer die geplante Groesse
+## Portfolio-Kontext
+Das v29.1 Portfolio-Risikogate wird im Cutover-Prozess als operative Schutzschicht sichtbar. Es bleibt bewusst beratend: v30.0 verwendet das Portfolio-Gate nicht fuer automatische Orders oder zum Umschreiben der Live-/Shadow-Ampel.
 
-Damit kann ein technisch guter Einzeltrade trotzdem als zu gross oder zu stark mit bestehenden Positionen korreliert/gebuendelt erkannt werden.
+## Keine neuen Provider-Abfragen
+Der Cutover-Report verwendet ausschliesslich bereits gespeicherte Shadow-Performance-, Journal-, Event- und Portfolio-Daten. Er startet keine zusaetzlichen Yahoo-/Marktprovider-Abfragen und veraendert das Atomic-Screener-Cache-Schema nicht.
 
-## Technisch unveraendert
-- v28.7b Atomic Complete Scan und Rate-Limit-Schutz
-- v28.8 Shadow Calibration / Backtest
-- v28.9 Positions-/Exit-Engine 2.0
-- v29.0 Trading Journal & Learning Engine
-- v28.7a Trade-Close Undo
-- keine SQL- oder Secrets-Aenderung
-- keine zusaetzlichen Provider-Abfragen durch die Portfolio Engine
-- Live-Screener-Cache-Schema bleibt unveraendert, da v29.1 keine neuen Live-Rohfelder benoetigt
+## Naechster Schritt bei echter Freigabereife
+Erst wenn alle harten Gates erfuellt sind, meldet v30.0 `Kontrollierter Cutover-Kandidat`. Selbst dann bleibt die Live-Ampel produktiv. Ein spaeterer v30.x-Schritt kann daraus einen begrenzten A/B-Cutover einzelner freigegebener Komponenten machen, statt die bestehende Engine sofort vollstaendig zu ersetzen.
+
+Keine SQL-/Secrets-Aenderung erforderlich.

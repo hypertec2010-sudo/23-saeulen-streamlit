@@ -1,5 +1,13 @@
 # Changelog
 
+## v30.1b
+- Navigation des Trading-Cockpits aus dem bedingt gerenderten Live-Cache-Pfad herausgeloest.
+- Eigener persistenter, nicht an ein Widget gebundener Cockpit-State verhindert Ruecksprung auf `Live-Screener`.
+- Rotation Radar bleibt auch ohne kompatiblen/aktuellen Live-Screener-Snapshot erreichbar.
+- Auto-Refresh liest den persistenten Cockpit-State und startet beim offenen Rotation Radar keinen Live-Vollscan.
+- Leere Aktien-Watchlist blockiert den eigenstaendigen Rotation Radar nicht mehr.
+- Bestehende Live-/Shadow-/Rotation-/Score-Logik unveraendert.
+
 ## v30.1a
 - Live-Screener-Firmenname-Hardening: `Name = Ticker` wird nicht mehr als gueltiger Name akzeptiert.
 - Persistente Ticker->Firmenname-Registry ueber zentrale Storage-Schicht.

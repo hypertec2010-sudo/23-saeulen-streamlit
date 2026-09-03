@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.1a"
+APP_VERSION = "v30.1b"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15963,6 +15963,42 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             st.markdown(f"### Live-Watchlist / Trading-Cockpit · {APP_VERSION}")
             st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
             st.caption(f"Scan-Logik {APP_VERSION}: Der Live-Screener veröffentlicht nur vollständig abgeschlossene Vollscans. Interne Batches dienen ausschließlich dem Provider-Schutz und werden nie als Teilstand gespeichert oder angezeigt. Ein manueller Vollscan erzwingt einen frischen Analyse-Lauf mit Drosselung und Retry-Schutz.")
+            # v30.1b: Cockpit-Navigation wird ausserhalb des Live-Cache-Renderpfads
+            # gehalten. Der Rotation Radar ist ein eigenstaendiger Arbeitsbereich und
+            # darf nicht verschwinden bzw. auf Live-Screener zurueckfallen, nur weil
+            # gerade kein kompatibler Live-Snapshot gerendert wird.
+            cockpit_options_v301b = [
+                "📡 Live-Screener", "🧭 Rotation Radar", "📐 Risiko-Rechner", "🛡️ Portfolio-Risiko",
+                "📌 Positionen / Exit", "📓 Trade-Journal", "🧾 Historie & Details",
+            ]
+            _cockpit_persist_key_v301b = "watchlist_cockpit_area_persist_v301b"
+            _cockpit_widget_key_v301b = "watchlist_cockpit_area_widget_v301b"
+            _legacy_cockpit_key_v301b = "watchlist_cockpit_area_v2413"
+
+            def _v301b_valid_cockpit_area(_value):
+                _value = str(_value or "").strip()
+                return _value if _value in cockpit_options_v301b else cockpit_options_v301b[0]
+
+            if _cockpit_persist_key_v301b not in st.session_state:
+                st.session_state[_cockpit_persist_key_v301b] = _v301b_valid_cockpit_area(
+                    st.session_state.get(_legacy_cockpit_key_v301b, cockpit_options_v301b[0])
+                )
+            if _cockpit_widget_key_v301b not in st.session_state:
+                st.session_state[_cockpit_widget_key_v301b] = _v301b_valid_cockpit_area(
+                    st.session_state.get(_cockpit_persist_key_v301b, cockpit_options_v301b[0])
+                )
+
+            def _v301b_sync_cockpit_area():
+                _choice = _v301b_valid_cockpit_area(
+                    st.session_state.get(_cockpit_widget_key_v301b, cockpit_options_v301b[0])
+                )
+                # Persist-Key ist absichtlich KEIN Widget-Key. Streamlit kann Widget-
+                # State entfernen, wenn ein Widget in einem bedingten Renderpfad fehlt;
+                # die Navigation selbst darf davon nicht betroffen sein.
+                st.session_state[_cockpit_persist_key_v301b] = _choice
+                # Kompatibilitaet fuer vorhandenen Auto-Refresh-/Legacy-Code.
+                st.session_state[_legacy_cockpit_key_v301b] = _choice
+
             # v28.4.2: Mobile-Modus und Einstellungen werden zentral gespeichert,
             # damit ein durch Display-Sperre neu aufgebauter Browser-Run wieder mit
             # derselben kompakten Darstellung startet.
@@ -16075,6 +16111,19 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     st.session_state.live_watchlist_only_active = only_active
                     st.caption("Prüfstil: Charttechnik")
 
+            cockpit_area = st.radio(
+                "Trading-Cockpit",
+                cockpit_options_v301b,
+                horizontal=not bool(mobile_mode_v2842),
+                key=_cockpit_widget_key_v301b,
+                on_change=_v301b_sync_cockpit_area,
+                label_visibility="collapsed",
+            )
+            cockpit_area = _v301b_valid_cockpit_area(cockpit_area)
+            st.session_state[_cockpit_persist_key_v301b] = cockpit_area
+            st.session_state[_legacy_cockpit_key_v301b] = cockpit_area
+            st.caption("Nur der gewählte Arbeitsbereich wird ausgeführt; Rotation Radar bleibt unabhängig vom Live-Screener-Cache erreichbar.")
+
             # v28.7b: Atomic Complete Scan. Der Live-Screener arbeitet immer die
             # komplette eindeutige Watchlist ab. Interne Batches bleiben reine
             # Provider-/Fortschrittslogik und erzeugen keine sichtbaren Teilstaende.
@@ -16181,7 +16230,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                     @st.fragment(run_every=_native_refresh_poll_seconds_v2832)
                     def _native_live_screener_refresh_v2832():
-                        _active_area = str(st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener"))
+                        _active_area = str(st.session_state.get("watchlist_cockpit_area_persist_v301b", st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener")))
                         _mobile_active = bool(st.session_state.get("v2842_live_mobile_mode", False))
                         _mobile_auto = bool(st.session_state.get("v2842_mobile_auto_scan_widget", False))
                         _enabled = bool(st.session_state.get("live_watchlist_monitor_enabled", False)) and (not _mobile_active or _mobile_auto)
@@ -16430,7 +16479,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             # startet der teure Watchlist-Scan bei jeder Cockpit-Navigation erneut und
             # der Trade-Journal-Bereich wirkt wie eine Endlosschleife.
             active_cockpit_pre_v271 = str(
-                st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener")
+                st.session_state.get("watchlist_cockpit_area_persist_v301b", st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener"))
             )
             live_screener_active_v271 = active_cockpit_pre_v271 == "📡 Live-Screener"
             # Nach einem komplett fehlgeschlagenen Provider-Lauf nicht bei jedem
@@ -16462,7 +16511,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     and (not cache_ok_v246 or cache_stale_v246)
                 )
             )
-            show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246)
+            rotation_radar_active_v301b = active_cockpit_pre_v271 == "🧭 Rotation Radar"
+            show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246 or rotation_radar_active_v301b)
 
             # v28.6e6: Die Pause-Meldung darf nicht behaupten, dass ein Stand
             # sichtbar ist, wenn kein kompatibler Snapshot gefunden wurde.
@@ -16475,7 +16525,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     st.caption("🟢 Letzter sichtbarer Live-Stand wiederhergestellt. Auto-Scan bleibt pausiert.")
 
             if show_live_monitor_v246:
-                if not current_tickers:
+                if not current_tickers and not rotation_radar_active_v301b:
                     st.info("Diese Watchlist ist leer.")
                 else:
                     if live_should_scan_v246:
@@ -16964,7 +17014,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     _live_df_complete_v289 = live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame()
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
-                    if live_df.empty and _live_df_complete_v289.empty:
+                    if live_df.empty and _live_df_complete_v289.empty and not rotation_radar_active_v301b:
                         st.info("Keine aktuellen Live-Watchlist-Ergebnisse verfügbar.")
                     else:
                         if live_df.empty and only_active:
@@ -16973,22 +17023,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         # Anders als st.tabs fuehrt diese Navigation nicht den Code aller
                         # Bereiche bei jedem Widget-Rerun aus. Risiko-/Positions-Eingaben
                         # starten dadurch keine teuren Analysen aus anderen Bereichen.
-                        cockpit_options = [
-                            "📡 Live-Screener", "🧭 Rotation Radar", "📐 Risiko-Rechner", "🛡️ Portfolio-Risiko",
-                            "📌 Positionen / Exit", "📓 Trade-Journal", "🧾 Historie & Details",
-                        ]
-                        current_cockpit = st.session_state.get("watchlist_cockpit_area_v2413", cockpit_options[0])
-                        if current_cockpit not in cockpit_options:
-                            current_cockpit = cockpit_options[0]
-                        cockpit_area = st.radio(
-                            "Trading-Cockpit",
-                            cockpit_options,
-                            index=cockpit_options.index(current_cockpit),
-                            horizontal=not bool(mobile_mode_v2842),
-                            key="watchlist_cockpit_area_v2413",
-                            label_visibility="collapsed",
+                        # v30.1b: Navigation wird bereits VOR dem Live-Cache-Gate gerendert.
+                        # Hier nur noch den persistenten Wert verwenden; kein zweites Widget
+                        # mit einem bedingt gerenderten Key anlegen.
+                        cockpit_area = _v301b_valid_cockpit_area(
+                            st.session_state.get(_cockpit_persist_key_v301b, cockpit_area)
                         )
-                        st.caption("Nur der gewählte Arbeitsbereich wird ausgeführt; der letzte Live-Scan bleibt im Cache.")
 
                         if cockpit_area == "📡 Live-Screener":
                             if "Radar-Bucket" in live_df.columns and "Status" in live_df.columns:

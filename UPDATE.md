@@ -1,109 +1,17 @@
-# v30.1a - Firmenname-Resolver Hardening
+# v30.1b - Rotation Radar Navigation Fix
 
-v30.1a behebt den Rueckfall `Name = Ticker` im Live-Screener.
+v30.1b behebt den Ruecksprung vom neuen `🧭 Rotation Radar` auf den `📡 Live-Screener`.
 
-## Was geaendert wurde
-- `Name == Ticker` bzw. `Name == Ticker-Root` gilt nicht mehr als gueltiger Firmenname.
-- Echte Namen aus dem Analyse-Result werden bevorzugt und in einer persistenten Ticker->Name-Registry gemerkt.
-- Wenn das geflattete Live-Result keinen Namen enthaelt, wird der bereits vom Aktien-Analyse-Lauf gefuellte `load_data()`-Cache fuer `longName` / `shortName` genutzt. Das ist im normalen Vollscan ein Cache-Hit und erzeugt keine zusaetzliche Provider-Welle.
-- Bekannte App-Ticker/Aliasse besitzen einen provider-freien Offline-Fallback; u. a. DELL, MSFT, NVDA, NFLX, AAPL, AMZN, GOOGL, META, AMD, AVGO, SAP.DE, ADS.DE und IFX.DE.
-- Yahoo Search bleibt nur letzter Fallback. Ein temporaerer Search-/Rate-Limit-Fehler kann einen bereits bekannten Namen nicht mehr wieder durch den Ticker ersetzen.
-- Bereits gespeicherte Atomic-Snapshots werden beim Anzeigen aus der Registry bzw. dem Offline-Fallback repariert, ohne versteckte Kurs-/Yahoo-Requests aus dem UI-Renderpfad.
+## Ursache
+Die Trading-Cockpit-Navigation war historisch innerhalb des Live-Screener-Cache-Renderpfads aufgebaut. Der neue Rotation Radar ist jedoch ein eigenstaendiger Arbeitsbereich. Bei einem Streamlit-Rerun konnte der bedingt gerenderte Radio-Widget-State verschwinden bzw. neu mit dem Default `Live-Screener` initialisiert werden. Zusaetzlich war der Radar indirekt davon abhaengig, dass ein kompatibler Live-Screener-Stand vorhanden war.
 
-## Verhalten nach dem Update
-Nach einem vollstaendigen Live-Scan werden erfolgreich aufgeloeste Namen dauerhaft gemerkt. Dadurch bleiben sie auch bei spaeteren Cache-/Snapshot-Restores stabil.
+## Fix
+- Die Cockpit-Auswahl wird jetzt vor dem Live-Cache-Gate gerendert.
+- Die Auswahl besitzt einen separaten persistenten Session-State, der kein Widget-Key ist.
+- Der alte Cockpit-Key bleibt nur als Kompatibilitaetswert fuer bestehende Refresh-Logik erhalten.
+- Auto-Refresh erkennt `Rotation Radar` ueber den persistenten State und fuehrt dort keinen Live-Screener-Autoscan aus.
+- `Rotation Radar` kann auch ohne gueltigen Live-Snapshot geoeffnet werden.
+- Eine leere Aktien-Watchlist blockiert den Rotation Radar nicht.
 
-Keine Aenderung an Live-/Shadow-Ampel, Rotation Radar, Scores, Guardrails, Atomic-Scan-Logik oder Provider-Drosselung. Keine SQL-/Secrets-Aenderung.
-
----
-
-# v30.1 - Investment Rotation Radar
-
-v30.1 baut auf dem stabilen v30.0 Controlled Cutover auf und fuegt einen eigenstaendigen, beobachtenden Branchen-/Kapitalfluss-Radar hinzu. Ziel ist nicht, den staerksten Sektor der Vergangenheit zu markieren, sondern moeglichst frueh zu erkennen, wo sich relative Marktführerschaft beschleunigt oder abkuehlt.
-
-## Neuer Trading-Cockpit-Bereich
-Im Trading-Cockpit gibt es `🧭 Rotation Radar`.
-
-Die erste Version beobachtet drei Ebenen:
-- Investmentklassen / Regionen
-- US-Sektoren
-- liquide Branchen- und Themen-ETFs
-
-Europa und Deutschland sind als eigene Aktienregionen enthalten; die detaillierte Sektor-/Branchenrotation startet bewusst mit besonders liquiden US-/globalen ETFs, um die Datenqualitaet und Provider-Stabilitaet hoch zu halten.
-
-## Drei Kernwerte
-### Leadership Score
-0-100 aus:
-- 63T Relative Staerke
-- 21T Relative Staerke
-- 21T absolute Performance
-- Trendstruktur ueber MA20 / MA50 / MA200
-
-Leadership beantwortet: `Wo ist die bestehende Marktführerschaft?`
-
-### Rotation Momentum
-0-100 aus der Beschleunigung der 5T-, 21T- und 63T-Relative-Staerke sowie der kurzfristigen eigenen Performance.
-
-Rotation beantwortet: `Wo verbessert oder verschlechtert sich die Marktposition gerade?`
-
-Dadurch kann ein noch mittelmaessiger Sektor frueh als Rotation erscheinen, bevor sein 63T-Leadership-Wert bereits an der Spitze steht.
-
-### Breadth Confirmation
-Breadth ist bewusst eine zweite, manuell ausgeloeste Stufe. Fuer ausgewaehlte Sektoren/Branchen werden repraesentative Einzelwerte betrachtet:
-- Anteil ueber MA20
-- Anteil ueber MA50
-- Anteil mit positiver 21T-Performance
-- Anteil mit positiver 21T-RS gegen SPY
-
-Das vermeidet, dass bei jedem Radar-Aufruf dutzende zusaetzliche Aktien abgefragt werden.
-
-## Rotationsphasen
-Der Radar unterscheidet:
-- 🟣 Emerging
-- 🟢 Leading
-- 🟡 Mature
-- 🟠 Cooling
-- 🔴 Rotating Out
-
-Zusätzlich werden Rangveraenderungen und Score-Deltas gegen 1T / 5T / 20T historische Marktstände berechnet. Diese historischen Vergleiche werden direkt aus demselben 2-Jahres-Daily-Datensatz rekonstruiert und sind daher nicht davon abhaengig, dass die App an jedem Handelstag geoeffnet war.
-
-## Frueher Trendshift statt nur Rueckspiegel
-Die Tabelle zeigt unter anderem:
-- aktuellen Peer-Rang
-- Rang Δ5T
-- Leadership Δ5T
-- Rotation Δ5T
-- RS 5T / 21T / 63T
-- Trendshift-Lesart
-
-Ein Sektor kann damit beispielsweise noch kein etablierter Leader sein, aber bereits als `Emerging` mit starkem Rangaufstieg sichtbar werden.
-
-## Atomic Radar Snapshot
-Wie beim Live-Screener wird kein halb fertiger neuer Stand als aktuell verkauft:
-- der Kern-Radar wird als kompletter Batch geladen
-- mindestens 85 Prozent Datenabdeckung sind fuer die Veroeffentlichung eines neuen Snapshots erforderlich
-- ein unvollstaendiger Lauf ersetzt den letzten gueltigen Snapshot nicht
-- fehlende Gruppen werden nicht mit alten Einzelzeilen in einen neuen Stand gemischt
-
-Der letzte vollstaendige Radar-Snapshot wird ueber die zentrale Storage-Schicht gespeichert.
-
-## Provider-Schutz
-- Hauptscan nur auf liquide ETFs/Indizes
-- yfinance Batch-Download mit `threads=False`
-- maximal zwei Batch-Versuche
-- Einzel-Fallback nur bei hoechstens sechs fehlenden Symbolen
-- 30-Minuten-Daten-Cache
-- Breadth nur explizit fuer ausgewaehlte Kandidaten
-- kein automatischer Radar-Scan bei jedem Streamlit-Rerun
-
-## Noch kein produktiver Score-Faktor
-v30.1 ist Beobachtungsmodus. Rotation, Breadth und Branchenphase veraendern noch nicht:
-- Live-Ampel
-- Shadow-Ampel
-- Guarded Engine Score
-- Entry-Guardrails
-- Positionen oder Orders
-
-Der Radar schafft zuerst eine eigenstaendige Datengrundlage. Ein spaeterer Schritt kann pruefen, ob Aktien aus `Emerging/Leading` Branchen tatsaechlich bessere Forward-Returns liefern als vergleichbare Setups aus `Cooling/Rotating Out` Branchen.
-
-Keine SQL-/Secrets-Aenderung erforderlich. Das Atomic-Live-Screener-Cache-Schema bleibt unveraendert.
+## Unveraendert
+Keine Aenderung an Rotation-Berechnung, Leadership/Rotation/Breadth, Live-/Shadow-Ampeln, Scores, Guardrails, Atomic-Scan-Schema, Provider-Drosselung, SQL oder Secrets.

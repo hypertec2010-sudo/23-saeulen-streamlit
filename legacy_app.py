@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.1"
+APP_VERSION = "v30.1a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14023,16 +14023,143 @@ def build_short_thesis(investment, tb_score, market_regime, top_red_flag, positi
     return txt
 
 
-def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
-    """Robuste Firmenname-Anzeige für Radar/Ranking.
+def _v301a_usable_company_name(value, ticker):
+    """Akzeptiert nur echte Namen, niemals Ticker/Ticker-Root als Firmenname."""
+    val = str(value or "").strip()
+    if not val or val.lower() in {"-", "nan", "none", "null", "n/a", "na"}:
+        return None
+    ticker_norm = str(ticker or "").strip().upper()
+    ticker_root = ticker_norm.split(".")[0] if ticker_norm else ""
+    val_norm = val.upper().strip()
+    if val_norm in {ticker_norm, ticker_root}:
+        return None
+    return val
 
-    Zieht den echten Unternehmensnamen aus Analyse-Result, Snapshot-Zeile oder
-    notfalls aus der Yahoo-Suche. Wichtig für Radar-Snapshots: In gespeicherten
-    Abschnitts-Frames kann `Name` bereits auf den Ticker zurueckgefallen sein.
-    Dann wird hier erneut aufgeloest, statt den Ticker als Namen stehen zu lassen.
+
+def _v301a_offline_company_name(ticker):
+    """Provider-freier Fallback fuer bekannte App-Ticker/Aliasse."""
+    t = str(ticker or "").strip().upper()
+    if not t:
+        return None
+    # Exakte Namen fuer haeufige Ticker, die in der Alias-Tabelle nicht enthalten
+    # sind oder bei denen Title-Case unguenstig waere.
+    exact = {
+        "DELL": "Dell Technologies Inc.",
+        "MSFT": "Microsoft Corporation",
+        "NVDA": "NVIDIA Corporation",
+        "NFLX": "Netflix, Inc.",
+        "AAPL": "Apple Inc.",
+        "AMZN": "Amazon.com, Inc.",
+        "GOOGL": "Alphabet Inc.",
+        "META": "Meta Platforms, Inc.",
+        "AMD": "Advanced Micro Devices, Inc.",
+        "AVGO": "Broadcom Inc.",
+        "SAP.DE": "SAP SE",
+        "ADS.DE": "adidas AG",
+        "IFX.DE": "Infineon Technologies AG",
+    }
+    if t in exact:
+        return exact[t]
+    try:
+        aliases = []
+        for alias, symbol in (_COMMON_NAME_TICKER_MAP_V202 or {}).items():
+            if str(symbol or "").strip().upper() != t:
+                continue
+            a = str(alias or "").strip()
+            if not a or a.upper() in {t, t.split(".")[0]}:
+                continue
+            aliases.append(a)
+        if aliases:
+            # Menschliche Mehrwort-Aliasse bevorzugen, dann laengeren Namen.
+            best = sorted(aliases, key=lambda x: ((" " in x), len(x)), reverse=True)[0]
+            return best.title()
+    except Exception:
+        pass
+    return None
+
+
+def _v301a_name_registry():
+    """Session-/Storage-Registry fuer bereits sicher aufgeloeste Ticker-Namen.
+
+    Sie verhindert, dass ein spaeterer Yahoo-Search-Fehler einen zuvor bekannten
+    Unternehmensnamen wieder auf den Ticker zurueckfallen laesst.
+    """
+    key = "v301a_ticker_name_registry"
+    try:
+        existing = st.session_state.get(key)
+        if isinstance(existing, dict):
+            return existing
+    except Exception:
+        pass
+
+    registry = {}
+    try:
+        storage = globals().get("_storage_v280")
+        if storage is not None:
+            payload = storage.load_namespace("ticker_name_registry", default={})
+            if isinstance(payload, dict):
+                raw = payload.get("names", payload)
+                if isinstance(raw, dict):
+                    for tk, nm in raw.items():
+                        t = str(tk or "").strip().upper()
+                        usable = _v301a_usable_company_name(nm, t)
+                        if t and usable:
+                            registry[t] = usable
+    except Exception:
+        pass
+    try:
+        st.session_state[key] = registry
+    except Exception:
+        pass
+    return registry
+
+
+def _v301a_remember_company_name(ticker, name):
+    ticker_norm = str(ticker or "").strip().upper()
+    usable = _v301a_usable_company_name(name, ticker_norm)
+    if not ticker_norm or not usable:
+        return usable
+    try:
+        registry = _v301a_name_registry()
+        if registry.get(ticker_norm) != usable:
+            registry[ticker_norm] = usable
+            st.session_state["v301a_ticker_name_registry_dirty"] = True
+    except Exception:
+        pass
+    return usable
+
+
+def _v301a_persist_name_registry():
+    """Schreibt die Registry gebuendelt statt einmal pro Screener-Ticker."""
+    try:
+        if not bool(st.session_state.get("v301a_ticker_name_registry_dirty", False)):
+            return False
+        registry = _v301a_name_registry()
+        storage = globals().get("_storage_v280")
+        if storage is None:
+            return False
+        storage.save_namespace("ticker_name_registry", {"names": dict(registry)})
+        st.session_state["v301a_ticker_name_registry_dirty"] = False
+        return True
+    except Exception:
+        return False
+
+
+def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28, allow_data_cache=True, allow_search=True):
+    """Robuste Firmenname-Anzeige fuer Radar/Live-Screener.
+
+    v30.1a-Reihenfolge:
+    1) Name direkt aus dem Analyse-Resultat
+    2) persistente Ticker->Name-Registry
+    3) bereits vom Analyse-Lauf gefuellter ``load_data``-Cache
+    4) Yahoo-Suche nur als letzter Fallback
+
+    Damit gilt ``Name == Ticker`` nie mehr als erfolgreicher Firmenname und ein
+    temporaerer Search-/Rate-Limit-Fehler kann einen bekannten Namen nicht wieder
+    durch den Ticker ersetzen.
     """
     result = result or {}
-    ticker = str(fallback_ticker or result.get("ticker", "") or result.get("Ticker", "") or "").strip()
+    ticker = str(fallback_ticker or result.get("ticker", "") or result.get("Ticker", "") or "").strip().upper()
     info = result.get("info", {}) or {}
     if not isinstance(info, dict):
         info = {}
@@ -14050,27 +14177,54 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
         info.get("quoteSourceName"),
     ]
 
-    ticker_norm = ticker.strip().upper()
-    ticker_root = ticker_norm.split(".")[0] if ticker_norm else ""
-
-    def _usable_name(val):
-        val = str(val or "").strip()
-        if not val or val.lower() in {"-", "nan", "none", "null"}:
-            return None
-        val_norm = val.upper().strip()
-        if val_norm in {ticker_norm, ticker_root}:
-            return None
-        return val
-
     for cand in candidates:
-        val = _usable_name(cand)
+        val = _v301a_usable_company_name(cand, ticker)
         if val:
+            _v301a_remember_company_name(ticker, val)
             return shorten_text(val, max_len)
 
-    # v15.24.0: Letzter Fallback für Radar-Snapshots/Abschnitte ohne Result-Objekt.
-    # Yahoo-Suche liefert für reine Ticker oft shortname/longname; das verhindert
-    # insbesondere im Abschnitt "Jetzt spannend" die Anzeige Ticker = Name.
-    if ticker:
+    # Bereits erfolgreich aufgeloeste Namen bleiben auch bei spaeteren Provider-
+    # oder Search-Problemen stabil erhalten.
+    try:
+        cached_name = _v301a_usable_company_name(_v301a_name_registry().get(ticker), ticker)
+        if cached_name:
+            return shorten_text(cached_name, max_len)
+    except Exception:
+        pass
+
+    # Provider-freier Offline-Fallback fuer bekannte App-Ticker/Aliasse.
+    try:
+        offline_name = _v301a_usable_company_name(_v301a_offline_company_name(ticker), ticker)
+        if offline_name:
+            _v301a_remember_company_name(ticker, offline_name)
+            return shorten_text(offline_name, max_len)
+    except Exception:
+        pass
+
+    # Der Aktien-Analyse-Lauf verwendet load_data() ohnehin. Unmittelbar danach ist
+    # dieser Aufruf deshalb normalerweise ein Streamlit-Cache-Hit und erzeugt keine
+    # zusaetzliche Yahoo-Anfrage. So gehen longName/shortName beim Flattening des
+    # Analyse-Results nicht verloren.
+    if ticker and allow_data_cache:
+        try:
+            _, cached_info = load_data(ticker)
+            if isinstance(cached_info, dict):
+                for cand in [
+                    cached_info.get("longName"),
+                    cached_info.get("shortName"),
+                    cached_info.get("displayName"),
+                    cached_info.get("quoteSourceName"),
+                ]:
+                    val = _v301a_usable_company_name(cand, ticker)
+                    if val:
+                        _v301a_remember_company_name(ticker, val)
+                        return shorten_text(val, max_len)
+        except Exception:
+            pass
+
+    # Nur letzter Fallback. Ein Fehlschlag hier darf keinen bereits bekannten Namen
+    # zerstoeren, weil Registry und Analyse-Cache vorher geprueft wurden.
+    if ticker and allow_search:
         try:
             matches = search_tickers(ticker, max_results=6)
             ticker_upper = ticker.upper()
@@ -14078,12 +14232,14 @@ def radar_company_display_name_v15237(result, fallback_ticker=None, max_len=28):
             for m in matches:
                 sym = str(m.get("symbol", "") or "").upper()
                 if sym in {ticker_upper, ticker_root_upper}:
-                    val = _usable_name(m.get("longname") or m.get("shortname") or m.get("name"))
+                    val = _v301a_usable_company_name(m.get("longname") or m.get("shortname") or m.get("name"), ticker)
                     if val:
+                        _v301a_remember_company_name(ticker, val)
                         return shorten_text(val, max_len)
             for m in matches:
-                val = _usable_name(m.get("longname") or m.get("shortname") or m.get("name"))
+                val = _v301a_usable_company_name(m.get("longname") or m.get("shortname") or m.get("name"), ticker)
                 if val:
+                    _v301a_remember_company_name(ticker, val)
                     return shorten_text(val, max_len)
         except Exception:
             pass
@@ -16746,6 +16902,35 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 "Dieser Cache ist kein vollständig abgeschlossener Atomic-Scan und wird nicht als neuer Live-Stand verwendet. "
                                 "Bitte 'Jetzt vollständig aktualisieren' ausführen."
                             )
+
+                    # v30.1a: Name-Hardening auch fuer bereits gespeicherte Atomic-Snapshots.
+                    # Ein alter Snapshot darf Name=Ticker enthalten; bekannte Registry-Namen
+                    # werden ohne Provider-Aufruf sofort repariert. Frische Vollscans haben
+                    # die Registry zuvor ueber den Analyse-Cache gefuellt.
+                    try:
+                        if isinstance(live_df, pd.DataFrame) and not live_df.empty and "Ticker" in live_df.columns:
+                            if "Name" not in live_df.columns:
+                                live_df["Name"] = "-"
+                            for _idx_v301a, _row_v301a in live_df.iterrows():
+                                _tk_v301a = str(_row_v301a.get("Ticker") or "").strip().upper()
+                                _nm_v301a = _v301a_usable_company_name(_row_v301a.get("Name"), _tk_v301a)
+                                if _nm_v301a:
+                                    _v301a_remember_company_name(_tk_v301a, _nm_v301a)
+                                    continue
+                                # Beim reinen Snapshot-Render keine versteckten Yahoo-Requests.
+                                # Die Registry wird durch echte Scanlaeufe gefuellt.
+                                _resolved_v301a = radar_company_display_name_v15237(
+                                    {"Ticker": _tk_v301a, "Name": _row_v301a.get("Name")},
+                                    _tk_v301a,
+                                    64,
+                                    allow_data_cache=False,
+                                    allow_search=False,
+                                )
+                                if _v301a_usable_company_name(_resolved_v301a, _tk_v301a):
+                                    live_df.at[_idx_v301a, "Name"] = _resolved_v301a
+                            _v301a_persist_name_registry()
+                    except Exception:
+                        pass
 
                     # Fehler gehoeren zum AKTUELLEN Vollscan und werden immer sichtbar
                     # ausgewiesen. Alte Ergebniszeilen werden fuer diese Ticker nicht

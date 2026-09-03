@@ -1,3 +1,22 @@
+# v30.1a - Firmenname-Resolver Hardening
+
+v30.1a behebt den Rueckfall `Name = Ticker` im Live-Screener.
+
+## Was geaendert wurde
+- `Name == Ticker` bzw. `Name == Ticker-Root` gilt nicht mehr als gueltiger Firmenname.
+- Echte Namen aus dem Analyse-Result werden bevorzugt und in einer persistenten Ticker->Name-Registry gemerkt.
+- Wenn das geflattete Live-Result keinen Namen enthaelt, wird der bereits vom Aktien-Analyse-Lauf gefuellte `load_data()`-Cache fuer `longName` / `shortName` genutzt. Das ist im normalen Vollscan ein Cache-Hit und erzeugt keine zusaetzliche Provider-Welle.
+- Bekannte App-Ticker/Aliasse besitzen einen provider-freien Offline-Fallback; u. a. DELL, MSFT, NVDA, NFLX, AAPL, AMZN, GOOGL, META, AMD, AVGO, SAP.DE, ADS.DE und IFX.DE.
+- Yahoo Search bleibt nur letzter Fallback. Ein temporaerer Search-/Rate-Limit-Fehler kann einen bereits bekannten Namen nicht mehr wieder durch den Ticker ersetzen.
+- Bereits gespeicherte Atomic-Snapshots werden beim Anzeigen aus der Registry bzw. dem Offline-Fallback repariert, ohne versteckte Kurs-/Yahoo-Requests aus dem UI-Renderpfad.
+
+## Verhalten nach dem Update
+Nach einem vollstaendigen Live-Scan werden erfolgreich aufgeloeste Namen dauerhaft gemerkt. Dadurch bleiben sie auch bei spaeteren Cache-/Snapshot-Restores stabil.
+
+Keine Aenderung an Live-/Shadow-Ampel, Rotation Radar, Scores, Guardrails, Atomic-Scan-Logik oder Provider-Drosselung. Keine SQL-/Secrets-Aenderung.
+
+---
+
 # v30.1 - Investment Rotation Radar
 
 v30.1 baut auf dem stabilen v30.0 Controlled Cutover auf und fuegt einen eigenstaendigen, beobachtenden Branchen-/Kapitalfluss-Radar hinzu. Ziel ist nicht, den staerksten Sektor der Vergangenheit zu markieren, sondern moeglichst frueh zu erkennen, wo sich relative Marktführerschaft beschleunigt oder abkuehlt.

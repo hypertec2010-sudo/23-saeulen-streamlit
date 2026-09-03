@@ -1,5 +1,14 @@
 # Changelog
 
+## v30.1a
+- Live-Screener-Firmenname-Hardening: `Name = Ticker` wird nicht mehr als gueltiger Name akzeptiert.
+- Persistente Ticker->Firmenname-Registry ueber zentrale Storage-Schicht.
+- Firmenname-Fallback aus dem bereits gefuellten Analyse-/`load_data`-Cache statt sofortiger Yahoo-Suche.
+- Provider-freier Offline-Fallback fuer bekannte App-Ticker/Aliasse, inklusive DELL, MSFT, NVDA und NFLX.
+- Atomic-Snapshot-Anzeige repariert bekannte Namen ohne versteckte Provider-Abfragen.
+- Yahoo Search nur noch letzter Fallback; temporaere Search-/Rate-Limits zerstoeren bekannte Namen nicht mehr.
+- Keine Aenderung an Scores, Ampeln, Rotation Radar oder Atomic-Scan-Logik.
+
 ## v30.1
 - Investment Rotation Radar als neuer Trading-Cockpit-Bereich eingefuehrt.
 - Hierarchisches Universum aus Investmentklassen/Regionen, US-Sektoren und liquiden Branchen-/Themen-ETFs.

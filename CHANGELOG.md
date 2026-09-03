@@ -1,5 +1,21 @@
 # Changelog
 
+## v30.1
+- Investment Rotation Radar als neuer Trading-Cockpit-Bereich eingefuehrt.
+- Hierarchisches Universum aus Investmentklassen/Regionen, US-Sektoren und liquiden Branchen-/Themen-ETFs.
+- Leadership Score 0-100 aus 63T-/21T-RS, 21T-Performance und MA20/50/200-Trendstruktur.
+- Rotation Momentum 0-100 auf Basis der Beschleunigung von 5T-/21T-/63T-Relative-Staerke und kurzfristiger Eigenperformance.
+- Rotationsphasen `Emerging`, `Leading`, `Mature`, `Cooling`, `Rotating Out`.
+- Historische 1T-/5T-/20T-Deltas und Peer-Rangveraenderungen direkt aus dem gleichen Daily-Datensatz.
+- Zweistufige Breadth Confirmation ueber repraesentative Sektor-/Branchenmitglieder.
+- Breadth misst Anteil ueber MA20/MA50, positive 21T-Performance und positive 21T-RS.
+- Atomic Radar Snapshot: ein unvollstaendiger neuer Lauf ersetzt den letzten gueltigen Stand nicht.
+- Zentraler Storage fuer den letzten vollstaendigen Rotation-Snapshot.
+- Provider-Schutz durch Batch-Download, begrenzte Retries, kleinen Einzel-Fallback, 30-Minuten-Cache und manuelle Breadth-Stufe.
+- Mobile Kurzansicht fuer die wichtigsten Rotationssignale plus komplette Tabelle im Expander.
+- Beobachtungsmodus: keine Aenderung an Live-/Shadow-Ampel, Scores, Guardrails, Positionen oder Orders.
+- Keine SQL-/Secrets-Aenderung und keine Aenderung am Atomic-Live-Screener-Cache-Schema.
+
 ## v30.0
 - Validated Trading Engine / Controlled Cutover als transparente Release-Gate-Schicht eingefuehrt.
 - Produktive Live-Ampel bleibt Kontrollgruppe; v30.0 schaltet keine Engine automatisch um.

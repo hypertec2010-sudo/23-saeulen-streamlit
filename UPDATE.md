@@ -1,56 +1,90 @@
-# v30.0 - Validated Trading Engine / Controlled Cutover
+# v30.1 - Investment Rotation Radar
 
-v30.0 baut auf dem stabilen v29.1 Portfolio & Risk Engine auf. Diese Version ist bewusst kein automatisches Umschalten der produktiven Ampel. Sie fuehrt einen transparenten Release-Gate-Prozess ein, der aus real gespeicherten Shadow-Forward-Returns, Guardrail-Ereignissen, Regime-Metadaten, Trading-Journal-Lerndaten und der Portfolio-Konfiguration ableitet, welche Engine-Bausteine fuer einen spaeteren kontrollierten Cutover ausreichend belegt sind.
+v30.1 baut auf dem stabilen v30.0 Controlled Cutover auf und fuegt einen eigenstaendigen, beobachtenden Branchen-/Kapitalfluss-Radar hinzu. Ziel ist nicht, den staerksten Sektor der Vergangenheit zu markieren, sondern moeglichst frueh zu erkennen, wo sich relative Marktführerschaft beschleunigt oder abkuehlt.
 
-## Neue Cutover-Zentrale
-Im Live-Screener / Shadow-Bereich gibt es den neuen Expander `Validated Trading Engine / Controlled Cutover`. Dort werden die vorhandenen Daten in eine Freigabeentscheidung uebersetzt.
+## Neuer Trading-Cockpit-Bereich
+Im Trading-Cockpit gibt es `🧭 Rotation Radar`.
 
-Die produktive Betriebsart bleibt in v30.0 immer die bestehende Live-Ampel. Auch ein gruener Validierungsstatus schaltet keine Schwelle, Gewichtung oder Ampel automatisch um.
+Die erste Version beobachtet drei Ebenen:
+- Investmentklassen / Regionen
+- US-Sektoren
+- liquide Branchen- und Themen-ETFs
 
-## Harte Release-Gates
-Ein Voll-Cutover bleibt gesperrt, solange eines der harten Gates offen ist:
-- mindestens 40 auswertbare Divergenz-Episoden auf dem automatisch gewaehlten Primaerhorizont
-- Shadow-Trefferquote mindestens 56 Prozent
-- durchschnittliche Shadow-Edge mindestens +0,40 Prozent und positiver Median
-- mindestens 10 Aufwertungen und 10 Abwertungen mit jeweils mindestens 52 Prozent Richtungs-Trefferquote
-- mindestens zwei stabile Forward-Horizonte mit n>=10
-- mindestens 70 Prozent Kontextabdeckung ueber Guardrail, RS-Dynamik, Markt- und Volatilitaetsregime
-- mindestens 10 messbar gebremste Guardrail-Ereignisse und mindestens 55 Prozent defensiv bestaetigte Verlaeufe
-- mindestens zwei Marktregime mit jeweils mindestens fuenf auswertbaren Episoden
+Europa und Deutschland sind als eigene Aktienregionen enthalten; die detaillierte Sektor-/Branchenrotation startet bewusst mit besonders liquiden US-/globalen ETFs, um die Datenqualitaet und Provider-Stabilitaet hoch zu halten.
 
-Der Validation Score von 0 bis 100 dient nur als Orientierung. Er kann kein offenes hartes Gate ueberstimmen.
+## Drei Kernwerte
+### Leadership Score
+0-100 aus:
+- 63T Relative Staerke
+- 21T Relative Staerke
+- 21T absolute Performance
+- Trendstruktur ueber MA20 / MA50 / MA200
 
-## Freigabe-Matrix pro Engine-Baustein
-v30.0 bewertet separat:
+Leadership beantwortet: `Wo ist die bestehende Marktführerschaft?`
+
+### Rotation Momentum
+0-100 aus der Beschleunigung der 5T-, 21T- und 63T-Relative-Staerke sowie der kurzfristigen eigenen Performance.
+
+Rotation beantwortet: `Wo verbessert oder verschlechtert sich die Marktposition gerade?`
+
+Dadurch kann ein noch mittelmaessiger Sektor frueh als Rotation erscheinen, bevor sein 63T-Leadership-Wert bereits an der Spitze steht.
+
+### Breadth Confirmation
+Breadth ist bewusst eine zweite, manuell ausgeloeste Stufe. Fuer ausgewaehlte Sektoren/Branchen werden repraesentative Einzelwerte betrachtet:
+- Anteil ueber MA20
+- Anteil ueber MA50
+- Anteil mit positiver 21T-Performance
+- Anteil mit positiver 21T-RS gegen SPY
+
+Das vermeidet, dass bei jedem Radar-Aufruf dutzende zusaetzliche Aktien abgefragt werden.
+
+## Rotationsphasen
+Der Radar unterscheidet:
+- 🟣 Emerging
+- 🟢 Leading
+- 🟡 Mature
+- 🟠 Cooling
+- 🔴 Rotating Out
+
+Zusätzlich werden Rangveraenderungen und Score-Deltas gegen 1T / 5T / 20T historische Marktstände berechnet. Diese historischen Vergleiche werden direkt aus demselben 2-Jahres-Daily-Datensatz rekonstruiert und sind daher nicht davon abhaengig, dass die App an jedem Handelstag geoeffnet war.
+
+## Frueher Trendshift statt nur Rueckspiegel
+Die Tabelle zeigt unter anderem:
+- aktuellen Peer-Rang
+- Rang Δ5T
+- Leadership Δ5T
+- Rotation Δ5T
+- RS 5T / 21T / 63T
+- Trendshift-Lesart
+
+Ein Sektor kann damit beispielsweise noch kein etablierter Leader sein, aber bereits als `Emerging` mit starkem Rangaufstieg sichtbar werden.
+
+## Atomic Radar Snapshot
+Wie beim Live-Screener wird kein halb fertiger neuer Stand als aktuell verkauft:
+- der Kern-Radar wird als kompletter Batch geladen
+- mindestens 85 Prozent Datenabdeckung sind fuer die Veroeffentlichung eines neuen Snapshots erforderlich
+- ein unvollstaendiger Lauf ersetzt den letzten gueltigen Snapshot nicht
+- fehlende Gruppen werden nicht mit alten Einzelzeilen in einen neuen Stand gemischt
+
+Der letzte vollstaendige Radar-Snapshot wird ueber die zentrale Storage-Schicht gespeichert.
+
+## Provider-Schutz
+- Hauptscan nur auf liquide ETFs/Indizes
+- yfinance Batch-Download mit `threads=False`
+- maximal zwei Batch-Versuche
+- Einzel-Fallback nur bei hoechstens sechs fehlenden Symbolen
+- 30-Minuten-Daten-Cache
+- Breadth nur explizit fuer ausgewaehlte Kandidaten
+- kein automatischer Radar-Scan bei jedem Streamlit-Rerun
+
+## Noch kein produktiver Score-Faktor
+v30.1 ist Beobachtungsmodus. Rotation, Breadth und Branchenphase veraendern noch nicht:
+- Live-Ampel
+- Shadow-Ampel
 - Guarded Engine Score
-- Shadow-Aufwertungen
-- Shadow-Abwertungen
-- Engine Guardrails
-- RS-Dynamik / Kontext
-- Markt- und Volatilitaetsregime
-- Trading Journal & Learning Engine
-- Exit Engine 2.0
-- Portfolio-Risikogate
+- Entry-Guardrails
+- Positionen oder Orders
 
-Moegliche Stati sind `Shadow only`, `Daten sammeln`, `Teilfreigabe-Kandidat`, `Freigabereif` sowie beim Portfolio-Gate `Beratend aktiv`.
+Der Radar schafft zuerst eine eigenstaendige Datengrundlage. Ein spaeterer Schritt kann pruefen, ob Aktien aus `Emerging/Leading` Branchen tatsaechlich bessere Forward-Returns liefern als vergleichbare Setups aus `Cooling/Rotating Out` Branchen.
 
-## Mehrere Horizonte statt Einzelwert
-Die Freigabeentscheidung betrachtet 1T / 3T / 5T / 10T / 20T gemeinsam. Der Primaerhorizont wird automatisch nach Datenreife gewaehlt, wobei ein sinnvoller Swing-Horizont gegenueber einem rauschenden 1T-Ergebnis bevorzugt wird.
-
-Mehrere Score-Aenderungen innerhalb derselben laufenden Live-vs-Shadow-Divergenz werden weiterhin nicht als unabhaengige Stichproben doppelt gezaehlt.
-
-## Reale Trading-Evidenz als zusaetzliche Stuetze
-Die v29.0 Learning Engine wird als zusaetzliche, aber nicht harte Freigabe-Evidenz genutzt. Beruecksichtigt werden Anzahl geschlossener Trades, durchschnittliches R und Entry-Kontextabdeckung. Die Exit Engine 2.0 bekommt einen eigenen Reifegrad auf Basis sicher zugeordneter Warnung-vs-Exit-Verlaeufe.
-
-Historische Trades oder Shadow-Events ohne damals gespeicherten Kontext werden weiterhin nicht mit heutigen Daten aufgefuellt.
-
-## Portfolio-Kontext
-Das v29.1 Portfolio-Risikogate wird im Cutover-Prozess als operative Schutzschicht sichtbar. Es bleibt bewusst beratend: v30.0 verwendet das Portfolio-Gate nicht fuer automatische Orders oder zum Umschreiben der Live-/Shadow-Ampel.
-
-## Keine neuen Provider-Abfragen
-Der Cutover-Report verwendet ausschliesslich bereits gespeicherte Shadow-Performance-, Journal-, Event- und Portfolio-Daten. Er startet keine zusaetzlichen Yahoo-/Marktprovider-Abfragen und veraendert das Atomic-Screener-Cache-Schema nicht.
-
-## Naechster Schritt bei echter Freigabereife
-Erst wenn alle harten Gates erfuellt sind, meldet v30.0 `Kontrollierter Cutover-Kandidat`. Selbst dann bleibt die Live-Ampel produktiv. Ein spaeterer v30.x-Schritt kann daraus einen begrenzten A/B-Cutover einzelner freigegebener Komponenten machen, statt die bestehende Engine sofort vollstaendig zu ersetzen.
-
-Keine SQL-/Secrets-Aenderung erforderlich.
+Keine SQL-/Secrets-Aenderung erforderlich. Das Atomic-Live-Screener-Cache-Schema bleibt unveraendert.

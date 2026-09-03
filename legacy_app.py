@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.0"
+APP_VERSION = "v30.1"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14252,6 +14252,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "trade_learning.py",
     _MODULE_DIR_V252 / "portfolio_risk.py",
     _MODULE_DIR_V252 / "validated_engine.py",
+    _MODULE_DIR_V252 / "rotation_radar.py",
     _MODULE_DIR_V252 / "live_monitor.py",
     _MODULE_DIR_V252 / "watchlist_storage.py",
     _MODULE_DIR_V252 / "storage" / "__init__.py",
@@ -14287,6 +14288,7 @@ from modules import trade_journal as _trade_journal_module
 from modules import trade_learning as _trade_learning_module
 from modules import portfolio_risk as _portfolio_risk_module
 from modules import validated_engine as _validated_engine_v300
+from modules import rotation_radar as _rotation_radar_v301
 from modules import shadow_performance as _shadow_performance_v287
 from modules import live_monitor as _live_module
 from modules import watchlist_storage as _watchlist_module
@@ -14307,6 +14309,12 @@ _storage_v280 = _create_storage_manager_v280(st_module=st, app_dir=_APP_DIR_V252
 # the module for backwards compatibility.
 try:
     _shadow_performance_v287.configure_storage(_storage_v280)
+except Exception:
+    pass
+# v30.1: Rotation-Radar speichert nur vollständig abgeschlossene Radar-Snapshots
+# über dieselbe zentrale Storage-Schicht. Kursabrufe bleiben in der App-Schicht.
+try:
+    _rotation_radar_v301.configure_storage(_storage_v280)
 except Exception:
     pass
 # v28.1: Fachmodule greifen nicht mehr direkt auf Storage-Namespaces zu.
@@ -14337,6 +14345,110 @@ if _use_database_watchlists_v280:
     get_watchlist_alert_mode = _watchlist_repository_v280.get_watchlist_alert_mode
     get_watchlist_check_frequency = _watchlist_repository_v280.get_watchlist_check_frequency
     get_due_watchlists_for_slot = _watchlist_repository_v280.get_due_watchlists_for_slot
+
+
+# ---------- v30.1: Investment Rotation Radar Provider ----------
+# Ein Radar-Abruf arbeitet mit EINEM atomaren Daily-Close-Frame. Der Refresh-Token
+# wird nur bei expliziter Benutzeraktualisierung erhöht; dadurch erzwingt der
+# Button frische Daten, ohne globale yfinance-/Analyse-Caches zu löschen.
+def _v301_extract_close_frame(raw, symbols):
+    symbols = [str(x).upper() for x in (symbols or []) if str(x).strip()]
+    if raw is None or not isinstance(raw, pd.DataFrame) or raw.empty:
+        return pd.DataFrame()
+    try:
+        if isinstance(raw.columns, pd.MultiIndex):
+            lvl0 = [str(x) for x in raw.columns.get_level_values(0)]
+            lvl1 = [str(x) for x in raw.columns.get_level_values(1)]
+            if "Close" in lvl0:
+                close = raw["Close"].copy()
+            elif "Close" in lvl1:
+                close = raw.xs("Close", axis=1, level=1).copy()
+            else:
+                return pd.DataFrame()
+        else:
+            if "Close" not in raw.columns:
+                return pd.DataFrame()
+            if len(symbols) != 1:
+                return pd.DataFrame()
+            close = pd.DataFrame({symbols[0]: raw["Close"]})
+        if isinstance(close, pd.Series):
+            close = close.to_frame(name=symbols[0] if symbols else "Close")
+        close.columns = [str(c).upper() for c in close.columns]
+        close = close.apply(pd.to_numeric, errors="coerce").dropna(how="all")
+        return close
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _load_rotation_prices_v301(tickers_tuple, refresh_token=0):
+    symbols = tuple(dict.fromkeys(str(x).upper().strip() for x in (tickers_tuple or ()) if str(x).strip()))
+    if not symbols:
+        return pd.DataFrame(), pd.DataFrame()
+    errors = []
+    close = pd.DataFrame()
+    # Zwei Batch-Versuche sind provider-schonender als sofort dutzende Einzelabrufe.
+    for attempt in range(2):
+        try:
+            raw = yf.download(
+                tickers=list(symbols),
+                period="2y",
+                interval="1d",
+                auto_adjust=True,
+                progress=False,
+                threads=False,
+                group_by="column",
+            )
+            candidate = _v301_extract_close_frame(raw, symbols)
+            if not candidate.empty:
+                close = candidate if close.empty else close.combine_first(candidate)
+            coverage = sum(1 for x in symbols if x in close.columns and close[x].dropna().shape[0] >= 150)
+            if coverage >= max(1, int(len(symbols) * 0.85)):
+                break
+        except Exception as exc:
+            errors.append({"Ticker": "BATCH", "Fehler": str(exc), "Versuch": attempt + 1})
+        if attempt == 0:
+            time.sleep(1.0)
+
+    # Nur wenige echte Lücken einzeln nachladen. Bei einem globalen Rate-Limit
+    # vermeiden wir absichtlich einen Sturm aus 30+ Einzelrequests.
+    missing = [x for x in symbols if x not in close.columns or close[x].dropna().shape[0] < 150]
+    if 0 < len(missing) <= 6:
+        for symbol in missing:
+            try:
+                hist = yf.Ticker(symbol).history(period="2y", interval="1d", auto_adjust=True)
+                if isinstance(hist, pd.DataFrame) and not hist.empty and "Close" in hist.columns:
+                    ser = pd.to_numeric(hist["Close"], errors="coerce")
+                    if close.empty:
+                        close = pd.DataFrame(index=ser.index)
+                    close[symbol] = ser
+                else:
+                    errors.append({"Ticker": symbol, "Fehler": "Keine Daily-Historie", "Versuch": "Fallback"})
+            except Exception as exc:
+                errors.append({"Ticker": symbol, "Fehler": str(exc), "Versuch": "Fallback"})
+            time.sleep(0.25)
+    elif len(missing) > 6:
+        for symbol in missing:
+            errors.append({"Ticker": symbol, "Fehler": "Batch unvollständig; Einzel-Fallback zum Provider-Schutz ausgesetzt", "Versuch": "Atomic"})
+
+    if not close.empty:
+        close = close.sort_index().apply(pd.to_numeric, errors="coerce")
+    return close, pd.DataFrame(errors)
+
+
+def _v301_rotation_age_text(saved_at):
+    try:
+        ts = pd.to_datetime(saved_at, utc=True)
+        now = pd.Timestamp.now(tz="UTC")
+        minutes = max(0.0, (now - ts).total_seconds() / 60.0)
+        if minutes < 60:
+            return f"{minutes:.0f} Min."
+        if minutes < 24 * 60:
+            return f"{minutes / 60.0:.1f} Std."
+        return f"{minutes / (24 * 60.0):.1f} Tage"
+    except Exception:
+        return "n/a"
+
 
 _risk_module.configure_context(
     build_professional_radar_decision_v18=build_professional_radar_decision_v18,
@@ -16677,7 +16789,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         # Bereiche bei jedem Widget-Rerun aus. Risiko-/Positions-Eingaben
                         # starten dadurch keine teuren Analysen aus anderen Bereichen.
                         cockpit_options = [
-                            "📡 Live-Screener", "📐 Risiko-Rechner", "🛡️ Portfolio-Risiko",
+                            "📡 Live-Screener", "🧭 Rotation Radar", "📐 Risiko-Rechner", "🛡️ Portfolio-Risiko",
                             "📌 Positionen / Exit", "📓 Trade-Journal", "🧾 Historie & Details",
                         ]
                         current_cockpit = st.session_state.get("watchlist_cockpit_area_v2413", cockpit_options[0])
@@ -17198,7 +17310,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.caption("Noch keine belastbare Volatilitätsregime-Abdeckung.")
 
                                     st.caption(
-                                        "v30.0 verändert keine Live-/Shadow-Schwellen, Gewichte, Positionen oder Orders. "
+                                        f"{APP_VERSION} verändert keine Live-/Shadow-Schwellen, Gewichte, Positionen oder Orders. "
                                         "Der Validation Score ist nur Orientierung; ein Voll-Cutover bleibt gesperrt, solange auch nur ein hartes Release-Gate offen ist."
                                     )
 
@@ -17220,6 +17332,252 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 except Exception:
                                     score_txt = ""
                             st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
+
+                        # ---------- v30.1: Investment Rotation Radar ----------
+                        elif cockpit_area == "🧭 Rotation Radar":
+                            st.markdown(f"### 🧭 Investment Rotation Radar · {APP_VERSION}")
+                            st.caption(
+                                "Erkennt Kapitalrotation zwischen Investmentklassen, Regionen, Sektoren und Branchen möglichst früh. "
+                                "Leadership misst bestehende Marktführerschaft; Rotation misst deren Beschleunigung/Abkühlung. "
+                                "Breadth bestätigt ausgewählte Sektoren über repräsentative Einzelwerte."
+                            )
+                            st.info(
+                                "Beobachtungsmodus: Der Rotation Radar verändert weder Live- noch Shadow-Ampel und gibt noch keinen automatischen Score-Bonus. "
+                                "Er sammelt zunächst einen unabhängigen Branchen-/Kapitalfluss-Kontext für die spätere Validierung."
+                            )
+
+                            _rot_saved_v301, _rot_saved_err_v301, _rot_meta_v301, _rot_saved_at_v301 = _rotation_radar_v301.load_snapshot()
+                            _rot_df_v301 = _rot_saved_v301.copy() if isinstance(_rot_saved_v301, pd.DataFrame) else pd.DataFrame()
+                            _rot_errors_v301 = _rot_saved_err_v301.copy() if isinstance(_rot_saved_err_v301, pd.DataFrame) else pd.DataFrame()
+                            _rot_meta_live_v301 = dict(_rot_meta_v301 or {})
+
+                            _rr1, _rr2 = st.columns([1.3, 1.0])
+                            with _rr1:
+                                _run_rotation_v301 = st.button(
+                                    "🧭 Rotation Radar vollständig aktualisieren",
+                                    type="primary",
+                                    use_container_width=True,
+                                    key="v301_rotation_refresh",
+                                )
+                            with _rr2:
+                                if _rot_saved_at_v301:
+                                    st.caption(f"Letzter vollständiger Radar-Stand: {_v301_rotation_age_text(_rot_saved_at_v301)} alt")
+                                else:
+                                    st.caption(f"Noch kein vollständiger {APP_VERSION}-Radar-Stand gespeichert.")
+
+                            if _run_rotation_v301:
+                                _token_v301 = int(st.session_state.get("rotation_refresh_token_v301", 0) or 0) + 1
+                                st.session_state["rotation_refresh_token_v301"] = _token_v301
+                                with st.spinner("Rotation Radar lädt die Marktgruppen atomar und berechnet Leadership/Rotation …"):
+                                    _core_prices_v301, _provider_errors_v301 = _load_rotation_prices_v301(
+                                        tuple(_rotation_radar_v301.core_tickers()), _token_v301
+                                    )
+                                    _new_rot_v301, _calc_errors_v301, _new_meta_v301 = _rotation_radar_v301.build_radar(_core_prices_v301)
+                                _coverage_v301 = float((_new_meta_v301 or {}).get("coverage_pct") or 0.0)
+                                _min_rows_v301 = max(1, int(len(_rotation_radar_v301.UNIVERSE) * 0.85))
+                                if isinstance(_new_rot_v301, pd.DataFrame) and len(_new_rot_v301) >= _min_rows_v301 and _coverage_v301 >= 85.0:
+                                    _rot_df_v301 = _new_rot_v301.copy()
+                                    _frames_err_v301 = [x for x in [_provider_errors_v301, _calc_errors_v301] if isinstance(x, pd.DataFrame) and not x.empty]
+                                    _rot_errors_v301 = pd.concat(_frames_err_v301, ignore_index=True) if _frames_err_v301 else pd.DataFrame()
+                                    _rot_meta_live_v301 = dict(_new_meta_v301 or {})
+                                    _rot_meta_live_v301["mode"] = "Atomic Rotation Scan"
+                                    _rot_meta_live_v301["provider_error_count"] = int(len(_provider_errors_v301)) if isinstance(_provider_errors_v301, pd.DataFrame) else 0
+                                    _rotation_radar_v301.save_snapshot(_rot_df_v301, _rot_errors_v301, _rot_meta_live_v301)
+                                    _rot_saved_at_v301 = pd.Timestamp.now(tz="UTC").isoformat()
+                                    st.success(
+                                        f"Rotation Radar vollständig aktualisiert · {_rot_meta_live_v301.get('success', len(_rot_df_v301))}/"
+                                        f"{_rot_meta_live_v301.get('processed', len(_rotation_radar_v301.UNIVERSE))} Marktgruppen · "
+                                        f"Abdeckung {_coverage_v301:.0f}% · kein Mischstand."
+                                    )
+                                else:
+                                    st.error(
+                                        f"Der neue Radar-Lauf war nicht vollständig genug ({_coverage_v301:.0f}% Abdeckung). "
+                                        "Er wurde NICHT als neuer Stand veröffentlicht. Der letzte vollständige Radar-Snapshot bleibt sichtbar."
+                                    )
+
+                            if _rot_df_v301.empty:
+                                st.warning(
+                                    f"Noch kein {APP_VERSION}-Radar-Snapshot vorhanden. Bitte einmal 'Rotation Radar vollständig aktualisieren' ausführen. "
+                                    "Der Radar scannt unabhängig vom Aktien-Live-Screener."
+                                )
+                            else:
+                                _sum_v301 = _rotation_radar_v301.summarize(_rot_df_v301)
+                                _m1, _m2, _m3, _m4 = st.columns(4)
+                                _m1.metric("🟣 Emerging", int(_sum_v301.get("emerging", 0) or 0))
+                                _m2.metric("🟢 Leading", int(_sum_v301.get("leading", 0) or 0))
+                                _m3.metric("🔴 Rotating Out", int(_sum_v301.get("rotating_out", 0) or 0))
+                                _top_name_v301 = str(_sum_v301.get("top_rotation_name") or "-")
+                                _top_score_v301 = _sum_v301.get("top_rotation_score")
+                                try:
+                                    _m4.metric("Top Rotation", _top_name_v301, f"{float(_top_score_v301):.0f}/100")
+                                except Exception:
+                                    _m4.metric("Top Rotation", _top_name_v301)
+
+                                _climber_v301 = str(_sum_v301.get("climber_name") or "-")
+                                _cooling_v301 = str(_sum_v301.get("cooling_name") or "-")
+                                _climb_delta_v301 = _sum_v301.get("climber_rank_delta")
+                                _cool_delta_v301 = _sum_v301.get("cooling_delta")
+                                try:
+                                    st.caption(
+                                        f"Früher Rangaufsteiger: **{_climber_v301}** ({float(_climb_delta_v301):+.0f} Ränge in 5T) · "
+                                        f"stärkste Rotation-Abkühlung: **{_cooling_v301}** ({float(_cool_delta_v301):+.1f} Punkte in 5T)."
+                                    )
+                                except Exception:
+                                    pass
+
+                                st.markdown("#### Breadth Confirmation")
+                                st.caption(
+                                    "Der Hauptscan nutzt nur liquide ETFs/Indizes. Breadth wird bewusst als zweite Stufe nur für ausgewählte "
+                                    "Sektoren/Branchen geladen, um Yahoo-Rate-Limits zu vermeiden. Gemessen werden u. a. Anteil über MA20/MA50, "
+                                    "positive 21T-Performance und positive 21T-RS der repräsentativen Mitglieder."
+                                )
+                                _uf_v301 = _rotation_radar_v301.universe_frame()
+                                _name_map_v301 = dict(zip(_uf_v301["Ticker"].astype(str), _uf_v301["Name"].astype(str))) if not _uf_v301.empty else {}
+                                _default_breadth_v301 = _rotation_radar_v301.top_rotation_candidates(_rot_df_v301, limit=5)
+                                _breadth_options_v301 = _rotation_radar_v301.breadth_candidates()
+                                _breadth_labels_v301 = {
+                                    x: f"{_name_map_v301.get(x, x)} ({x})" for x in _breadth_options_v301
+                                }
+                                _breadth_selected_v301 = st.multiselect(
+                                    "Sektoren/Branchen für Breadth",
+                                    options=_breadth_options_v301,
+                                    default=[x for x in _default_breadth_v301 if x in _breadth_options_v301],
+                                    format_func=lambda x: _breadth_labels_v301.get(x, x),
+                                    key="v301_breadth_selection",
+                                )
+                                if st.button(
+                                    "Breadth für Auswahl bestätigen",
+                                    use_container_width=True,
+                                    disabled=not bool(_breadth_selected_v301),
+                                    key="v301_breadth_refresh",
+                                ):
+                                    _bt_v301 = int(st.session_state.get("rotation_breadth_token_v301", 0) or 0) + 1
+                                    st.session_state["rotation_breadth_token_v301"] = _bt_v301
+                                    _breadth_tickers_v301 = _rotation_radar_v301.breadth_tickers(_breadth_selected_v301)
+                                    with st.spinner(f"Breadth bestätigt {len(_breadth_selected_v301)} Rotationskandidaten …"):
+                                        _breadth_prices_v301, _breadth_provider_err_v301 = _load_rotation_prices_v301(
+                                            tuple(_breadth_tickers_v301), _bt_v301
+                                        )
+                                        _breadth_df_v301 = _rotation_radar_v301.build_breadth(
+                                            _breadth_prices_v301, _breadth_selected_v301
+                                        )
+                                    if isinstance(_breadth_df_v301, pd.DataFrame) and not _breadth_df_v301.empty:
+                                        _rot_df_v301 = _rotation_radar_v301.merge_breadth(_rot_df_v301, _breadth_df_v301)
+                                        _rot_meta_live_v301["breadth_updated_at"] = pd.Timestamp.now(tz="UTC").isoformat()
+                                        _rot_meta_live_v301["breadth_symbols"] = list(_breadth_selected_v301)
+                                        _rotation_radar_v301.save_snapshot(_rot_df_v301, _rot_errors_v301, _rot_meta_live_v301)
+                                        st.success("Breadth Confirmation aktualisiert und im vollständigen Radar-Snapshot gespeichert.")
+                                        if isinstance(_breadth_provider_err_v301, pd.DataFrame) and not _breadth_provider_err_v301.empty:
+                                            st.warning(f"{len(_breadth_provider_err_v301)} Breadth-Datenhinweis(e); fehlende Mitglieder werden nicht erfunden.")
+                                    else:
+                                        st.warning("Für die Auswahl konnte aktuell keine belastbare Breadth Confirmation berechnet werden.")
+
+                                _f1, _f2, _f3 = st.columns([1.1, 1.2, 0.8])
+                                with _f1:
+                                    _level_opts_v301 = ["Alle"] + sorted(_rot_df_v301["Ebene"].dropna().astype(str).unique().tolist())
+                                    _level_v301 = st.selectbox("Ebene", _level_opts_v301, key="v301_rotation_level")
+                                with _f2:
+                                    _phase_opts_v301 = ["🟣 Emerging", "🟢 Leading", "🟡 Mature", "🟠 Cooling", "🔴 Rotating Out"]
+                                    _phase_v301 = st.multiselect("Phasen", _phase_opts_v301, default=_phase_opts_v301, key="v301_rotation_phases")
+                                with _f3:
+                                    _only_shift_v301 = st.toggle("Nur Trendshifts", value=False, key="v301_only_shifts")
+
+                                _show_rot_v301 = _rot_df_v301.copy()
+                                if _level_v301 != "Alle":
+                                    _show_rot_v301 = _show_rot_v301[_show_rot_v301["Ebene"].astype(str) == _level_v301].copy()
+                                if _phase_v301:
+                                    _show_rot_v301 = _show_rot_v301[_show_rot_v301["Phase"].astype(str).isin(_phase_v301)].copy()
+                                if _only_shift_v301:
+                                    _show_rot_v301 = _show_rot_v301[
+                                        _show_rot_v301["Phase"].astype(str).str.contains("Emerging|Rotating Out", regex=True, na=False)
+                                        | (pd.to_numeric(_show_rot_v301["Rang Δ5T"], errors="coerce").abs() >= 3)
+                                        | (pd.to_numeric(_show_rot_v301["Rotation Δ5T"], errors="coerce").abs() >= 10)
+                                    ].copy()
+
+                                _rot_cols_v301 = [
+                                    "Phase", "Rang", "Rang Δ5T", "Name", "Ticker", "Ebene", "Region",
+                                    "Leadership", "Leadership Δ5T", "Rotation", "Rotation Δ5T",
+                                    "Breadth", "Breadth-Status", "RS 5T %", "RS 21T %", "RS 63T %",
+                                    "Perf 21T %", "Trend-Score", "Benchmark", "Trendshift",
+                                ]
+                                _rot_cols_v301 = [c for c in _rot_cols_v301 if c in _show_rot_v301.columns]
+                                _show_rot_v301 = _show_rot_v301[_rot_cols_v301].copy()
+                                for _num_col_v301 in [
+                                    "Leadership", "Leadership Δ5T", "Rotation", "Rotation Δ5T", "Breadth",
+                                    "RS 5T %", "RS 21T %", "RS 63T %", "Perf 21T %", "Trend-Score"
+                                ]:
+                                    if _num_col_v301 in _show_rot_v301.columns:
+                                        _show_rot_v301[_num_col_v301] = pd.to_numeric(_show_rot_v301[_num_col_v301], errors="coerce").round(1)
+
+                                if mobile_mode_v2842:
+                                    st.markdown("#### Wichtigste Rotationssignale")
+                                    for _, _rr_v301 in _show_rot_v301.head(10).iterrows():
+                                        _rn_v301 = str(_rr_v301.get("Name") or _rr_v301.get("Ticker") or "-")
+                                        _rp_v301 = str(_rr_v301.get("Phase") or "-")
+                                        _rt_v301 = str(_rr_v301.get("Ticker") or "-")
+                                        _rsig_v301 = str(_rr_v301.get("Trendshift") or "-")
+                                        try:
+                                            _rlead_v301 = f"{float(_rr_v301.get('Leadership')):.0f}"
+                                        except Exception:
+                                            _rlead_v301 = "-"
+                                        try:
+                                            _rrot_v301 = f"{float(_rr_v301.get('Rotation')):.0f}"
+                                        except Exception:
+                                            _rrot_v301 = "-"
+                                        try:
+                                            _rrank_v301 = f"{float(_rr_v301.get('Rang Δ5T')):+.0f}"
+                                        except Exception:
+                                            _rrank_v301 = "-"
+                                        st.markdown(
+                                            f"**{_rp_v301} · {_rn_v301} ({_rt_v301})**  \n"
+                                            f"Leadership {_rlead_v301}/100 · Rotation {_rrot_v301}/100 · Rang Δ5T {_rrank_v301}  \n"
+                                            f"{_rsig_v301}"
+                                        )
+                                    with st.expander("Komplette Rotationstabelle", expanded=False):
+                                        st.dataframe(_show_rot_v301, hide_index=True, use_container_width=True)
+                                else:
+                                    st.dataframe(
+                                        _show_rot_v301,
+                                        hide_index=True,
+                                        use_container_width=True,
+                                        height=min(760, 38 * max(1, len(_show_rot_v301)) + 55),
+                                    )
+
+                                with st.expander("Dynamik 1T / 5T / 20T", expanded=False):
+                                    _dyn_cols_v301 = [
+                                        "Phase", "Name", "Ticker", "Rang", "Rang Δ1T", "Rang Δ5T", "Rang Δ20T",
+                                        "Leadership", "Leadership Δ1T", "Leadership Δ5T", "Leadership Δ20T",
+                                        "Rotation", "Rotation Δ1T", "Rotation Δ5T", "Rotation Δ20T",
+                                    ]
+                                    _dyn_cols_v301 = [c for c in _dyn_cols_v301 if c in _rot_df_v301.columns]
+                                    st.dataframe(_rot_df_v301[_dyn_cols_v301], hide_index=True, use_container_width=True)
+
+                                _breadth_detail_cols_v301 = [
+                                    "Name", "Ticker", "Breadth", "Breadth-Status", "Breadth n",
+                                    "% > MA20", "% > MA50", "% +21T", "% RS21 > 0",
+                                ]
+                                if any(c in _rot_df_v301.columns for c in ["% > MA20", "% > MA50", "% +21T", "% RS21 > 0"]):
+                                    _breadth_detail_v301 = _rot_df_v301[[c for c in _breadth_detail_cols_v301 if c in _rot_df_v301.columns]].copy()
+                                    if "Breadth" in _breadth_detail_v301.columns:
+                                        _breadth_detail_v301 = _breadth_detail_v301[pd.to_numeric(_breadth_detail_v301["Breadth"], errors="coerce").notna()]
+                                    if not _breadth_detail_v301.empty:
+                                        with st.expander("Breadth-Details", expanded=False):
+                                            st.dataframe(_breadth_detail_v301, hide_index=True, use_container_width=True)
+
+                                if isinstance(_rot_errors_v301, pd.DataFrame) and not _rot_errors_v301.empty:
+                                    with st.expander("Radar-Datenhinweise / aktuelle Fehler", expanded=False):
+                                        st.caption(
+                                            "Diese Hinweise stammen aus dem zuletzt veröffentlichten Radar-Lauf. Fehlende Marktgruppen werden nicht mit alten Einzelzeilen gemischt."
+                                        )
+                                        st.dataframe(_rot_errors_v301, hide_index=True, use_container_width=True)
+
+                                with st.expander("Methodik & Universum", expanded=False):
+                                    st.markdown(
+                                        "**Leadership Score** kombiniert 63T-/21T-Relative-Stärke, 21T-Performance und Trendstruktur (MA20/50/200).  \n"
+                                        "**Rotation Momentum** vergleicht die Geschwindigkeit der 5T-, 21T- und 63T-Relative-Stärke und reagiert deshalb früher auf Beschleunigung.  \n"
+                                        "**Breadth Confirmation** ist eine separate zweite Stufe über repräsentative Branchenmitglieder und wird nur auf Nutzerwunsch geladen."
+                                    )
+                                    st.dataframe(_rotation_radar_v301.universe_frame(), hide_index=True, use_container_width=True)
 
                         # ---------- v23.0: Risiko-/Positionsgroessen-Rechner ----------
                         elif cockpit_area == "📐 Risiko-Rechner":

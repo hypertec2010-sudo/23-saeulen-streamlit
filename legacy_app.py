@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3d"
+APP_VERSION = "v30.3e"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14664,6 +14664,130 @@ try:
     _rotation_radar_v301.configure_storage(_storage_v280)
 except Exception:
     pass
+
+
+# ---------- v30.3e: Vollstaendiges Rotation-Drilldown-Universum ----------
+# v30.1d hatte bewusst nur Sektor-/Themen-ETFs mit Aktienkoerben versehen.
+# Die Radar-Uebersicht zaehlt dagegen ALLE Ebenen (Investmentklasse, Region,
+# Sektor, Branche/Thema). Dadurch konnte der Emerging-Zaehler z. B. 4 zeigen,
+# waehrend im Aktien-Drilldown nur 2 dieser Gruppen auftauchten.
+#
+# v30.3e erweitert nur die beobachtende Drilldown-Ebene. Produktive Live-/
+# Shadow-Scores und Exit-/Entry-Entscheidungen bleiben unveraendert.
+_V303E_ROTATION_DRILLDOWN_EXTENSIONS = {
+    # Breiter US-Markt / Nasdaq: repraesentative liquide Large-Cap-Holdings.
+    "SPY": (("MSFT", "Microsoft Corporation"), ("AAPL", "Apple Inc."),
+            ("NVDA", "NVIDIA Corporation"), ("AMZN", "Amazon.com, Inc."),
+            ("META", "Meta Platforms, Inc."), ("GOOGL", "Alphabet Inc."),
+            ("AVGO", "Broadcom Inc."), ("JPM", "JPMorgan Chase & Co."),
+            ("LLY", "Eli Lilly and Company"), ("XOM", "Exxon Mobil Corporation")),
+    "QQQ": (("MSFT", "Microsoft Corporation"), ("AAPL", "Apple Inc."),
+            ("NVDA", "NVIDIA Corporation"), ("AMZN", "Amazon.com, Inc."),
+            ("META", "Meta Platforms, Inc."), ("GOOGL", "Alphabet Inc."),
+            ("AVGO", "Broadcom Inc."), ("NFLX", "Netflix, Inc."),
+            ("AMD", "Advanced Micro Devices, Inc."), ("CSCO", "Cisco Systems, Inc.")),
+
+    # Europa / Deutschland: bewusst liquide, provider-stabile Vertreter.
+    "VGK": (("ASML", "ASML Holding N.V."), ("SAP.DE", "SAP SE"),
+            ("SIE.DE", "Siemens AG"), ("SU.PA", "Schneider Electric S.E."),
+            ("MC.PA", "LVMH Moet Hennessy Louis Vuitton SE"), ("AIR.PA", "Airbus SE"),
+            ("AZN", "AstraZeneca PLC"), ("NVO", "Novo Nordisk A/S"),
+            ("SAN.MC", "Banco Santander, S.A."), ("ALV.DE", "Allianz SE")),
+    "EWG": (("SAP.DE", "SAP SE"), ("SIE.DE", "Siemens AG"),
+            ("ALV.DE", "Allianz SE"), ("DTE.DE", "Deutsche Telekom AG"),
+            ("MUV2.DE", "Muenchener Rueckversicherungs-Gesellschaft AG"),
+            ("DBK.DE", "Deutsche Bank AG"), ("BAS.DE", "BASF SE"),
+            ("BMW.DE", "Bayerische Motoren Werke AG"),
+            ("MBG.DE", "Mercedes-Benz Group AG"), ("RHM.DE", "Rheinmetall AG")),
+
+    # Emerging Markets: liquide ADRs/US-listings als repraesentativer Korb.
+    "EEM": (("TSM", "Taiwan Semiconductor Manufacturing Company Limited"),
+            ("BABA", "Alibaba Group Holding Limited"), ("PDD", "PDD Holdings Inc."),
+            ("JD", "JD.com, Inc."), ("SE", "Sea Limited"),
+            ("MELI", "MercadoLibre, Inc."), ("NU", "Nu Holdings Ltd."),
+            ("VALE", "Vale S.A."), ("PBR", "Petroleo Brasileiro S.A. - Petrobras"),
+            ("BIDU", "Baidu, Inc.")),
+
+    # Rohstoff-/Commodity-Gruppen: Aktien-Proxy-Koerbe, klar als Proxy markiert.
+    "GLD": (("NEM", "Newmont Corporation"), ("GOLD", "Barrick Mining Corporation"),
+            ("AEM", "Agnico Eagle Mines Limited"), ("KGC", "Kinross Gold Corporation"),
+            ("WPM", "Wheaton Precious Metals Corp."), ("FNV", "Franco-Nevada Corporation"),
+            ("AU", "AngloGold Ashanti plc"), ("RGLD", "Royal Gold, Inc."),
+            ("AGI", "Alamos Gold Inc."), ("IAG", "IAMGOLD Corporation")),
+    "DBC": (("XOM", "Exxon Mobil Corporation"), ("CVX", "Chevron Corporation"),
+            ("FCX", "Freeport-McMoRan Inc."), ("NEM", "Newmont Corporation"),
+            ("BHP", "BHP Group Limited"), ("RIO", "Rio Tinto Group"),
+            ("SCCO", "Southern Copper Corporation"), ("NUE", "Nucor Corporation"),
+            ("MOS", "The Mosaic Company"), ("ADM", "Archer-Daniels-Midland Company")),
+    "USO": (("XOM", "Exxon Mobil Corporation"), ("CVX", "Chevron Corporation"),
+            ("COP", "ConocoPhillips"), ("SLB", "SLB"), ("EOG", "EOG Resources, Inc."),
+            ("MPC", "Marathon Petroleum Corporation"), ("PSX", "Phillips 66"),
+            ("OXY", "Occidental Petroleum Corporation"), ("VLO", "Valero Energy Corporation"),
+            ("FANG", "Diamondback Energy, Inc.")),
+    "CPER": (("FCX", "Freeport-McMoRan Inc."), ("SCCO", "Southern Copper Corporation"),
+             ("TECK", "Teck Resources Limited"), ("HBM", "Hudbay Minerals Inc."),
+             ("ERO", "Ero Copper Corp."), ("BHP", "BHP Group Limited"),
+             ("RIO", "Rio Tinto Group"), ("VALE", "Vale S.A."),
+             ("LUNMF", "Lundin Mining Corporation"), ("IVPAF", "Ivanhoe Mines Ltd.")),
+}
+_V303E_PROXY_DRILLDOWN_GROUPS = {"GLD", "DBC", "USO", "CPER"}
+_V303E_NO_DIRECT_STOCK_GROUPS = {"TLT", "HYG"}
+
+
+def _v303e_install_rotation_drilldown_extensions():
+    """Erweitert das vorhandene v30.1d-Modul zur Laufzeit, ohne alte Koerbe zu ueberschreiben."""
+    try:
+        basket_map = getattr(_rotation_radar_v301, "_STOCK_DRILLDOWN", None)
+        if not isinstance(basket_map, dict):
+            return False
+        for symbol, basket in _V303E_ROTATION_DRILLDOWN_EXTENSIONS.items():
+            if symbol not in basket_map or not basket_map.get(symbol):
+                basket_map[symbol] = tuple(basket)
+        return True
+    except Exception:
+        return False
+
+
+_V303E_DRILLDOWN_EXTENSIONS_ACTIVE = _v303e_install_rotation_drilldown_extensions()
+
+
+def _v303e_rotation_all_groups(rot_df=None):
+    """Ein gemeinsames Universum fuer Uebersicht UND Drilldown-Auswahl."""
+    out = []
+    seen = set()
+
+    # 1) Alles, was im aktuellen Radar-Snapshot sichtbar ist. Das garantiert,
+    # dass der Emerging-Zaehler und die Auswahl dieselbe Population sehen.
+    if isinstance(rot_df, pd.DataFrame) and not rot_df.empty and "Ticker" in rot_df.columns:
+        for raw in rot_df["Ticker"].astype(str).tolist():
+            sym = str(raw or "").strip().upper()
+            if sym and sym not in seen:
+                out.append(sym); seen.add(sym)
+
+    # 2) Vollstaendiges Modul-Universum als Fallback fuer fehlende Snapshot-Zeilen.
+    try:
+        for spec in list(getattr(_rotation_radar_v301, "UNIVERSE", ()) or ()):
+            sym = str(getattr(spec, "symbol", "") or "").strip().upper()
+            if sym and sym not in seen:
+                out.append(sym); seen.add(sym)
+    except Exception:
+        pass
+    return out
+
+
+def _v303e_drilldown_kind(symbol):
+    sym = str(symbol or "").strip().upper()
+    try:
+        members = _rotation_radar_v301.drilldown_candidates(sym) or []
+    except Exception:
+        members = []
+    if not members:
+        return "none", 0
+    if sym in _V303E_PROXY_DRILLDOWN_GROUPS:
+        return "proxy", len(members)
+    if sym in {"SPY", "QQQ", "VGK", "EWG", "EEM"}:
+        return "broad", len(members)
+    return "direct", len(members)
 # v28.1: Fachmodule greifen nicht mehr direkt auf Storage-Namespaces zu.
 # Das Registry-Objekt stellt klar getrennte Repositories fuer Positionen,
 # Trade-Journal und Ereignisse bereit.
@@ -14954,14 +15078,16 @@ def _v303c_rotation_drilldown_context(rot_df, drilldown_groups):
             continue
         name = str(r.get("Name") or sym)
         phase = str(r.get("Phase") or "⚪ Phase n/a")
+        level = str(r.get("Ebene") or "Radar-Gruppe")
         rot = _num(r.get("Rotation"), default=np.nan)
         lead = _num(r.get("Leadership"), default=np.nan)
         rot_txt = f"{rot:.0f}" if np.isfinite(rot) else "-"
         lead_txt = f"{lead:.0f}" if np.isfinite(lead) else "-"
-        label_map[sym] = f"{phase} · {name} ({sym}) · Rotation {rot_txt} · Leadership {lead_txt}"
+        label_map[sym] = f"{phase} · {level} · {name} ({sym}) · Rotation {rot_txt} · Leadership {lead_txt}"
         context_rows.append({
             "Ticker": sym,
             "Phase": phase,
+            "Ebene": level,
             "Rotation": None if not np.isfinite(rot) else round(rot, 4),
             "Leadership": None if not np.isfinite(lead) else round(lead, 4),
             "Rang": r.get("Rang"),
@@ -18706,14 +18832,36 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     "letzten vollständigen Atomic-Screener-Stand enthalten ist."
                                 )
 
+                                # v30.3e: exakt dieselbe Population wie die Radar-Uebersicht.
+                                # Damit muessen 4x Emerging oben auch 4x Emerging in dieser Auswahl ergeben.
+                                _dd_all_groups_v303e = _v303e_rotation_all_groups(_rot_df_v301)
                                 _dd_context_v303c = _v303c_rotation_drilldown_context(
-                                    _rot_df_v301, _rotation_radar_v301.drilldown_groups()
+                                    _rot_df_v301, _dd_all_groups_v303e
                                 )
                                 _dd_groups_sorted_v301d = list(_dd_context_v303c.get("groups") or [])
                                 _dd_label_map_v303c = dict(_dd_context_v303c.get("labels") or {})
                                 _dd_row_map_v301d = dict(_dd_context_v303c.get("rows") or {})
                                 _dd_context_sig_v303c = str(_dd_context_v303c.get("signature") or "-")
                                 _dd_missing_v303c = list(_dd_context_v303c.get("missing") or [])
+
+                                # v30.3e: Transparenz ueber die bisherige Zaehler-Differenz.
+                                _dd_emerging_symbols_v303e = []
+                                if isinstance(_rot_df_v301, pd.DataFrame) and not _rot_df_v301.empty and "Phase" in _rot_df_v301.columns and "Ticker" in _rot_df_v301.columns:
+                                    _dd_emerging_symbols_v303e = [
+                                        str(x).strip().upper() for x in
+                                        _rot_df_v301.loc[
+                                            _rot_df_v301["Phase"].astype(str).str.contains("Emerging", na=False),
+                                            "Ticker"
+                                        ].astype(str).tolist()
+                                    ]
+                                _dd_emerging_with_basket_v303e = [
+                                    x for x in _dd_emerging_symbols_v303e if _v303e_drilldown_kind(x)[1] > 0
+                                ]
+                                st.caption(
+                                    f"Radar-Abgleich: {_dd_context_v303c.get('present', 0)}/{_dd_context_v303c.get('expected', 0)} sichtbare Radar-Gruppen in der Auswahl · "
+                                    f"Emerging oben: {len(_dd_emerging_symbols_v303e)} · Emerging hier: {len([x for x in _dd_emerging_symbols_v303e if x in _dd_groups_sorted_v301d])} · "
+                                    f"davon {len(_dd_emerging_with_basket_v303e)} mit Aktienkorb."
+                                )
 
                                 if _dd_missing_v303c:
                                     st.warning(
@@ -18731,8 +18879,29 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 if _dd_groups_sorted_v301d:
                                     # v30.3c: Die sichtbaren Texte sind echte Optionen und nicht mehr nur format_func-Ausgaben.
                                     # Sobald Phase/Rotation/Leadership wechseln, aendert sich die Optionsliste selbst.
-                                    _dd_option_labels_v303c = [_dd_label_map_v303c[x] for x in _dd_groups_sorted_v301d]
-                                    _dd_label_to_symbol_v303c = {v: k for k, v in _dd_label_map_v303c.items()}
+                                    # Jede sichtbare Radar-Gruppe bleibt eine echte Option. Zusaetzlich wird klar,
+                                    # ob ein direkter/repraesentativer Aktienkorb existiert oder nur Cross-Asset-Kontext.
+                                    _dd_option_labels_v303c = []
+                                    _dd_label_to_symbol_v303c = {}
+                                    for _dd_sym_v303e in _dd_groups_sorted_v301d:
+                                        _dd_kind_v303e, _dd_count_v303e = _v303e_drilldown_kind(_dd_sym_v303e)
+                                        _dd_base_label_v303e = _dd_label_map_v303c[_dd_sym_v303e]
+                                        if _dd_kind_v303e == "proxy":
+                                            _dd_suffix_v303e = f" · 🔗 Aktien-Proxy {_dd_count_v303e} Werte"
+                                        elif _dd_kind_v303e == "broad":
+                                            _dd_suffix_v303e = f" · 🧩 Aktienkorb {_dd_count_v303e} Werte"
+                                        elif _dd_kind_v303e == "direct":
+                                            _dd_suffix_v303e = f" · 🔎 Aktienkorb {_dd_count_v303e} Werte"
+                                        else:
+                                            _dd_suffix_v303e = " · ⚪ kein direkter Aktienkorb"
+                                        _dd_full_label_v303e = _dd_base_label_v303e + _dd_suffix_v303e
+                                        _dd_option_labels_v303c.append(_dd_full_label_v303e)
+                                        _dd_label_to_symbol_v303c[_dd_full_label_v303e] = _dd_sym_v303e
+
+                                    # Map auf die jetzt erweiterten sichtbaren Labels umstellen.
+                                    _dd_select_label_map_v303e = {
+                                        _dd_label_to_symbol_v303c[_lbl]: _lbl for _lbl in _dd_option_labels_v303c
+                                    }
 
                                     _dd_prev_symbol_v303c = str(
                                         st.session_state.get("v303c_rotation_drilldown_ticker")
@@ -18741,7 +18910,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     ).strip().upper()
                                     if _dd_prev_symbol_v303c not in _dd_groups_sorted_v301d:
                                         _dd_prev_symbol_v303c = _dd_groups_sorted_v301d[0]
-                                    _dd_target_label_v303c = _dd_label_map_v303c.get(
+                                    _dd_target_label_v303c = _dd_select_label_map_v303e.get(
                                         _dd_prev_symbol_v303c, _dd_option_labels_v303c[0]
                                     )
                                     _dd_widget_key_v303c = "v303c_stock_drilldown_group_label"
@@ -18772,19 +18941,39 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             f"{_dd_select_v301d}: Im aktuellen Radar-Snapshot fehlen Sektor-/Rotationskennzahlen. "
                                             "Der Aktienkorb kann trotzdem separat geprüft werden; Phase/Rotation werden nicht erfunden."
                                         )
-                                    _dd_members_v301d = _rotation_radar_v301.drilldown_candidates(_dd_select_v301d)
+                                    try:
+                                        _dd_members_v301d = _rotation_radar_v301.drilldown_candidates(_dd_select_v301d) or []
+                                    except Exception:
+                                        _dd_members_v301d = []
+                                    _dd_kind_selected_v303e, _dd_member_count_v303e = _v303e_drilldown_kind(_dd_select_v301d)
                                     _dd_col1_v301d, _dd_col2_v301d = st.columns([1.45, 1.0])
-                                    with _dd_col1_v301d:
-                                        _run_dd_v301d = st.button(
-                                            "🔎 Top-Kandidaten für Auswahl prüfen",
-                                            type="primary",
-                                            use_container_width=True,
-                                            key="v301d_stock_drilldown_refresh",
-                                        )
-                                    with _dd_col2_v301d:
-                                        st.caption(
-                                            f"Repräsentativer Aktienkorb: {len(_dd_members_v301d)} Werte · nur diese Auswahl wird geladen."
-                                        )
+                                    if _dd_members_v301d:
+                                        with _dd_col1_v301d:
+                                            _run_dd_v301d = st.button(
+                                                "🔎 Top-Kandidaten für Auswahl prüfen",
+                                                type="primary",
+                                                use_container_width=True,
+                                                key="v301d_stock_drilldown_refresh",
+                                            )
+                                        with _dd_col2_v301d:
+                                            _dd_kind_text_v303e = "Aktien-Proxy" if _dd_kind_selected_v303e == "proxy" else "Repräsentativer Aktienkorb"
+                                            st.caption(
+                                                f"{_dd_kind_text_v303e}: {len(_dd_members_v301d)} Werte · nur diese Auswahl wird geladen."
+                                            )
+                                        if _dd_kind_selected_v303e == "proxy":
+                                            st.info(
+                                                f"{_dd_select_v301d} ist keine Aktienbranche. Der Drilldown nutzt deshalb einen transparenten Aktien-Proxy-Korb; "
+                                                "die Kandidaten werden relativ zum gewaehlten Asset-/Commodity-ETF bewertet."
+                                            )
+                                    else:
+                                        _run_dd_v301d = False
+                                        with _dd_col1_v301d:
+                                            st.info(
+                                                f"{_dd_select_v301d} ist im Rotation Radar voll sichtbar, besitzt aber bewusst keinen direkten Aktienkorb. "
+                                                "Das betrifft insbesondere reine Bond-/Credit-Rotationen; hier waere ein Aktienranking fachlich irrefuehrend."
+                                            )
+                                        with _dd_col2_v301d:
+                                            st.caption("Radar-Phase und Rotation bleiben trotzdem aktuell und vollstaendig sichtbar.")
 
                                     if _run_dd_v301d:
                                         _dd_token_v301d = int(time.time_ns())

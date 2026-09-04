@@ -1,35 +1,41 @@
-# v30.3d - Rotation Radar Hard-Fresh Snapshot Fix
+# v30.3e - Rotation Drilldown Universe Alignment Fix
 
-v30.3d behebt den Fall, dass Investment Rotation Radar und Aktien-Drilldown nach Refresh oder Reboot weiterhin alte Phasen-/Rotationswerte anzeigen.
+v30.3e behebt die konkrete Abweichung, dass die Investment-Rotation-Uebersicht z. B. **4 Emerging** meldet, im Feld **Rotation fuer Aktien-Drilldown** aber nur zwei dieser Emerging-Gruppen erscheinen.
 
-## Ursache
-Der bisherige manuelle Radar-Refresh verwendete einen nur in der Session hochgezaehlten Cache-Token. Nach einem Session-/Browser-Neustart konnte derselbe `st.cache_data`-Key erneut entstehen und innerhalb der Cache-TTL einen aelteren Kursframe liefern. Zusaetzlich pruefte die Provider-Schicht bisher vor allem die Historienlaenge; ein Ticker mit vielen Bars, aber einem veralteten letzten Handelstag konnte als vorhanden gelten. Der persistierte Radar-Snapshot wurde ausserdem nicht unmittelbar nach dem Schreiben rueckgelesen und verifiziert.
+## Tatsaechliche Ursache
+Das war kein weiterer Cache-/Persistenzfehler. Die beiden Bereiche nutzten unterschiedliche Universen:
+- Die Radar-Uebersicht zaehlt alle Ebenen: Investmentklassen, Regionen, Sektoren und Branchen/Themen.
+- Der v30.1d Aktien-Drilldown enthielt urspruenglich nur Sektor-/Themen-Gruppen mit fest hinterlegtem Aktienkorb.
 
-## Hard-Fresh Refresh
-- Jeder explizite Radar-Refresh nutzt jetzt einen global eindeutigen `time_ns`-Nonce statt eines wiederverwendbaren Session-Zaehlers.
-- Dasselbe gilt fuer Breadth- und Stock-Drilldown-Abrufe auf Klick.
-- Der 30-Minuten-Cache bleibt provider-schonend bestehen, kann einen manuellen Refresh aber nicht mehr mit einem alten Key bedienen.
+Damit konnte der Emerging-Zaehler korrekt 4 anzeigen, obwohl nur 2 dieser vier Gruppen im Drilldown-Universum lagen.
 
-## Daily-Freshness je Drilldown-Gruppe
-- Fuer alle Aktien-Drilldown-Sektor-/Themen-ETFs wird der letzte vorhandene Daily-Handelstag geprueft.
-- Eine Serie mit ausreichender Historie, aber veraltetem letzten Handelstag, gilt jetzt als stale und wird wie eine Datenluecke behandelt.
-- Bei wenigen stale/fehlenden Tickers darf weiterhin der bestehende provider-schonende Einzel-Fallback greifen.
-- Ein neuer Radar-Snapshot wird nur publiziert, wenn alle Pflicht-Drilldown-Gruppen vollstaendig UND auf demselben belastbaren Handelstag sind.
+## Jetzt ein gemeinsames Universum
+Die Drilldown-Auswahl wird ab v30.3e aus exakt derselben aktuellen Radar-Population wie die Hauptuebersicht gebaut. Wenn oben vier Gruppen Emerging sind, stehen auch vier Emerging-Gruppen in der Auswahl.
 
-## Neuer verifizierter Persistenz-Namespace
-- Neuer Namespace: `rotation_radar_snapshot_v303d`.
-- Schema: `rotation-v30.3d-hard-fresh`.
-- Ein neuer Radar-Stand gilt erst als gespeichert, wenn Snapshot-ID und Frame-Fingerprint unmittelbar aus dem zentralen Storage wieder identisch gelesen wurden.
-- Nach erfolgreichem Refresh rendert die UI aus genau diesem rueckgelesenen persistenten Frame, nicht aus einem separaten In-Memory-Zwischenstand.
-- Alte v30.1/v30.3c-Snapshots werden nur als klar markierter Legacy-Fallback angezeigt, bis einmal ein erfolgreicher v30.3d-Hard-Refresh erfolgt ist.
+Jede Option zeigt jetzt zusaetzlich ihre **Radar-Ebene**, Phase, Rotation und Leadership. Damit ist sofort sichtbar, ob es sich um eine Region, einen Sektor, ein Thema oder eine andere Investmentklasse handelt.
+
+## Neue repraesentative Aktienkoerbe
+Fuer bisher nicht abgedeckte, aber sinnvoll in Aktien zerlegbare Gruppen wurden provider-schonende kompakte Koerbe ergaenzt:
+- SPY / breiter US-Markt
+- QQQ / Nasdaq
+- VGK / Europa
+- EWG / Deutschland
+- EEM / Emerging Markets
+
+Fuer GLD, DBC, USO und CPER werden Aktienkoerbe ausdruecklich als **Aktien-Proxy** markiert. Hier sind die Einzelaktien nicht der ETF selbst, sondern repraesentative Unternehmen mit direktem Exposure zum jeweiligen Rohstoff-/Assetthema.
+
+## Bond-/Credit-Gruppen
+TLT und HYG bleiben jetzt ebenfalls in der Auswahl sichtbar. Sie erhalten bewusst **keinen direkten Aktienkorb**, weil ein Aktienranking gegen eine Treasury-/High-Yield-Rotation fachlich eine andere Aussage waere. Die Radar-Phase und Rotation werden dennoch vollstaendig angezeigt.
 
 ## Transparenz
-Die Radar-Ansicht zeigt fuer den verifizierten Snapshot explizit:
-- Daten bis (letzter gemeinsamer Handelstag),
-- Snapshot-ID,
-- Persistenzquelle.
+Direkt ueber der Auswahl steht nun ein Kontrollsatz nach dem Muster:
 
-Damit ist nach einem Reboot eindeutig pruefbar, ob wirklich derselbe frisch gespeicherte Radar-Stand geladen wurde.
+`Emerging oben: 4 · Emerging hier: 4 · davon 3 mit Aktienkorb`
+
+Damit ist die Population sofort pruefbar und eine spaetere Differenz nicht mehr unsichtbar.
+
+## Provider-Schutz
+Der normale Rotation-Hauptscan wird nicht um Einzelaktien erweitert. Aktien des Drilldowns werden weiterhin nur auf expliziten Klick fuer genau eine ausgewaehlte Gruppe geladen.
 
 ## Unveraendert
-Keine Aenderung an Live-/Shadow-Ampel, Rotation-Score-Formel, Phase-Logik, Positions-/Exit-Engine, Early-Profit-Learning, Portfolio Engine, SQL oder Secrets.
+Keine Aenderung an Rotation-Score-/Phase-Formel, Live-/Shadow-Ampel, Positions-/Exit-Engine, Early-Profit-Learning, Portfolio Engine, SQL oder Secrets.

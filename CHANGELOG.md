@@ -1,3 +1,14 @@
+## v30.3e - Rotation Drilldown Universe Alignment Fix
+- Ursache der Abweichung 4x Emerging in der Radar-Uebersicht vs. nur 2x Emerging im Aktien-Drilldown behoben.
+- Hauptuebersicht und Drilldown-Auswahl verwenden jetzt dieselbe komplette Radar-Population ueber alle Ebenen.
+- Auswahl zeigt zusaetzlich die Radar-Ebene, damit Investmentklasse/Region/Sektor/Thema nicht verwechselt werden.
+- Breiter Markt/Regionen SPY, QQQ, VGK, EWG und EEM erhalten repraesentative liquide Aktienkoerbe.
+- GLD, DBC, USO und CPER erhalten klar als Aktien-Proxy markierte Koerbe; der Vergleich bleibt relativ zum jeweiligen Asset-/Commodity-ETF.
+- Reine Bond-/Credit-Gruppen wie TLT/HYG bleiben sichtbar, werden aber bewusst als `kein direkter Aktienkorb` markiert statt fachlich fragwuerdige Aktienkandidaten zu erfinden.
+- UI zeigt einen expliziten Radar-Abgleich `Emerging oben` vs. `Emerging hier` sowie Anzahl mit Aktienkorb.
+- Bestehende Sektor-/Themenkoerbe werden nicht ueberschrieben; Erweiterungen greifen nur fuer bisher fehlende Gruppen.
+- Keine Aenderung an Rotation-Score-/Phase-Formel, produktiver Live-/Shadow-Ampel, Exit-/Entry-Logik oder automatischen Provider-Requests.
+
 ## v30.3d - Rotation Radar Hard-Fresh Snapshot Fix
 - Manueller Rotation-Radar-Refresh verwendet jetzt einen global eindeutigen `time_ns`-Nonce statt eines nach Reboot wiederverwendbaren Session-Zaehlers.
 - Breadth- und Stock-Drilldown-Refresh erhalten ebenfalls eindeutige Nonces.

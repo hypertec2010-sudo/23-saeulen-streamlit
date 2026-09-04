@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3f"
+APP_VERSION = "v30.3g"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15478,6 +15478,142 @@ _v291_portfolio_currencies = _portfolio_risk_module.portfolio_currencies
 _v291_assess_candidate = _portfolio_risk_module.assess_candidate
 _v291_infer_portfolio_group = _portfolio_risk_module.infer_portfolio_group
 
+# ---------- v30.3g: Portfolio data bridge / native-value diagnostics ----------
+# Portfolio aggregates must never turn missing FX/current data into convincing zeroes.
+# This helper keeps stale/native values visible without pretending they are current.
+def _v303g_portfolio_live_map(live_df):
+    out = {}
+    try:
+        if isinstance(live_df, pd.DataFrame) and not live_df.empty and "Ticker" in live_df.columns:
+            for _, row in live_df.iterrows():
+                tk = str(row.get("Ticker") or "").strip().upper()
+                if tk:
+                    out[tk] = row.to_dict()
+    except Exception:
+        return {}
+    return out
+
+
+def _v303g_position_watchlist_name(store_key):
+    raw = str(store_key or "").strip()
+    prefix = "v244_open_positions::"
+    return raw[len(prefix):] if raw.startswith(prefix) else raw
+
+
+def _v303g_portfolio_native_rows(all_positions, live_df=None, scope_watchlist=None):
+    rows = []
+    live_map = _v303g_portfolio_live_map(live_df)
+    scope = str(scope_watchlist or "").strip().casefold()
+    for store_key, positions in dict(all_positions or {}).items():
+        if not isinstance(positions, dict):
+            continue
+        watchlist = _v303g_position_watchlist_name(store_key)
+        if scope and str(watchlist).strip().casefold() != scope:
+            continue
+        for ticker_key, raw_pos in positions.items():
+            if not isinstance(raw_pos, dict):
+                continue
+            pos = dict(raw_pos)
+            ticker = str(pos.get("ticker") or pos.get("Ticker") or ticker_key or "").strip().upper()
+            if not ticker:
+                continue
+            shares = _v230_safe_float(pos.get("shares"), default=0.0) or 0.0
+            if shares <= 0:
+                continue
+            live_row = live_map.get(ticker, {})
+            current = None
+            for price_key in ("Kurs", "Aktueller Kurs", "Current Price", "price", "Price"):
+                current = _v230_safe_float(live_row.get(price_key), default=None)
+                if current is not None and current > 0:
+                    break
+            saved = _v230_safe_float(pos.get("last_price"), default=None)
+            entry = _v230_safe_float(pos.get("entry"), default=None)
+            mark = current if current is not None and current > 0 else saved
+            mark_source = "Atomic aktuell" if current is not None and current > 0 else ("gespeicherter Kurs" if saved is not None and saved > 0 else "kein Kurs")
+            ccy = _v2410_infer_quote_currency(ticker, row=live_row, result=pos, fallback="USD")
+            stop = _v230_safe_float(pos.get("stop"), default=None)
+            value_native = (mark * shares) if mark is not None and mark > 0 else None
+            risk_native = None
+            if mark is not None and mark > 0 and stop is not None and stop > 0:
+                risk_native = max(0.0, (mark - stop) * shares)
+            rows.append({
+                "Watchlist": watchlist,
+                "Ticker": ticker,
+                "Name": str(pos.get("name") or live_row.get("Name") or ticker),
+                "Währung": str(ccy or "USD").upper(),
+                "Stück": float(shares),
+                "Entry": entry,
+                "Stop": stop,
+                "Kurs": mark,
+                "Kursbasis": mark_source,
+                "Frisch": bool(current is not None and current > 0),
+                "Positionswert nativ": value_native,
+                "Risiko bis Stop nativ": risk_native,
+            })
+    return pd.DataFrame(rows)
+
+
+def _v303g_native_currency_summary(native_rows):
+    if not isinstance(native_rows, pd.DataFrame) or native_rows.empty:
+        return pd.DataFrame()
+    out = []
+    for ccy, grp in native_rows.groupby("Währung", dropna=False):
+        vals = pd.to_numeric(grp.get("Positionswert nativ"), errors="coerce")
+        risks = pd.to_numeric(grp.get("Risiko bis Stop nativ"), errors="coerce")
+        stops = pd.to_numeric(grp.get("Stop"), errors="coerce")
+        fresh = grp.get("Frisch", pd.Series(False, index=grp.index)).fillna(False).astype(bool)
+        out.append({
+            "Währung": str(ccy or "-").upper(),
+            "Positionen": int(len(grp)),
+            "Aktuelle Atomic-Kurse": int(fresh.sum()),
+            "Nur gespeicherter Kurs": int((~fresh & vals.notna()).sum()),
+            "Positionswert nativ": float(vals.sum()) if vals.notna().any() else None,
+            "Risiko bis Stop nativ": float(risks.sum()) if risks.notna().any() else None,
+            "Stop-Abdeckung %": round(float((stops.notna() & (stops > 0)).mean() * 100.0), 1) if len(grp) else 0.0,
+        })
+    return pd.DataFrame(out).sort_values("Währung").reset_index(drop=True)
+
+
+def _v303g_sync_atomic_marks_into_positions(all_positions, live_df):
+    """Mirror already available Atomic marks into persisted positions; no provider calls."""
+    live_map = _v303g_portfolio_live_map(live_df)
+    if not live_map or not isinstance(all_positions, dict):
+        return all_positions, False
+    changed = False
+    new_store = {}
+    now_text = get_current_berlin_time().isoformat()
+    for store_key, positions in all_positions.items():
+        if not isinstance(positions, dict):
+            new_store[store_key] = positions
+            continue
+        new_positions = {}
+        for ticker_key, raw_pos in positions.items():
+            if not isinstance(raw_pos, dict):
+                new_positions[ticker_key] = raw_pos
+                continue
+            pos = dict(raw_pos)
+            ticker = str(pos.get("ticker") or pos.get("Ticker") or ticker_key or "").strip().upper()
+            live_row = live_map.get(ticker, {})
+            current = None
+            for price_key in ("Kurs", "Aktueller Kurs", "Current Price", "price", "Price"):
+                current = _v230_safe_float(live_row.get(price_key), default=None)
+                if current is not None and current > 0:
+                    break
+            if current is not None and current > 0:
+                old_mark = _v230_safe_float(pos.get("last_price"), default=None)
+                if old_mark is None or abs(float(old_mark) - float(current)) > max(1e-8, abs(float(current)) * 1e-9):
+                    pos["last_price"] = float(current)
+                    changed = True
+                ccy = _v2410_infer_quote_currency(ticker, row=live_row, result=pos, fallback="USD")
+                if str(pos.get("currency") or "").upper() != str(ccy or "").upper():
+                    pos["currency"] = str(ccy or "USD").upper()
+                    changed = True
+                pos["last_price_at"] = now_text
+                pos["last_price_source"] = "Atomic Complete Scan"
+            new_positions[ticker_key] = pos
+        new_store[store_key] = new_positions
+    return new_store, changed
+
 # v25.3: Live-Monitor-Modul konfigurieren
 _live_module.configure_context(
     _v210_alert_num=_v210_alert_num,
@@ -19443,6 +19579,19 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             )
 
                             _all_positions_v291 = _v245_load_all_positions()
+                            # v30.3g: bereits vorhandene Atomic-Kurse ohne zusaetzlichen Provider-Call
+                            # in den Positionsspeicher spiegeln. Alte last_price-Werte bleiben als stale markiert.
+                            try:
+                                _all_positions_synced_v303g, _marks_changed_v303g = _v303g_sync_atomic_marks_into_positions(
+                                    _all_positions_v291, _live_df_complete_v289
+                                )
+                                if isinstance(_all_positions_synced_v303g, dict):
+                                    _all_positions_v291 = _all_positions_synced_v303g
+                                if _marks_changed_v303g:
+                                    _v245_save_all_positions(_all_positions_v291)
+                            except Exception:
+                                _marks_changed_v303g = False
+
                             _scope_options_v291 = ["Gesamtdepot", "Aktuelle Positions-Watchlist"]
                             _scope_v291 = st.radio(
                                 "Portfolio-Sicht",
@@ -19451,6 +19600,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 key="v291_portfolio_scope",
                             )
                             _scope_watchlist_v291 = selected_watchlist_name if _scope_v291 == "Aktuelle Positions-Watchlist" else None
+                            _native_rows_v303g = _v303g_portfolio_native_rows(
+                                _all_positions_v291,
+                                _live_df_complete_v289,
+                                scope_watchlist=_scope_watchlist_v291,
+                            )
+                            _native_summary_v303g = _v303g_native_currency_summary(_native_rows_v303g)
+                            _native_ccys_v303g = (
+                                sorted([str(x).upper() for x in _native_rows_v303g.get("Währung", pd.Series(dtype=str)).dropna().unique().tolist() if str(x).strip()])
+                                if isinstance(_native_rows_v303g, pd.DataFrame) and not _native_rows_v303g.empty else []
+                            )
 
                             _settings_v291 = _v291_load_portfolio_settings()
                             _base_default_v291 = str(
@@ -19491,6 +19650,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 _live_df_complete_v289,
                                 scope_watchlist=_scope_watchlist_v291,
                             )
+                            # v30.3g: Portfolio-Modul und Positionsspeicher muessen dieselben Waehrungen sehen.
+                            _currencies_v291 = sorted(set([str(x).upper() for x in (_currencies_v291 or []) if str(x).strip()]) | set(_native_ccys_v303g))
                             _fx_rates_v291 = {_base_currency_v291: 1.0}
                             _foreign_v291 = [c for c in _currencies_v291 if c and c != _base_currency_v291]
                             if _foreign_v291:
@@ -19541,6 +19702,65 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 scope_watchlist=_scope_watchlist_v291,
                             )
                             _portfolio_rows_v291 = _portfolio_pkg_v291.get("rows")
+
+                            # v30.3g: Datenstatus vor jeder Aggregation transparent zeigen.
+                            _native_count_v303g = int(len(_native_rows_v303g)) if isinstance(_native_rows_v303g, pd.DataFrame) else 0
+                            _fresh_count_v303g = 0
+                            _stored_mark_count_v303g = 0
+                            if isinstance(_native_rows_v303g, pd.DataFrame) and not _native_rows_v303g.empty:
+                                try:
+                                    _fresh_count_v303g = int(_native_rows_v303g["Frisch"].fillna(False).astype(bool).sum())
+                                except Exception:
+                                    _fresh_count_v303g = 0
+                                try:
+                                    _stored_mark_count_v303g = int(
+                                        ((_native_rows_v303g["Kursbasis"] == "gespeicherter Kurs") & _native_rows_v303g["Kurs"].notna()).sum()
+                                    )
+                                except Exception:
+                                    _stored_mark_count_v303g = 0
+                            st.caption(
+                                f"Portfolio-Datenbasis: {_native_count_v303g} offene Position(en) · "
+                                f"{_fresh_count_v303g} mit aktuellem Atomic-Kurs · "
+                                f"{_stored_mark_count_v303g} nur mit gespeichertem Kurs."
+                            )
+
+                            if _native_count_v303g > 0 and _fresh_count_v303g == 0:
+                                st.warning(
+                                    "Für keine offene Position liegt in diesem Portfolio-Stand ein aktueller Atomic-Scanwert vor. "
+                                    "Gespeicherte Kurse werden unten als Rohwerte gezeigt, aber bewusst nicht als aktuelle Kursabdeckung gewertet."
+                                )
+
+                            if isinstance(_native_summary_v303g, pd.DataFrame) and not _native_summary_v303g.empty:
+                                with st.expander("Native Positionswerte / Datenbasis", expanded=True):
+                                    st.caption(
+                                        "Diese Werte werden direkt aus den gespeicherten Positionen und bereits vorhandenen Atomic-Kursen berechnet. "
+                                        "Es erfolgt hier keine FX-Schaetzung und kein zusaetzlicher Marktprovider-Abruf."
+                                    )
+                                    _native_display_v303g = _native_summary_v303g.copy()
+                                    for _col_v303g in ["Positionswert nativ", "Risiko bis Stop nativ"]:
+                                        if _col_v303g in _native_display_v303g.columns:
+                                            _native_display_v303g[_col_v303g] = pd.to_numeric(_native_display_v303g[_col_v303g], errors="coerce").round(2)
+                                    st.dataframe(_native_display_v303g, hide_index=True, use_container_width=True)
+                                    if isinstance(_native_rows_v303g, pd.DataFrame) and not _native_rows_v303g.empty:
+                                        _native_positions_show_v303g = _native_rows_v303g[[
+                                            c for c in [
+                                                "Watchlist", "Ticker", "Name", "Währung", "Stück", "Entry", "Stop",
+                                                "Kurs", "Kursbasis", "Positionswert nativ", "Risiko bis Stop nativ"
+                                            ] if c in _native_rows_v303g.columns
+                                        ]].copy()
+                                        for _c_v303g in ["Entry", "Stop", "Kurs", "Positionswert nativ", "Risiko bis Stop nativ"]:
+                                            if _c_v303g in _native_positions_show_v303g.columns:
+                                                _native_positions_show_v303g[_c_v303g] = pd.to_numeric(
+                                                    _native_positions_show_v303g[_c_v303g], errors="coerce"
+                                                ).round(2)
+                                        st.markdown("**Offene Positionen auf nativer Kursbasis**")
+                                        st.dataframe(_native_positions_show_v303g, hide_index=True, use_container_width=True)
+                                    if _stored_mark_count_v303g > 0:
+                                        st.caption(
+                                            "Hinweis: 'Nur gespeicherter Kurs' ist ein letzter bekannter Positionskurs, kein frischer Marktwert. "
+                                            "Die Portfolio-Ampel darf daraus keine gruene Datenfreigabe ableiten."
+                                        )
+
                             if not isinstance(_portfolio_rows_v291, pd.DataFrame) or _portfolio_rows_v291.empty:
                                 st.info("Noch keine offenen Positionen für die Portfolio-Auswertung vorhanden.")
                             else:
@@ -19552,17 +19772,31 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 st.write(f"**Nächste Portfolio-Handlung:** {_portfolio_pkg_v291.get('action','-')}")
                                 st.caption(f"Konfidenz: {_portfolio_pkg_v291.get('confidence','-')}")
 
+                                _missing_fx_v303g = sorted([
+                                    c for c in _native_ccys_v303g
+                                    if c != _base_currency_v291 and float(_fx_rates_v291.get(c, 0.0) or 0.0) <= 0.0
+                                ])
+                                _aggregate_fx_blocked_v303g = bool(_missing_fx_v303g and _native_count_v303g > 0)
+                                if _aggregate_fx_blocked_v303g:
+                                    st.warning(
+                                        "Portfolio-Gesamtwerte sind derzeit nicht berechenbar, weil FX fehlt: "
+                                        + ", ".join(f"{c}→{_base_currency_v291}" for c in _missing_fx_v303g)
+                                        + ". Deshalb werden Investiert/Exposure/Cash/Risiko nicht mehr faelschlich als 0 angezeigt."
+                                    )
+
                                 _mcols_v291 = st.columns(2 if mobile_mode_v2842 else 5)
                                 _metric_specs_v291 = [
-                                    ("Investiert", _pm_v291.get("total_value"), _base_currency_v291),
-                                    ("Exposure", _pm_v291.get("exposure_pct"), "%"),
-                                    ("Cash / Reserve", _pm_v291.get("cash"), _base_currency_v291),
-                                    ("Risiko bis Stop", _pm_v291.get("risk_to_stop_pct"), "% Depot"),
-                                    ("Aktuelle Kursabdeckung", _pm_v291.get("fresh_value_coverage_pct"), "%"),
+                                    ("Investiert", _pm_v291.get("total_value"), _base_currency_v291, True),
+                                    ("Exposure", _pm_v291.get("exposure_pct"), "%", True),
+                                    ("Cash / Reserve", _pm_v291.get("cash"), _base_currency_v291, True),
+                                    ("Risiko bis Stop", _pm_v291.get("risk_to_stop_pct"), "% Depot", True),
+                                    ("Aktuelle Kursabdeckung", _pm_v291.get("fresh_value_coverage_pct"), "%", False),
                                 ]
-                                for _idx_v291, (_label_v291, _val_v291, _unit_v291) in enumerate(_metric_specs_v291):
+                                for _idx_v291, (_label_v291, _val_v291, _unit_v291, _needs_fx_v303g) in enumerate(_metric_specs_v291):
                                     with _mcols_v291[_idx_v291 % len(_mcols_v291)]:
-                                        if _val_v291 is None:
+                                        if _needs_fx_v303g and _aggregate_fx_blocked_v303g:
+                                            _txt_v291 = "n/a"
+                                        elif _val_v291 is None:
                                             _txt_v291 = "n/a"
                                         elif _unit_v291.startswith("%") or _unit_v291 == "%":
                                             _txt_v291 = f"{float(_val_v291):.1f}%"

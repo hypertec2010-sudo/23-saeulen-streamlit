@@ -1,3 +1,13 @@
+## v30.3g - Portfolio Data Bridge & Missing-Data Display Fix
+- Portfolio-&-Risk-Anzeige stellt fehlende FX-/Kursdaten nicht mehr als scheinbar echte Nullwerte dar.
+- Bei fehlender FX-Umrechnung werden Investiert, Exposure, Cash und Risiko bis Stop als `n/a` angezeigt statt irrefuehrend als 0.
+- Neuer Datenstatus zeigt Anzahl offener Positionen, aktuelle Atomic-Kurse und Positionen mit nur gespeichertem Kurs.
+- Native Positionswerte bleiben auch ohne FX transparent sichtbar, getrennt nach Waehrung und Kursbasis.
+- Neue native Einzelpositionstabelle zeigt Watchlist, Ticker, Waehrung, Stueck, Entry, Stop, Kurs, Kursbasis, Positionswert und Stop-Risiko.
+- Bereits vorhandene Atomic-Kurse werden ohne zusaetzlichen Provider-Call als `last_price`/Waehrung in den Positionsspeicher gespiegelt; fehlende Atomic-Kurse bleiben klar stale.
+- Waehrungserkennung des Portfolio-Moduls wird mit der Positionssicht abgeglichen, damit fremde Waehrungen nicht verschwinden.
+- Keine FX-Schaetzung, keine versteckten Yahoo-Requests und keine Aenderung an Portfolio-Risk-Score, Live-/Shadow-Ampel oder Exit-Engine.
+
 ## v30.3f - Rotation Drilldown Pandas-Series Crash Fix
 - Streamlit-Crash beim Start eines Rotation-Aktien-Drilldowns behoben (`ValueError: The truth value of a Series is ambiguous`).
 - Ursache: `_v303c_rotation_drilldown_context()` speicherte pandas-Series als Werte im internen `row_map`; spaeter wurde eine solche Series durch `... or {}` implizit als bool ausgewertet.

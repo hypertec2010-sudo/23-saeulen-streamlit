@@ -1,23 +1,21 @@
-# v30.3f - Rotation Drilldown Pandas-Series Crash Fix
+# v30.3g - Portfolio Data Bridge & Missing-Data Display Fix
 
-v30.3f behebt den unmittelbar nach v30.3e sichtbaren Streamlit-Crash beim Ausfuehren eines Aktien-Drilldowns.
+v30.3g behebt die irrefuehrende Nullwert-Darstellung im Portfolio-&-Risk-Bereich.
 
 ## Fehlerbild
-Nach Auswahl einer Rotation und Klick auf **Top-Kandidaten fuer Auswahl pruefen** konnte Streamlit mit folgendem Fehler abbrechen:
+Bei vorhandenen offenen Positionen konnten gleichzeitig `Investiert 0`, `Exposure 0%`, `Cash = Gesamtdepot`, `Risiko bis Stop 0%`, `Kursabdeckung 0%` und `FX-Abdeckung 0%` erscheinen.
 
-`ValueError: The truth value of a Series is ambiguous`
+Das waren nicht zwingend echte Nullwerte. Bei fehlender FX-Umrechnung blockiert die bestehende v29.1-Logik eine Basiswaehrungs-Aggregation bewusst. Bei fehlendem Atomic-Scan darf zudem ein gespeicherter `last_price` nicht als frischer Kurs ausgegeben werden.
 
-Der Trace zeigte auf die Speicherung des aktuellen Radar-Kontexts fuer den Drilldown.
+## Neu
+- Fehlende FX-Aggregation wird jetzt als **n/a** statt als 0 dargestellt.
+- Ein Datenstatus zeigt, wie viele offene Positionen gefunden wurden, wie viele einen aktuellen Atomic-Kurs haben und wie viele nur einen gespeicherten Kurs besitzen.
+- Unter **Native Positionswerte / Datenbasis** bleiben die vorhandenen Werte trotzdem sichtbar, ohne unzulaessige EUR-/FX-Schaetzung.
+- Die Einzelpositionstabelle zeigt Entry, Stop, Stueck, native Waehrung, Kursbasis, Positionswert und Stop-Risiko.
+- Wenn ein Ticker im bereits vorhandenen Atomic Complete Scan einen aktuellen Kurs besitzt, wird dieser ohne neuen Provider-Abruf in den Positionsspeicher gespiegelt.
 
-## Ursache
-Der Hilfsblock `_v303c_rotation_drilldown_context()` legte die Zeilen des aktuellen Radar-Frames als `pandas.Series` im internen `row_map` ab. Beim erfolgreichen Drilldown wurde anschliessend sinngemaess `row_map.get(...) or {}` verwendet.
-
-Python versucht bei `or` den Wahrheitswert des linken Objekts auszuwerten. Fuer eine pandas-Series ist dieser Wahrheitswert absichtlich nicht eindeutig; pandas wirft deshalb den ValueError.
-
-## Fix
-- Jede Radar-Kontextzeile wird bereits beim Aufbau des `row_map` in ein normales Python-Dictionary konvertiert.
-- Die spaetere Speicherstelle verwendet kein `or {}` mehr auf einem potenziellen pandas-Objekt.
-- Als zusaetzliche Schutzschicht wird eine unerwartete Series dort nochmals explizit per `.to_dict()` konvertiert.
+## Wichtig
+Ein gespeicherter Kurs bleibt als `gespeicherter Kurs` markiert und erhoeht die aktuelle Kursabdeckung nicht. Fehlende FX-Kurse werden weiterhin nicht automatisch geschaetzt oder versteckt vom Marktprovider geladen.
 
 ## Unveraendert
-Das v30.3e Universe-Alignment bleibt erhalten. Es gibt keine Aenderung an Rotation-/Leadership-Berechnung, Phasenlogik, Aktienkorb-Zuordnung, Live-/Shadow-Ampel, Early-Profit-/Exit-Engine oder Provider-Cadence.
+Portfolio-Risk-Score, Portfolio-Ampel, Live-/Shadow-Ampel, Exit Engine 2.0, Early Profit Protection und Rotation Radar bleiben fachlich unveraendert.

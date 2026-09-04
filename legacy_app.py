@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.1b"
+APP_VERSION = "v30.1c"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -8394,6 +8394,76 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
 # v17.3: erweiterter Spezialmuster-Kontext. Diese spaetere Definition ueberschreibt bewusst
 # die fruehere v16.2-Variante und ergaenzt Pocket Pivot, VCP, MA-Pullback,
 # Undercut & Rally sowie Failed-Breakout/Exhaustion-Warnungen.
+
+# v30.1c: Strikter Undercut-&-Rally-Kern. Zusatzmerkmale wie bullischer Tag,
+# Docht, Volumen oder RS duerfen ein U&R nur QUALITATIV aufwerten, aber niemals
+# ohne echten Undercut + Reclaim aktivieren. Bevorzugt wird ein relevantes
+# lokales Swing-Low; das bisherige 20T-Tief bleibt nur transparenter Fallback.
+def _v301c_find_uandr_reference(history_df, signal_low, signal_close, lookback=35):
+    out = {
+        "active": False, "ref_low": None, "source": "keine", "age_days": None,
+        "undercut_depth_pct": None, "reclaim_pct": None,
+    }
+    try:
+        if history_df is None or len(history_df) < 8:
+            return out
+        sig_low = float(signal_low)
+        sig_close = float(signal_close)
+        if not np.isfinite(sig_low) or not np.isfinite(sig_close) or sig_low <= 0:
+            return out
+
+        hist = history_df.copy().tail(max(int(lookback), 20))
+        lows = pd.to_numeric(hist["low"], errors="coerce").reset_index(drop=True)
+        candidates = []
+
+        # Lokales Swing-Low: mindestens zwei Bars links/rechts hoeher oder gleich.
+        # Dadurch wird nicht einfach jedes beliebige 20T-Minimum als Strukturpunkt behandelt.
+        for i in range(2, max(len(lows) - 2, 2)):
+            ref = lows.iloc[i]
+            if pd.isna(ref) or float(ref) <= 0:
+                continue
+            ref = float(ref)
+            left = lows.iloc[i-2:i]
+            right = lows.iloc[i+1:i+3]
+            if left.isna().any() or right.isna().any():
+                continue
+            if ref <= float(left.min()) and ref <= float(right.min()):
+                depth = (ref - sig_low) / ref * 100.0
+                reclaim = (sig_close - ref) / ref * 100.0
+                # Ein U&R soll ein kurzer Shakeout sein, kein tiefer Breakdown.
+                if 0.30 <= depth <= 6.00 and reclaim >= 0.20:
+                    age = int(len(lows) - i)
+                    # Kleine Tiefe + relative Aktualitaet bevorzugen.
+                    relevance = depth + min(age, 30) * 0.05
+                    candidates.append((relevance, age, ref, depth, reclaim))
+
+        if candidates:
+            _, age, ref, depth, reclaim = sorted(candidates, key=lambda x: (x[0], x[1]))[0]
+            out.update({
+                "active": True, "ref_low": ref, "source": "Swing-Low", "age_days": age,
+                "undercut_depth_pct": depth, "reclaim_pct": reclaim,
+            })
+            return out
+
+        # Transparenter Fallback fuer Faelle ohne sauber erkennbares lokales Swing-Low.
+        prev20 = lows.tail(20).dropna()
+        if not prev20.empty:
+            ref = float(prev20.min())
+            depth = (ref - sig_low) / ref * 100.0 if ref > 0 else -999
+            reclaim = (sig_close - ref) / ref * 100.0 if ref > 0 else -999
+            if 0.30 <= depth <= 6.00 and reclaim >= 0.20:
+                # Alter des Minimums innerhalb des betrachteten 20T-Fensters.
+                rev_pos = int(prev20.reset_index(drop=True).idxmin())
+                age = int(len(prev20) - rev_pos)
+                out.update({
+                    "active": True, "ref_low": ref, "source": "20T-Tief Fallback", "age_days": age,
+                    "undercut_depth_pct": depth, "reclaim_pct": reclaim,
+                })
+        return out
+    except Exception:
+        return out
+
+
 def build_setup_pattern_context_v162(chart_df=None, result=None):
     result = result or {}
     out = {
@@ -8531,12 +8601,87 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
         if bull_day: scores["MA10/20 Pullback-Reaktion"] += 18
         if lower_wick_pct >= 0.8 and strong_close: scores["MA10/20 Pullback-Reaktion"] += 18
         if vol_conf: scores["MA10/20 Pullback-Reaktion"] += 8
-        undercut = day_low < prev_low20 * 0.995 if prev_low20 else False
-        reclaim_support = price > prev_low20 * 1.003 if prev_low20 else False
-        if undercut and reclaim_support: scores["Undercut & Rally / Support-Reclaim"] += 42; add_driver(f"Undercut/Reclaim um {_v1533_1_fmt_price(prev_low20)}")
-        if bull_day: scores["Undercut & Rally / Support-Reclaim"] += 18
-        if lower_wick_pct >= 1.0: scores["Undercut & Rally / Support-Reclaim"] += 18
-        if vol_conf: scores["Undercut & Rally / Support-Reclaim"] += 10
+        # v30.1c: U&R braucht zwingend einen echten kurzen Undercut UND Schlusskurs-Reclaim.
+        # Docht, Volumen, bullischer Tag und RS sind ausschliesslich Qualitaetsmerkmale.
+        uandr_now = _v301c_find_uandr_reference(work.iloc[:-1], day_low, price)
+        prev_day_high = float(work["high"].iloc[-2]) if len(work) >= 2 else np.nan
+        prev_day_low = float(work["low"].iloc[-2]) if len(work) >= 2 else np.nan
+        prev_day_open = float(work["open"].iloc[-2]) if len(work) >= 2 else np.nan
+        prev_day_range = max(prev_day_high - prev_day_low, 1e-9) if pd.notna(prev_day_high) and pd.notna(prev_day_low) else 1e-9
+        prev_day_close_pos = (prev_close - prev_day_low) / prev_day_range if pd.notna(prev_day_low) else 0.0
+        prev_lower_wick_pct = (min(prev_close, prev_day_open) - prev_day_low) / max(prev_close, 1e-9) * 100 if pd.notna(prev_day_open) and pd.notna(prev_day_low) else 0.0
+        uandr_prev = _v301c_find_uandr_reference(work.iloc[:-2], prev_day_low, prev_close) if len(work) >= 10 else {"active": False}
+        uandr_follow = bool(
+            uandr_prev.get("active")
+            and price > prev_close
+            and price >= float(uandr_prev.get("ref_low") or 0) * 1.005
+            and close_pos >= 0.55
+        )
+
+        uandr_score = 0
+        uandr_quality_drivers = []
+        uandr_mode = "keines"
+        uandr_ref = None
+        uandr_ref_source = "keine"
+        uandr_depth = None
+        uandr_reclaim = None
+
+        # RS wird hier nur als Qualitaetsfilter gelesen. Fehlt RS, gibt es keinen Bonus und keinen Malus.
+        uandr_leadership = _turnaround_v174_float(result.get("leadership_score"), 0)
+        uandr_rs_acc = _turnaround_v174_float(result.get("rs_acceleration_score"), 0)
+        uandr_rs_bench = _turnaround_v174_float(result.get("rs_benchmark_score"), 0)
+        uandr_rs_ok = max(uandr_leadership, uandr_rs_bench) >= 55 or uandr_rs_acc >= 55
+
+        if uandr_now.get("active"):
+            uandr_mode = "Same-Day Reclaim"
+            uandr_ref = float(uandr_now.get("ref_low"))
+            uandr_ref_source = str(uandr_now.get("source") or "Support")
+            uandr_depth = float(uandr_now.get("undercut_depth_pct") or 0)
+            uandr_reclaim = float(uandr_now.get("reclaim_pct") or 0)
+            uandr_score = 52
+            uandr_quality_drivers.append(f"echter Undercut {uandr_depth:.1f}% + Reclaim {uandr_reclaim:.1f}%")
+            if uandr_ref_source == "Swing-Low":
+                uandr_score += 6; uandr_quality_drivers.append("relevantes Swing-Low")
+            if strong_close:
+                uandr_score += 10; uandr_quality_drivers.append("starker Schluss im Tagesrange")
+            if lower_wick_pct >= 1.0:
+                uandr_score += 8; uandr_quality_drivers.append(f"unterer Docht {lower_wick_pct:.1f}%")
+            if bull_day:
+                uandr_score += 8; uandr_quality_drivers.append("bullische Tagesreaktion")
+            if vol_conf:
+                uandr_score += 8; uandr_quality_drivers.append(f"Volumen {vol_ratio:.2f}x")
+            if uandr_rs_ok:
+                uandr_score += 6; uandr_quality_drivers.append("RS/Leadership bestaetigt")
+            if uandr_reclaim >= 1.0:
+                uandr_score += 4; uandr_quality_drivers.append("klarer Reclaim-Abstand")
+        elif uandr_follow:
+            # U&R fand am Vortag statt; heute zaehlt nur ein echter Folgetag als aktive Fortsetzung.
+            uandr_mode = "Folgetag bestaetigt"
+            uandr_ref = float(uandr_prev.get("ref_low"))
+            uandr_ref_source = str(uandr_prev.get("source") or "Support")
+            uandr_depth = float(uandr_prev.get("undercut_depth_pct") or 0)
+            uandr_reclaim = ((price - uandr_ref) / uandr_ref * 100.0) if uandr_ref else 0.0
+            uandr_score = 60
+            uandr_quality_drivers.append(f"Vortag U&R {uandr_depth:.1f}% + heutige Folgestaerke")
+            if uandr_ref_source == "Swing-Low":
+                uandr_score += 6; uandr_quality_drivers.append("relevantes Swing-Low")
+            if price >= prev_day_high * 1.001:
+                uandr_score += 10; uandr_quality_drivers.append("Folgetag ueber Vortageshoch")
+            if strong_close:
+                uandr_score += 8; uandr_quality_drivers.append("starker Folgetag-Schluss")
+            if vol_conf:
+                uandr_score += 8; uandr_quality_drivers.append(f"Folgetag-Volumen {vol_ratio:.2f}x")
+            if uandr_rs_ok:
+                uandr_score += 6; uandr_quality_drivers.append("RS/Leadership bestaetigt")
+            # Qualitaet des eigentlichen U&R-Tages bleibt sichtbar, ohne das Pflicht-Gate zu ersetzen.
+            if prev_day_close_pos >= 0.65:
+                uandr_score += 4; uandr_quality_drivers.append("U&R-Tag schloss konstruktiv")
+            if prev_lower_wick_pct >= 1.0:
+                uandr_score += 4; uandr_quality_drivers.append("U&R-Tag mit unterem Docht")
+
+        scores["Undercut & Rally / Support-Reclaim"] = int(round(min(max(uandr_score, 0), 100)))
+        if uandr_score > 0 and uandr_ref:
+            add_driver(f"U&R Pflicht-Gate erfuellt · {uandr_mode} um {_v1533_1_fmt_price(uandr_ref)} ({uandr_ref_source})")
         failed_breakout = price < pivot_zone * 0.99 and high10 >= pivot_zone * 1.002 if pivot_zone else False
         exhaustion = pd.notna(dist_ma10) and dist_ma10 >= 9 and upper_wick_pct >= 1.0 and close_pos <= 0.55
         # Weitere relevante, weiche Chartmuster. Diese Signale sollen keine eigenen Kaufsignale sein,
@@ -8633,9 +8778,12 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
             summary="Der Kurs reagiert an MA10/MA20. Das kann ein frueher Entry-Hinweis sein, wenn die Reaktion haelt."
             action=f"Einstieg nur pruefen, wenn MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) halten und die Kerze/Volumen bestaetigen."
         elif best_type == "Undercut & Rally / Support-Reclaim":
-            label="moeglicher Undercut & Rally / Support-Reclaim"; phase="Reclaim nach kurzem Bruch"; pattern_type=best_type
-            summary="Ein Tief/Support wurde kurz verletzt und zurueckerobert. Das kann ein Reversal-Trigger sein."
-            action=f"Aktiv pruefen, wenn der Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt und Folgestaerke entsteht."
+            label="Undercut & Rally / Support-Reclaim"; phase=uandr_mode; pattern_type=best_type
+            summary=f"Echter Undercut + Reclaim ist bestaetigt. Referenz: {uandr_ref_source} bei {_v1533_1_fmt_price(uandr_ref)}; Zusatzmerkmale bewerten nur die Qualitaet."
+            if uandr_mode == "Folgetag bestaetigt":
+                action=f"Folgetag bestaetigt den U&R ueber {_v1533_1_fmt_price(uandr_ref)}. Aktiv nur bei Halt des Reclaims; Invalidierung eng unter der Reclaim-/Swing-Low-Zone pruefen."
+            else:
+                action=f"Reclaim ueber {_v1533_1_fmt_price(uandr_ref)} muss halten. Folgestaerke verbessert die Qualitaet; Rueckfall unter die Reclaim-Zone invalidiert den Trigger."
         elif best_type == "Flat Base / Base Breakout":
             label="moegliche Flat Base / Base-Breakout"; phase="enge Base nahe Trigger"; pattern_type=best_type
             summary="Der Kurs konsolidiert relativ flach. Das ist konstruktiv, wenn die obere Range mit Volumen gebrochen wird."
@@ -8678,6 +8826,23 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
             trig_label = "Warnung aktiv" if best_score >= 60 else "Warnung im Aufbau"
             trig_text = "Warnsignal aus Failed-Breakout, Wide-&-Loose oder Climax-Kontext."
             trig_action = "Defensiver handeln; keinen aggressiven Long-Trigger daraus ableiten."
+        elif best_type == "Undercut & Rally / Support-Reclaim":
+            # U&R ist ein eigener Reclaim-Trigger; Pivot-/MA-Punkte duerfen seinen Triggerstatus
+            # nicht kuenstlich erzeugen oder verdecken. Das Pflicht-Gate ist bereits im Muster-Score.
+            trigger_score = int(round(min(max(scores["Undercut & Rally / Support-Reclaim"], 0), 100)))
+            tdrivers.extend(uandr_quality_drivers[:6])
+            if uandr_mode == "Folgetag bestaetigt" and trigger_score >= 70:
+                trig_label = "bestaetigt · Folgetag"
+                trig_text = "Echter U&R wurde am Vortag ausgeloest und heute mit Folgestaerke bestaetigt."
+                trig_action = "Reclaim-Zone halten lassen; Risiko eng an der U&R-/Swing-Low-Invalidierung fuehren."
+            elif trigger_score >= 72:
+                trig_label = "bestaetigt"
+                trig_text = "Echter Undercut + Reclaim mit mehreren Qualitaetsbestaetigungen."
+                trig_action = "Aktiv pruefen, sofern Reclaim-Zone, Risiko und Gesamt-Konfluenz passen; Folgetag beobachten."
+            else:
+                trig_label = "erste Bestaetigung"
+                trig_text = "Echter Undercut + Reclaim ist vorhanden; die Qualitaetsbestaetigung ist noch nicht vollstaendig."
+                trig_action = "Reclaim halten lassen und Folgestaerke/Volumen/RS beobachten; kein Blind-Entry."
         else:
             if breakout: trigger_score += 35; tdrivers.append(f"Kurs ueber Pivot {_v1533_1_fmt_price(pivot_zone)}")
             elif near_pivot: trigger_score += 18; tdrivers.append(f"Kurs nahe Pivot {_v1533_1_fmt_price(pivot_zone)}")
@@ -8696,11 +8861,16 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
                 trig_label="unter Beobachtung"; trig_text="Struktur ist interessant, aber Trigger ist noch unvollstaendig."; trig_action="Watchlist/Alarm am Pivotbereich setzen; nicht blind handeln."
             else:
                 trig_label="noch nicht erreicht"; trig_text="Musterkontext moeglich, aber der operative Trigger fehlt."; trig_action="Auf Pivot-Ausbruch, Reclaim oder enge Konsolidierung warten."
+        uandr_need_text = (
+            f"Echter Undercut + Schlusskurs-Reclaim ueber {_v1533_1_fmt_price(uandr_ref)}; danach zaehlen Folgestaerke, starker Schluss, Docht, Volumen und RS als Qualitaetsbestaetigung."
+            if uandr_ref
+            else "Echter Undercut eines relevanten Swing-Lows/Supports plus Schlusskurs-Reclaim ist Pflicht; Docht, Volumen, bullischer Tag und RS allein duerfen U&R nicht aktivieren."
+        )
         need_map = {
             "Pocket Pivot": f"Passt eher, wenn ein bullischer Volumentag nahe Pivot/MA-Struktur entsteht und der Kurs den Bereich um {_v1533_1_fmt_price(pivot_zone)} haelt oder ueberschreitet.",
             "VCP / Volatility Contraction": f"Passt eher, wenn die Range weiter eng bleibt und der Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen/Schlusskurs erfolgt.",
             "MA10/20 Pullback-Reaktion": f"Passt eher, wenn MA10/MA20 ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}) halten, die Kerze bullisch dreht und kein starker Abgabedruck folgt.",
-            "Undercut & Rally / Support-Reclaim": f"Passt eher, wenn der Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt und Folgestaerke entsteht.",
+            "Undercut & Rally / Support-Reclaim": uandr_need_text,
             "Flat Base / Base Breakout": f"Passt eher, wenn die flache Range intakt bleibt und ein Schlusskurs ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen erfolgt.",
             "Tight Range Breakout": f"Passt eher, wenn die enge Range nach oben aufloest und der Kurs ueber {_v1533_1_fmt_price(pivot_zone)} schliesst.",
             "Accumulation Cluster": "Passt eher als Qualitaetsbestaetigung, wenn Akkumulation/Volumen weiter konstruktiv bleiben und Distribution nicht anzieht.",
@@ -8721,7 +8891,7 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
             "Pocket Pivot": ("Bullischer Volumenimpuls nahe Pivot/MA.", "Frueher Kaufdruck vor dem klassischen Ausbruch; Volumen muss den Move bestaetigen.", f"Volumen ueber Schnitt, Schluss stark, Pivot/MA um {_v1533_1_fmt_price(pivot_zone)} wird gehalten/ueberschritten."),
             "VCP / Volatility Contraction": ("Schwankung zieht zusammen.", "Mehrere engere Ruecksetzer: Angebot trocknet aus, ein Ausbruch kann dadurch belastbarer werden.", f"Range bleibt eng; Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)} mit Volumen."),
             "MA10/20 Pullback-Reaktion": ("Ruecksetzer reagiert an MA10/20.", "Trend-Pullback: Kurs testet die kurzfristigen Linien und zeigt dort wieder Nachfrage.", f"MA10/MA20 halten ({_v1533_1_fmt_price(ma10)} / {_v1533_1_fmt_price(ma20)}), bullische Kerze/Folgestaerke."),
-            "Undercut & Rally / Support-Reclaim": ("Kurzer Bruch wird zurueckerobert.", "Shakeout/Reversal: ein Tief oder Support wird kurz verletzt und danach wieder zurueckerobert.", f"Reclaim ueber {_v1533_1_fmt_price(prev_low20)} haelt, ideal mit Volumen/Folgestaerke."),
+            "Undercut & Rally / Support-Reclaim": ("Echter kurzer Bruch wird zurueckerobert.", "U&R ist nur aktiv, wenn ein relevantes Swing-Low/Support tatsaechlich unterboten UND per Schlusskurs zurueckerobert wurde; Zusatzmerkmale duerfen das Signal nicht ersetzen.", uandr_need_text),
             "Flat Base / Base Breakout": ("Flache Base / enge Range.", "Ruhige Seitwaertsphase; wird erst interessant, wenn die obere Range sauber bricht.", f"Schlusskurs ueber Range/Pivot {_v1533_1_fmt_price(pivot_zone)} mit Volumen; Invalidierung unter Range."),
             "Tight Range Breakout": ("Sehr enge Kurzfrist-Range.", "Kurzfristige Spannung baut sich auf; der Trigger ist der Ausbruch aus der engen Range.", f"Ausbruch ueber {_v1533_1_fmt_price(pivot_zone)}; nicht vor dem Trigger vorwegnehmen."),
             "Accumulation Cluster": ("Mehrere Akkumulations-/Volumenhinweise.", "Hinweis auf wiederholte Nachfrage/groessere Kaeufer; allein noch kein Entry-Signal.", "Qualitaetsbestaetigung; wird erst mit Entry-/Pivottrigger handelbar."),
@@ -8735,13 +8905,31 @@ def build_setup_pattern_context_v162(chart_df=None, result=None):
         for k in ["Pocket Pivot","VCP / Volatility Contraction","Flat Base / Base Breakout","Tight Range Breakout","MA10/20 Pullback-Reaktion","Pullback Dry-Up","Undercut & Rally / Support-Reclaim","Double Bottom / Higher Low","Accumulation Cluster","RS-New-High / Leadership-Reclaim","High Tight Pivot","Power Play","High Tight Flag","Failed Breakout / Exhaustion-Warnung","Wide & Loose / Climax-Warnung"]:
             les, expl, need = row_info[k]
             rows.append({"Muster": k, "Score": int(round(min(max(scores[k],0),100))), "Lesart": les, "Kurz erklärt": expl, "Damit es passt": need})
+        active_zone_text = (
+            f"U&R-Reclaim-Zone um {_v1533_1_fmt_price(uandr_ref)} ({uandr_ref_source})"
+            if pattern_type == "Undercut & Rally / Support-Reclaim" and uandr_ref
+            else (f"Pivot/Triggerbereich um {_v1533_1_fmt_price(pivot_zone)}" if pivot_zone else "n/a")
+        )
+        metrics = {
+            "Kurs": round(price,2),
+            "Pivotbereich": round(float(pivot_zone),2) if pivot_zone and np.isfinite(pivot_zone) else "n/a",
+            "Range_10T_%": round(float(tight10),1),
+            "Range_20T_%": round(float(tight20),1),
+            "Volumen_Ratio": round(float(vol_ratio),2) if pd.notna(vol_ratio) else "n/a",
+            "U&R_Pflichtgate": "erfuellt" if uandr_score > 0 else "nicht erfuellt",
+            "U&R_Modell": uandr_mode,
+            "U&R_Referenz": round(float(uandr_ref),2) if uandr_ref else "n/a",
+            "U&R_Referenztyp": uandr_ref_source,
+            "U&R_Undercut_%": round(float(uandr_depth),2) if uandr_depth is not None else "n/a",
+            "U&R_Reclaim_%": round(float(uandr_reclaim),2) if uandr_reclaim is not None else "n/a",
+        }
         out.update({
             "label": label, "phase": phase, "pattern_type": pattern_type, "summary": summary,
-            "action_hint": action, "active_zone_text": f"Pivot/Triggerbereich um {_v1533_1_fmt_price(pivot_zone)}" if pivot_zone else "n/a",
+            "action_hint": action, "active_zone_text": active_zone_text,
             "trigger_label": trig_label, "trigger_score": trigger_score, "trigger_text": trig_text,
             "trigger_action": trig_action, "confirmation_needed": confirmation_needed,
             "drivers": (tdrivers + drivers)[:8], "rows": rows,
-            "metrics": {"Kurs": round(price,2), "Pivotbereich": round(float(pivot_zone),2) if pivot_zone and np.isfinite(pivot_zone) else "n/a", "Range_10T_%": round(float(tight10),1), "Range_20T_%": round(float(tight20),1), "Volumen_Ratio": round(float(vol_ratio),2) if pd.notna(vol_ratio) else "n/a"},
+            "metrics": metrics,
         })
         return out
     except Exception as exc:

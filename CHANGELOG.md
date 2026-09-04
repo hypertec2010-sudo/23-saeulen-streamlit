@@ -1,5 +1,15 @@
 # Changelog
 
+## v30.1c
+- Undercut-&-Rally-Pflichtgate eingefuehrt: echter Undercut plus Schlusskurs-Reclaim ist zwingend.
+- Bullischer Tag, Docht, Volumen und RS koennen ohne bestandenen U&R-Kern keinen U&R-Score mehr erzeugen.
+- Relevante lokale Swing-Lows werden vor dem starren 20T-Tief bevorzugt; 20T-Tief bleibt transparenter Fallback.
+- Kurzer Shakeout wird auf ca. 0,3% bis 6,0% Undercut-Tiefe begrenzt; Reclaim muss ca. 0,2% ueber der Referenz schliessen.
+- Same-Day-Reclaim und bestaetigter Folgetag werden getrennt ausgewiesen.
+- U&R-spezifischer Trigger-Score verwendet Reclaim-/Folgetag-Qualitaet statt generischer Pivot-Punkte.
+- U&R-Referenz, Referenztyp, Undercut- und Reclaim-Abstand werden transparent im Musterpaket gefuehrt.
+- Keine Aenderung an produktiver Live-/Shadow-Ampel oder anderen Engine-Bausteinen.
+
 ## v30.1b
 - Navigation des Trading-Cockpits aus dem bedingt gerenderten Live-Cache-Pfad herausgeloest.
 - Eigener persistenter, nicht an ein Widget gebundener Cockpit-State verhindert Ruecksprung auf `Live-Screener`.

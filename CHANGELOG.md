@@ -1,3 +1,14 @@
+## v30.3 - Early Profit Learning & Calibration
+- v30.2 Early-Profit-Warnungen werden sicher per Entry-/Warn-/Exit-Zeitfenster real geschlossenen Trades zugeordnet.
+- Pro Trade zaehlt fuer die Statistik nur die erste Early-Profit-Warnung; spaetere Events uebergewichten den Trade nicht.
+- Vergleich von Warn-R gegen final realisiertes Gesamt-R mit Delta-R und Giveback-R.
+- Lernklassen: Gewinnschutz bestaetigt/stark bestaetigt, neutral, Laufenlassen besser/klar besser.
+- Neue Segmentauswertung nach Early-Profit-Empfehlung, Profit-Velocity-Band und Exhaustion-Risk-Band.
+- Historical Giveback Risk wird gegen den spaeter real beobachteten R-Giveback kalibriert.
+- Persoenliche Lernhinweise markieren, ob Warnungen bisher eher hilfreich, zu frueh oder gemischt waren.
+- Stichproben-Guard verhindert belastbare Aussagen bei zu wenigen Faellen.
+- Keine Provider-Abfragen, keine hypothetischen Kurspfade und keine automatische Aenderung an v30.2-Empfehlungen, Scores, Stops oder Orders.
+
 ## v30.2 - Early Profit Protection & Giveback Engine
 - Neue additive Fruehgewinn-Schutzschicht im Positions-/Exit-Monitor.
 - Profit Velocity 0-100 aus P/L, Haltedauer, ATR-Normalisierung und R-Multiple.

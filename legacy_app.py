@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.2"
+APP_VERSION = "v30.3"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14594,6 +14594,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "position_monitor.py",
     _MODULE_DIR_V252 / "trade_journal.py",
     _MODULE_DIR_V252 / "trade_learning.py",
+    _MODULE_DIR_V252 / "early_profit_learning.py",
     _MODULE_DIR_V252 / "portfolio_risk.py",
     _MODULE_DIR_V252 / "validated_engine.py",
     _MODULE_DIR_V252 / "rotation_radar.py",
@@ -14631,6 +14632,7 @@ from modules import position_monitor as _position_module
 from modules import profit_protection as _profit_protection_v302
 from modules import trade_journal as _trade_journal_module
 from modules import trade_learning as _trade_learning_module
+from modules import early_profit_learning as _early_profit_learning_v303
 from modules import portfolio_risk as _portfolio_risk_module
 from modules import validated_engine as _validated_engine_v300
 from modules import rotation_radar as _rotation_radar_v301
@@ -15009,6 +15011,9 @@ _v270_reset_trade_journal = _trade_journal_module._v270_reset_trade_journal
 # v29.0: Trading Journal & Learning Engine (observational only)
 _v290_capture_entry_context = _trade_learning_module.capture_entry_context
 _v290_build_learning_package = _trade_learning_module.build_learning_package
+
+# v30.3: read-only calibration of real Early-Profit events against closed trade outcomes.
+_v303_build_early_profit_learning = _early_profit_learning_v303.build_learning_package
 
 # v29.1: Portfolio & Risk Engine (advisory only)
 _portfolio_risk_module.configure_context(
@@ -19610,6 +19615,107 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                     st.dataframe(_exit_detail_v290.head(100), hide_index=True, use_container_width=True, height=min(360, 42 * len(_exit_detail_v290.head(100)) + 55))
                                             else:
                                                 st.info("Noch keine sicher zuordenbaren Exit-Engine-Warnungen. Bei alten Trades fehlt häufig ein belastbarer Entry-Zeitpunkt.")
+
+                                        # ---------- v30.3: Early Profit Learning & Calibration ----------
+                                        _early_learn_v303 = _v303_build_early_profit_learning(_learn_trades_v290, _event_df_v290)
+                                        _early_sum_v303 = dict(_early_learn_v303.get("summary") or {})
+                                        _early_detail_v303 = _early_learn_v303.get("detail")
+                                        with st.expander("⚡ Early Profit Protection · Lern- & Kalibrierungscheck", expanded=False):
+                                            st.caption(
+                                                "Ordnet die erste Early-Profit-Warnung einem real geschlossenen Trade nur dann zu, wenn Entry-, Warn- und Exit-Zeit sicher zusammenpassen. "
+                                                "Gemessen wird die Veränderung des tatsächlich realisierten R nach der Warnung. Das ist bewusst kein hypothetischer Sofortverkaufs-Backtest und verändert die v30.2-Empfehlung nicht automatisch."
+                                            )
+                                            if not isinstance(_early_detail_v303, pd.DataFrame) or _early_detail_v303.empty:
+                                                st.info(
+                                                    "Noch keine sicher zuordenbaren geschlossenen Trades mit Early-Profit-Warnung. "
+                                                    "v30.2 sammelt die Ereignisse automatisch; nach geschlossenen Trade-Zyklen entsteht hier die persönliche Kalibrierung."
+                                                )
+                                            else:
+                                                _ep1_v303, _ep2_v303, _ep3_v303, _ep4_v303, _ep5_v303 = st.columns(5)
+                                                with _ep1_v303:
+                                                    st.metric("Auswertbare Fälle", int(_early_sum_v303.get("evaluable") or 0))
+                                                with _ep2_v303:
+                                                    _pc_v303 = _early_sum_v303.get("protect_confirmed_pct")
+                                                    st.metric("Gewinnschutz bestätigt", "n/a" if _pc_v303 is None else f"{float(_pc_v303):.0f}%")
+                                                with _ep3_v303:
+                                                    _hb_v303 = _early_sum_v303.get("hold_better_pct")
+                                                    st.metric("Laufenlassen besser", "n/a" if _hb_v303 is None else f"{float(_hb_v303):.0f}%")
+                                                with _ep4_v303:
+                                                    _md_v303 = _early_sum_v303.get("median_delta_r")
+                                                    st.metric("Median ΔR danach", "n/a" if _md_v303 is None else f"{float(_md_v303):+.2f}R")
+                                                with _ep5_v303:
+                                                    st.metric("Reifegrad", str(_early_sum_v303.get("status") or "Daten sammeln"))
+
+                                                st.caption(
+                                                    f"Stichprobe: {_early_sum_v303.get('sample_label','Zu klein')} · "
+                                                    f"zugeordnete Trades: {int(_early_sum_v303.get('matched_trades') or 0)} · "
+                                                    f"R-Auswertungsabdeckung: {float(_early_sum_v303.get('coverage_pct') or 0):.0f}%. "
+                                                    "Gewinnschutz gilt hier als bestätigt, wenn das final realisierte Ergebnis mindestens 0,25R unter dem R am ersten Warnzeitpunkt lag; "
+                                                    "ab +0,25R war Weiterlaufen im Nachhinein besser."
+                                                )
+
+                                                _ep_insights_v303 = list(_early_learn_v303.get("insights") or [])
+                                                if _ep_insights_v303:
+                                                    st.markdown("**Persönliche Early-Profit-Lernhinweise**")
+                                                    for _ep_insight_v303 in _ep_insights_v303:
+                                                        st.write(f"• {_ep_insight_v303}")
+
+                                                _ep_action_v303 = _early_learn_v303.get("action_summary")
+                                                _ep_velocity_v303 = _early_learn_v303.get("velocity_summary")
+                                                _ep_exhaust_v303 = _early_learn_v303.get("exhaustion_summary")
+                                                _ep_cal_v303 = _early_learn_v303.get("risk_calibration")
+
+                                                _tab1_v303, _tab2_v303, _tab3_v303, _tab4_v303 = st.tabs([
+                                                    "Nach Empfehlung", "Profit Velocity", "Exhaustion", "Giveback-Kalibrierung"
+                                                ])
+                                                with _tab1_v303:
+                                                    if isinstance(_ep_action_v303, pd.DataFrame) and not _ep_action_v303.empty:
+                                                        st.dataframe(_ep_action_v303, hide_index=True, use_container_width=True)
+                                                    else:
+                                                        st.info("Noch keine auswertbare Gruppierung nach Empfehlung.")
+                                                with _tab2_v303:
+                                                    if isinstance(_ep_velocity_v303, pd.DataFrame) and not _ep_velocity_v303.empty:
+                                                        st.dataframe(_ep_velocity_v303, hide_index=True, use_container_width=True)
+                                                    else:
+                                                        st.info("Noch keine auswertbaren Profit-Velocity-Bänder.")
+                                                with _tab3_v303:
+                                                    if isinstance(_ep_exhaust_v303, pd.DataFrame) and not _ep_exhaust_v303.empty:
+                                                        st.dataframe(_ep_exhaust_v303, hide_index=True, use_container_width=True)
+                                                    else:
+                                                        st.info("Noch keine auswertbaren Exhaustion-Risk-Bänder.")
+                                                with _tab4_v303:
+                                                    st.caption(
+                                                        "Vergleicht den damals gespeicherten Historical Giveback Risk mit dem später real beobachteten R-Giveback. "
+                                                        "Bänder unter 5 Fällen bleiben kleine Stichproben und werden nicht zur Regeländerung verwendet."
+                                                    )
+                                                    if isinstance(_ep_cal_v303, pd.DataFrame) and not _ep_cal_v303.empty:
+                                                        st.dataframe(_ep_cal_v303, hide_index=True, use_container_width=True)
+                                                    else:
+                                                        st.info("Noch nicht genug Events mit gespeichertem Historical Giveback Risk.")
+
+                                                with st.expander("Zugeordnete Early-Profit-Fälle", expanded=False):
+                                                    _ep_cols_v303 = [
+                                                        "Erste Warnung", "Ticker", "Name", "Warn-Aktion", "Stärkste Aktion",
+                                                        "Profit Velocity", "Exhaustion Risk", "Giveback Risk",
+                                                        "Warn-R", "Final R", "ΔR nach Warnung", "Giveback R",
+                                                        "Ampel", "Bewertung", "Events im Trade", "Exit-Zeit",
+                                                    ]
+                                                    _ep_cols_v303 = [c for c in _ep_cols_v303 if c in _early_detail_v303.columns]
+                                                    st.dataframe(
+                                                        _early_detail_v303[_ep_cols_v303].head(300),
+                                                        hide_index=True,
+                                                        use_container_width=True,
+                                                        height=min(520, 42 * len(_early_detail_v303.head(300)) + 55),
+                                                    )
+                                                    _ep_csv_v303 = _early_detail_v303.drop(columns=["Entry-Zeit", "Erste Warnung", "Exit-Zeit"], errors="ignore").to_csv(index=False).encode("utf-8-sig")
+                                                    st.download_button(
+                                                        "Early-Profit-Lerndaten als CSV",
+                                                        data=_ep_csv_v303,
+                                                        file_name=f"early_profit_learning_{selected_watchlist_name}.csv",
+                                                        mime="text/csv",
+                                                        use_container_width=True,
+                                                        key=f"v303_early_profit_learning_csv_{selected_watchlist_name}",
+                                                    )
 
                                         _manual_tags_v290 = _learning_v290.get("manual_tags")
                                         if isinstance(_manual_tags_v290, pd.DataFrame) and not _manual_tags_v290.empty:

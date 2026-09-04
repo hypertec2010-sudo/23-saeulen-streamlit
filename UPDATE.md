@@ -1,44 +1,60 @@
-# v30.2 - Early Profit Protection & Giveback Engine
+# v30.3 - Early Profit Learning & Calibration
 
-v30.2 ergaenzt den Positions-/Exit-Bereich um eine separate Fruehgewinn-Schutzlogik fuer Trades, die kurz nach dem Entry ungewoehnlich schnell steigen.
+v30.3 schliesst den in v30.2 bewusst noch offenen Learning-Kreis: Early-Profit-Warnungen werden jetzt mit spaeter real geschlossenen Trades verknuepft und darauf geprueft, ob der Gewinnschutz im Nachhinein tatsaechlich sinnvoll war oder ob die Aktie danach noch deutlich weiterlief.
 
-## Neue Kernwerte
-- **Profit Velocity 0-100**: bewertet Gewinn seit Entry relativ zu Haltedauer, ATR und R-Multiple.
-- **Exhaustion Risk 0-100**: trennt gesunde Beschleunigung von Ueberdehnung/Ermuedung anhand von MA10-Abstand, Exit-/Trend-/Momentum-/Distribution-/RS-Signalen, Markt und Volatilitaet.
-- **Historical Giveback Risk**: misst auf expliziten Klick, wie oft aehnliche schnelle Moves in der Aktie bzw. kompakten Vergleichsaktien innerhalb der folgenden 5 Handelstage mindestens die Haelfte des Impulses wieder abgegeben haben.
+## Neue Auswertung im Trade-Journal
+Unter **Early Profit Protection · Lern- & Kalibrierungscheck** wird pro geschlossenem Trade maximal ein unabhaengiger Lernfall verwendet: die erste sicher zuordenbare Early-Profit-Warnung innerhalb des realen Entry-/Exit-Zeitfensters.
 
-## Empfehlungen
-Die Zusatzengine unterscheidet u. a.:
-- Healthy Acceleration / laufen lassen,
-- Gewinnschutz pruefen,
-- Teilgewinn 25-50% pruefen,
-- in extremen, technisch bestaetigten Faellen Teilgewinn / Exit pruefen.
+Mehrere spaetere Warnungen desselben Trades werden zwar als Kontext gezaehlt, uebergewichten die Statistik aber nicht.
 
-Ein schneller Kursanstieg allein erzeugt bewusst kein Verkaufssignal. Positive RS-/Markt-/Akkumulationsbestaetigung kann einen schnellen Move weiterhin als konstruktiv einstufen.
+## Was gemessen wird
+- R-Multiple zum Zeitpunkt der ersten Early-Profit-Warnung,
+- final realisiertes Gesamt-R des Trade-Zyklus,
+- Delta-R nach der Warnung,
+- realer Giveback in R,
+- Profit Velocity am Warnzeitpunkt,
+- Exhaustion Risk am Warnzeitpunkt,
+- damaliger Historical Giveback Risk,
+- erste und staerkste Early-Profit-Empfehlung im Trade.
 
-## Historische Fast-Move-Analyse
-Im Bereich **Positionen / Exit -> Offenen Trade verwalten** kann fuer die ausgewaehlte Position die Historie manuell aktualisiert werden.
+## Lernklassifikation
+- **Gewinnschutz bestaetigt**: final realisiertes R liegt mindestens 0,25R unter dem R am ersten Warnzeitpunkt.
+- **Gewinnschutz stark bestaetigt**: mindestens 0,75R Giveback.
+- **Laufenlassen besser**: final realisiertes R liegt mindestens 0,25R ueber dem Warnzeitpunkt.
+- **Laufenlassen klar besser**: mindestens +0,75R danach.
+- Dazwischen bleibt der Fall neutral.
 
-Die Analyse:
-- verwendet ein zum aktuellen Trade passendes 1-3T-Fast-Move-Fenster,
-- kalibriert Mindestbewegung in Prozent und ATR an den aktuellen Move,
-- untersucht die gleiche Aktie ueber bis zu 5 Jahre,
-- ergaenzt bei passender Rotation-/Portfolio-Gruppe maximal vier repraesentative Vergleichsaktien,
-- misst Giveback >=50%, Ruecklauf zum Move-Start, direkten Follow-through, medianen Ruecksetzer und medianen weiteren Lauf,
-- kennzeichnet die Stichprobe als Zu klein / Fruehphase / Mittel / Gut / Breiter.
+Diese Schwellen sind nur fuer den Lerncheck. Sie veraendern die v30.2-Empfehlung nicht.
 
-Ein gespeichertes historisches Profil beeinflusst die aktuelle Empfehlung nur, solange Tempo und Haltefenster noch ausreichend zum damaligen Fast-Move-Profil passen. Bei deutlicher Veraenderung wird es nur noch angezeigt und eine Aktualisierung empfohlen.
+## Neue Kalibrierungen
+Die Learning Engine zeigt:
+- Trefferbild nach damaliger Early-Profit-Empfehlung,
+- Ergebnis nach Profit-Velocity-Band,
+- Ergebnis nach Exhaustion-Risk-Band,
+- Kalibrierung des historischen Giveback-Risikos gegen real beobachtete Trade-Ausgaenge.
+
+Damit wird sichtbar, ob z. B. sehr hohe Exhaustion-Werte bei den eigenen Trades tatsaechlich haeufiger in Givebacks enden oder ob die Warnungen bislang zu frueh ausloesen.
+
+## Stichproben-Guard
+- <5: Zu klein
+- 5-9: Fruehphase
+- 10-19: Mittel / fruehe Kalibrierung
+- 20-39: Gut / beobachtbar kalibriert
+- >=40: Breiter
+
+Kleine Stichproben bleiben ausdruecklich als solche markiert. Es gibt keine automatische Regel-, Score-, Stop- oder Order-Aenderung.
+
+## Methodischer Hinweis
+Der Lerncheck ist bewusst **kein hypothetischer Sofortverkaufs-Backtest**. Er vergleicht das R am Warnzeitpunkt mit dem spaeter tatsaechlich realisierten Gesamt-R des Trades. Teilverkaeufe und reale Positionsfuehrung bleiben dadurch Teil des echten Ergebnisses.
 
 ## Provider-Schutz
-Die normale Positionsanzeige und der Atomic-/Auto-Scan erzeugen **keine zusaetzlichen Historien-Requests**. Historie wird nur per explizitem Button geladen, gebuendelt fuer die Position plus maximal vier Peers. Ein einzelner Target-Fallback ist nur erlaubt, wenn die Batch-Abfrage die Position selbst nicht geliefert hat.
-
-## Learning / Events
-Gelbe, orange und rote Early-Profit-Zustaende werden dedupliziert als **Early Profit Protection** Event protokolliert. Historische Aktualisierungen werden separat dokumentiert. Damit kann die bestehende Learning Engine spaeter pruefen, ob frueher Gewinnschutz tatsaechlich vorteilhaft war.
+Keine neuen Kurs- oder Historienabfragen. v30.3 arbeitet nur mit bereits vorhandenen Trade-Journal- und Event-Log-Daten.
 
 ## Unveraendert
-- keine automatische Order,
-- keine automatische Stop-Aenderung,
-- keine Aenderung an Live-/Shadow-Ampel,
-- keine Aenderung an Exit Engine 2.0,
-- keine Aenderung am Atomic-Screener-Cache-Schema,
-- keine SQL-/Secrets-Aenderung.
+- v30.2 Early Profit Protection & Giveback Engine,
+- produktive Live-/Shadow-Ampel,
+- Exit Engine 2.0,
+- Rotation Radar,
+- Atomic Complete Scan,
+- Portfolio Engine,
+- SQL / Secrets.

@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3g"
+APP_VERSION = "v30.3h"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15574,6 +15574,162 @@ def _v303g_native_currency_summary(native_rows):
     return pd.DataFrame(out).sort_values("Währung").reset_index(drop=True)
 
 
+def _v303h_portfolio_bridge(native_rows, base_currency="EUR", fx_rates=None, account_size=0.0):
+    """Reconcile market-data/stop/FX coverage without mixing the three concepts.
+
+    v29.1 historically exposes value-weighted coverage in base currency. If FX is
+    missing, that metric can legitimately be zero even though every position has
+    a fresh Atomic quote. For the cockpit this is misleading. This bridge derives
+    position-based coverage directly from the same open-position rows and only
+    computes base-currency totals when every required FX conversion is explicit.
+    It never calls a provider and never upgrades a stored mark to fresh.
+    """
+    out = {
+        "position_count": 0,
+        "fresh_count": 0,
+        "priced_count": 0,
+        "stop_count": 0,
+        "fx_count": 0,
+        "stale_count": 0,
+        "current_price_coverage_pct": 0.0,
+        "price_coverage_pct": 0.0,
+        "stop_coverage_pct": 0.0,
+        "fx_coverage_pct": 0.0,
+        "base_aggregate_ready": False,
+        "total_value_base": None,
+        "exposure_pct": None,
+        "cash_base": None,
+        "risk_to_stop_base": None,
+        "risk_to_stop_pct": None,
+        "fresh_value_coverage_pct": None,
+        "stop_value_coverage_pct": None,
+        "single_native_currency": None,
+        "single_native_value": None,
+        "single_native_risk": None,
+    }
+    if not isinstance(native_rows, pd.DataFrame) or native_rows.empty:
+        return out
+
+    work = native_rows.copy().reset_index(drop=True)
+    n = int(len(work))
+    if n <= 0:
+        return out
+
+    out["position_count"] = n
+    shares = pd.to_numeric(work.get("Stück", pd.Series(0.0, index=work.index)), errors="coerce").fillna(0.0)
+    price = pd.to_numeric(work.get("Kurs", pd.Series(np.nan, index=work.index)), errors="coerce")
+    stop = pd.to_numeric(work.get("Stop", pd.Series(np.nan, index=work.index)), errors="coerce")
+    fresh = work.get("Frisch", pd.Series(False, index=work.index)).fillna(False).astype(bool)
+    ccy = work.get("Währung", pd.Series("", index=work.index)).fillna("").astype(str).str.strip().str.upper()
+
+    active = shares > 0
+    priced = active & price.notna() & (price > 0)
+    current = priced & fresh
+    stop_ok = active & stop.notna() & (stop > 0)
+
+    out["fresh_count"] = int(current.sum())
+    out["priced_count"] = int(priced.sum())
+    out["stop_count"] = int(stop_ok.sum())
+    out["stale_count"] = int((priced & ~fresh).sum())
+    out["current_price_coverage_pct"] = round(float(current.sum()) / n * 100.0, 1)
+    out["price_coverage_pct"] = round(float(priced.sum()) / n * 100.0, 1)
+    out["stop_coverage_pct"] = round(float(stop_ok.sum()) / n * 100.0, 1)
+
+    base = str(base_currency or "EUR").strip().upper() or "EUR"
+    rates = {str(k).strip().upper(): float(v) for k, v in dict(fx_rates or {}).items() if str(k).strip() and _v230_safe_float(v, default=None) is not None}
+    rates[base] = 1.0
+    row_rates = []
+    fx_ok = []
+    for cur in ccy.tolist():
+        cur = str(cur or "").strip().upper() or base
+        rate = _v230_safe_float(rates.get(cur), default=None)
+        valid = bool(rate is not None and rate > 0)
+        row_rates.append(float(rate) if valid else np.nan)
+        fx_ok.append(valid)
+    fx_ok_s = pd.Series(fx_ok, index=work.index, dtype=bool)
+    rate_s = pd.Series(row_rates, index=work.index, dtype=float)
+    out["fx_count"] = int(fx_ok_s.sum())
+    out["fx_coverage_pct"] = round(float(fx_ok_s.sum()) / n * 100.0, 1)
+
+    valid_ccys = sorted({x for x in ccy.tolist() if str(x).strip()})
+    if len(valid_ccys) == 1 and bool(priced.all()):
+        one = valid_ccys[0]
+        native_value = (price * shares).where(priced)
+        native_risk = ((price - stop).clip(lower=0.0) * shares).where(priced & stop_ok)
+        out["single_native_currency"] = one
+        out["single_native_value"] = float(native_value.sum()) if native_value.notna().any() else None
+        out["single_native_risk"] = float(native_risk.sum()) if native_risk.notna().any() else None
+
+    # Full base-currency aggregates require an explicit FX path and a usable mark
+    # for every open position. Stale marks may remain visible in the raw table,
+    # but a complete current portfolio release additionally requires current=100%.
+    aggregate_rows = priced & fx_ok_s
+    if bool(aggregate_rows.all()):
+        base_values = price * shares * rate_s
+        total_value = float(base_values.sum())
+        out["base_aggregate_ready"] = True
+        out["total_value_base"] = total_value
+        acct = _v230_safe_float(account_size, default=0.0) or 0.0
+        if acct > 0:
+            out["exposure_pct"] = round(total_value / acct * 100.0, 2)
+            out["cash_base"] = float(acct - total_value)
+        if total_value > 0:
+            fresh_value = float(base_values.where(current, 0.0).sum())
+            stop_value = float(base_values.where(stop_ok, 0.0).sum())
+            out["fresh_value_coverage_pct"] = round(fresh_value / total_value * 100.0, 1)
+            out["stop_value_coverage_pct"] = round(stop_value / total_value * 100.0, 1)
+        risk_rows = priced & stop_ok & fx_ok_s
+        if bool(risk_rows.any()):
+            base_risk = ((price - stop).clip(lower=0.0) * shares * rate_s).where(risk_rows, 0.0)
+            risk_total = float(base_risk.sum())
+            out["risk_to_stop_base"] = risk_total
+            if acct > 0:
+                out["risk_to_stop_pct"] = round(risk_total / acct * 100.0, 2)
+    return out
+
+
+def _v303h_clean_portfolio_messages(messages, bridge, *, actions=False):
+    """Remove v29.1 data-gap messages that are false after native reconciliation."""
+    src = [str(x) for x in list(messages or []) if str(x).strip()]
+    current_cov = float((bridge or {}).get("current_price_coverage_pct") or 0.0)
+    stop_cov = float((bridge or {}).get("stop_coverage_pct") or 0.0)
+    fx_cov = float((bridge or {}).get("fx_coverage_pct") or 0.0)
+    cleaned = []
+    for text in src:
+        low = text.casefold()
+        if "kursabdeckung" in low or "vollständig scannen" in low or "vollstaendig scannen" in low:
+            continue
+        if "stop-abdeckung" in low or "fehlende stops" in low or "invalidierungen zuerst" in low:
+            continue
+        if "fx-abdeckung" in low or "fehlende fx" in low or "fx-umrechnung" in low:
+            continue
+        cleaned.append(text)
+
+    if actions:
+        if current_cov < 100.0:
+            cleaned.append(f"Fehlende aktuelle Atomic-Kurse ergänzen; Kursabdeckung aktuell {current_cov:.0f}% der Positionen.")
+        if stop_cov < 100.0:
+            cleaned.append(f"Fehlende Stops/Invalidierungen ergänzen; Stop-Abdeckung aktuell {stop_cov:.0f}% der Positionen.")
+        if fx_cov < 100.0:
+            cleaned.append("Fehlende FX-Umrechnung in die Depot-Basiswährung ergänzen; sie blockiert nur die Basiswährungs-Aggregation, nicht die Kurs-/Stop-Abdeckung.")
+    else:
+        if current_cov < 100.0:
+            cleaned.append(f"Aktuelle Kursabdeckung nur {current_cov:.0f}% der offenen Positionen")
+        if stop_cov < 100.0:
+            cleaned.append(f"Stop-Abdeckung nur {stop_cov:.0f}% der offenen Positionen")
+        if fx_cov < 100.0:
+            cleaned.append(f"FX-Abdeckung nur {fx_cov:.0f}% der offenen Positionen")
+
+    out = []
+    seen = set()
+    for text in cleaned:
+        key = text.casefold().strip()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(text)
+    return out
+
+
 def _v303g_sync_atomic_marks_into_positions(all_positions, live_df):
     """Mirror already available Atomic marks into persisted positions; no provider calls."""
     live_map = _v303g_portfolio_live_map(live_df)
@@ -19654,11 +19810,24 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             _currencies_v291 = sorted(set([str(x).upper() for x in (_currencies_v291 or []) if str(x).strip()]) | set(_native_ccys_v303g))
                             _fx_rates_v291 = {_base_currency_v291: 1.0}
                             _foreign_v291 = [c for c in _currencies_v291 if c and c != _base_currency_v291]
+                            _missing_fx_input_v303h = []
+                            for _cur_probe_v303h in _foreign_v291:
+                                _probe_key_v303h = f"v291_fx_{_cur_probe_v303h}_to_{_base_currency_v291}"
+                                _probe_val_v303h = _v230_safe_float(
+                                    st.session_state.get(
+                                        _probe_key_v303h,
+                                        (_settings_v291.get("fx_rates") or {}).get(_cur_probe_v303h, 0.0),
+                                    ),
+                                    default=0.0,
+                                ) or 0.0
+                                if float(_probe_val_v303h) <= 0:
+                                    _missing_fx_input_v303h.append(_cur_probe_v303h)
                             if _foreign_v291:
-                                with st.expander("FX-Umrechnung für Portfolio-Aggregation", expanded=False):
+                                with st.expander("FX-Umrechnung für Portfolio-Aggregation", expanded=bool(_missing_fx_input_v303h)):
                                     st.caption(
                                         "Keine FX-Kurse werden automatisch geschätzt oder zusätzlich beim Marktprovider abgefragt. "
-                                        "Fehlende Umrechnung reduziert die Portfolio-Konfidenz statt Werte falsch zusammenzurechnen."
+                                        "Fehlende Umrechnung blockiert nur EUR-/Basiswährungs-Summen; Kurs- und Stop-Abdeckung werden separat bewertet. "
+                                        "Ein positiver Wert gilt sofort, 'Portfolio-Einstellungen speichern' macht ihn reboot-fest."
                                     )
                                     _fx_cols_v291 = st.columns(min(3, max(1, len(_foreign_v291))))
                                     for _i_v291, _cur_v291 in enumerate(_foreign_v291):
@@ -19702,6 +19871,34 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 scope_watchlist=_scope_watchlist_v291,
                             )
                             _portfolio_rows_v291 = _portfolio_pkg_v291.get("rows")
+
+                            # v30.3h: Market-data, stop and FX coverage are three independent gates.
+                            # Reconcile them directly from the already built native position rows.
+                            _portfolio_bridge_v303h = _v303h_portfolio_bridge(
+                                _native_rows_v303g,
+                                base_currency=_base_currency_v291,
+                                fx_rates=_fx_rates_v291,
+                                account_size=_account_size_v291,
+                            )
+                            _pm_reconciled_v303h = dict(_portfolio_pkg_v291.get("metrics") or {})
+                            _pm_reconciled_v303h["fresh_position_coverage_pct"] = _portfolio_bridge_v303h.get("current_price_coverage_pct")
+                            _pm_reconciled_v303h["stop_position_coverage_pct"] = _portfolio_bridge_v303h.get("stop_coverage_pct")
+                            _pm_reconciled_v303h["fx_position_coverage_pct"] = _portfolio_bridge_v303h.get("fx_coverage_pct")
+                            _pm_reconciled_v303h["stale_count"] = int(_portfolio_bridge_v303h.get("stale_count") or 0)
+                            if bool(_portfolio_bridge_v303h.get("base_aggregate_ready")):
+                                # When every open position has an explicit FX path, derive the headline
+                                # totals from exactly the same current/native marks shown above. This
+                                # prevents the portfolio module and bridge from disagreeing.
+                                _pm_reconciled_v303h["total_value"] = _portfolio_bridge_v303h.get("total_value_base")
+                                _pm_reconciled_v303h["exposure_pct"] = _portfolio_bridge_v303h.get("exposure_pct")
+                                _pm_reconciled_v303h["cash"] = _portfolio_bridge_v303h.get("cash_base")
+                                _pm_reconciled_v303h["risk_to_stop_pct"] = _portfolio_bridge_v303h.get("risk_to_stop_pct")
+                                if _portfolio_bridge_v303h.get("fresh_value_coverage_pct") is not None:
+                                    _pm_reconciled_v303h["fresh_value_coverage_pct"] = _portfolio_bridge_v303h.get("fresh_value_coverage_pct")
+                                if _portfolio_bridge_v303h.get("stop_value_coverage_pct") is not None:
+                                    _pm_reconciled_v303h["stop_value_coverage_pct"] = _portfolio_bridge_v303h.get("stop_value_coverage_pct")
+                                _pm_reconciled_v303h["fx_value_coverage_pct"] = 100.0
+                            _portfolio_pkg_v291["metrics"] = _pm_reconciled_v303h
 
                             # v30.3g: Datenstatus vor jeder Aggregation transparent zeigen.
                             _native_count_v303g = int(len(_native_rows_v303g)) if isinstance(_native_rows_v303g, pd.DataFrame) else 0
@@ -19765,32 +19962,52 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 st.info("Noch keine offenen Positionen für die Portfolio-Auswertung vorhanden.")
                             else:
                                 _pm_v291 = _portfolio_pkg_v291.get("metrics") or {}
-                                st.markdown(
-                                    f"## {_portfolio_pkg_v291.get('ampel','⚪')} {_portfolio_pkg_v291.get('status','-')} · "
-                                    f"{float(_portfolio_pkg_v291.get('score') or 0):.0f}/100"
-                                )
-                                st.write(f"**Nächste Portfolio-Handlung:** {_portfolio_pkg_v291.get('action','-')}")
-                                st.caption(f"Konfidenz: {_portfolio_pkg_v291.get('confidence','-')}")
-
                                 _missing_fx_v303g = sorted([
                                     c for c in _native_ccys_v303g
                                     if c != _base_currency_v291 and float(_fx_rates_v291.get(c, 0.0) or 0.0) <= 0.0
                                 ])
                                 _aggregate_fx_blocked_v303g = bool(_missing_fx_v303g and _native_count_v303g > 0)
+
+                                # v30.3h: do not present a numeric portfolio-risk score as fully
+                                # released while the chosen base-currency aggregation is impossible.
+                                if _aggregate_fx_blocked_v303g:
+                                    st.markdown("## ⚪ Portfolio-Risiko noch nicht vollständig berechenbar")
+                                    st.write("**Nächste Portfolio-Handlung:** Fehlende FX-Umrechnung ergänzen; Positions-/Stop-Daten bleiben davon getrennt auswertbar.")
+                                    st.caption(
+                                        f"Vorläufiger Engine-Score {float(_portfolio_pkg_v291.get('score') or 0):.0f}/100 · "
+                                        f"Konfidenz: {_portfolio_pkg_v291.get('confidence','-')} · keine Freigabe als vollständige Portfolio-Ampel"
+                                    )
+                                else:
+                                    st.markdown(
+                                        f"## {_portfolio_pkg_v291.get('ampel','⚪')} {_portfolio_pkg_v291.get('status','-')} · "
+                                        f"{float(_portfolio_pkg_v291.get('score') or 0):.0f}/100"
+                                    )
+                                    st.write(f"**Nächste Portfolio-Handlung:** {_portfolio_pkg_v291.get('action','-')}")
+                                    st.caption(f"Konfidenz: {_portfolio_pkg_v291.get('confidence','-')}")
+
                                 if _aggregate_fx_blocked_v303g:
                                     st.warning(
-                                        "Portfolio-Gesamtwerte sind derzeit nicht berechenbar, weil FX fehlt: "
+                                        "Portfolio-Gesamtwerte in " + _base_currency_v291 + " sind noch blockiert, weil FX fehlt: "
                                         + ", ".join(f"{c}→{_base_currency_v291}" for c in _missing_fx_v303g)
-                                        + ". Deshalb werden Investiert/Exposure/Cash/Risiko nicht mehr faelschlich als 0 angezeigt."
+                                        + ". Das beeinflusst nicht mehr die Kurs- oder Stop-Abdeckung."
                                     )
+                                    _native_one_ccy_v303h = _portfolio_bridge_v303h.get("single_native_currency")
+                                    _native_one_value_v303h = _portfolio_bridge_v303h.get("single_native_value")
+                                    _native_one_risk_v303h = _portfolio_bridge_v303h.get("single_native_risk")
+                                    if _native_one_ccy_v303h and _native_one_value_v303h is not None:
+                                        _native_hint_v303h = f"Ohne FX bereits berechenbar: investiert {_native_one_value_v303h:,.0f} {_native_one_ccy_v303h}".replace(",", ".")
+                                        if _native_one_risk_v303h is not None:
+                                            _native_hint_v303h += f" · Risiko bis Stop {_native_one_risk_v303h:,.0f} {_native_one_ccy_v303h}".replace(",", ".")
+                                        st.info(_native_hint_v303h + " · Exposure/Cash in der Depot-Basiswährung benötigen weiterhin den expliziten FX-Kurs.")
 
-                                _mcols_v291 = st.columns(2 if mobile_mode_v2842 else 5)
+                                _mcols_v291 = st.columns(2 if mobile_mode_v2842 else 6)
                                 _metric_specs_v291 = [
                                     ("Investiert", _pm_v291.get("total_value"), _base_currency_v291, True),
                                     ("Exposure", _pm_v291.get("exposure_pct"), "%", True),
                                     ("Cash / Reserve", _pm_v291.get("cash"), _base_currency_v291, True),
                                     ("Risiko bis Stop", _pm_v291.get("risk_to_stop_pct"), "% Depot", True),
-                                    ("Aktuelle Kursabdeckung", _pm_v291.get("fresh_value_coverage_pct"), "%", False),
+                                    ("Aktuelle Kursabdeckung", _portfolio_bridge_v303h.get("current_price_coverage_pct"), "%", False),
+                                    ("Stop-Abdeckung", _portfolio_bridge_v303h.get("stop_coverage_pct"), "%", False),
                                 ]
                                 for _idx_v291, (_label_v291, _val_v291, _unit_v291, _needs_fx_v303g) in enumerate(_metric_specs_v291):
                                     with _mcols_v291[_idx_v291 % len(_mcols_v291)]:
@@ -19809,19 +20026,25 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Doppelte Ticker in mehreren Positions-Watchlists wurden im Gesamtdepot nur einmal gezählt: "
                                         + ", ".join(_portfolio_pkg_v291.get("duplicates") or [])
                                     )
-                                if float(_pm_v291.get("fx_value_coverage_pct") or 0.0) < 100:
+                                _fx_cov_display_v303h = float(_portfolio_bridge_v303h.get("fx_coverage_pct") or 0.0)
+                                if _fx_cov_display_v303h < 100:
                                     st.warning(
-                                        f"FX-Abdeckung nur {float(_pm_v291.get('fx_value_coverage_pct') or 0):.0f}%. "
-                                        "Positionen ohne Umrechnung werden nicht in Depotwert/Cash/Exposure hineingeschätzt."
+                                        f"FX-Abdeckung { _fx_cov_display_v303h:.0f}% der offenen Positionen. "
+                                        "Nur die Basiswährungs-Aggregation bleibt unvollständig; aktuelle Kurse und Stops werden separat gezählt."
                                     )
-                                if int(_pm_v291.get("stale_count") or 0) > 0:
+                                _stale_display_v303h = int(_portfolio_bridge_v303h.get("stale_count") or 0)
+                                if _stale_display_v303h > 0:
                                     st.warning(
-                                        f"{int(_pm_v291.get('stale_count') or 0)} Position(en) haben in dieser Portfolio-Sicht keinen aktuellen Atomic-Scanwert. "
+                                        f"{_stale_display_v303h} Position(en) haben in dieser Portfolio-Sicht keinen aktuellen Atomic-Scanwert. "
                                         "Gespeicherte Kurse bleiben sichtbar, erzeugen aber keine grüne Datenfreigabe."
                                     )
 
-                                _drivers_v291 = _portfolio_pkg_v291.get("drivers") or []
-                                _actions_v291 = _portfolio_pkg_v291.get("actions") or []
+                                _drivers_v291 = _v303h_clean_portfolio_messages(
+                                    _portfolio_pkg_v291.get("drivers") or [], _portfolio_bridge_v303h, actions=False
+                                )
+                                _actions_v291 = _v303h_clean_portfolio_messages(
+                                    _portfolio_pkg_v291.get("actions") or [], _portfolio_bridge_v303h, actions=True
+                                )
                                 if _drivers_v291:
                                     st.markdown("**Wichtigste Risikotreiber**")
                                     for _d_v291 in _drivers_v291:

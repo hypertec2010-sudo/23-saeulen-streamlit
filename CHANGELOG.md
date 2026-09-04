@@ -1,3 +1,14 @@
+## v30.3h - Portfolio Coverage / FX Separation Fix
+- Portfolio-Marktdaten-, Stop- und FX-Abdeckung werden nicht mehr miteinander vermischt.
+- 3/3 aktuelle Atomic-Kurse ergeben 100% aktuelle Kursabdeckung, auch wenn eine Fremdwaehrungs-Umrechnung noch fehlt.
+- Stop-Abdeckung wird direkt aus den offenen Positionen berechnet und bleibt von FX unabhaengig.
+- Bei vollstaendigem explizitem FX-Pfad werden Investiert, Exposure, Cash und Risiko bis Stop aus derselben Positions-/Atomic-Basis reconciled.
+- Falsche Alt-Treiber/Aktionen mit `Kursabdeckung 0%` oder `Stop-Abdeckung 0%` werden gegen die reale Positionsbasis korrigiert.
+- Fehlendes FX blockiert nur Basiswaehrungs-Aggregate; der Portfolio-Risk-Score wird bis dahin als vorlaeufig statt als voll freigegebene Ampel dargestellt.
+- Einwaehrungs-Portfolios zeigen auch ohne FX native Investitions- und Stop-Risikowerte.
+- FX-Eingabebereich oeffnet sich automatisch, solange eine benoetigte Umrechnung fehlt; positive Eingaben wirken sofort.
+- Keine zusaetzlichen Provider-Requests, keine FX-Schaetzung und keine Aenderung an produktiver Live-/Shadow-/Exit-Logik.
+
 ## v30.3g - Portfolio Data Bridge & Missing-Data Display Fix
 - Portfolio-&-Risk-Anzeige stellt fehlende FX-/Kursdaten nicht mehr als scheinbar echte Nullwerte dar.
 - Bei fehlender FX-Umrechnung werden Investiert, Exposure, Cash und Risiko bis Stop als `n/a` angezeigt statt irrefuehrend als 0.

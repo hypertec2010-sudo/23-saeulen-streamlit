@@ -1,3 +1,13 @@
+## v30.3a - Positions-Watchlist Catalog Fix
+- Operative Watchlist-Auswahl auf den echten Watchlist-Katalog (`get_watchlist_catalog_df`) umgestellt.
+- Bereits angelegte, aber leere Positions-Watchlists bleiben sichtbar und auswählbar.
+- `load_watchlists_df` bleibt nur als Legacy-/Fallback-Quelle fuer vorhandene Ticker-Zeilen.
+- Historische/abweichende Typwerte werden auf `Watchlist` bzw. `Positions-Watchlist` normalisiert.
+- Bei leerem altem Katalog-Typ kann ein expliziter Typ aus Ticker-Zeilen den Typ ergaenzen; explizite Katalogwerte haben sonst Vorrang.
+- Getrennte Streamlit-Auswahlkeys fuer Watchlisten- und Positionsmodus verhindern State-Leaks beim Moduswechsel.
+- Kandidaten-Radar nutzt fuer Ziel-Watchlists ebenfalls den robusten Katalog, inklusive leerer Listen.
+- Keine Aenderung an Trading-/Exit-/Learning-Logik oder Providerzugriffen.
+
 ## v30.3 - Early Profit Learning & Calibration
 - v30.2 Early-Profit-Warnungen werden sicher per Entry-/Warn-/Exit-Zeitfenster real geschlossenen Trades zugeordnet.
 - Pro Trade zaehlt fuer die Statistik nur die erste Early-Profit-Warnung; spaetere Events uebergewichten den Trade nicht.

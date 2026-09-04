@@ -1,3 +1,27 @@
+# v30.3a - Positions-Watchlist Catalog Fix
+
+v30.3a behebt die Inkonsistenz, dass eine bereits existierende Positions-Watchlist beim Neuanlegen als Duplikat erkannt wurde, aber unter **Bestehende Watchlist auswählen** nicht erschien.
+
+## Ursache
+Die operative Auswahl wurde aus `load_watchlists_df()` aufgebaut. Diese Quelle repraesentiert vor allem die Ticker-Zeilen einer Watchlist. Eine bereits angelegte, aber aktuell leere bzw. ohne sichtbare Ticker-Zeilen gespeicherte Positions-Watchlist konnte deshalb aus der Auswahl verschwinden.
+
+Die Erstell-/Duplikatpruefung arbeitet dagegen mit dem eigentlichen Watchlist-Katalog. Dadurch entstand der widerspruechliche Zustand: **nicht auswählbar, aber bereits vorhanden**.
+
+## Fix
+- `get_watchlist_catalog_df()` ist jetzt die primaere Quelle fuer die Watchlist-Auswahl.
+- `load_watchlists_df()` dient nur noch als Legacy-/Kompatibilitaets-Fallback.
+- Leere Watchlists bleiben dadurch sichtbar und auswählbar.
+- Typwerte werden defensiv normalisiert: z. B. `Position`, `positions_watchlist`, `Positions-Watchlist` -> `Positions-Watchlist`.
+- Ist ein alter Katalog-Typ leer, darf ein expliziter Typ aus vorhandenen Ticker-Zeilen ihn ergaenzen.
+- Ein expliziter Katalog-Typ bleibt ansonsten autoritativ.
+- Watchlisten- und Positions-Watchlisten-Auswahl besitzen getrennte Streamlit-Widget-Keys, damit beim Moduswechsel kein ungueltiger alter Auswahlwert haengen bleibt.
+- Auch die Ziel-Watchlist-Auswahl im Kandidaten-Radar verwendet jetzt denselben echten Katalog; leere Ziel-Watchlists verschwinden dort ebenfalls nicht mehr.
+
+## Unveraendert
+Keine Aenderung an v30.2/v30.3 Early Profit Protection/Learning, Live-/Shadow-Ampel, Exit Engine 2.0, Rotation Radar Berechnung, Atomic Complete Scan, Portfolio Engine, SQL oder Secrets.
+
+---
+
 # v30.3 - Early Profit Learning & Calibration
 
 v30.3 schliesst den in v30.2 bewusst noch offenen Learning-Kreis: Early-Profit-Warnungen werden jetzt mit spaeter real geschlossenen Trades verknuepft und darauf geprueft, ob der Gewinnschutz im Nachhinein tatsaechlich sinnvoll war oder ob die Aktie danach noch deutlich weiterlief.

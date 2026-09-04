@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3"
+APP_VERSION = "v30.3a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15855,27 +15855,118 @@ elif workspace_mode == "Kandidaten-Radar":
 else:
     st.markdown("<div class='section-accent amber'>Positionen aktiv</div>", unsafe_allow_html=True)
 
+# ---------- v30.3a: robuster Watchlist-Katalog / Positions-Watchlist-Visibility ----------
+def _v303a_normalize_watchlist_type(value, default="Watchlist"):
+    """Normalisiert historische/abweichende Typbezeichnungen auf die zwei UI-Typen."""
+    raw = str(value or "").strip()
+    low = raw.lower().replace("_", " ").replace("-", " ")
+    low = " ".join(low.split())
+    if not low:
+        return str(default or "Watchlist")
+    if "position" in low or low in {"depot", "bestand", "holdings", "portfolio"}:
+        return "Positions-Watchlist"
+    if "watch" in low:
+        return "Watchlist"
+    return str(default or "Watchlist")
+
+
+def _v303a_catalog_from_result(result, source="catalog"):
+    """Akzeptiert DataFrame oder (DataFrame, error) und gibt ein normiertes Teil-DF zurueck."""
+    err = None
+    df = None
+    if isinstance(result, tuple):
+        if len(result) >= 1:
+            df = result[0]
+        if len(result) >= 2:
+            err = result[1]
+    else:
+        df = result
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "_v303a_source"]), err
+
+    work = df.copy()
+    # Nur bekannte Spaltennamen verwenden; keine stillen Fantasie-Mappings.
+    if "Watchlist_Name" not in work.columns:
+        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "_v303a_source"]), err or "Watchlist_Name fehlt"
+    _type_column_present_v303a = "Watchlist_Type" in work.columns
+    if not _type_column_present_v303a:
+        work["Watchlist_Type"] = ""
+
+    work = work[["Watchlist_Name", "Watchlist_Type"]].copy()
+    work["Watchlist_Name"] = work["Watchlist_Name"].fillna("").astype(str).str.strip()
+    _raw_type_v303a = work["Watchlist_Type"].fillna("").astype(str).str.strip()
+    work["_v303a_type_known"] = bool(_type_column_present_v303a) & (_raw_type_v303a != "")
+    work["Watchlist_Type"] = _raw_type_v303a.map(_v303a_normalize_watchlist_type)
+    work = work[work["Watchlist_Name"] != ""].copy()
+    work["_v303a_source"] = str(source)
+    return work, err
+
+
+def _v303a_load_watchlist_catalog():
+    """Laedt den echten Watchlist-Katalog und ergaenzt nur fehlende Legacy-Listen aus Ticker-Zeilen.
+
+    Entscheidend: Auch LEERE Watchlists muessen sichtbar bleiben. Genau deshalb ist
+    get_watchlist_catalog_df() die primaere Quelle und load_watchlists_df() nur Fallback.
+    """
+    frames = []
+    warnings = []
+
+    # 1) Autoritativer Katalog: enthaelt auch Watchlists ohne Ticker-Zeilen.
+    try:
+        cat_df, cat_err = _v303a_catalog_from_result(get_watchlist_catalog_df(), source="catalog")
+        if cat_err:
+            warnings.append(str(cat_err))
+        if not cat_df.empty:
+            frames.append(cat_df)
+    except Exception as exc:
+        warnings.append(f"Katalogabruf: {exc}")
+
+    # 2) Legacy-/Kompatibilitaets-Fallback: vorhandene Ticker-Zeilen duerfen nicht verloren gehen.
+    try:
+        rows_result = load_watchlists_df()
+        rows_df, rows_err = _v303a_catalog_from_result(rows_result, source="rows")
+        if rows_err:
+            warnings.append(str(rows_err))
+        if not rows_df.empty:
+            frames.append(rows_df)
+    except Exception as exc:
+        warnings.append(f"Watchlist-Zeilen: {exc}")
+
+    if not frames:
+        return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type"]), ("; ".join(dict.fromkeys(warnings)) if warnings else None)
+
+    merged = pd.concat(frames, ignore_index=True)
+    merged["_v303a_name_key"] = merged["Watchlist_Name"].astype(str).str.strip().str.lower()
+    # Katalog hat Vorrang vor abgeleiteten Ticker-Zeilen, falls alte Daten widerspruechlich sind.
+    # Expliziter Katalog-Typ ist autoritativ. Ist der Katalog-Typ leer/alt, darf
+    # eine vorhandene Ticker-Zeile den Typ sinnvoll ergaenzen.
+    merged["_v303a_priority"] = 9
+    merged.loc[(merged["_v303a_source"] == "catalog") & (merged["_v303a_type_known"] == True), "_v303a_priority"] = 0
+    merged.loc[(merged["_v303a_source"] == "rows") & (merged["_v303a_type_known"] == True), "_v303a_priority"] = 1
+    merged.loc[(merged["_v303a_source"] == "catalog") & (merged["_v303a_type_known"] != True), "_v303a_priority"] = 2
+    merged.loc[(merged["_v303a_source"] == "rows") & (merged["_v303a_type_known"] != True), "_v303a_priority"] = 3
+    merged = (
+        merged.sort_values(["_v303a_name_key", "_v303a_priority"])
+        .drop_duplicates(subset=["_v303a_name_key"], keep="first")
+        .drop(columns=["_v303a_name_key", "_v303a_priority", "_v303a_source", "_v303a_type_known"], errors="ignore")
+        .sort_values(["Watchlist_Name", "Watchlist_Type"])
+        .reset_index(drop=True)
+    )
+    return merged, ("; ".join(dict.fromkeys(warnings)) if warnings else None)
+
+
 # ---------- Watchlisten direkt in der App ----------
 if workspace_mode in {"Watchlisten", "Positionen"}:
     with st.expander("Watchlisten", expanded=True):
         st.caption("Oben operativ arbeiten, darunter optional verwalten.")
 
-        watchlists_df, watchlists_err = load_watchlists_df()
-        if watchlists_err:
-            st.warning(f"Watchlisten konnten noch nicht geladen werden: {watchlists_err}")
-
-        if watchlists_df is None or watchlists_df.empty:
-            catalog_df = pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type"])
-        else:
-            catalog_df = (
-                watchlists_df[["Watchlist_Name", "Watchlist_Type"]]
-                .fillna("")
-                .astype(str)
-                .query("Watchlist_Name != ''")
-                .drop_duplicates()
-                .sort_values(["Watchlist_Name", "Watchlist_Type"])
-                .reset_index(drop=True)
-            )
+        # v30.3a: Auswahl kommt aus dem echten Katalog, nicht aus den Ticker-Zeilen.
+        # Dadurch bleiben auch bereits angelegte, aber aktuell leere Positions-Watchlists sichtbar.
+        catalog_df, catalog_err_v303a = _v303a_load_watchlist_catalog()
+        if catalog_err_v303a and catalog_df.empty:
+            st.warning(f"Watchlisten konnten noch nicht geladen werden: {catalog_err_v303a}")
+        elif catalog_err_v303a:
+            st.caption("Watchlist-Katalog geladen; eine Fallback-Quelle meldete einen Hinweis.")
 
         default_type = "Positions-Watchlist" if workspace_mode == "Positionen" else "Watchlist"
 
@@ -15935,10 +16026,10 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                         watchlist_options = catalog_df["Watchlist_Name"].tolist() if not catalog_df.empty else []
 
                         if workspace_mode == "Positionen" and not catalog_df.empty:
-                            filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"] == "Positions-Watchlist"].copy()
+                            filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"].map(_v303a_normalize_watchlist_type) == "Positions-Watchlist"].copy()
                             watchlist_options = filtered_catalog_df["Watchlist_Name"].tolist()
                         elif workspace_mode == "Watchlisten" and not catalog_df.empty:
-                            filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"] == "Watchlist"].copy()
+                            filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"].map(_v303a_normalize_watchlist_type) == "Watchlist"].copy()
                             watchlist_options = filtered_catalog_df["Watchlist_Name"].tolist()
                         else:
                             filtered_catalog_df = catalog_df.copy()
@@ -15949,11 +16040,14 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                                 "Watchlist",
                                 options=watchlist_options,
                                 index=default_idx,
-                                key="selected_watchlist_name_widget"
+                                key=f"selected_watchlist_name_widget_{workspace_mode.lower()}"
                             )
                             st.session_state.selected_watchlist_name = selected_watchlist_name
 
-                            selected_watchlist_type = filtered_catalog_df.loc[filtered_catalog_df["Watchlist_Name"] == selected_watchlist_name, "Watchlist_Type"].iloc[0]
+                            selected_watchlist_type = _v303a_normalize_watchlist_type(
+                                filtered_catalog_df.loc[filtered_catalog_df["Watchlist_Name"] == selected_watchlist_name, "Watchlist_Type"].iloc[0],
+                                default=default_type,
+                            )
                             current_alert_mode = get_watchlist_alert_mode(selected_watchlist_name)
                             current_check_frequency = get_watchlist_check_frequency(selected_watchlist_name)
                             st.session_state.selected_watchlist_type = selected_watchlist_type
@@ -20865,28 +20959,17 @@ if workspace_mode:
                 st.markdown("### Radar-Ergebnisse direkt nutzen")
                 st.caption("Auswahl direkt links in den Radar-Zeilen treffen. Nur markierte Werte werden übernommen.")
                 st.caption("Die aktuellen Radar-Kandidaten lassen sich direkt in die Sofortanalyse übernehmen oder in eine frei wählbare Watchlist schreiben.")
-                radar_watchlists_df, radar_watchlists_err = load_watchlists_df()
-                if radar_watchlists_err:
-                    st.warning(f"Watchlisten konnten für den Radar nicht geladen werden: {radar_watchlists_err}")
-                    radar_catalog_df = pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type"])
-                elif radar_watchlists_df is None or radar_watchlists_df.empty:
-                    radar_catalog_df = pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type"])
-                else:
-                    radar_catalog_df = (
-                        radar_watchlists_df[["Watchlist_Name", "Watchlist_Type"]]
-                        .fillna("")
-                        .astype(str)
-                        .query("Watchlist_Name != ''")
-                        .drop_duplicates()
-                        .sort_values(["Watchlist_Name", "Watchlist_Type"])
-                        .reset_index(drop=True)
-                    )
+                # v30.3a: auch der Radar nutzt den echten Watchlist-Katalog, damit leere
+                # Ziel-Watchlists nicht aus der Auswahl verschwinden.
+                radar_catalog_df, radar_catalog_err_v303a = _v303a_load_watchlist_catalog()
+                if radar_catalog_err_v303a and radar_catalog_df.empty:
+                    st.warning(f"Watchlisten konnten für den Radar nicht geladen werden: {radar_catalog_err_v303a}")
 
                 radar_watchlist_options = []
                 radar_watchlist_label_map = {}
                 for _, _row in radar_catalog_df.iterrows():
                     _wl_name = str(_row.get("Watchlist_Name", "") or "").strip()
-                    _wl_type = str(_row.get("Watchlist_Type", "Watchlist") or "Watchlist").strip() or "Watchlist"
+                    _wl_type = _v303a_normalize_watchlist_type(_row.get("Watchlist_Type", "Watchlist"))
                     if _wl_name:
                         _label = f"{_wl_name} - {_wl_type}"
                         radar_watchlist_options.append(_label)
@@ -20894,7 +20977,9 @@ if workspace_mode:
 
                 default_radar_watchlist_label = None
                 current_selected_watchlist_name = str(st.session_state.get("selected_watchlist_name", "") or "").strip()
-                current_selected_watchlist_type = str(st.session_state.get("selected_watchlist_type", "Watchlist") or "Watchlist").strip() or "Watchlist"
+                current_selected_watchlist_type = _v303a_normalize_watchlist_type(
+                    st.session_state.get("selected_watchlist_type", "Watchlist")
+                )
                 if current_selected_watchlist_name:
                     candidate_label = f"{current_selected_watchlist_name} - {current_selected_watchlist_type}"
                     if candidate_label in radar_watchlist_options:

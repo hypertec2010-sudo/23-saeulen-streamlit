@@ -1,3 +1,16 @@
+## v30.3d - Rotation Radar Hard-Fresh Snapshot Fix
+- Manueller Rotation-Radar-Refresh verwendet jetzt einen global eindeutigen `time_ns`-Nonce statt eines nach Reboot wiederverwendbaren Session-Zaehlers.
+- Breadth- und Stock-Drilldown-Refresh erhalten ebenfalls eindeutige Nonces.
+- Provider-Vollstaendigkeit prueft jetzt neben >=150 Bars auch den letzten Daily-Handelstag je Pflicht-Drilldown-Gruppe.
+- Stale Sektor-/Themen-ETFs werden wie echte Datenluecken behandelt und bei kleiner Zahl provider-schonend einzeln nachgeladen.
+- Neuer Radar-Snapshot wird nur bei vollstaendigen UND frischen Drilldown-Gruppen publiziert.
+- Neuer persistenter Namespace `rotation_radar_snapshot_v303d` mit Schema `rotation-v30.3d-hard-fresh`.
+- Snapshot-ID und Radar-Frame-Fingerprint werden nach jedem Schreiben sofort aus Storage rueckgelesen und verifiziert.
+- UI rendert nach erfolgreichem Refresh aus dem verifizierten persistenten Readback-Frame.
+- Legacy-Snapshots bleiben nur als klar markierter Fallback sichtbar, bis ein erfolgreicher v30.3d-Hard-Refresh erfolgt.
+- Radar zeigt Daten-bis-Datum, Snapshot-ID und Persistenzquelle zur eindeutigen Reboot-Kontrolle.
+- Keine Aenderung an produktiver Live-/Shadow-Ampel oder Rotation-Score-/Phase-Formel.
+
 ## v30.3c - Rotation Drilldown Snapshot Sync Fix
 - `Rotation fuer Aktien-Drilldown` liest Phase/Rotation/Leadership jetzt garantiert aus demselben aktuell sichtbaren Radar-Frame wie die Haupttabelle.
 - Selectbox nutzt dynamische echte Anzeige-Optionen statt stabiler Ticker plus `format_func`; Phasenwechsel wie Gelb -> Gruen werden sofort sichtbar.

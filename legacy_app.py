@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3c"
+APP_VERSION = "v30.3d"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14694,6 +14694,188 @@ if _use_database_watchlists_v280:
     get_due_watchlists_for_slot = _watchlist_repository_v280.get_due_watchlists_for_slot
 
 
+# ---------- v30.3d: Hard-Fresh Rotation Snapshot / persistente Verifikation ----------
+_V303D_ROTATION_NAMESPACE = "rotation_radar_snapshot_v303d"
+_V303D_ROTATION_SCHEMA = "rotation-v30.3d-hard-fresh"
+
+
+def _v303d_json_safe(value):
+    """Kleine JSON-Schutzschicht fuer Storage-Payloads ohne DataFrame-/numpy-Reste."""
+    if isinstance(value, dict):
+        return {str(k): _v303d_json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_v303d_json_safe(v) for v in value]
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        fv = float(value)
+        return fv if np.isfinite(fv) else None
+    if isinstance(value, (pd.Timestamp, datetime, date)):
+        try:
+            return pd.Timestamp(value).isoformat()
+        except Exception:
+            return str(value)
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    return value
+
+
+def _v303d_rotation_frame_fingerprint(df):
+    """Fingerprint nur aus den fuer Radar/Drilldown sichtbaren Kernfeldern."""
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return "empty"
+    cols = [c for c in [
+        "Ticker", "Phase", "Rotation", "Leadership", "Rang", "Rang Δ1T", "Rang Δ5T", "Rang Δ20T",
+        "Leadership Δ1T", "Leadership Δ5T", "Leadership Δ20T", "Rotation Δ1T", "Rotation Δ5T", "Rotation Δ20T",
+    ] if c in df.columns]
+    if not cols:
+        return "empty"
+    work = df[cols].copy()
+    if "Ticker" in work.columns:
+        work["Ticker"] = work["Ticker"].astype(str).str.strip().str.upper()
+        work = work.sort_values("Ticker").reset_index(drop=True)
+    payload = _v303d_json_safe(work.replace({np.nan: None, np.inf: None, -np.inf: None}).to_dict(orient="records"))
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _v303d_rotation_price_freshness(prices, required_symbols=None):
+    """Prueft nicht nur Datenmenge, sondern den LETZTEN Handelstag je Pflichtgruppe.
+
+    Alle Drilldown-ETFs sind US-gelistete Instrumente und sollten daher denselben
+    letzten Daily-Handelstag besitzen. Ein Ticker mit 500 alten Bars ist nicht frisch.
+    """
+    required = []
+    seen = set()
+    for raw in list(required_symbols or []):
+        sym = str(raw or "").strip().upper()
+        if sym and sym not in seen:
+            required.append(sym); seen.add(sym)
+    out = {
+        "ok": False,
+        "reference_date": None,
+        "last_dates": {},
+        "missing": [],
+        "stale": [],
+        "required": required,
+    }
+    if prices is None or not isinstance(prices, pd.DataFrame) or prices.empty:
+        out["missing"] = list(required)
+        return out
+
+    last_dates = {}
+    for sym in required:
+        if sym not in prices.columns:
+            out["missing"].append(sym)
+            continue
+        ser = pd.to_numeric(prices[sym], errors="coerce").dropna()
+        if len(ser) < 150:
+            out["missing"].append(sym)
+            continue
+        try:
+            last_dates[sym] = pd.Timestamp(ser.index[-1]).normalize()
+        except Exception:
+            out["missing"].append(sym)
+
+    out["last_dates"] = {k: v.strftime("%Y-%m-%d") for k, v in last_dates.items()}
+    if not last_dates:
+        return out
+
+    # Modalster letzter Handelstag statt blindes Maximum; bei Gleichstand gewinnt der neuere Tag.
+    counts = {}
+    for d in last_dates.values():
+        counts[d] = counts.get(d, 0) + 1
+    ref = sorted(counts.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)[0][0]
+    out["reference_date"] = ref.strftime("%Y-%m-%d")
+    out["stale"] = sorted([sym for sym, d in last_dates.items() if d < ref])
+    out["ok"] = not out["missing"] and not out["stale"] and len(last_dates) == len(required)
+    return out
+
+
+def _v303d_save_rotation_snapshot(df, errors=None, meta=None):
+    """Schreibt und liest den neuen Radar-Snapshot sofort zurueck.
+
+    Ein Refresh gilt erst dann als persistent erfolgreich, wenn ID und Frame-Fingerprint
+    aus dem Storage exakt wieder gelesen werden koennen.
+    """
+    try:
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            return False, "Radar-Frame leer", None
+        saved_at = pd.Timestamp.now(tz="UTC").isoformat()
+        fingerprint = _v303d_rotation_frame_fingerprint(df)
+        snapshot_id = f"{pd.Timestamp.now(tz='UTC').strftime('%Y%m%dT%H%M%S%fZ')}-{fingerprint[:8]}"
+        err_df = errors if isinstance(errors, pd.DataFrame) else pd.DataFrame()
+        payload = {
+            "schema": _V303D_ROTATION_SCHEMA,
+            "saved_at": saved_at,
+            "snapshot_id": snapshot_id,
+            "fingerprint": fingerprint,
+            "rows": _v303d_json_safe(df.replace({np.nan: None, np.inf: None, -np.inf: None}).to_dict(orient="records")),
+            "errors": _v303d_json_safe(err_df.replace({np.nan: None, np.inf: None, -np.inf: None}).to_dict(orient="records")) if not err_df.empty else [],
+            "meta": _v303d_json_safe(dict(meta or {})),
+        }
+        _storage_v280.save_namespace(_V303D_ROTATION_NAMESPACE, payload)
+        check = _storage_v280.load_namespace(_V303D_ROTATION_NAMESPACE, default={}) or {}
+        if str(check.get("schema") or "") != _V303D_ROTATION_SCHEMA:
+            return False, "Storage-Schema nach Schreiben nicht verifiziert", payload
+        if str(check.get("snapshot_id") or "") != snapshot_id:
+            return False, "Snapshot-ID nach Schreiben nicht verifiziert", payload
+        check_df = pd.DataFrame(check.get("rows") or [])
+        if _v303d_rotation_frame_fingerprint(check_df) != fingerprint:
+            return False, "Radar-Fingerprint nach Schreiben nicht verifiziert", payload
+        return True, "persistiert und rueckgelesen", check
+    except Exception as exc:
+        return False, f"Persistenzfehler: {exc}", None
+
+
+def _v303d_load_rotation_snapshot():
+    """Bevorzugt ausschliesslich den verifizierbaren v30.3d-Namespace.
+
+    Ein alter v30.1/v30.3c-Snapshot darf als Legacy-Fallback sichtbar bleiben, wird aber
+    deutlich als Altquelle markiert und niemals als v30.3d-frisch ausgegeben.
+    """
+    try:
+        payload = _storage_v280.load_namespace(_V303D_ROTATION_NAMESPACE, default={}) or {}
+        if str(payload.get("schema") or "") == _V303D_ROTATION_SCHEMA and payload.get("rows"):
+            df = pd.DataFrame(payload.get("rows") or [])
+            fp_saved = str(payload.get("fingerprint") or "")
+            fp_actual = _v303d_rotation_frame_fingerprint(df)
+            if fp_saved and fp_saved == fp_actual:
+                errors = pd.DataFrame(payload.get("errors") or [])
+                meta = dict(payload.get("meta") or {})
+                meta["snapshot_id"] = str(payload.get("snapshot_id") or "-")
+                meta["snapshot_fingerprint"] = fp_actual
+                meta["snapshot_source"] = "v30.3d verified storage"
+                meta["legacy_fallback"] = False
+                return df, errors, meta, str(payload.get("saved_at") or ""), None
+    except Exception as exc:
+        v303d_err = str(exc)
+    else:
+        v303d_err = None
+
+    # Nur fuer einen sanften Uebergang: alter Stand wird gezeigt, aber klar als Legacy markiert.
+    try:
+        old_df, old_err, old_meta, old_saved_at = _rotation_radar_v301.load_snapshot()
+        old_meta = dict(old_meta or {})
+        old_meta["snapshot_source"] = "Legacy-Radar-Snapshot"
+        old_meta["legacy_fallback"] = True
+        old_meta["snapshot_id"] = "legacy"
+        msg = "Noch kein verifizierter v30.3d-Radar-Snapshot vorhanden. Bitte einmal vollstaendig aktualisieren."
+        if v303d_err:
+            msg += f" v30.3d-Storage: {v303d_err}"
+        return old_df, old_err, old_meta, old_saved_at, msg
+    except Exception as exc:
+        msg = f"Kein Radar-Snapshot ladbar: {exc}"
+        if v303d_err:
+            msg += f"; v30.3d-Storage: {v303d_err}"
+        return pd.DataFrame(), pd.DataFrame(), {"legacy_fallback": True, "snapshot_source": "none"}, "", msg
+
+
 # ---------- v30.3c: Rotation-Drilldown Snapshot-Synchronisierung ----------
 def _v303c_rotation_drilldown_context(rot_df, drilldown_groups):
     """
@@ -14868,7 +15050,28 @@ def _load_rotation_prices_v301(tickers_tuple, refresh_token=0):
 
     # Nur wenige echte Lücken einzeln nachladen. Bei einem globalen Rate-Limit
     # vermeiden wir absichtlich einen Sturm aus 30+ Einzelrequests.
-    missing = [x for x in symbols if x not in close.columns or close[x].dropna().shape[0] < 150]
+    # v30.3d: "vorhanden" reicht nicht. Ein Ticker mit langer Historie, dessen letzte
+    # Daily-Bar aber hinter den anderen Gruppen liegt, ist ebenfalls eine echte Luecke.
+    insufficient = [x for x in symbols if x not in close.columns or close[x].dropna().shape[0] < 150]
+    last_by_symbol = {}
+    for x in symbols:
+        if x in insufficient or x not in close.columns:
+            continue
+        ser = pd.to_numeric(close[x], errors="coerce").dropna()
+        if not ser.empty:
+            try:
+                last_by_symbol[x] = pd.Timestamp(ser.index[-1]).normalize()
+            except Exception:
+                pass
+    stale = []
+    if last_by_symbol:
+        counts = {}
+        for d in last_by_symbol.values():
+            counts[d] = counts.get(d, 0) + 1
+        ref_date = sorted(counts.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)[0][0]
+        stale = [x for x, d in last_by_symbol.items() if d < ref_date]
+    missing = list(dict.fromkeys(insufficient + stale))
+
     if 0 < len(missing) <= 6:
         for symbol in missing:
             try:
@@ -14877,15 +15080,17 @@ def _load_rotation_prices_v301(tickers_tuple, refresh_token=0):
                     ser = pd.to_numeric(hist["Close"], errors="coerce")
                     if close.empty:
                         close = pd.DataFrame(index=ser.index)
+                    # Vollstaendig ersetzen: so kann auch eine stale Batch-Serie aktualisiert werden.
                     close[symbol] = ser
                 else:
-                    errors.append({"Ticker": symbol, "Fehler": "Keine Daily-Historie", "Versuch": "Fallback"})
+                    errors.append({"Ticker": symbol, "Fehler": "Keine aktuelle Daily-Historie", "Versuch": "Freshness-Fallback"})
             except Exception as exc:
-                errors.append({"Ticker": symbol, "Fehler": str(exc), "Versuch": "Fallback"})
+                errors.append({"Ticker": symbol, "Fehler": str(exc), "Versuch": "Freshness-Fallback"})
             time.sleep(0.25)
     elif len(missing) > 6:
         for symbol in missing:
-            errors.append({"Ticker": symbol, "Fehler": "Batch unvollständig; Einzel-Fallback zum Provider-Schutz ausgesetzt", "Versuch": "Atomic"})
+            kind = "stale" if symbol in stale else "unvollständig"
+            errors.append({"Ticker": symbol, "Fehler": f"Batch {kind}; Einzel-Fallback zum Provider-Schutz ausgesetzt", "Versuch": "Atomic Freshness"})
 
     if not close.empty:
         close = close.sort_index().apply(pd.to_numeric, errors="coerce")
@@ -18273,10 +18478,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 "Er sammelt zunächst einen unabhängigen Branchen-/Kapitalfluss-Kontext für die spätere Validierung."
                             )
 
-                            _rot_saved_v301, _rot_saved_err_v301, _rot_meta_v301, _rot_saved_at_v301 = _rotation_radar_v301.load_snapshot()
+                            _rot_saved_v301, _rot_saved_err_v301, _rot_meta_v301, _rot_saved_at_v301, _rot_load_note_v303d = _v303d_load_rotation_snapshot()
                             _rot_df_v301 = _rot_saved_v301.copy() if isinstance(_rot_saved_v301, pd.DataFrame) else pd.DataFrame()
                             _rot_errors_v301 = _rot_saved_err_v301.copy() if isinstance(_rot_saved_err_v301, pd.DataFrame) else pd.DataFrame()
                             _rot_meta_live_v301 = dict(_rot_meta_v301 or {})
+                            if _rot_load_note_v303d:
+                                st.warning(_rot_load_note_v303d)
 
                             _rr1, _rr2 = st.columns([1.3, 1.0])
                             with _rr1:
@@ -18293,7 +18500,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption(f"Noch kein vollständiger {APP_VERSION}-Radar-Stand gespeichert.")
 
                             if _run_rotation_v301:
-                                _token_v301 = int(st.session_state.get("rotation_refresh_token_v301", 0) or 0) + 1
+                                # v30.3d: global eindeutiger Nonce. Ein Session-Neustart darf niemals wieder
+                                # denselben st.cache_data-Key wie ein aelterer Refresh erzeugen.
+                                _token_v301 = int(time.time_ns())
                                 st.session_state["rotation_refresh_token_v301"] = _token_v301
                                 with st.spinner("Rotation Radar lädt die Marktgruppen atomar und berechnet Leadership/Rotation …"):
                                     _core_prices_v301, _provider_errors_v301 = _load_rotation_prices_v301(
@@ -18302,6 +18511,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _new_rot_v301, _calc_errors_v301, _new_meta_v301 = _rotation_radar_v301.build_radar(_core_prices_v301)
                                 _coverage_v301 = float((_new_meta_v301 or {}).get("coverage_pct") or 0.0)
                                 _min_rows_v301 = max(1, int(len(_rotation_radar_v301.UNIVERSE) * 0.85))
+                                _required_fresh_v303d = list(_rotation_radar_v301.drilldown_groups())
+                                _freshness_v303d = _v303d_rotation_price_freshness(_core_prices_v301, _required_fresh_v303d)
+                                _fresh_ok_v303d = bool(_freshness_v303d.get("ok"))
 
                                 # v30.3c: Der Gesamt-Radar darf weiterhin provider-robust ab 85% bewertet werden,
                                 # aber ein NEUER publizierter Snapshot muss fuer den Aktien-Drilldown ALLE
@@ -18319,28 +18531,69 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     and len(_new_rot_v301) >= _min_rows_v301
                                     and _coverage_v301 >= 85.0
                                     and _dd_complete_v303c
+                                    and _fresh_ok_v303d
                                 ):
                                     _rot_df_v301 = _new_rot_v301.copy()
                                     _frames_err_v301 = [x for x in [_provider_errors_v301, _calc_errors_v301] if isinstance(x, pd.DataFrame) and not x.empty]
                                     _rot_errors_v301 = pd.concat(_frames_err_v301, ignore_index=True) if _frames_err_v301 else pd.DataFrame()
                                     _rot_meta_live_v301 = dict(_new_meta_v301 or {})
-                                    _rot_meta_live_v301["mode"] = "Atomic Rotation Scan"
+                                    _rot_meta_live_v301["mode"] = "Atomic Rotation Scan · hard fresh v30.3d"
                                     _rot_meta_live_v301["provider_error_count"] = int(len(_provider_errors_v301)) if isinstance(_provider_errors_v301, pd.DataFrame) else 0
-                                    _rotation_radar_v301.save_snapshot(_rot_df_v301, _rot_errors_v301, _rot_meta_live_v301)
-                                    _rot_saved_at_v301 = pd.Timestamp.now(tz="UTC").isoformat()
-                                    st.success(
-                                        f"Rotation Radar vollständig aktualisiert · {_rot_meta_live_v301.get('success', len(_rot_df_v301))}/"
-                                        f"{_rot_meta_live_v301.get('processed', len(_rotation_radar_v301.UNIVERSE))} Marktgruppen · "
-                                        f"Abdeckung {_coverage_v301:.0f}% · kein Mischstand."
+                                    _rot_meta_live_v301["data_through"] = str(_freshness_v303d.get("reference_date") or "-")
+                                    _rot_meta_live_v301["freshness_required"] = list(_required_fresh_v303d)
+                                    _rot_meta_live_v301["freshness_last_dates"] = dict(_freshness_v303d.get("last_dates") or {})
+                                    _rot_meta_live_v301["frame_fingerprint"] = _v303d_rotation_frame_fingerprint(_rot_df_v301)
+
+                                    _persist_ok_v303d, _persist_msg_v303d, _persist_payload_v303d = _v303d_save_rotation_snapshot(
+                                        _rot_df_v301, _rot_errors_v301, _rot_meta_live_v301
                                     )
+                                    if _persist_ok_v303d:
+                                        # Backwards-Kompatibilitaet fuer andere Modulpfade; Anzeigequelle bleibt der
+                                        # verifizierte v30.3d-Namespace.
+                                        try:
+                                            _rotation_radar_v301.save_snapshot(_rot_df_v301, _rot_errors_v301, _rot_meta_live_v301)
+                                        except Exception:
+                                            pass
+                                        _rb_df_v303d, _rb_err_v303d, _rb_meta_v303d, _rb_saved_v303d, _rb_note_v303d = _v303d_load_rotation_snapshot()
+                                        if isinstance(_rb_df_v303d, pd.DataFrame) and not _rb_df_v303d.empty:
+                                            _rot_df_v301 = _rb_df_v303d.copy()
+                                            _rot_errors_v301 = _rb_err_v303d.copy() if isinstance(_rb_err_v303d, pd.DataFrame) else pd.DataFrame()
+                                            _rot_meta_live_v301 = dict(_rb_meta_v303d or {})
+                                            _rot_saved_at_v301 = _rb_saved_v303d
+                                        st.success(
+                                            f"Rotation Radar hart aktualisiert + persistent verifiziert · {_rot_meta_live_v301.get('success', len(_rot_df_v301))}/"
+                                            f"{_rot_meta_live_v301.get('processed', len(_rotation_radar_v301.UNIVERSE))} Marktgruppen · "
+                                            f"Daten bis {_rot_meta_live_v301.get('data_through','-')} · Abdeckung {_coverage_v301:.0f}% · kein Mischstand."
+                                        )
+                                    else:
+                                        # Kein falsches 'gespeichert': der letzte verifizierte Stand bleibt die Anzeigequelle.
+                                        _old_df_v303d, _old_err_v303d, _old_meta_v303d, _old_saved_v303d, _ = _v303d_load_rotation_snapshot()
+                                        if isinstance(_old_df_v303d, pd.DataFrame) and not _old_df_v303d.empty and not bool((_old_meta_v303d or {}).get("legacy_fallback")):
+                                            _rot_df_v301 = _old_df_v303d.copy()
+                                            _rot_errors_v301 = _old_err_v303d.copy() if isinstance(_old_err_v303d, pd.DataFrame) else pd.DataFrame()
+                                            _rot_meta_live_v301 = dict(_old_meta_v303d or {})
+                                            _rot_saved_at_v301 = _old_saved_v303d
+                                        st.error(
+                                            "Der Marktabruf war frisch, aber der neue Radar-Snapshot konnte nicht persistent verifiziert werden. "
+                                            f"Er wird deshalb NICHT als neuer Stand ausgegeben. Details: {_persist_msg_v303d}"
+                                        )
                                 else:
                                     _dd_missing_txt_v303c = (
                                         f" · fehlende Drilldown-Gruppen: {', '.join(_missing_dd_v303c)}"
                                         if _missing_dd_v303c else ""
                                     )
+                                    _stale_v303d = list(_freshness_v303d.get("stale") or [])
+                                    _fresh_missing_v303d = list(_freshness_v303d.get("missing") or [])
+                                    _fresh_txt_v303d = ""
+                                    if _stale_v303d:
+                                        _fresh_txt_v303d += f" · veraltete Daily-Daten: {', '.join(_stale_v303d)}"
+                                    if _fresh_missing_v303d:
+                                        _fresh_txt_v303d += f" · Daily-Daten fehlen: {', '.join(_fresh_missing_v303d)}"
+                                    if _freshness_v303d.get("reference_date"):
+                                        _fresh_txt_v303d += f" · Referenz-Handelstag: {_freshness_v303d.get('reference_date')}"
                                     st.error(
-                                        f"Der neue Radar-Lauf war nicht vollständig genug ({_coverage_v301:.0f}% Abdeckung){_dd_missing_txt_v303c}. "
-                                        "Er wurde NICHT als neuer Stand veröffentlicht. Der letzte vollständige Radar-Snapshot bleibt sichtbar."
+                                        f"Der neue Radar-Lauf war nicht vollständig/frisch genug ({_coverage_v301:.0f}% Abdeckung){_dd_missing_txt_v303c}{_fresh_txt_v303d}. "
+                                        "Er wurde NICHT als neuer Stand veröffentlicht. Der letzte verifizierte Radar-Snapshot bleibt sichtbar."
                                     )
 
                             if _rot_df_v301.empty:
@@ -18399,7 +18652,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     disabled=not bool(_breadth_selected_v301),
                                     key="v301_breadth_refresh",
                                 ):
-                                    _bt_v301 = int(st.session_state.get("rotation_breadth_token_v301", 0) or 0) + 1
+                                    _bt_v301 = int(time.time_ns())
                                     st.session_state["rotation_breadth_token_v301"] = _bt_v301
                                     _breadth_tickers_v301 = _rotation_radar_v301.breadth_tickers(_breadth_selected_v301)
                                     with st.spinner(f"Breadth bestätigt {len(_breadth_selected_v301)} Rotationskandidaten …"):
@@ -18413,12 +18666,36 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _rot_df_v301 = _rotation_radar_v301.merge_breadth(_rot_df_v301, _breadth_df_v301)
                                         _rot_meta_live_v301["breadth_updated_at"] = pd.Timestamp.now(tz="UTC").isoformat()
                                         _rot_meta_live_v301["breadth_symbols"] = list(_breadth_selected_v301)
-                                        _rotation_radar_v301.save_snapshot(_rot_df_v301, _rot_errors_v301, _rot_meta_live_v301)
-                                        st.success("Breadth Confirmation aktualisiert und im vollständigen Radar-Snapshot gespeichert.")
+                                        _rot_meta_live_v301["frame_fingerprint"] = _v303d_rotation_frame_fingerprint(_rot_df_v301)
+                                        _breadth_save_ok_v303d, _breadth_save_msg_v303d, _ = _v303d_save_rotation_snapshot(
+                                            _rot_df_v301, _rot_errors_v301, _rot_meta_live_v301
+                                        )
+                                        if _breadth_save_ok_v303d:
+                                            try:
+                                                _rotation_radar_v301.save_snapshot(_rot_df_v301, _rot_errors_v301, _rot_meta_live_v301)
+                                            except Exception:
+                                                pass
+                                            st.success("Breadth Confirmation aktualisiert und persistent verifiziert gespeichert.")
+                                        else:
+                                            st.error(f"Breadth wurde berechnet, aber nicht persistent verifiziert gespeichert: {_breadth_save_msg_v303d}")
                                         if isinstance(_breadth_provider_err_v301, pd.DataFrame) and not _breadth_provider_err_v301.empty:
                                             st.warning(f"{len(_breadth_provider_err_v301)} Breadth-Datenhinweis(e); fehlende Mitglieder werden nicht erfunden.")
                                     else:
                                         st.warning("Für die Auswahl konnte aktuell keine belastbare Breadth Confirmation berechnet werden.")
+
+                                _snap_id_v303d = str(_rot_meta_live_v301.get("snapshot_id") or "legacy")
+                                _snap_src_v303d = str(_rot_meta_live_v301.get("snapshot_source") or "Legacy-Radar-Snapshot")
+                                _snap_data_v303d = str(_rot_meta_live_v301.get("data_through") or "-")
+                                if bool(_rot_meta_live_v301.get("legacy_fallback")):
+                                    st.warning(
+                                        "Radar-Anzeige stammt noch aus dem Legacy-Snapshot. Erst ein erfolgreicher v30.3d-Hard-Refresh "
+                                        "ersetzt ihn dauerhaft und reboot-fest."
+                                    )
+                                else:
+                                    st.caption(
+                                        f"Persistenter Radar-Stand: Daten bis **{_snap_data_v303d}** · "
+                                        f"Snapshot **{_snap_id_v303d}** · Quelle {_snap_src_v303d}."
+                                    )
 
                                 # ---------- v30.1d: Rotation Stock Drilldown ----------
                                 st.markdown("#### 🔎 Top-Kandidaten aus dieser Rotation")
@@ -18510,7 +18787,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         )
 
                                     if _run_dd_v301d:
-                                        _dd_token_v301d = int(st.session_state.get("rotation_stock_token_v301d", 0) or 0) + 1
+                                        _dd_token_v301d = int(time.time_ns())
                                         st.session_state["rotation_stock_token_v301d"] = _dd_token_v301d
                                         _dd_tickers_v301d = _rotation_radar_v301.drilldown_tickers(_dd_select_v301d)
                                         with st.spinner(

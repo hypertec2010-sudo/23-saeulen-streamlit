@@ -1,3 +1,14 @@
+## v30.3b - Positions-Watchlist Recovery Fix
+- Verbleibenden Positions-Watchlist-Fehler behoben: Typfilter versteckt keine gespeicherten Listen mehr.
+- Alle bekannten Watchlists bleiben sichtbar; passende Typen werden nur noch priorisiert statt hart gefiltert.
+- Auswahl zeigt den gespeicherten Watchlist-Typ direkt an.
+- Falsch typisierte Altlisten koennen explizit im aktuellen Arbeitsbereich uebernommen werden.
+- Neue persistente Recovery-Schicht fuer den Zustand "Backend bestaetigt Duplikat, Katalog liefert Liste aber nicht".
+- Bei bestaetigtem Duplicate wird keine neue Liste erzeugt; der bestehende Name wird automatisch fuer die UI wiederhergestellt und ausgewaehlt.
+- Ticker einer ausgewaehlten Liste werden primaer ueber `get_watchlist_tickers` geladen; globales `load_watchlists_df` ist nur Fallback.
+- Recovery-Eintraege werden beim echten Loeschen der Watchlist ebenfalls entfernt.
+- Keine Aenderung an Trading-, Exit-, Learning- oder Providerlogik.
+
 ## v30.3a - Positions-Watchlist Catalog Fix
 - Operative Watchlist-Auswahl auf den echten Watchlist-Katalog (`get_watchlist_catalog_df`) umgestellt.
 - Bereits angelegte, aber leere Positions-Watchlists bleiben sichtbar und auswählbar.

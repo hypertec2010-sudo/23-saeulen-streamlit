@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3a"
+APP_VERSION = "v30.3b"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15870,6 +15870,105 @@ def _v303a_normalize_watchlist_type(value, default="Watchlist"):
     return str(default or "Watchlist")
 
 
+_V303B_WATCHLIST_RECOVERY_NAMESPACE = "watchlist_catalog_recovery_v303b"
+
+
+def _v303b_recovery_registry():
+    """UI-only recovery overlay for catalog entries that the backend can detect as existing
+    but does not return through the normal catalog/listing path.
+
+    This does not create, rename or mutate the actual watchlist. It only remembers how an
+    already existing list should be surfaced in the UI.
+    """
+    key = "watchlist_catalog_recovery_registry_v303b"
+    cached = st.session_state.get(key)
+    if isinstance(cached, dict):
+        return cached
+    data = {}
+    try:
+        raw = _storage_v280.load_namespace(_V303B_WATCHLIST_RECOVERY_NAMESPACE, default={}) or {}
+        if isinstance(raw, dict):
+            data = raw
+    except Exception:
+        data = {}
+    st.session_state[key] = data
+    return data
+
+
+def _v303b_persist_recovery_registry(registry):
+    key = "watchlist_catalog_recovery_registry_v303b"
+    st.session_state[key] = dict(registry or {})
+    try:
+        _storage_v280.save_namespace(_V303B_WATCHLIST_RECOVERY_NAMESPACE, dict(registry or {}))
+    except Exception:
+        pass
+
+
+def _v303b_remember_existing_watchlist(name, watchlist_type, reason="recovered"):
+    name = str(name or "").strip()
+    if not name:
+        return False
+    typ = _v303a_normalize_watchlist_type(watchlist_type, default="Watchlist")
+    registry = dict(_v303b_recovery_registry() or {})
+    registry[name.lower()] = {
+        "Watchlist_Name": name,
+        "Watchlist_Type": typ,
+        "Reason": str(reason or "recovered"),
+        "Recovered_At": datetime.now(timezone.utc).isoformat(),
+    }
+    _v303b_persist_recovery_registry(registry)
+    return True
+
+
+def _v303b_forget_recovered_watchlist(name):
+    name = str(name or "").strip()
+    if not name:
+        return
+    registry = dict(_v303b_recovery_registry() or {})
+    if registry.pop(name.lower(), None) is not None:
+        _v303b_persist_recovery_registry(registry)
+
+
+def _v303b_recovery_catalog_frame():
+    rows = []
+    for item in (_v303b_recovery_registry() or {}).values():
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("Watchlist_Name") or "").strip()
+        if not name:
+            continue
+        rows.append({
+            "Watchlist_Name": name,
+            "Watchlist_Type": _v303a_normalize_watchlist_type(item.get("Watchlist_Type"), default="Watchlist"),
+            "_v303a_source": "recovery",
+            "_v303a_type_known": True,
+        })
+    return pd.DataFrame(rows, columns=["Watchlist_Name", "Watchlist_Type", "_v303a_source", "_v303a_type_known"])
+
+
+def _v303b_is_duplicate_watchlist_message(message):
+    txt = str(message or "").strip().lower()
+    return any(token in txt for token in (
+        "bereits vorhanden", "bereits exist", "existiert bereits", "schon vorhanden",
+        "vorhanden", "duplikat", "already exist", "already present", "duplicate", "already in use",
+    ))
+
+
+def _v303b_get_watchlist_tickers_direct(name):
+    """Use the dedicated backend API first; only the caller decides whether to fallback."""
+    try:
+        result = get_watchlist_tickers(str(name or "").strip())
+        if isinstance(result, tuple):
+            tickers = result[0] if len(result) >= 1 else []
+            err = result[1] if len(result) >= 2 else None
+        else:
+            tickers, err = result, None
+        tickers = [str(x).strip().upper() for x in (tickers or []) if str(x).strip()]
+        return list(dict.fromkeys(tickers)), err
+    except Exception as exc:
+        return [], str(exc)
+
+
 def _v303a_catalog_from_result(result, source="catalog"):
     """Akzeptiert DataFrame oder (DataFrame, error) und gibt ein normiertes Teil-DF zurueck."""
     err = None
@@ -15932,6 +16031,16 @@ def _v303a_load_watchlist_catalog():
     except Exception as exc:
         warnings.append(f"Watchlist-Zeilen: {exc}")
 
+    # 3) v30.3b Recovery-Overlay: wird nur durch einen bestaetigten Duplikatfall oder
+    #    eine explizite Benutzeruebernahme erzeugt. So kann eine backendseitig
+    #    existierende, aber nicht listbare Watchlist trotzdem wieder geoeffnet werden.
+    try:
+        recovery_df = _v303b_recovery_catalog_frame()
+        if not recovery_df.empty:
+            frames.append(recovery_df)
+    except Exception as exc:
+        warnings.append(f"Recovery-Katalog: {exc}")
+
     if not frames:
         return pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type"]), ("; ".join(dict.fromkeys(warnings)) if warnings else None)
 
@@ -15941,6 +16050,9 @@ def _v303a_load_watchlist_catalog():
     # Expliziter Katalog-Typ ist autoritativ. Ist der Katalog-Typ leer/alt, darf
     # eine vorhandene Ticker-Zeile den Typ sinnvoll ergaenzen.
     merged["_v303a_priority"] = 9
+    # Recovery ist eine explizite UI-Freigabe fuer einen bereits bestaetigten Bestandsnamen
+    # und darf deshalb einen falschen/alten Typ im Katalog fuer die UI ueberstimmen.
+    merged.loc[(merged["_v303a_source"] == "recovery") & (merged["_v303a_type_known"] == True), "_v303a_priority"] = -1
     merged.loc[(merged["_v303a_source"] == "catalog") & (merged["_v303a_type_known"] == True), "_v303a_priority"] = 0
     merged.loc[(merged["_v303a_source"] == "rows") & (merged["_v303a_type_known"] == True), "_v303a_priority"] = 1
     merged.loc[(merged["_v303a_source"] == "catalog") & (merged["_v303a_type_known"] != True), "_v303a_priority"] = 2
@@ -16019,20 +16131,48 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                                 st.success(msg)
                                 trigger_ui_refresh()
                             else:
-                                st.error(msg)
+                                if _v303b_is_duplicate_watchlist_message(msg) and new_watchlist_name:
+                                    _v303b_remember_existing_watchlist(
+                                        new_watchlist_name,
+                                        new_watchlist_type,
+                                        reason="backend_duplicate_confirmed",
+                                    )
+                                    st.session_state.selected_watchlist_name = new_watchlist_name
+                                    st.session_state.selected_watchlist_type = new_watchlist_type
+                                    st.session_state.watchlist_new_name = ""
+                                    st.session_state.workspace_mode = "Positionen" if new_watchlist_type == "Positions-Watchlist" else "Watchlisten"
+                                    st.info(
+                                        f"'{new_watchlist_name}' existiert bereits. Die vorhandene Liste wird jetzt "
+                                        f"als {new_watchlist_type} in die Auswahl uebernommen; es wurde keine neue Liste erstellt."
+                                    )
+                                    trigger_ui_refresh()
+                                else:
+                                    st.error(msg)
 
                     with wl2:
                         st.markdown("**Bestehende Watchlist auswählen**")
-                        watchlist_options = catalog_df["Watchlist_Name"].tolist() if not catalog_df.empty else []
-
-                        if workspace_mode == "Positionen" and not catalog_df.empty:
-                            filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"].map(_v303a_normalize_watchlist_type) == "Positions-Watchlist"].copy()
-                            watchlist_options = filtered_catalog_df["Watchlist_Name"].tolist()
-                        elif workspace_mode == "Watchlisten" and not catalog_df.empty:
-                            filtered_catalog_df = catalog_df[catalog_df["Watchlist_Type"].map(_v303a_normalize_watchlist_type) == "Watchlist"].copy()
+                        # v30.3b: keine gespeicherte Liste mehr hart nach Typ verstecken.
+                        # Passende Typen stehen zuerst, abweichende/alte Typen bleiben aber sichtbar
+                        # und sind damit im Fehlerfall direkt wieder erreichbar.
+                        filtered_catalog_df = catalog_df.copy()
+                        if not filtered_catalog_df.empty:
+                            filtered_catalog_df["Watchlist_Type"] = filtered_catalog_df["Watchlist_Type"].map(
+                                lambda x: _v303a_normalize_watchlist_type(x, default=default_type)
+                            )
+                            filtered_catalog_df["_v303b_preferred"] = (filtered_catalog_df["Watchlist_Type"] == default_type).astype(int)
+                            filtered_catalog_df = (
+                                filtered_catalog_df.sort_values(["_v303b_preferred", "Watchlist_Name"], ascending=[False, True])
+                                .drop_duplicates(subset=["Watchlist_Name"], keep="first")
+                                .reset_index(drop=True)
+                            )
                             watchlist_options = filtered_catalog_df["Watchlist_Name"].tolist()
                         else:
-                            filtered_catalog_df = catalog_df.copy()
+                            watchlist_options = []
+
+                        _v303b_type_by_name = {
+                            str(r.get("Watchlist_Name")): _v303a_normalize_watchlist_type(r.get("Watchlist_Type"), default=default_type)
+                            for _, r in filtered_catalog_df.iterrows()
+                        } if not filtered_catalog_df.empty else {}
 
                         if watchlist_options:
                             default_idx = watchlist_options.index(st.session_state.selected_watchlist_name) if st.session_state.selected_watchlist_name in watchlist_options else 0
@@ -16040,20 +16180,33 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                                 "Watchlist",
                                 options=watchlist_options,
                                 index=default_idx,
-                                key=f"selected_watchlist_name_widget_{workspace_mode.lower()}"
+                                format_func=lambda n: f"{n} · {_v303b_type_by_name.get(str(n), default_type)}",
+                                key=f"selected_watchlist_name_widget_{workspace_mode.lower()}_v303b"
                             )
                             st.session_state.selected_watchlist_name = selected_watchlist_name
 
-                            selected_watchlist_type = _v303a_normalize_watchlist_type(
-                                filtered_catalog_df.loc[filtered_catalog_df["Watchlist_Name"] == selected_watchlist_name, "Watchlist_Type"].iloc[0],
-                                default=default_type,
-                            )
+                            selected_watchlist_type = _v303b_type_by_name.get(str(selected_watchlist_name), default_type)
                             current_alert_mode = get_watchlist_alert_mode(selected_watchlist_name)
                             current_check_frequency = get_watchlist_check_frequency(selected_watchlist_name)
                             st.session_state.selected_watchlist_type = selected_watchlist_type
                             st.session_state.selected_watchlist_alert_mode = current_alert_mode
                             st.session_state.selected_watchlist_check_frequency = current_check_frequency
                             st.markdown(f'<div class="compact-help"><strong>Status:</strong> Typ {selected_watchlist_type} - Alert {current_alert_mode} - Frequenz {current_check_frequency}</div>', unsafe_allow_html=True)
+                            if selected_watchlist_type != default_type:
+                                st.warning(
+                                    f"Die Liste ist aktuell als '{selected_watchlist_type}' typisiert, waehrend du im Bereich '{workspace_mode}' bist. "
+                                    "Sie bleibt bewusst sichtbar, damit alte/falsch typisierte Listen nicht mehr verschwinden."
+                                )
+                                if st.button(
+                                    f"Diese vorhandene Liste als {default_type} oeffnen",
+                                    key=f"v303b_adopt_watchlist_type_{workspace_mode}_{selected_watchlist_name}",
+                                    use_container_width=True,
+                                ):
+                                    _v303b_remember_existing_watchlist(
+                                        selected_watchlist_name, default_type, reason="explicit_workspace_adoption"
+                                    )
+                                    st.session_state.selected_watchlist_type = default_type
+                                    trigger_ui_refresh()
                         else:
                             selected_watchlist_name = ""
                             selected_watchlist_type = default_type
@@ -16063,19 +16216,29 @@ if workspace_mode in {"Watchlisten", "Positionen"}:
                 )
 
         if selected_watchlist_name:
+            # v30.3b: Dedicated backend lookup is authoritative for opening a selected
+            # list. load_watchlists_df() is only fallback for older storage backends.
+            current_tickers, _direct_watchlist_err_v303b = _v303b_get_watchlist_tickers_direct(selected_watchlist_name)
             watchlists_df, watchlists_err = load_watchlists_df()
             current_watchlist_df = (
                 watchlists_df[
                     watchlists_df["Watchlist_Name"].astype(str).str.strip().str.lower() == selected_watchlist_name.strip().lower()
                 ].copy()
-                if watchlists_err is None and watchlists_df is not None and not watchlists_df.empty
+                if watchlists_err is None and watchlists_df is not None and not watchlists_df.empty and "Watchlist_Name" in watchlists_df.columns
                 else pd.DataFrame(columns=["Watchlist_Name", "Watchlist_Type", "Ticker", "Added_At"])
             )
-            current_tickers = [
-                str(x).strip().upper()
-                for x in current_watchlist_df.get("Ticker", pd.Series(dtype=str)).tolist()
-                if str(x).strip()
-            ]
+            if (not current_tickers) and not current_watchlist_df.empty:
+                current_tickers = [
+                    str(x).strip().upper()
+                    for x in current_watchlist_df.get("Ticker", pd.Series(dtype=str)).tolist()
+                    if str(x).strip()
+                ]
+                current_tickers = list(dict.fromkeys(current_tickers))
+            if _direct_watchlist_err_v303b and current_watchlist_df.empty:
+                st.caption(
+                    "Die Liste ist ausgewaehlt, aber der direkte Ticker-Abruf meldet aktuell einen Backend-Hinweis. "
+                    "Die Positions-/Watchlist-Metadaten bleiben trotzdem erreichbar."
+                )
 
             # v22.8: Vorgemerkte Werte sofort lokal in der Watchlist anzeigen und im Live-Monitor nutzen,
             # ohne sie direkt in Google Sheets zu schreiben.
@@ -16328,6 +16491,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         if st.button("Watchlist löschen", use_container_width=True, key="delete_watchlist_btn"):
                             ok, msg = delete_watchlist(selected_watchlist_name)
                             if ok:
+                                _v303b_forget_recovered_watchlist(selected_watchlist_name)
                                 st.success(msg)
                                 st.session_state.selected_watchlist_name = ""
                                 trigger_ui_refresh()
@@ -16344,6 +16508,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         if st.button("Watchlist löschen", use_container_width=True, key="delete_empty_watchlist_btn"):
                             ok, msg = delete_watchlist(selected_watchlist_name)
                             if ok:
+                                _v303b_forget_recovered_watchlist(selected_watchlist_name)
                                 st.success(msg)
                                 st.session_state.selected_watchlist_name = ""
                                 trigger_ui_refresh()

@@ -1,84 +1,40 @@
-# v30.3a - Positions-Watchlist Catalog Fix
+# v30.3b - Positions-Watchlist Recovery Fix
 
-v30.3a behebt die Inkonsistenz, dass eine bereits existierende Positions-Watchlist beim Neuanlegen als Duplikat erkannt wurde, aber unter **Bestehende Watchlist auswählen** nicht erschien.
+v30.3b behebt den verbleibenden Fall, in dem eine bestehende Positions-Watchlist trotz v30.3a weiterhin nicht aufrufbar war.
 
-## Ursache
-Die operative Auswahl wurde aus `load_watchlists_df()` aufgebaut. Diese Quelle repraesentiert vor allem die Ticker-Zeilen einer Watchlist. Eine bereits angelegte, aber aktuell leere bzw. ohne sichtbare Ticker-Zeilen gespeicherte Positions-Watchlist konnte deshalb aus der Auswahl verschwinden.
+## Tatsächliche Restursache
+v30.3a nutzte zwar den echten Watchlist-Katalog, filterte im Bereich **Positionen** danach aber weiterhin hart auf den Typ `Positions-Watchlist`.
 
-Die Erstell-/Duplikatpruefung arbeitet dagegen mit dem eigentlichen Watchlist-Katalog. Dadurch entstand der widerspruechliche Zustand: **nicht auswählbar, aber bereits vorhanden**.
+Wenn ein alter Backend-/Katalogeintrag die Liste leer, falsch oder als normale `Watchlist` typisierte, blieb sie deshalb weiter unsichtbar. Gleichzeitig konnte die Erstellfunktion den Namen weiterhin als bereits vorhanden erkennen.
 
-## Fix
-- `get_watchlist_catalog_df()` ist jetzt die primaere Quelle fuer die Watchlist-Auswahl.
-- `load_watchlists_df()` dient nur noch als Legacy-/Kompatibilitaets-Fallback.
-- Leere Watchlists bleiben dadurch sichtbar und auswählbar.
-- Typwerte werden defensiv normalisiert: z. B. `Position`, `positions_watchlist`, `Positions-Watchlist` -> `Positions-Watchlist`.
-- Ist ein alter Katalog-Typ leer, darf ein expliziter Typ aus vorhandenen Ticker-Zeilen ihn ergaenzen.
-- Ein expliziter Katalog-Typ bleibt ansonsten autoritativ.
-- Watchlisten- und Positions-Watchlisten-Auswahl besitzen getrennte Streamlit-Widget-Keys, damit beim Moduswechsel kein ungueltiger alter Auswahlwert haengen bleibt.
-- Auch die Ziel-Watchlist-Auswahl im Kandidaten-Radar verwendet jetzt denselben echten Katalog; leere Ziel-Watchlists verschwinden dort ebenfalls nicht mehr.
+## Fix 1: Keine gespeicherte Liste wird mehr versteckt
+- Der Bereich **Bestehende Watchlist auswählen** zeigt jetzt alle vom Katalog bekannten Listen.
+- Listen mit passendem Typ stehen zuerst.
+- Der gespeicherte Typ wird direkt im Auswahltext angezeigt.
+- Eine falsch typisierte Liste bleibt sichtbar und kann explizit im aktuellen Arbeitsbereich übernommen werden.
 
-## Unveraendert
-Keine Aenderung an v30.2/v30.3 Early Profit Protection/Learning, Live-/Shadow-Ampel, Exit Engine 2.0, Rotation Radar Berechnung, Atomic Complete Scan, Portfolio Engine, SQL oder Secrets.
+## Fix 2: Duplicate-Recovery
+Wenn beim Erstellen einer Liste der Backend-Name als bereits vorhanden / existent / Duplicate bestätigt wird:
+- wird **keine neue Liste erstellt**,
+- der bestehende Name wird als Recovery-Eintrag übernommen,
+- die gewünschte Typisierung (`Watchlist` oder `Positions-Watchlist`) wird nur für die UI-Wiederherstellung gespeichert,
+- die Liste erscheint nach dem Rerun in der Auswahl.
 
----
+Damit kann auch eine Liste wieder erreichbar gemacht werden, die vom Backend bei der Duplikatprüfung erkannt, aber vom Katalog nicht geliefert wird.
 
-# v30.3 - Early Profit Learning & Calibration
+## Fix 3: Öffnen über dedizierte Backend-API
+Nach Auswahl werden die Ticker primär über `get_watchlist_tickers(name)` geladen. `load_watchlists_df()` ist nur noch Fallback. Damit hängt das Öffnen einer Liste nicht mehr davon ab, ob ihre Ticker-Zeilen im globalen Watchlist-DataFrame korrekt sichtbar sind.
 
-v30.3 schliesst den in v30.2 bewusst noch offenen Learning-Kreis: Early-Profit-Warnungen werden jetzt mit spaeter real geschlossenen Trades verknuepft und darauf geprueft, ob der Gewinnschutz im Nachhinein tatsaechlich sinnvoll war oder ob die Aktie danach noch deutlich weiterlief.
+## Persistenz
+Recovery-Einträge werden über die bestehende zentrale Storage-Schicht gespeichert und bleiben über Reruns/Neustarts erhalten. Beim echten Löschen einer Watchlist wird der Recovery-Eintrag ebenfalls entfernt.
 
-## Neue Auswertung im Trade-Journal
-Unter **Early Profit Protection · Lern- & Kalibrierungscheck** wird pro geschlossenem Trade maximal ein unabhaengiger Lernfall verwendet: die erste sicher zuordenbare Early-Profit-Warnung innerhalb des realen Entry-/Exit-Zeitfensters.
+## Einmalige Wiederherstellung einer unsichtbaren bestehenden Liste
+Falls die bestehende Positionswatchlist auch nach Installation noch nicht sofort auftaucht:
+1. im Bereich **Positionen -> Watchlist verwalten** denselben bestehenden Namen eintragen,
+2. Typ `Positions-Watchlist` wählen,
+3. einmal **Watchlist erstellen** drücken.
 
-Mehrere spaetere Warnungen desselben Trades werden zwar als Kontext gezaehlt, uebergewichten die Statistik aber nicht.
+Wenn das Backend meldet, dass die Liste bereits existiert, übernimmt v30.3b sie automatisch in die Auswahl. Es wird dabei keine zweite Liste erzeugt.
 
-## Was gemessen wird
-- R-Multiple zum Zeitpunkt der ersten Early-Profit-Warnung,
-- final realisiertes Gesamt-R des Trade-Zyklus,
-- Delta-R nach der Warnung,
-- realer Giveback in R,
-- Profit Velocity am Warnzeitpunkt,
-- Exhaustion Risk am Warnzeitpunkt,
-- damaliger Historical Giveback Risk,
-- erste und staerkste Early-Profit-Empfehlung im Trade.
-
-## Lernklassifikation
-- **Gewinnschutz bestaetigt**: final realisiertes R liegt mindestens 0,25R unter dem R am ersten Warnzeitpunkt.
-- **Gewinnschutz stark bestaetigt**: mindestens 0,75R Giveback.
-- **Laufenlassen besser**: final realisiertes R liegt mindestens 0,25R ueber dem Warnzeitpunkt.
-- **Laufenlassen klar besser**: mindestens +0,75R danach.
-- Dazwischen bleibt der Fall neutral.
-
-Diese Schwellen sind nur fuer den Lerncheck. Sie veraendern die v30.2-Empfehlung nicht.
-
-## Neue Kalibrierungen
-Die Learning Engine zeigt:
-- Trefferbild nach damaliger Early-Profit-Empfehlung,
-- Ergebnis nach Profit-Velocity-Band,
-- Ergebnis nach Exhaustion-Risk-Band,
-- Kalibrierung des historischen Giveback-Risikos gegen real beobachtete Trade-Ausgaenge.
-
-Damit wird sichtbar, ob z. B. sehr hohe Exhaustion-Werte bei den eigenen Trades tatsaechlich haeufiger in Givebacks enden oder ob die Warnungen bislang zu frueh ausloesen.
-
-## Stichproben-Guard
-- <5: Zu klein
-- 5-9: Fruehphase
-- 10-19: Mittel / fruehe Kalibrierung
-- 20-39: Gut / beobachtbar kalibriert
-- >=40: Breiter
-
-Kleine Stichproben bleiben ausdruecklich als solche markiert. Es gibt keine automatische Regel-, Score-, Stop- oder Order-Aenderung.
-
-## Methodischer Hinweis
-Der Lerncheck ist bewusst **kein hypothetischer Sofortverkaufs-Backtest**. Er vergleicht das R am Warnzeitpunkt mit dem spaeter tatsaechlich realisierten Gesamt-R des Trades. Teilverkaeufe und reale Positionsfuehrung bleiben dadurch Teil des echten Ergebnisses.
-
-## Provider-Schutz
-Keine neuen Kurs- oder Historienabfragen. v30.3 arbeitet nur mit bereits vorhandenen Trade-Journal- und Event-Log-Daten.
-
-## Unveraendert
-- v30.2 Early Profit Protection & Giveback Engine,
-- produktive Live-/Shadow-Ampel,
-- Exit Engine 2.0,
-- Rotation Radar,
-- Atomic Complete Scan,
-- Portfolio Engine,
-- SQL / Secrets.
+## Unverändert
+Keine Änderung an Early Profit Protection/Learning, Exit Engine, Live-/Shadow-Ampel, Rotation Radar, Atomic Complete Scan, Portfolio Engine, SQL oder Secrets.

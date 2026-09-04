@@ -78,6 +78,108 @@ UNIVERSE: tuple[RotationSpec, ...] = (
 
 _SPEC_BY_SYMBOL = {x.symbol: x for x in UNIVERSE}
 
+# v30.1d: representative stock baskets for on-demand Rotation Stock Drilldown.
+# These baskets are deliberately curated/compact rather than exhaustive ETF holdings.
+# Provider access remains user-triggered and limited to the selected group.
+_STOCK_DRILLDOWN: dict[str, tuple[tuple[str, str], ...]] = {
+    # US sectors
+    "XLK": (("MSFT", "Microsoft Corporation"), ("AAPL", "Apple Inc."), ("NVDA", "NVIDIA Corporation"),
+            ("AVGO", "Broadcom Inc."), ("ORCL", "Oracle Corporation"), ("CRM", "Salesforce, Inc."),
+            ("AMD", "Advanced Micro Devices, Inc."), ("CSCO", "Cisco Systems, Inc."),
+            ("IBM", "International Business Machines Corporation"), ("ANET", "Arista Networks, Inc.")),
+    "XLF": (("JPM", "JPMorgan Chase & Co."), ("BAC", "Bank of America Corporation"), ("WFC", "Wells Fargo & Company"),
+            ("GS", "The Goldman Sachs Group, Inc."), ("MS", "Morgan Stanley"), ("C", "Citigroup Inc."),
+            ("BLK", "BlackRock, Inc."), ("AXP", "American Express Company"), ("SCHW", "The Charles Schwab Corporation"),
+            ("BK", "The Bank of New York Mellon Corporation")),
+    "XLI": (("GE", "GE Aerospace"), ("CAT", "Caterpillar Inc."), ("RTX", "RTX Corporation"),
+            ("HON", "Honeywell International Inc."), ("UNP", "Union Pacific Corporation"), ("ETN", "Eaton Corporation plc"),
+            ("PH", "Parker-Hannifin Corporation"), ("DE", "Deere & Company"), ("LMT", "Lockheed Martin Corporation"),
+            ("UPS", "United Parcel Service, Inc.")),
+    "XLV": (("LLY", "Eli Lilly and Company"), ("JNJ", "Johnson & Johnson"), ("ABBV", "AbbVie Inc."),
+            ("UNH", "UnitedHealth Group Incorporated"), ("MRK", "Merck & Co., Inc."), ("TMO", "Thermo Fisher Scientific Inc."),
+            ("ABT", "Abbott Laboratories"), ("ISRG", "Intuitive Surgical, Inc."), ("AMGN", "Amgen Inc."),
+            ("GILD", "Gilead Sciences, Inc.")),
+    "XLE": (("XOM", "Exxon Mobil Corporation"), ("CVX", "Chevron Corporation"), ("COP", "ConocoPhillips"),
+            ("SLB", "SLB"), ("EOG", "EOG Resources, Inc."), ("MPC", "Marathon Petroleum Corporation"),
+            ("PSX", "Phillips 66"), ("OXY", "Occidental Petroleum Corporation"), ("VLO", "Valero Energy Corporation"),
+            ("FANG", "Diamondback Energy, Inc.")),
+    "XLB": (("LIN", "Linde plc"), ("SHW", "The Sherwin-Williams Company"), ("FCX", "Freeport-McMoRan Inc."),
+            ("NEM", "Newmont Corporation"), ("ECL", "Ecolab Inc."), ("APD", "Air Products and Chemicals, Inc."),
+            ("DOW", "Dow Inc."), ("NUE", "Nucor Corporation"), ("STLD", "Steel Dynamics, Inc."),
+            ("MLM", "Martin Marietta Materials, Inc.")),
+    "XLY": (("AMZN", "Amazon.com, Inc."), ("TSLA", "Tesla, Inc."), ("HD", "The Home Depot, Inc."),
+            ("MCD", "McDonald's Corporation"), ("LOW", "Lowe's Companies, Inc."), ("BKNG", "Booking Holdings Inc."),
+            ("TJX", "The TJX Companies, Inc."), ("NKE", "NIKE, Inc."), ("SBUX", "Starbucks Corporation"),
+            ("ORLY", "O'Reilly Automotive, Inc.")),
+    "XLP": (("WMT", "Walmart Inc."), ("COST", "Costco Wholesale Corporation"), ("PG", "The Procter & Gamble Company"),
+            ("KO", "The Coca-Cola Company"), ("PM", "Philip Morris International Inc."), ("PEP", "PepsiCo, Inc."),
+            ("MDLZ", "Mondelez International, Inc."), ("CL", "Colgate-Palmolive Company"), ("MO", "Altria Group, Inc."),
+            ("KMB", "Kimberly-Clark Corporation")),
+    "XLU": (("NEE", "NextEra Energy, Inc."), ("SO", "The Southern Company"), ("DUK", "Duke Energy Corporation"),
+            ("CEG", "Constellation Energy Corporation"), ("AEP", "American Electric Power Company, Inc."),
+            ("SRE", "Sempra"), ("VST", "Vistra Corp."), ("D", "Dominion Energy, Inc."),
+            ("PEG", "Public Service Enterprise Group Incorporated"), ("EXC", "Exelon Corporation")),
+    "XLRE": (("PLD", "Prologis, Inc."), ("AMT", "American Tower Corporation"), ("EQIX", "Equinix, Inc."),
+             ("WELL", "Welltower Inc."), ("SPG", "Simon Property Group, Inc."), ("O", "Realty Income Corporation"),
+             ("DLR", "Digital Realty Trust, Inc."), ("PSA", "Public Storage"), ("CBRE", "CBRE Group, Inc."),
+             ("VICI", "VICI Properties Inc.")),
+    "XLC": (("META", "Meta Platforms, Inc."), ("GOOGL", "Alphabet Inc."), ("NFLX", "Netflix, Inc."),
+            ("TMUS", "T-Mobile US, Inc."), ("DIS", "The Walt Disney Company"), ("T", "AT&T Inc."),
+            ("VZ", "Verizon Communications Inc."), ("CHTR", "Charter Communications, Inc."),
+            ("WBD", "Warner Bros. Discovery, Inc."), ("EA", "Electronic Arts Inc."),
+            ("TTWO", "Take-Two Interactive Software, Inc.")),
+
+    # Industries / themes
+    "SMH": (("NVDA", "NVIDIA Corporation"), ("AVGO", "Broadcom Inc."), ("AMD", "Advanced Micro Devices, Inc."),
+            ("TSM", "Taiwan Semiconductor Manufacturing Company Limited"), ("ASML", "ASML Holding N.V."),
+            ("MU", "Micron Technology, Inc."), ("AMAT", "Applied Materials, Inc."), ("LRCX", "Lam Research Corporation"),
+            ("KLAC", "KLA Corporation"), ("QCOM", "QUALCOMM Incorporated"), ("ARM", "Arm Holdings plc")),
+    "IGV": (("MSFT", "Microsoft Corporation"), ("ORCL", "Oracle Corporation"), ("CRM", "Salesforce, Inc."),
+            ("ADBE", "Adobe Inc."), ("NOW", "ServiceNow, Inc."), ("INTU", "Intuit Inc."),
+            ("SNOW", "Snowflake Inc."), ("DDOG", "Datadog, Inc."), ("MDB", "MongoDB, Inc."),
+            ("PLTR", "Palantir Technologies Inc.")),
+    "CIBR": (("CRWD", "CrowdStrike Holdings, Inc."), ("PANW", "Palo Alto Networks, Inc."),
+             ("FTNT", "Fortinet, Inc."), ("ZS", "Zscaler, Inc."), ("OKTA", "Okta, Inc."),
+             ("CYBR", "CyberArk Software Ltd."), ("GEN", "Gen Digital Inc."), ("TENB", "Tenable Holdings, Inc."),
+             ("QLYS", "Qualys, Inc."), ("RBRK", "Rubrik, Inc.")),
+    "ITA": (("RTX", "RTX Corporation"), ("LMT", "Lockheed Martin Corporation"), ("NOC", "Northrop Grumman Corporation"),
+            ("GD", "General Dynamics Corporation"), ("BA", "The Boeing Company"), ("HWM", "Howmet Aerospace Inc."),
+            ("LHX", "L3Harris Technologies, Inc."), ("TDG", "TransDigm Group Incorporated"),
+            ("TXT", "Textron Inc."), ("HII", "Huntington Ingalls Industries, Inc.")),
+    "XBI": (("VRTX", "Vertex Pharmaceuticals Incorporated"), ("REGN", "Regeneron Pharmaceuticals, Inc."),
+            ("ALNY", "Alnylam Pharmaceuticals, Inc."), ("BIIB", "Biogen Inc."), ("MRNA", "Moderna, Inc."),
+            ("INCY", "Incyte Corporation"), ("IONS", "Ionis Pharmaceuticals, Inc."), ("SRPT", "Sarepta Therapeutics, Inc."),
+            ("NBIX", "Neurocrine Biosciences, Inc."), ("BMRN", "BioMarin Pharmaceutical Inc.")),
+    "KRE": (("MTB", "M&T Bank Corporation"), ("CFG", "Citizens Financial Group, Inc."), ("KEY", "KeyCorp"),
+            ("RF", "Regions Financial Corporation"), ("HBAN", "Huntington Bancshares Incorporated"),
+            ("ZION", "Zions Bancorporation, N.A."), ("CMA", "Comerica Incorporated"), ("FHN", "First Horizon Corporation"),
+            ("WAL", "Western Alliance Bancorporation"), ("EWBC", "East West Bancorp, Inc.")),
+    "XHB": (("DHI", "D.R. Horton, Inc."), ("LEN", "Lennar Corporation"), ("PHM", "PulteGroup, Inc."),
+            ("TOL", "Toll Brothers, Inc."), ("NVR", "NVR, Inc."), ("KBH", "KB Home"),
+            ("MTH", "Meritage Homes Corporation"), ("BLDR", "Builders FirstSource, Inc."),
+            ("FND", "Floor & Decor Holdings, Inc."), ("MAS", "Masco Corporation")),
+    "IYT": (("UNP", "Union Pacific Corporation"), ("UPS", "United Parcel Service, Inc."), ("FDX", "FedEx Corporation"),
+            ("CSX", "CSX Corporation"), ("NSC", "Norfolk Southern Corporation"), ("ODFL", "Old Dominion Freight Line, Inc."),
+            ("JBHT", "J.B. Hunt Transport Services, Inc."), ("CHRW", "C.H. Robinson Worldwide, Inc."),
+            ("EXPD", "Expeditors International of Washington, Inc."), ("KNX", "Knight-Swift Transportation Holdings Inc.")),
+    "ICLN": (("FSLR", "First Solar, Inc."), ("ENPH", "Enphase Energy, Inc."), ("SEDG", "SolarEdge Technologies, Inc."),
+             ("PLUG", "Plug Power Inc."), ("NOVA", "Sunnova Energy International Inc."), ("BE", "Bloom Energy Corporation"),
+             ("ARRY", "Array Technologies, Inc."), ("RUN", "Sunrun Inc."), ("FLNC", "Fluence Energy, Inc."),
+             ("NXT", "Nextracker Inc.")),
+    "TAN": (("FSLR", "First Solar, Inc."), ("ENPH", "Enphase Energy, Inc."), ("SEDG", "SolarEdge Technologies, Inc."),
+            ("NOVA", "Sunnova Energy International Inc."), ("ARRY", "Array Technologies, Inc."),
+            ("RUN", "Sunrun Inc."), ("SHLS", "Shoals Technologies Group, Inc."),
+            ("NXT", "Nextracker Inc."), ("CSIQ", "Canadian Solar Inc."), ("JKS", "JinkoSolar Holding Co., Ltd.")),
+    "GDX": (("NEM", "Newmont Corporation"), ("GOLD", "Barrick Mining Corporation"), ("AEM", "Agnico Eagle Mines Limited"),
+            ("KGC", "Kinross Gold Corporation"), ("WPM", "Wheaton Precious Metals Corp."), ("FNV", "Franco-Nevada Corporation"),
+            ("AU", "AngloGold Ashanti plc"), ("RGLD", "Royal Gold, Inc."), ("AGI", "Alamos Gold Inc."),
+            ("IAG", "IAMGOLD Corporation")),
+    "COPX": (("FCX", "Freeport-McMoRan Inc."), ("SCCO", "Southern Copper Corporation"), ("TECK", "Teck Resources Limited"),
+             ("HBM", "Hudbay Minerals Inc."), ("ERO", "Ero Copper Corp."), ("BHP", "BHP Group Limited"),
+             ("RIO", "Rio Tinto Group"), ("VALE", "Vale S.A."), ("LUNMF", "Lundin Mining Corporation"),
+             ("IVPAF", "Ivanhoe Mines Ltd.")),
+}
+
 
 def universe_frame() -> pd.DataFrame:
     return pd.DataFrame([
@@ -111,6 +213,28 @@ def breadth_tickers(symbols: Iterable[str]) -> list[str]:
         if spec:
             out.update(spec.breadth)
     return sorted(out)
+
+
+# ---------- v30.1d: Rotation Stock Drilldown ----------
+def drilldown_groups() -> list[str]:
+    """Sector/theme ETFs with a curated representative stock basket."""
+    return [s.symbol for s in UNIVERSE if s.symbol in _STOCK_DRILLDOWN]
+
+
+def drilldown_candidates(group_symbol: str) -> list[dict[str, str]]:
+    symbol = str(group_symbol or "").strip().upper()
+    return [{"Ticker": t, "Name": n} for t, n in _STOCK_DRILLDOWN.get(symbol, ())]
+
+
+def drilldown_tickers(group_symbol: str) -> list[str]:
+    """Provider-safe ticker set for one explicit stock drilldown run."""
+    symbol = str(group_symbol or "").strip().upper()
+    spec = _SPEC_BY_SYMBOL.get(symbol)
+    out = {symbol, "SPY"}
+    if spec is not None:
+        out.add(str(spec.benchmark).upper())
+    out.update(t for t, _ in _STOCK_DRILLDOWN.get(symbol, ()))
+    return sorted(x for x in out if x)
 
 
 def _safe_float(v, default=np.nan) -> float:
@@ -408,6 +532,192 @@ def build_breadth(prices: pd.DataFrame, symbols: Iterable[str]) -> pd.DataFrame:
             "% RS21 > 0": round(pctrsp, 1),
         })
     return pd.DataFrame(rows)
+
+
+def build_stock_drilldown(prices: pd.DataFrame, group_symbol: str) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """Rank representative stocks by leadership *inside* the selected rotation group.
+
+    The drilldown is intentionally independent from the productive Live-/Shadow-Engine.
+    It answers a narrower question: which members are currently leading or accelerating
+    relative to the selected sector/theme ETF? Live/Shadow context can be merged by the UI
+    when the same ticker exists in the latest complete Atomic Screener snapshot.
+    """
+    symbol = str(group_symbol or "").strip().upper()
+    members = _STOCK_DRILLDOWN.get(symbol, ())
+    if not members:
+        return pd.DataFrame(), pd.DataFrame([{"Ticker": symbol or "-", "Fehler": "Kein Drilldown-Universum"}]), {}
+    if prices is None or not isinstance(prices, pd.DataFrame) or prices.empty:
+        return pd.DataFrame(), pd.DataFrame([{"Ticker": symbol, "Fehler": "Keine Kursdaten"}]), {}
+
+    p = prices.copy()
+    p.columns = [str(c).upper() for c in p.columns]
+    if symbol not in p.columns:
+        return pd.DataFrame(), pd.DataFrame([{"Ticker": symbol, "Fehler": "Sektor-/Branchen-ETF fehlt"}]), {}
+
+    group = p[symbol]
+    group_r5 = _ret_pct(group, 5)
+    group_r21 = _ret_pct(group, 21)
+    group_r63 = _ret_pct(group, 63)
+    rows: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+
+    def per_day(value: float, days: int) -> float:
+        return (float(value) / float(days)) if math.isfinite(_safe_float(value)) else 0.0
+
+    for ticker, name in members:
+        if ticker not in p.columns:
+            errors.append({"Ticker": ticker, "Name": name, "Fehler": "Keine Kursdaten"})
+            continue
+        s = p[ticker]
+        px = _last(s)
+        if not math.isfinite(px) or px <= 0:
+            errors.append({"Ticker": ticker, "Name": name, "Fehler": "Kein gültiger Schlusskurs"})
+            continue
+
+        r5 = _ret_pct(s, 5)
+        r21 = _ret_pct(s, 21)
+        r63 = _ret_pct(s, 63)
+        rs5 = r5 - group_r5 if math.isfinite(r5) and math.isfinite(group_r5) else np.nan
+        rs21 = r21 - group_r21 if math.isfinite(r21) and math.isfinite(group_r21) else np.nan
+        rs63 = r63 - group_r63 if math.isfinite(r63) and math.isfinite(group_r63) else np.nan
+
+        ma20 = _ma(s, 20)
+        ma50 = _ma(s, 50)
+        ma200 = _ma(s, 200)
+        trend = 0.0
+        if math.isfinite(ma20):
+            trend += 30.0 if px >= ma20 else 0.0
+        if math.isfinite(ma50):
+            trend += 30.0 if px >= ma50 else 0.0
+        if math.isfinite(ma200):
+            trend += 40.0 if px >= ma200 else 0.0
+
+        rel_score = (
+            0.25 * _score_from_pct(rs5, 4.5)
+            + 0.40 * _score_from_pct(rs21, 3.6)
+            + 0.35 * _score_from_pct(rs63, 2.4)
+        )
+        accel = (
+            0.65 * (per_day(rs5, 5) - per_day(rs21, 21))
+            + 0.35 * (per_day(rs21, 21) - per_day(rs63, 63))
+        )
+        accel_score = _clamp(50.0 + 45.0 * math.tanh(accel / 0.28))
+
+        ma20_dist = ((px / ma20) - 1.0) * 100.0 if math.isfinite(ma20) and ma20 > 0 else np.nan
+        clean = pd.to_numeric(s, errors="coerce").dropna()
+        high20 = _safe_float(clean.tail(20).max()) if len(clean) >= 5 else np.nan
+        high20_dist = ((px / high20) - 1.0) * 100.0 if math.isfinite(high20) and high20 > 0 else np.nan
+
+        # Entry-readiness rewards proximity to a recent high without rewarding a chase.
+        if math.isfinite(high20_dist):
+            if high20_dist >= -4.0:
+                high_readiness = 90.0
+            elif high20_dist >= -8.0:
+                high_readiness = 75.0
+            elif high20_dist >= -12.0:
+                high_readiness = 60.0
+            else:
+                high_readiness = 40.0
+        else:
+            high_readiness = 50.0
+
+        if math.isfinite(ma20_dist):
+            if -2.0 <= ma20_dist <= 6.0:
+                extension_readiness = 92.0
+            elif -5.0 <= ma20_dist < -2.0:
+                extension_readiness = 65.0
+            elif 6.0 < ma20_dist <= 9.0:
+                extension_readiness = 70.0
+            elif 9.0 < ma20_dist <= 12.0:
+                extension_readiness = 48.0
+            elif ma20_dist > 12.0:
+                extension_readiness = 25.0
+            else:
+                extension_readiness = 35.0
+        else:
+            extension_readiness = 50.0
+
+        readiness = 0.55 * high_readiness + 0.45 * extension_readiness
+        score = 0.35 * rel_score + 0.30 * accel_score + 0.20 * trend + 0.15 * readiness
+        if math.isfinite(ma20_dist) and ma20_dist > 12.0:
+            score -= 12.0
+        elif math.isfinite(ma20_dist) and ma20_dist > 9.0:
+            score -= 6.0
+        score = _clamp(score)
+
+        overextended = bool(math.isfinite(ma20_dist) and ma20_dist > 10.0)
+        if overextended and rel_score >= 68.0:
+            label = "⚠️ Leader, aber überdehnt"
+        elif score >= 78.0 and accel_score >= 65.0 and _safe_float(rs21, -999.0) > 0:
+            label = "🥇 Early Leader"
+        elif score >= 72.0 and trend >= 60.0 and _safe_float(rs21, -999.0) > 0 and _safe_float(rs63, -999.0) > 0:
+            label = "🥈 Confirmed Leader"
+        elif readiness >= 78.0 and score >= 66.0 and trend >= 60.0:
+            label = "🎯 Technisch bereit"
+        elif accel_score >= 68.0 and score >= 58.0:
+            label = "🚀 Rotation beschleunigt"
+        elif score >= 58.0:
+            label = "👀 Beobachten"
+        else:
+            label = "⚪ Nachrangig"
+
+        evidence = []
+        if math.isfinite(rs21):
+            evidence.append(f"Sektor-RS21 {rs21:+.1f}%")
+        if accel_score >= 65:
+            evidence.append("RS beschleunigt")
+        elif accel_score <= 35:
+            evidence.append("RS verliert Tempo")
+        if trend >= 100:
+            evidence.append("über MA20/50/200")
+        elif trend >= 60:
+            evidence.append("Trend konstruktiv")
+        else:
+            evidence.append("Trend noch lückenhaft")
+        if overextended:
+            evidence.append(f"{ma20_dist:+.1f}% vs MA20")
+        elif math.isfinite(high20_dist) and high20_dist >= -4:
+            evidence.append("nahe 20T-Hoch")
+
+        rows.append({
+            "Ticker": ticker,
+            "Name": name,
+            "Gruppe": symbol,
+            "Kurs": round(px, 4),
+            "Kandidaten-Score": round(score, 1),
+            "Rotation-Kandidat": label,
+            "Sektor-RS 5T %": rs5,
+            "Sektor-RS 21T %": rs21,
+            "Sektor-RS 63T %": rs63,
+            "RS-Beschl. Score": round(accel_score, 1),
+            "Relative Leadership": round(_clamp(rel_score), 1),
+            "Trend-Score": round(_clamp(trend), 1),
+            "Entry-Readiness": round(_clamp(readiness), 1),
+            "Abstand MA20 %": ma20_dist,
+            "Abstand 20T-Hoch %": high20_dist,
+            "Perf 5T %": r5,
+            "Perf 21T %": r21,
+            "Perf 63T %": r63,
+            "Warum": " · ".join(evidence),
+        })
+
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out = out.sort_values(["Kandidaten-Score", "RS-Beschl. Score", "Sektor-RS 21T %"], ascending=[False, False, False]).reset_index(drop=True)
+        out.insert(0, "Rang", np.arange(1, len(out) + 1))
+
+    spec = _SPEC_BY_SYMBOL.get(symbol)
+    meta = {
+        "group": symbol,
+        "group_name": spec.name if spec else symbol,
+        "processed": len(members),
+        "success": int(len(out)),
+        "errors": int(len(errors)),
+        "coverage_pct": round(100.0 * len(out) / max(1, len(members)), 1),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "provider_mode": "on-demand-one-group",
+    }
+    return out, pd.DataFrame(errors), meta
 
 
 def merge_breadth(radar: pd.DataFrame, breadth: pd.DataFrame) -> pd.DataFrame:

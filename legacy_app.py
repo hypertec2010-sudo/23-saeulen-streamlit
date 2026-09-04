@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.1c"
+APP_VERSION = "v30.1d"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -17884,6 +17884,221 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.warning(f"{len(_breadth_provider_err_v301)} Breadth-Datenhinweis(e); fehlende Mitglieder werden nicht erfunden.")
                                     else:
                                         st.warning("Für die Auswahl konnte aktuell keine belastbare Breadth Confirmation berechnet werden.")
+
+                                # ---------- v30.1d: Rotation Stock Drilldown ----------
+                                st.markdown("#### 🔎 Top-Kandidaten aus dieser Rotation")
+                                st.caption(
+                                    "Der Radar sagt, WO Kapital rotiert; dieser Drilldown sucht innerhalb der ausgewählten Gruppe nach den Aktien, "
+                                    "die die neue Rotation relativ zum Sektor-/Branchen-ETF anführen oder beschleunigen. Der Abruf erfolgt nur auf Klick "
+                                    "für einen kompakten repräsentativen Aktienkorb. Live/Shadow-Daten werden nur ergänzt, wenn der Ticker bereits im "
+                                    "letzten vollständigen Atomic-Screener-Stand enthalten ist."
+                                )
+
+                                _dd_groups_v301d = _rotation_radar_v301.drilldown_groups()
+                                _dd_radar_v301d = _rot_df_v301[_rot_df_v301["Ticker"].astype(str).isin(_dd_groups_v301d)].copy()
+                                if not _dd_radar_v301d.empty:
+                                    _dd_radar_v301d["_prio"] = _dd_radar_v301d["Phase"].astype(str).map(
+                                        lambda x: 0 if "Emerging" in x else (1 if "Leading" in x else (2 if "Mature" in x else 3))
+                                    )
+                                    _dd_radar_v301d = _dd_radar_v301d.sort_values(
+                                        ["_prio", "Rotation", "Leadership"], ascending=[True, False, False]
+                                    )
+                                    _dd_groups_sorted_v301d = _dd_radar_v301d["Ticker"].astype(str).tolist()
+                                else:
+                                    _dd_groups_sorted_v301d = list(_dd_groups_v301d)
+
+                                _dd_row_map_v301d = {
+                                    str(r.get("Ticker")): r for _, r in _rot_df_v301.iterrows()
+                                    if str(r.get("Ticker", "")) in _dd_groups_sorted_v301d
+                                }
+
+                                def _v301d_group_label(_symbol):
+                                    _r = _dd_row_map_v301d.get(str(_symbol), {})
+                                    _nm = str(_r.get("Name") or _name_map_v301.get(str(_symbol), str(_symbol)))
+                                    _ph = str(_r.get("Phase") or "-")
+                                    try:
+                                        _rot = f"{float(_r.get('Rotation')):.0f}"
+                                    except Exception:
+                                        _rot = "-"
+                                    try:
+                                        _lead = f"{float(_r.get('Leadership')):.0f}"
+                                    except Exception:
+                                        _lead = "-"
+                                    return f"{_ph} · {_nm} ({_symbol}) · Rotation {_rot} · Leadership {_lead}"
+
+                                if _dd_groups_sorted_v301d:
+                                    _dd_select_v301d = st.selectbox(
+                                        "Rotation für Aktien-Drilldown",
+                                        options=_dd_groups_sorted_v301d,
+                                        format_func=_v301d_group_label,
+                                        key="v301d_stock_drilldown_group",
+                                    )
+                                    _dd_members_v301d = _rotation_radar_v301.drilldown_candidates(_dd_select_v301d)
+                                    _dd_col1_v301d, _dd_col2_v301d = st.columns([1.45, 1.0])
+                                    with _dd_col1_v301d:
+                                        _run_dd_v301d = st.button(
+                                            "🔎 Top-Kandidaten für Auswahl prüfen",
+                                            type="primary",
+                                            use_container_width=True,
+                                            key="v301d_stock_drilldown_refresh",
+                                        )
+                                    with _dd_col2_v301d:
+                                        st.caption(
+                                            f"Repräsentativer Aktienkorb: {len(_dd_members_v301d)} Werte · nur diese Auswahl wird geladen."
+                                        )
+
+                                    if _run_dd_v301d:
+                                        _dd_token_v301d = int(st.session_state.get("rotation_stock_token_v301d", 0) or 0) + 1
+                                        st.session_state["rotation_stock_token_v301d"] = _dd_token_v301d
+                                        _dd_tickers_v301d = _rotation_radar_v301.drilldown_tickers(_dd_select_v301d)
+                                        with st.spinner(
+                                            f"Prüfe {len(_dd_members_v301d)} Aktien relativ zu {_dd_select_v301d} …"
+                                        ):
+                                            _dd_prices_v301d, _dd_provider_err_v301d = _load_rotation_prices_v301(
+                                                tuple(_dd_tickers_v301d), _dd_token_v301d
+                                            )
+                                            _dd_new_v301d, _dd_calc_err_v301d, _dd_meta_v301d = _rotation_radar_v301.build_stock_drilldown(
+                                                _dd_prices_v301d, _dd_select_v301d
+                                            )
+                                        _dd_cov_v301d = float((_dd_meta_v301d or {}).get("coverage_pct") or 0.0)
+                                        _dd_min_rows_v301d = max(4, int(len(_dd_members_v301d) * 0.60))
+                                        if isinstance(_dd_new_v301d, pd.DataFrame) and len(_dd_new_v301d) >= _dd_min_rows_v301d and _dd_cov_v301d >= 60.0:
+                                            _dd_err_frames_v301d = [
+                                                x for x in [_dd_provider_err_v301d, _dd_calc_err_v301d]
+                                                if isinstance(x, pd.DataFrame) and not x.empty
+                                            ]
+                                            _dd_errors_v301d = pd.concat(_dd_err_frames_v301d, ignore_index=True) if _dd_err_frames_v301d else pd.DataFrame()
+                                            st.session_state["rotation_stock_drilldown_v301d"] = {
+                                                "group": str(_dd_select_v301d),
+                                                "saved_at": pd.Timestamp.now(tz="UTC").isoformat(),
+                                                "rows": _dd_new_v301d.replace({np.nan: None, np.inf: None, -np.inf: None}).to_dict(orient="records"),
+                                                "errors": _dd_errors_v301d.replace({np.nan: None, np.inf: None, -np.inf: None}).to_dict(orient="records") if not _dd_errors_v301d.empty else [],
+                                                "meta": dict(_dd_meta_v301d or {}),
+                                            }
+                                            st.success(
+                                                f"Stock Drilldown aktualisiert · {len(_dd_new_v301d)}/{len(_dd_members_v301d)} Aktien · "
+                                                f"Abdeckung {_dd_cov_v301d:.0f}% · keine alten Einzelzeilen zugemischt."
+                                            )
+                                        else:
+                                            st.warning(
+                                                f"Der Drilldown war aktuell nicht vollständig genug ({_dd_cov_v301d:.0f}% Abdeckung). "
+                                                "Ein eventuell vorhandener letzter Drilldown bleibt erhalten."
+                                            )
+
+                                    _dd_payload_v301d = st.session_state.get("rotation_stock_drilldown_v301d", {}) or {}
+                                    if str(_dd_payload_v301d.get("group") or "") == str(_dd_select_v301d):
+                                        _dd_show_v301d = pd.DataFrame(_dd_payload_v301d.get("rows") or [])
+                                        _dd_errors_show_v301d = pd.DataFrame(_dd_payload_v301d.get("errors") or [])
+                                        _dd_meta_show_v301d = dict(_dd_payload_v301d.get("meta") or {})
+                                        if not _dd_show_v301d.empty:
+                                            # Enrich only from the already completed Atomic Live-Screener state.
+                                            _live_context_v301d = (
+                                                _live_df_complete_v289.copy()
+                                                if isinstance(_live_df_complete_v289, pd.DataFrame)
+                                                else pd.DataFrame()
+                                            )
+                                            _live_cols_v301d = [
+                                                "Ticker", "Ampel", "Shadow-Ampel", "Live-Score", "Guarded Engine-Score",
+                                                "CRV", "RS-Dynamik", "Setup-Alert", "Aktive Einstiegsgates",
+                                                "Entry-Abstand", "Engine-Empfehlung", "Trade-State",
+                                            ]
+                                            if not _live_context_v301d.empty and "Ticker" in _live_context_v301d.columns:
+                                                _live_context_v301d = _live_context_v301d[
+                                                    [c for c in _live_cols_v301d if c in _live_context_v301d.columns]
+                                                ].copy()
+                                                _live_context_v301d["Ticker"] = _live_context_v301d["Ticker"].astype(str).str.upper()
+                                                _live_context_v301d = _live_context_v301d.drop_duplicates("Ticker", keep="last")
+                                                _dd_show_v301d["Ticker"] = _dd_show_v301d["Ticker"].astype(str).str.upper()
+                                                _dd_show_v301d = _dd_show_v301d.merge(_live_context_v301d, on="Ticker", how="left")
+
+                                            def _v301d_engine_confirmation(_row):
+                                                _amp = str(_row.get("Ampel") or "").strip()
+                                                _sha = str(_row.get("Shadow-Ampel") or "").strip()
+                                                _gates = str(_row.get("Aktive Einstiegsgates") or "").strip()
+                                                if not _amp:
+                                                    return "— nicht im Atomic Live-Scan"
+                                                if _amp == "🟢" and _sha == "🟢" and _gates.lower() in {"", "-", "nan", "none"}:
+                                                    return "✅ Live + Shadow bestätigt"
+                                                if _amp in {"🔴", "⚪", "⚫"} or (_gates and _gates.lower() not in {"-", "nan", "none"}):
+                                                    return "⚠️ Engine/Guardrail bremst"
+                                                if _amp == "🟢" or _sha == "🟢":
+                                                    return "🟡 teilweise bestätigt"
+                                                return "🟡 Live-Kontext prüfen"
+
+                                            _dd_show_v301d["Engine-Bestätigung"] = _dd_show_v301d.apply(_v301d_engine_confirmation, axis=1)
+                                            _dd_saved_at_v301d = str(_dd_payload_v301d.get("saved_at") or "")
+                                            if _dd_saved_at_v301d:
+                                                st.caption(
+                                                    f"Drilldown-Stand: {_v301_rotation_age_text(_dd_saved_at_v301d)} alt · "
+                                                    "Kandidaten-Score bleibt Beobachtungswert und verändert die produktive Live-/Shadow-Ampel nicht."
+                                                )
+
+                                            _dd_display_cols_v301d = [
+                                                "Rang", "Rotation-Kandidat", "Ticker", "Name", "Kandidaten-Score",
+                                                "Sektor-RS 5T %", "Sektor-RS 21T %", "Sektor-RS 63T %",
+                                                "RS-Beschl. Score", "Trend-Score", "Entry-Readiness",
+                                                "Abstand MA20 %", "Abstand 20T-Hoch %",
+                                                "Ampel", "Shadow-Ampel", "Live-Score", "Guarded Engine-Score", "CRV",
+                                                "RS-Dynamik", "Setup-Alert", "Aktive Einstiegsgates", "Engine-Bestätigung", "Warum",
+                                            ]
+                                            _dd_display_v301d = _dd_show_v301d[
+                                                [c for c in _dd_display_cols_v301d if c in _dd_show_v301d.columns]
+                                            ].copy()
+                                            for _dd_num_v301d in [
+                                                "Kandidaten-Score", "Sektor-RS 5T %", "Sektor-RS 21T %", "Sektor-RS 63T %",
+                                                "RS-Beschl. Score", "Trend-Score", "Entry-Readiness", "Abstand MA20 %", "Abstand 20T-Hoch %"
+                                            ]:
+                                                if _dd_num_v301d in _dd_display_v301d.columns:
+                                                    _dd_display_v301d[_dd_num_v301d] = pd.to_numeric(
+                                                        _dd_display_v301d[_dd_num_v301d], errors="coerce"
+                                                    ).round(1)
+
+                                            if mobile_mode_v2842:
+                                                for _, _dr_v301d in _dd_display_v301d.head(8).iterrows():
+                                                    _nm_v301d = str(_dr_v301d.get("Name") or _dr_v301d.get("Ticker") or "-")
+                                                    _tk_v301d = str(_dr_v301d.get("Ticker") or "-")
+                                                    _lb_v301d = str(_dr_v301d.get("Rotation-Kandidat") or "-")
+                                                    try:
+                                                        _sc_v301d = f"{float(_dr_v301d.get('Kandidaten-Score')):.0f}"
+                                                    except Exception:
+                                                        _sc_v301d = "-"
+                                                    try:
+                                                        _rs21_v301d = f"{float(_dr_v301d.get('Sektor-RS 21T %')):+.1f}%"
+                                                    except Exception:
+                                                        _rs21_v301d = "-"
+                                                    st.markdown(
+                                                        f"**#{_dr_v301d.get('Rang','-')} · {_lb_v301d} · {_nm_v301d} ({_tk_v301d})**  \n"
+                                                        f"Kandidaten-Score {_sc_v301d}/100 · Sektor-RS21 {_rs21_v301d} · "
+                                                        f"Live {_dr_v301d.get('Ampel','-')} / Shadow {_dr_v301d.get('Shadow-Ampel','-')}  \n"
+                                                        f"{_dr_v301d.get('Engine-Bestätigung','-')} · {_dr_v301d.get('Warum','-')}"
+                                                    )
+                                                with st.expander("Komplette Stock-Drilldown-Tabelle", expanded=False):
+                                                    st.dataframe(_dd_display_v301d, hide_index=True, use_container_width=True)
+                                            else:
+                                                st.dataframe(
+                                                    _dd_display_v301d,
+                                                    hide_index=True,
+                                                    use_container_width=True,
+                                                    height=min(620, 38 * max(1, len(_dd_display_v301d)) + 55),
+                                                )
+
+                                            _dd_top_v301d = _dd_show_v301d.head(3)
+                                            if not _dd_top_v301d.empty:
+                                                _top_txt_v301d = " · ".join(
+                                                    f"#{int(r.get('Rang', i + 1))} {r.get('Ticker','-')} ({r.get('Rotation-Kandidat','-')})"
+                                                    for i, (_, r) in enumerate(_dd_top_v301d.iterrows())
+                                                )
+                                                st.info(f"Aktueller Rotation-Fokus: {_top_txt_v301d}")
+
+                                            if not _dd_errors_show_v301d.empty:
+                                                with st.expander("Drilldown-Datenhinweise", expanded=False):
+                                                    st.dataframe(_dd_errors_show_v301d, hide_index=True, use_container_width=True)
+                                        else:
+                                            st.info("Für diese Auswahl liegt noch kein verwertbarer Aktien-Drilldown vor.")
+                                    else:
+                                        st.caption("Für diese Auswahl wurde in dieser Sitzung noch kein Aktien-Drilldown geladen.")
+                                else:
+                                    st.info("Für die aktuelle Radar-Auswahl ist noch kein Aktien-Drilldown-Universum hinterlegt.")
 
                                 _f1, _f2, _f3 = st.columns([1.1, 1.2, 0.8])
                                 with _f1:

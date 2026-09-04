@@ -1,34 +1,33 @@
-# v30.1c - Strict Undercut & Rally Fix
+# v30.1d - Rotation Stock Drilldown
 
-v30.1c haertet den bestehenden Undercut-&-Rally-/Support-Reclaim-Baustein.
+v30.1d schliesst die Luecke zwischen Branchenrotation und konkreter Aktienauswahl.
 
-## Pflicht-Gate
-Ein U&R ist nur noch aktiv, wenn tatsaechlich beides vorliegt:
-- kurzer Undercut eines relevanten Swing-Lows/Supports,
-- anschliessender Schlusskurs-Reclaim ueber dieser Referenz.
+## Neu im Rotation Radar
+Unter **Top-Kandidaten aus dieser Rotation** kann eine Sektor-/Branchenrotation ausgewaehlt und per Klick in einen kompakten repraesentativen Aktienkorb aufgebohrt werden.
 
-Bullischer Tag, unterer Docht, Volumen oder Relative Staerke duerfen das U&R nicht mehr alleine ueber die Aktivierungsschwelle heben.
+Der Drilldown bewertet jede Aktie relativ zum ausgewaehlten Sektor-/Branchen-ETF mit:
+- Sektor-RS 5T / 21T / 63T,
+- RS-Beschleunigung,
+- Trend-Score,
+- Entry-Readiness,
+- Abstand zu MA20 und 20T-Hoch,
+- Kandidaten-Score 0-100.
 
-## Relevanter Support statt nur starres 20T-Tief
-- Bevorzugt wird ein lokales Swing-Low mit Struktur links/rechts.
-- Nur kurze Shakeouts von ca. 0,3% bis 6,0% unter der Referenz gelten als U&R-Kandidat.
-- Der Schlusskurs muss mindestens ca. 0,2% ueber der Referenz zurueckliegen.
-- Falls kein sauberes Swing-Low verfuegbar ist, bleibt das bisherige 20T-Tief als transparenter Fallback erhalten.
+## Kandidatenstatus
+Die Anzeige unterscheidet u. a.:
+- Early Leader,
+- Confirmed Leader,
+- Rotation beschleunigt,
+- technisch bereit,
+- Leader aber ueberdehnt.
 
-## Qualitaetsbewertung nach bestandenem Pflicht-Gate
-Erst nach echtem U&R werden Zusatzpunkte vergeben fuer:
-- starken Schluss im Tagesrange,
-- unteren Docht,
-- bullische Tagesreaktion,
-- Volumenbestaetigung,
-- RS/Leadership-Bestaetigung,
-- klaren Reclaim-Abstand.
+## Verbindung zur bestehenden Engine
+Wenn ein Kandidat bereits im letzten vollstaendigen Atomic-Screener-Stand enthalten ist, werden Live-/Shadow-Ampel, Live-Score, Guarded Engine-Score, CRV, RS-Dynamik, Setup-Alert und aktive Einstiegsgates lesend ergaenzt.
 
-## Folgetag
-Ein U&R des Vortags bleibt nur dann als aktive Fortsetzung sichtbar, wenn der aktuelle Tag echte Folgestaerke zeigt. Ein Bruch ueber das Vortageshoch kann die Qualitaet weiter bestaetigen.
+Fehlt ein Kandidat dort, wird das klar als **nicht im Atomic Live-Scan** angezeigt. Das ist keine negative Bewertung.
 
-## Transparenz
-Im Spezialmuster-Kontext werden U&R-Pflichtgate, Modus, Referenztyp, Referenzkurs, Undercut-Tiefe und Reclaim-Abstand getrennt gefuehrt. Die Orientierung wechselt bei aktivem U&R auf die konkrete Reclaim-/Swing-Low-Zone.
+## Provider-Schutz
+Der Stock Drilldown laeuft nur auf expliziten Klick und nur fuer eine ausgewaehlte Gruppe. Der normale Rotation-Radar-Hauptscan wird dadurch nicht vergroessert. Ein unvollstaendiger Drilldown ersetzt keinen vorhandenen letzten Drilldown-Stand der Sitzung.
 
 ## Unveraendert
-Keine Aenderung an produktiver Live-Ampel, Shadow-Ampel, Atomic Scan, Rotation Radar, Portfolio Engine, SQL oder Secrets. Der Spezialmuster-Baustein bleibt ein weicher Chart-/Trigger-Kontext.
+Keine Aenderung an produktiver Live-Ampel, Shadow-Ampel, Atomic Complete Scan, v30.0 Cutover-Gates, Portfolio Engine, SQL oder Secrets.

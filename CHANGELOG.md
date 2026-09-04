@@ -1,3 +1,14 @@
+## v30.1d - Rotation Stock Drilldown
+- Neuer On-Demand-Aktien-Drilldown direkt im Investment Rotation Radar.
+- Emerging/Leading-Sektoren und -Branchen koennen in einen kompakten repraesentativen Aktienkorb aufgebohrt werden.
+- Kandidaten-Ranking relativ zum jeweiligen Sektor-/Branchen-ETF statt nur relativ zum Gesamtmarkt.
+- Neue Kennzahlen: Kandidaten-Score, Sektor-RS 5T/21T/63T, RS-Beschleunigung, Trend-Score, Entry-Readiness, MA20-Ueberdehnung und Abstand zum 20T-Hoch.
+- Kandidatenlabels: Early Leader, Confirmed Leader, Rotation beschleunigt, technisch bereit, Leader aber ueberdehnt.
+- Bestehender Atomic-Live-Screener wird nur lesend zur Anreicherung mit Live-/Shadow-Ampel, Live-Score, Guarded Score, CRV, RS-Dynamik, Setup-Alert und Einstiegsgates verwendet.
+- Ticker ausserhalb des aktuellen Atomic-Screener-Standes werden nicht negativ bewertet, sondern transparent als 'nicht im Atomic Live-Scan' markiert.
+- Drilldown ist rein beobachtend; keine Aenderung an produktiver Live-/Shadow-Logik, Scores oder Cutover-Gates.
+- Provider-sicher: nur expliziter Klick und nur ein ausgewaehlter Branchen-/Sektorkorb; keine automatische Zusatzlast im Radar-Hauptscan.
+
 # Changelog
 
 ## v30.1c

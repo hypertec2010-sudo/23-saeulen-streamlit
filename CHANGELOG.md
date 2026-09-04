@@ -1,3 +1,15 @@
+## v30.3i - Automatic ECB FX Layer
+- Portfolio-FX wird standardmaessig automatisch aus der offiziellen ECB-Euro-Referenzkurstabelle geladen.
+- Ein einziger ECB-XML-Abruf deckt alle unterstuetzten Waehrungen ab; keine Einzelabfrage pro Position.
+- 12-Stunden-Streamlit-Cache mit explizitem `ECB-FX jetzt aktualisieren`-Bypass.
+- Cross-Rates gegen die gewaehlte Depot-Basiswaehrung werden aus den EUR-Referenzkursen berechnet.
+- Erfolgreiche ECB-Snapshots werden als `portfolio_fx_ecb_last_good_v303i` persistent gespeichert.
+- Bei ECB-Ausfall darf ein bis zu 7 Kalendertage alter Last-Good-Snapshot als klar markierter Fallback dienen; aeltere Snapshots werden nicht automatisch aggregiert.
+- ECB-Referenzdatum, Alter und Quelle sind im Portfolio sichtbar; stale Fallback wird nicht stillschweigend als frisch dargestellt.
+- Manuelle FX-Werte bleiben als explizite Overrides erhalten und haben Vorrang vor ECB-Automatik.
+- Portfolio-Einstellungen speichern nur manuelle Overrides; automatische ECB-Kurse bleiben in einer separaten Last-Good-Schicht.
+- Keine Yahoo-/Aktienprovider-Zusatzlast und keine Aenderung an Live-/Shadow-/Exit-/Positionslogik.
+
 ## v30.3h - Portfolio Coverage / FX Separation Fix
 - Portfolio-Marktdaten-, Stop- und FX-Abdeckung werden nicht mehr miteinander vermischt.
 - 3/3 aktuelle Atomic-Kurse ergeben 100% aktuelle Kursabdeckung, auch wenn eine Fremdwaehrungs-Umrechnung noch fehlt.

@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3h"
+APP_VERSION = "v30.3i"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15574,6 +15574,200 @@ def _v303g_native_currency_summary(native_rows):
     return pd.DataFrame(out).sort_values("Währung").reset_index(drop=True)
 
 
+# ---------- v30.3i: Automatic ECB FX layer ----------
+_V303I_ECB_FX_NAMESPACE = "portfolio_fx_ecb_last_good_v303i"
+_V303I_ECB_FX_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+_V303I_ECB_FX_MAX_FALLBACK_DAYS = 7
+
+
+@st.cache_data(ttl=12 * 60 * 60, show_spinner=False)
+def _v303i_fetch_ecb_reference_rates(refresh_token="default"):
+    """Load the latest ECB euro reference-rate table in one compact request.
+
+    ECB quotes currencies as units per 1 EUR. The refresh token exists only so an
+    explicit user click can bypass the 12-hour Streamlit cache. No Yahoo request is
+    involved here.
+    """
+    try:
+        import xml.etree.ElementTree as ET
+
+        resp = requests.get(
+            _V303I_ECB_FX_URL,
+            timeout=8,
+            headers={"User-Agent": "Capital-Hill-Portfolio-FX/30.3i"},
+        )
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        rates = {"EUR": 1.0}
+        reference_date = ""
+        for elem in root.iter():
+            attrs = getattr(elem, "attrib", {}) or {}
+            if attrs.get("time"):
+                reference_date = str(attrs.get("time") or "").strip()
+            cur = str(attrs.get("currency") or "").strip().upper()
+            rate = _v230_safe_float(attrs.get("rate"), default=None)
+            if cur and rate is not None and rate > 0:
+                rates[cur] = float(rate)
+        if len(rates) < 2 or not reference_date:
+            raise ValueError("ECB response contains no usable reference-rate table")
+        canonical = json.dumps(
+            {"reference_date": reference_date, "rates_per_eur": rates},
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return {
+            "ok": True,
+            "source": "ECB",
+            "reference_date": reference_date,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "rates_per_eur": rates,
+            "snapshot_id": hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16],
+            "error": "",
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "source": "ECB",
+            "reference_date": "",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "rates_per_eur": {},
+            "snapshot_id": "",
+            "error": str(exc)[:240],
+        }
+
+
+def _v303i_load_ecb_last_good():
+    try:
+        payload = _storage_v280.load_namespace(_V303I_ECB_FX_NAMESPACE, default={}) or {}
+        if isinstance(payload, dict) and isinstance(payload.get("rates_per_eur"), dict):
+            try:
+                st.session_state[_V303I_ECB_FX_NAMESPACE] = dict(payload)
+            except Exception:
+                pass
+            return dict(payload)
+    except Exception:
+        pass
+    try:
+        payload = st.session_state.get(_V303I_ECB_FX_NAMESPACE, {}) or {}
+        return dict(payload) if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def _v303i_save_ecb_last_good(payload):
+    if not isinstance(payload, dict) or not payload.get("snapshot_id") or not isinstance(payload.get("rates_per_eur"), dict):
+        return False
+    previous = _v303i_load_ecb_last_good()
+    if str(previous.get("snapshot_id") or "") == str(payload.get("snapshot_id") or ""):
+        return True
+    clean = {
+        "source": "ECB",
+        "reference_date": str(payload.get("reference_date") or ""),
+        "fetched_at": str(payload.get("fetched_at") or ""),
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "snapshot_id": str(payload.get("snapshot_id") or ""),
+        "rates_per_eur": {
+            str(k).strip().upper(): float(v)
+            for k, v in dict(payload.get("rates_per_eur") or {}).items()
+            if str(k).strip() and _v230_safe_float(v, default=None) is not None and float(v) > 0
+        },
+    }
+    try:
+        st.session_state[_V303I_ECB_FX_NAMESPACE] = dict(clean)
+    except Exception:
+        pass
+    try:
+        return bool(_storage_v280.save_namespace(_V303I_ECB_FX_NAMESPACE, clean))
+    except Exception:
+        return False
+
+
+def _v303i_ecb_reference_age_days(reference_date):
+    try:
+        ref = date.fromisoformat(str(reference_date or "").strip())
+        today_local = get_current_berlin_time().date()
+        return max(0, int((today_local - ref).days))
+    except Exception:
+        return None
+
+
+def _v303i_ecb_cross_rate(rates_per_eur, source_currency, target_currency):
+    """Return units of target currency for one unit of source currency."""
+    rates = dict(rates_per_eur or {})
+    source = str(source_currency or "EUR").strip().upper() or "EUR"
+    target = str(target_currency or "EUR").strip().upper() or "EUR"
+    if source == target:
+        return 1.0
+    source_per_eur = 1.0 if source == "EUR" else _v230_safe_float(rates.get(source), default=None)
+    target_per_eur = 1.0 if target == "EUR" else _v230_safe_float(rates.get(target), default=None)
+    if source_per_eur is None or source_per_eur <= 0 or target_per_eur is None or target_per_eur <= 0:
+        return None
+    return float(target_per_eur) / float(source_per_eur)
+
+
+def _v303i_resolve_auto_fx(currencies, base_currency="EUR", refresh_token="default"):
+    """Resolve all requested FX crosses from one ECB table, with explicit fallback metadata."""
+    requested = sorted({str(c).strip().upper() for c in (currencies or []) if str(c).strip()})
+    base = str(base_currency or "EUR").strip().upper() or "EUR"
+    live = _v303i_fetch_ecb_reference_rates(str(refresh_token or "default"))
+    if bool(live.get("ok")):
+        _v303i_save_ecb_last_good(live)
+        selected = dict(live)
+        mode = "ecb"
+    else:
+        selected = _v303i_load_ecb_last_good()
+        mode = "last_good" if selected else "unavailable"
+
+    reference_date = str(selected.get("reference_date") or "")
+    reference_age_days = _v303i_ecb_reference_age_days(reference_date)
+    rates_per_eur = dict(selected.get("rates_per_eur") or {})
+    reference_too_old = bool(
+        reference_age_days is None or reference_age_days > _V303I_ECB_FX_MAX_FALLBACK_DAYS
+    ) if mode != "unavailable" else True
+    fallback_too_old = bool(mode == "last_good" and reference_too_old)
+    rates_to_base = {base: 1.0}
+    unsupported = []
+    for cur in requested:
+        rate = _v303i_ecb_cross_rate(rates_per_eur, cur, base)
+        if rate is None or rate <= 0 or reference_too_old:
+            unsupported.append(cur)
+        else:
+            rates_to_base[cur] = float(rate)
+
+    return {
+        "mode": mode,
+        "provider_ok": bool(live.get("ok")),
+        "provider_error": str(live.get("error") or ""),
+        "source": "ECB" if mode == "ecb" else ("ECB Last-Good" if mode == "last_good" else "nicht verfuegbar"),
+        "reference_date": reference_date,
+        "reference_age_days": reference_age_days,
+        "fetched_at": str(selected.get("fetched_at") or ""),
+        "snapshot_id": str(selected.get("snapshot_id") or ""),
+        "rates_to_base": rates_to_base,
+        "unsupported": unsupported,
+        "fallback_too_old": fallback_too_old,
+        "reference_too_old": reference_too_old,
+        "cache_ttl_hours": 12,
+    }
+
+
+def _v303i_fx_status_text(pkg):
+    pkg = dict(pkg or {})
+    mode = str(pkg.get("mode") or "unavailable")
+    ref_date = str(pkg.get("reference_date") or "-")
+    age = pkg.get("reference_age_days")
+    age_text = "" if age is None else f" · {int(age)} Kalendertag(e) alt"
+    if mode == "ecb":
+        stale = " · fuer automatische Aggregation zu alt" if pkg.get("reference_too_old") else ""
+        return f"ECB-Referenzkurs · Stand {ref_date}{age_text} · 12h Cache{stale}"
+    if mode == "last_good":
+        suffix = " · fuer automatische Aggregation zu alt" if pkg.get("fallback_too_old") else " · als Fallback aktiv"
+        return f"ECB Last-Good · Stand {ref_date}{age_text}{suffix}"
+    err = str(pkg.get("provider_error") or "ECB-Kurse nicht verfuegbar")
+    return f"ECB nicht verfuegbar · {err}"
+
+
 def _v303h_portfolio_bridge(native_rows, base_currency="EUR", fx_rates=None, account_size=0.0):
     """Reconcile market-data/stop/FX coverage without mixing the three concepts.
 
@@ -19778,7 +19972,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 "Depot-Basiswährung",
                                 value=_base_default_v291,
                                 key="v291_portfolio_base_currency_widget",
-                                help="Alle Portfolio-Beträge werden nur mit expliziter FX-Umrechnung in diese Basiswährung aggregiert.",
+                                help="Fremdwaehrungen werden bevorzugt automatisch ueber ECB-Referenzkurse in diese Basiswaehrung umgerechnet; manuelle Overrides bleiben moeglich.",
                             ).strip().upper() or "EUR"
                             st.session_state.v291_portfolio_base_currency = _base_currency_v291
 
@@ -19810,55 +20004,124 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             _currencies_v291 = sorted(set([str(x).upper() for x in (_currencies_v291 or []) if str(x).strip()]) | set(_native_ccys_v303g))
                             _fx_rates_v291 = {_base_currency_v291: 1.0}
                             _foreign_v291 = [c for c in _currencies_v291 if c and c != _base_currency_v291]
-                            _missing_fx_input_v303h = []
-                            for _cur_probe_v303h in _foreign_v291:
-                                _probe_key_v303h = f"v291_fx_{_cur_probe_v303h}_to_{_base_currency_v291}"
-                                _probe_val_v303h = _v230_safe_float(
-                                    st.session_state.get(
-                                        _probe_key_v303h,
-                                        (_settings_v291.get("fx_rates") or {}).get(_cur_probe_v303h, 0.0),
-                                    ),
-                                    default=0.0,
-                                ) or 0.0
-                                if float(_probe_val_v303h) <= 0:
-                                    _missing_fx_input_v303h.append(_cur_probe_v303h)
+                            _manual_fx_save_v303i = {}
+                            _auto_fx_pkg_v303i = {
+                                "mode": "unavailable", "rates_to_base": {_base_currency_v291: 1.0},
+                                "unsupported": list(_foreign_v291), "provider_error": "",
+                            }
                             if _foreign_v291:
-                                with st.expander("FX-Umrechnung für Portfolio-Aggregation", expanded=bool(_missing_fx_input_v303h)):
+                                with st.expander("FX-Umrechnung für Portfolio-Aggregation", expanded=False):
                                     st.caption(
-                                        "Keine FX-Kurse werden automatisch geschätzt oder zusätzlich beim Marktprovider abgefragt. "
-                                        "Fehlende Umrechnung blockiert nur EUR-/Basiswährungs-Summen; Kurs- und Stop-Abdeckung werden separat bewertet. "
-                                        "Ein positiver Wert gilt sofort, 'Portfolio-Einstellungen speichern' macht ihn reboot-fest."
+                                        "FX wird automatisch aus der ECB-Euro-Referenzkurstabelle geladen. Ein einziger Abruf deckt alle "
+                                        "unterstuetzten Waehrungen ab und wird 12 Stunden gecacht; es entstehen keine Yahoo-Abfragen pro Position. "
+                                        "Manuelle Werte bleiben als expliziter Override/Fallback moeglich."
                                     )
+                                    _fx_refresh_col_v303i, _fx_status_col_v303i = st.columns([1.0, 2.4])
+                                    with _fx_refresh_col_v303i:
+                                        if st.button("ECB-FX jetzt aktualisieren", key="v303i_refresh_ecb_fx", use_container_width=True):
+                                            st.session_state["v303i_ecb_fx_refresh_token"] = str(time.time_ns())
+                                    _fx_refresh_token_v303i = str(st.session_state.get("v303i_ecb_fx_refresh_token", "default") or "default")
+                                    _auto_fx_pkg_v303i = _v303i_resolve_auto_fx(
+                                        _foreign_v291 + [_base_currency_v291],
+                                        base_currency=_base_currency_v291,
+                                        refresh_token=_fx_refresh_token_v303i,
+                                    )
+                                    with _fx_status_col_v303i:
+                                        st.caption(_v303i_fx_status_text(_auto_fx_pkg_v303i))
+                                    if _auto_fx_pkg_v303i.get("mode") == "last_good":
+                                        if _auto_fx_pkg_v303i.get("fallback_too_old"):
+                                            st.warning(
+                                                "Der letzte gespeicherte ECB-Snapshot ist aelter als 7 Kalendertage und wird nicht automatisch "
+                                                "fuer die Portfolio-Aggregation verwendet. Bitte ECB erneut laden oder einen manuellen Override setzen."
+                                            )
+                                        else:
+                                            st.warning(
+                                                "ECB ist aktuell nicht erreichbar. Der letzte gespeicherte ECB-Referenzkurs wird als klar markierter "
+                                                "Fallback verwendet; Stand und Alter sind oben sichtbar."
+                                            )
+                                    elif _auto_fx_pkg_v303i.get("mode") == "unavailable":
+                                        st.warning(
+                                            "ECB-FX ist derzeit nicht verfuegbar. Fuer betroffene Waehrungen kann unten ein manueller Override gesetzt werden."
+                                        )
+
+                                    _saved_base_v303i = str(_settings_v291.get("base_currency", "EUR") or "EUR").upper()
+                                    _saved_manual_fx_v303i = dict(_settings_v291.get("fx_rates") or {}) if _saved_base_v303i == _base_currency_v291 else {}
                                     _fx_cols_v291 = st.columns(min(3, max(1, len(_foreign_v291))))
                                     for _i_v291, _cur_v291 in enumerate(_foreign_v291):
                                         _fx_key_v291 = f"v291_fx_{_cur_v291}_to_{_base_currency_v291}"
+                                        _legacy_session_rate_v303i = _v230_safe_float(st.session_state.get(_fx_key_v291), default=None)
+                                        _saved_manual_rate_v303i = _v230_safe_float(_saved_manual_fx_v303i.get(_cur_v291), default=None)
+                                        _manual_default_v303i = bool(
+                                            (_legacy_session_rate_v303i is not None and _legacy_session_rate_v303i > 0)
+                                            or (_saved_manual_rate_v303i is not None and _saved_manual_rate_v303i > 0)
+                                        )
+                                        _auto_rate_v303i = _v230_safe_float(
+                                            (_auto_fx_pkg_v303i.get("rates_to_base") or {}).get(_cur_v291),
+                                            default=None,
+                                        )
                                         with _fx_cols_v291[_i_v291 % len(_fx_cols_v291)]:
-                                            _rate_v291 = st.number_input(
-                                                f"1 {_cur_v291} = ? {_base_currency_v291}",
-                                                min_value=0.0,
-                                                value=float(
-                                                    st.session_state.get(
-                                                        _fx_key_v291,
-                                                        (_settings_v291.get("fx_rates") or {}).get(_cur_v291, 0.0),
-                                                    ) or 0.0
-                                                ),
-                                                step=0.0001,
-                                                format="%.4f",
-                                                key=f"{_fx_key_v291}_widget",
+                                            if _auto_rate_v303i is not None and _auto_rate_v303i > 0:
+                                                st.metric(
+                                                    f"1 {_cur_v291}",
+                                                    f"{float(_auto_rate_v303i):.4f} {_base_currency_v291}",
+                                                    help="Automatischer ECB-Referenzkurs bzw. klar markierter Last-Good-Fallback.",
+                                                )
+                                            else:
+                                                st.metric(f"1 {_cur_v291}", f"n/a {_base_currency_v291}")
+                                            _override_v303i = st.checkbox(
+                                                "Manuell ueberschreiben",
+                                                value=_manual_default_v303i,
+                                                key=f"v303i_fx_override_{_cur_v291}_to_{_base_currency_v291}",
                                             )
-                                            st.session_state[_fx_key_v291] = _rate_v291
-                                            if float(_rate_v291 or 0.0) > 0:
-                                                _fx_rates_v291[_cur_v291] = float(_rate_v291)
+                                            if _override_v303i:
+                                                _manual_start_v303i = _legacy_session_rate_v303i
+                                                if _manual_start_v303i is None or _manual_start_v303i <= 0:
+                                                    _manual_start_v303i = _saved_manual_rate_v303i
+                                                if _manual_start_v303i is None or _manual_start_v303i <= 0:
+                                                    _manual_start_v303i = float(_auto_rate_v303i or 0.0)
+                                                _rate_v291 = st.number_input(
+                                                    f"Manuell: 1 {_cur_v291} = ? {_base_currency_v291}",
+                                                    min_value=0.0,
+                                                    value=float(_manual_start_v303i or 0.0),
+                                                    step=0.0001,
+                                                    format="%.4f",
+                                                    key=f"v303i_fx_manual_{_cur_v291}_to_{_base_currency_v291}_widget",
+                                                )
+                                                st.session_state[_fx_key_v291] = float(_rate_v291 or 0.0)
+                                                if float(_rate_v291 or 0.0) > 0:
+                                                    _fx_rates_v291[_cur_v291] = float(_rate_v291)
+                                                    _manual_fx_save_v303i[_cur_v291] = float(_rate_v291)
+                                                    st.caption("Quelle: manueller Override")
+                                                else:
+                                                    st.caption("Override ist aktiv, aber noch ohne positiven Kurs.")
+                                            elif _auto_rate_v303i is not None and _auto_rate_v303i > 0:
+                                                _fx_rates_v291[_cur_v291] = float(_auto_rate_v303i)
+                                                st.caption(f"Quelle: {_auto_fx_pkg_v303i.get('source','ECB')}")
+                                            else:
+                                                st.caption("Kein automatischer ECB-Kurs fuer diese Waehrung; manueller Override erforderlich.")
+
+                                _fx_public_status_v303i = "Portfolio-FX: " + _v303i_fx_status_text(_auto_fx_pkg_v303i)
+                                if _manual_fx_save_v303i:
+                                    _fx_public_status_v303i += " · manueller Override: " + ", ".join(sorted(_manual_fx_save_v303i.keys()))
+                                if _auto_fx_pkg_v303i.get("mode") == "last_good" or _auto_fx_pkg_v303i.get("reference_too_old"):
+                                    st.warning(_fx_public_status_v303i)
+                                else:
+                                    st.caption(_fx_public_status_v303i)
+                                st.caption(
+                                    "ECB-Referenzkurse sind Informations-/Bewertungskurse, keine garantierten Ausfuehrungskurse. "
+                                    "Sie werden an Arbeitstagen typischerweise einmal taeglich aktualisiert."
+                                )
 
                             if st.button("Portfolio-Einstellungen speichern", use_container_width=False, key="v291_save_portfolio_settings"):
                                 _settings_ok_v291 = _v291_save_portfolio_settings({
                                     "base_currency": _base_currency_v291,
                                     "account_size": float(_account_size_v291 or 0.0),
-                                    "fx_rates": {k: float(v) for k, v in _fx_rates_v291.items() if k != _base_currency_v291 and float(v or 0.0) > 0},
+                                    "fx_rates": {k: float(v) for k, v in _manual_fx_save_v303i.items() if float(v or 0.0) > 0},
+                                    "fx_mode": "ecb_auto_with_manual_override",
                                     "updated_at": get_current_berlin_time().isoformat(),
                                 })
                                 if _settings_ok_v291:
-                                    st.success("Portfolio-Basis und FX-Umrechnung gespeichert.")
+                                    st.success("Portfolio-Basis und manuelle FX-Overrides gespeichert. Automatische ECB-Kurse bleiben separat aktuell.")
                                 else:
                                     st.warning("Portfolio-Einstellungen konnten nicht persistent gespeichert werden; sie bleiben in dieser Session aktiv.")
 

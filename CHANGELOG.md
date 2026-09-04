@@ -1,3 +1,13 @@
+## v30.3c - Rotation Drilldown Snapshot Sync Fix
+- `Rotation fuer Aktien-Drilldown` liest Phase/Rotation/Leadership jetzt garantiert aus demselben aktuell sichtbaren Radar-Frame wie die Haupttabelle.
+- Selectbox nutzt dynamische echte Anzeige-Optionen statt stabiler Ticker plus `format_func`; Phasenwechsel wie Gelb -> Gruen werden sofort sichtbar.
+- Separater persistenter Ticker-State behaelt die gewaehlte Gruppe trotz geaendertem Radar-Label bei.
+- Snapshot-Fingerprint erkennt geaenderten Radar-Kontext und synchronisiert den Widget-State.
+- Alle hinterlegten Drilldown-Gruppen bleiben in der Auswahl sichtbar; fehlende Gruppen werden explizit als Datenluecke markiert.
+- Neuer Publish-Gate: kein neuer Radar-Snapshot, wenn eine drilldown-faehige Sektor-/Themengruppe fehlt, auch wenn die Gesamt-Abdeckung bereits >=85% ist.
+- Bereits berechnete Aktien-Drilldowns werden bei geaendertem Radar-Kontext als veraltet markiert statt still als aktuell dargestellt.
+- Keine zusaetzlichen automatischen Provider-Requests und keine Aenderung an Scoring-/Phasenformeln.
+
 ## v30.3b - Positions-Watchlist Recovery Fix
 - Verbleibenden Positions-Watchlist-Fehler behoben: Typfilter versteckt keine gespeicherten Listen mehr.
 - Alle bekannten Watchlists bleiben sichtbar; passende Typen werden nur noch priorisiert statt hart gefiltert.

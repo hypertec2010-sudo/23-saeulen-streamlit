@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3b"
+APP_VERSION = "v30.3c"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14694,6 +14694,115 @@ if _use_database_watchlists_v280:
     get_due_watchlists_for_slot = _watchlist_repository_v280.get_due_watchlists_for_slot
 
 
+# ---------- v30.3c: Rotation-Drilldown Snapshot-Synchronisierung ----------
+def _v303c_rotation_drilldown_context(rot_df, drilldown_groups):
+    """
+    Baut die Drilldown-Auswahl ausschliesslich aus dem AKTUELL sichtbaren Radar-Frame.
+
+    Wichtig:
+    - Alle hinterlegten Drilldown-Gruppen bleiben sichtbar, auch wenn ein alter/partieller
+      Snapshot eine Gruppe nicht enthaelt. Dann wird transparent "Daten fehlen" gezeigt.
+    - Die Anzeige-Strings selbst enthalten Phase/Rotation/Leadership. Aendert sich der
+      Radar-Stand, aendern sich damit auch die Selectbox-Optionen; Streamlit kann keinen
+      alten formatierten Label-Text mehr wiederverwenden.
+    - Der Fingerprint dient nur der UI-/Stale-Erkennung und veraendert keinerlei Score.
+    """
+    groups = []
+    seen = set()
+    for raw in list(drilldown_groups or []):
+        sym = str(raw or "").strip().upper()
+        if sym and sym not in seen:
+            groups.append(sym)
+            seen.add(sym)
+
+    df = rot_df.copy() if isinstance(rot_df, pd.DataFrame) else pd.DataFrame()
+    if not df.empty and "Ticker" in df.columns:
+        df["Ticker"] = df["Ticker"].astype(str).str.strip().str.upper()
+        # Ein Ticker soll genau einen aktuellen Kontext liefern. Sollte ein alter Snapshot
+        # Duplikate enthalten, gewinnt deterministisch die letzte Zeile.
+        df = df[df["Ticker"].isin(groups)].drop_duplicates("Ticker", keep="last")
+    else:
+        df = pd.DataFrame(columns=["Ticker"])
+
+    row_map = {str(r.get("Ticker") or "").strip().upper(): r for _, r in df.iterrows()}
+
+    def _num(v, default=-999.0):
+        try:
+            x = float(v)
+            return x if np.isfinite(x) else default
+        except Exception:
+            return default
+
+    def _phase_prio(value):
+        txt = str(value or "")
+        if "Emerging" in txt:
+            return 0
+        if "Leading" in txt:
+            return 1
+        if "Mature" in txt:
+            return 2
+        if "Cooling" in txt:
+            return 3
+        if "Rotating Out" in txt:
+            return 4
+        return 5
+
+    def _sort_key(sym):
+        r = row_map.get(sym)
+        if r is None:
+            return (1, 9, 999.0, 999.0, sym)
+        return (
+            0,
+            _phase_prio(r.get("Phase")),
+            -_num(r.get("Rotation")),
+            -_num(r.get("Leadership")),
+            sym,
+        )
+
+    sorted_groups = sorted(groups, key=_sort_key)
+    label_map = {}
+    context_rows = []
+    missing = []
+    for sym in sorted_groups:
+        r = row_map.get(sym)
+        if r is None:
+            missing.append(sym)
+            label_map[sym] = f"⚪ Daten im aktuellen Radar-Stand fehlen · {sym}"
+            context_rows.append({"Ticker": sym, "Phase": "MISSING", "Rotation": None, "Leadership": None})
+            continue
+        name = str(r.get("Name") or sym)
+        phase = str(r.get("Phase") or "⚪ Phase n/a")
+        rot = _num(r.get("Rotation"), default=np.nan)
+        lead = _num(r.get("Leadership"), default=np.nan)
+        rot_txt = f"{rot:.0f}" if np.isfinite(rot) else "-"
+        lead_txt = f"{lead:.0f}" if np.isfinite(lead) else "-"
+        label_map[sym] = f"{phase} · {name} ({sym}) · Rotation {rot_txt} · Leadership {lead_txt}"
+        context_rows.append({
+            "Ticker": sym,
+            "Phase": phase,
+            "Rotation": None if not np.isfinite(rot) else round(rot, 4),
+            "Leadership": None if not np.isfinite(lead) else round(lead, 4),
+            "Rang": r.get("Rang"),
+            "Rang5": r.get("Rang Δ5T"),
+        })
+
+    try:
+        payload = json.dumps(context_rows, ensure_ascii=False, sort_keys=True, default=str)
+        signature = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+    except Exception:
+        signature = str(len(context_rows))
+
+    return {
+        "groups": sorted_groups,
+        "labels": label_map,
+        "rows": row_map,
+        "missing": missing,
+        "signature": signature,
+        "expected": len(groups),
+        "present": len(groups) - len(missing),
+    }
+
+
 # ---------- v30.1: Investment Rotation Radar Provider ----------
 # Ein Radar-Abruf arbeitet mit EINEM atomaren Daily-Close-Frame. Der Refresh-Token
 # wird nur bei expliziter Benutzeraktualisierung erhöht; dadurch erzwingt der
@@ -18193,7 +18302,24 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _new_rot_v301, _calc_errors_v301, _new_meta_v301 = _rotation_radar_v301.build_radar(_core_prices_v301)
                                 _coverage_v301 = float((_new_meta_v301 or {}).get("coverage_pct") or 0.0)
                                 _min_rows_v301 = max(1, int(len(_rotation_radar_v301.UNIVERSE) * 0.85))
-                                if isinstance(_new_rot_v301, pd.DataFrame) and len(_new_rot_v301) >= _min_rows_v301 and _coverage_v301 >= 85.0:
+
+                                # v30.3c: Der Gesamt-Radar darf weiterhin provider-robust ab 85% bewertet werden,
+                                # aber ein NEUER publizierter Snapshot muss fuer den Aktien-Drilldown ALLE
+                                # hinterlegten Sektor-/Themen-Gruppen enthalten. So gibt es dort keine
+                                # halben Updates mehr, bei denen z. B. einzelne Sektoren fehlen.
+                                _expected_dd_v303c = set(str(x).upper() for x in _rotation_radar_v301.drilldown_groups())
+                                _present_new_v303c = set()
+                                if isinstance(_new_rot_v301, pd.DataFrame) and not _new_rot_v301.empty and "Ticker" in _new_rot_v301.columns:
+                                    _present_new_v303c = set(_new_rot_v301["Ticker"].astype(str).str.upper().tolist())
+                                _missing_dd_v303c = sorted(_expected_dd_v303c - _present_new_v303c)
+                                _dd_complete_v303c = not _missing_dd_v303c
+
+                                if (
+                                    isinstance(_new_rot_v301, pd.DataFrame)
+                                    and len(_new_rot_v301) >= _min_rows_v301
+                                    and _coverage_v301 >= 85.0
+                                    and _dd_complete_v303c
+                                ):
                                     _rot_df_v301 = _new_rot_v301.copy()
                                     _frames_err_v301 = [x for x in [_provider_errors_v301, _calc_errors_v301] if isinstance(x, pd.DataFrame) and not x.empty]
                                     _rot_errors_v301 = pd.concat(_frames_err_v301, ignore_index=True) if _frames_err_v301 else pd.DataFrame()
@@ -18208,8 +18334,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         f"Abdeckung {_coverage_v301:.0f}% · kein Mischstand."
                                     )
                                 else:
+                                    _dd_missing_txt_v303c = (
+                                        f" · fehlende Drilldown-Gruppen: {', '.join(_missing_dd_v303c)}"
+                                        if _missing_dd_v303c else ""
+                                    )
                                     st.error(
-                                        f"Der neue Radar-Lauf war nicht vollständig genug ({_coverage_v301:.0f}% Abdeckung). "
+                                        f"Der neue Radar-Lauf war nicht vollständig genug ({_coverage_v301:.0f}% Abdeckung){_dd_missing_txt_v303c}. "
                                         "Er wurde NICHT als neuer Stand veröffentlicht. Der letzte vollständige Radar-Snapshot bleibt sichtbar."
                                     )
 
@@ -18299,45 +18429,72 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     "letzten vollständigen Atomic-Screener-Stand enthalten ist."
                                 )
 
-                                _dd_groups_v301d = _rotation_radar_v301.drilldown_groups()
-                                _dd_radar_v301d = _rot_df_v301[_rot_df_v301["Ticker"].astype(str).isin(_dd_groups_v301d)].copy()
-                                if not _dd_radar_v301d.empty:
-                                    _dd_radar_v301d["_prio"] = _dd_radar_v301d["Phase"].astype(str).map(
-                                        lambda x: 0 if "Emerging" in x else (1 if "Leading" in x else (2 if "Mature" in x else 3))
+                                _dd_context_v303c = _v303c_rotation_drilldown_context(
+                                    _rot_df_v301, _rotation_radar_v301.drilldown_groups()
+                                )
+                                _dd_groups_sorted_v301d = list(_dd_context_v303c.get("groups") or [])
+                                _dd_label_map_v303c = dict(_dd_context_v303c.get("labels") or {})
+                                _dd_row_map_v301d = dict(_dd_context_v303c.get("rows") or {})
+                                _dd_context_sig_v303c = str(_dd_context_v303c.get("signature") or "-")
+                                _dd_missing_v303c = list(_dd_context_v303c.get("missing") or [])
+
+                                if _dd_missing_v303c:
+                                    st.warning(
+                                        "Der aktuell gespeicherte Radar-Stand enthält nicht alle Drilldown-Gruppen: "
+                                        + ", ".join(_dd_missing_v303c)
+                                        + ". Sie bleiben in der Auswahl sichtbar und sind als 'Daten fehlen' markiert. "
+                                        "Beim nächsten vollständigen Radar-Refresh wird erst publiziert, wenn alle Drilldown-Gruppen vorhanden sind."
                                     )
-                                    _dd_radar_v301d = _dd_radar_v301d.sort_values(
-                                        ["_prio", "Rotation", "Leadership"], ascending=[True, False, False]
-                                    )
-                                    _dd_groups_sorted_v301d = _dd_radar_v301d["Ticker"].astype(str).tolist()
                                 else:
-                                    _dd_groups_sorted_v301d = list(_dd_groups_v301d)
-
-                                _dd_row_map_v301d = {
-                                    str(r.get("Ticker")): r for _, r in _rot_df_v301.iterrows()
-                                    if str(r.get("Ticker", "")) in _dd_groups_sorted_v301d
-                                }
-
-                                def _v301d_group_label(_symbol):
-                                    _r = _dd_row_map_v301d.get(str(_symbol), {})
-                                    _nm = str(_r.get("Name") or _name_map_v301.get(str(_symbol), str(_symbol)))
-                                    _ph = str(_r.get("Phase") or "-")
-                                    try:
-                                        _rot = f"{float(_r.get('Rotation')):.0f}"
-                                    except Exception:
-                                        _rot = "-"
-                                    try:
-                                        _lead = f"{float(_r.get('Leadership')):.0f}"
-                                    except Exception:
-                                        _lead = "-"
-                                    return f"{_ph} · {_nm} ({_symbol}) · Rotation {_rot} · Leadership {_lead}"
+                                    st.caption(
+                                        f"Drilldown-Auswahl synchron zum aktuellen Radar-Stand · "
+                                        f"{_dd_context_v303c.get('present', 0)}/{_dd_context_v303c.get('expected', 0)} Gruppen vollständig."
+                                    )
 
                                 if _dd_groups_sorted_v301d:
-                                    _dd_select_v301d = st.selectbox(
-                                        "Rotation für Aktien-Drilldown",
-                                        options=_dd_groups_sorted_v301d,
-                                        format_func=_v301d_group_label,
-                                        key="v301d_stock_drilldown_group",
+                                    # v30.3c: Die sichtbaren Texte sind echte Optionen und nicht mehr nur format_func-Ausgaben.
+                                    # Sobald Phase/Rotation/Leadership wechseln, aendert sich die Optionsliste selbst.
+                                    _dd_option_labels_v303c = [_dd_label_map_v303c[x] for x in _dd_groups_sorted_v301d]
+                                    _dd_label_to_symbol_v303c = {v: k for k, v in _dd_label_map_v303c.items()}
+
+                                    _dd_prev_symbol_v303c = str(
+                                        st.session_state.get("v303c_rotation_drilldown_ticker")
+                                        or st.session_state.get("v301d_stock_drilldown_group")
+                                        or ""
+                                    ).strip().upper()
+                                    if _dd_prev_symbol_v303c not in _dd_groups_sorted_v301d:
+                                        _dd_prev_symbol_v303c = _dd_groups_sorted_v301d[0]
+                                    _dd_target_label_v303c = _dd_label_map_v303c.get(
+                                        _dd_prev_symbol_v303c, _dd_option_labels_v303c[0]
                                     )
+                                    _dd_widget_key_v303c = "v303c_stock_drilldown_group_label"
+                                    _dd_context_changed_v303c = (
+                                        str(st.session_state.get("v303c_rotation_drilldown_context_sig") or "")
+                                        != _dd_context_sig_v303c
+                                    )
+                                    if (
+                                        _dd_context_changed_v303c
+                                        or st.session_state.get(_dd_widget_key_v303c) not in _dd_option_labels_v303c
+                                    ):
+                                        st.session_state[_dd_widget_key_v303c] = _dd_target_label_v303c
+
+                                    _dd_selected_label_v303c = st.selectbox(
+                                        "Rotation für Aktien-Drilldown",
+                                        options=_dd_option_labels_v303c,
+                                        key=_dd_widget_key_v303c,
+                                    )
+                                    _dd_select_v301d = _dd_label_to_symbol_v303c.get(
+                                        _dd_selected_label_v303c, _dd_groups_sorted_v301d[0]
+                                    )
+                                    st.session_state["v303c_rotation_drilldown_ticker"] = _dd_select_v301d
+                                    st.session_state["v303c_rotation_drilldown_context_sig"] = _dd_context_sig_v303c
+
+                                    _dd_selected_context_v303c = _dd_row_map_v301d.get(str(_dd_select_v301d), {})
+                                    if _dd_selected_context_v303c is None or len(_dd_selected_context_v303c) == 0:
+                                        st.info(
+                                            f"{_dd_select_v301d}: Im aktuellen Radar-Snapshot fehlen Sektor-/Rotationskennzahlen. "
+                                            "Der Aktienkorb kann trotzdem separat geprüft werden; Phase/Rotation werden nicht erfunden."
+                                        )
                                     _dd_members_v301d = _rotation_radar_v301.drilldown_candidates(_dd_select_v301d)
                                     _dd_col1_v301d, _dd_col2_v301d = st.columns([1.45, 1.0])
                                     with _dd_col1_v301d:
@@ -18373,9 +18530,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 if isinstance(x, pd.DataFrame) and not x.empty
                                             ]
                                             _dd_errors_v301d = pd.concat(_dd_err_frames_v301d, ignore_index=True) if _dd_err_frames_v301d else pd.DataFrame()
+                                            _dd_ctx_row_save_v303c = _dd_row_map_v301d.get(str(_dd_select_v301d), {}) or {}
                                             st.session_state["rotation_stock_drilldown_v301d"] = {
                                                 "group": str(_dd_select_v301d),
                                                 "saved_at": pd.Timestamp.now(tz="UTC").isoformat(),
+                                                "radar_context_sig": _dd_context_sig_v303c,
+                                                "radar_phase": str(_dd_ctx_row_save_v303c.get("Phase") or "-"),
+                                                "radar_rotation": _dd_ctx_row_save_v303c.get("Rotation"),
+                                                "radar_leadership": _dd_ctx_row_save_v303c.get("Leadership"),
                                                 "rows": _dd_new_v301d.replace({np.nan: None, np.inf: None, -np.inf: None}).to_dict(orient="records"),
                                                 "errors": _dd_errors_v301d.replace({np.nan: None, np.inf: None, -np.inf: None}).to_dict(orient="records") if not _dd_errors_v301d.empty else [],
                                                 "meta": dict(_dd_meta_v301d or {}),
@@ -18392,6 +18554,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                                     _dd_payload_v301d = st.session_state.get("rotation_stock_drilldown_v301d", {}) or {}
                                     if str(_dd_payload_v301d.get("group") or "") == str(_dd_select_v301d):
+                                        _dd_payload_sig_v303c = str(_dd_payload_v301d.get("radar_context_sig") or "")
+                                        if _dd_payload_sig_v303c and _dd_payload_sig_v303c != _dd_context_sig_v303c:
+                                            st.warning(
+                                                "Der angezeigte Aktien-Drilldown wurde vor dem letzten Wechsel des Radar-Kontexts berechnet. "
+                                                "Phase/Rotation oben sind bereits aktuell; für aktuelle Aktienkennzahlen bitte "
+                                                "'Top-Kandidaten für Auswahl prüfen' erneut ausführen."
+                                            )
                                         _dd_show_v301d = pd.DataFrame(_dd_payload_v301d.get("rows") or [])
                                         _dd_errors_show_v301d = pd.DataFrame(_dd_payload_v301d.get("errors") or [])
                                         _dd_meta_show_v301d = dict(_dd_payload_v301d.get("meta") or {})

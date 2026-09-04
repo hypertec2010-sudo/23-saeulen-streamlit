@@ -1,40 +1,18 @@
-# v30.3b - Positions-Watchlist Recovery Fix
+# v30.3c - Rotation Drilldown Snapshot Sync Fix
 
-v30.3b behebt den verbleibenden Fall, in dem eine bestehende Positions-Watchlist trotz v30.3a weiterhin nicht aufrufbar war.
+v30.3c behebt veraltete bzw. unvollstaendige Werte in **Rotation fuer Aktien-Drilldown**.
 
-## Tatsächliche Restursache
-v30.3a nutzte zwar den echten Watchlist-Katalog, filterte im Bereich **Positionen** danach aber weiterhin hart auf den Typ `Positions-Watchlist`.
+## Ursache
+Die Drilldown-Selectbox verwendete bisher stabile Ticker-Optionen plus `format_func`. Bei einem neuen Radar-Snapshot konnten Phase/Rotation/Leadership im sichtbaren Selectbox-Label hinter dem aktuellen Radar-Frame zurueckbleiben. Ausserdem durfte ein neuer Radar-Snapshot bereits ab 85% Gesamt-Abdeckung publiziert werden; dadurch konnten einzelne drilldown-faehige Sektor-/Themen-Gruppen fehlen.
 
-Wenn ein alter Backend-/Katalogeintrag die Liste leer, falsch oder als normale `Watchlist` typisierte, blieb sie deshalb weiter unsichtbar. Gleichzeitig konnte die Erstellfunktion den Namen weiterhin als bereits vorhanden erkennen.
+## Fix
+- Drilldown-Labels werden nun direkt aus dem aktuell sichtbaren Radar-Frame gebaut.
+- Die sichtbaren Optionen enthalten selbst Phase, Name, Ticker, Rotation und Leadership; aendert sich der Radar-Kontext, aendert sich damit die Selectbox-Optionsliste und ein altes Label kann nicht weiterverwendet werden.
+- Die zuletzt ausgewaehlte Gruppe bleibt ueber einen separaten Ticker-State erhalten.
+- Ein Snapshot-Fingerprint erkennt Wechsel von Phase/Rotation/Leadership und synchronisiert die Auswahl sofort neu.
+- Alle hinterlegten Drilldown-Gruppen bleiben sichtbar. Fehlt eine Gruppe in einem alten/partiellen Snapshot, erscheint sie transparent als `Daten im aktuellen Radar-Stand fehlen` statt einfach zu verschwinden.
+- Neue Radar-Snapshots werden nur noch publiziert, wenn neben der bisherigen Gesamt-Abdeckung auch **alle drilldown-faehigen Sektor-/Themen-Gruppen** vorhanden sind.
+- Ein Aktien-Drilldown, der vor einem neuen Radar-Kontext berechnet wurde, wird sichtbar als veraltet markiert; fuer neue Aktienkennzahlen muss er bewusst erneut gestartet werden. Dadurch entstehen keine versteckten Provider-Requests.
 
-## Fix 1: Keine gespeicherte Liste wird mehr versteckt
-- Der Bereich **Bestehende Watchlist auswählen** zeigt jetzt alle vom Katalog bekannten Listen.
-- Listen mit passendem Typ stehen zuerst.
-- Der gespeicherte Typ wird direkt im Auswahltext angezeigt.
-- Eine falsch typisierte Liste bleibt sichtbar und kann explizit im aktuellen Arbeitsbereich übernommen werden.
-
-## Fix 2: Duplicate-Recovery
-Wenn beim Erstellen einer Liste der Backend-Name als bereits vorhanden / existent / Duplicate bestätigt wird:
-- wird **keine neue Liste erstellt**,
-- der bestehende Name wird als Recovery-Eintrag übernommen,
-- die gewünschte Typisierung (`Watchlist` oder `Positions-Watchlist`) wird nur für die UI-Wiederherstellung gespeichert,
-- die Liste erscheint nach dem Rerun in der Auswahl.
-
-Damit kann auch eine Liste wieder erreichbar gemacht werden, die vom Backend bei der Duplikatprüfung erkannt, aber vom Katalog nicht geliefert wird.
-
-## Fix 3: Öffnen über dedizierte Backend-API
-Nach Auswahl werden die Ticker primär über `get_watchlist_tickers(name)` geladen. `load_watchlists_df()` ist nur noch Fallback. Damit hängt das Öffnen einer Liste nicht mehr davon ab, ob ihre Ticker-Zeilen im globalen Watchlist-DataFrame korrekt sichtbar sind.
-
-## Persistenz
-Recovery-Einträge werden über die bestehende zentrale Storage-Schicht gespeichert und bleiben über Reruns/Neustarts erhalten. Beim echten Löschen einer Watchlist wird der Recovery-Eintrag ebenfalls entfernt.
-
-## Einmalige Wiederherstellung einer unsichtbaren bestehenden Liste
-Falls die bestehende Positionswatchlist auch nach Installation noch nicht sofort auftaucht:
-1. im Bereich **Positionen -> Watchlist verwalten** denselben bestehenden Namen eintragen,
-2. Typ `Positions-Watchlist` wählen,
-3. einmal **Watchlist erstellen** drücken.
-
-Wenn das Backend meldet, dass die Liste bereits existiert, übernimmt v30.3b sie automatisch in die Auswahl. Es wird dabei keine zweite Liste erzeugt.
-
-## Unverändert
-Keine Änderung an Early Profit Protection/Learning, Exit Engine, Live-/Shadow-Ampel, Rotation Radar, Atomic Complete Scan, Portfolio Engine, SQL oder Secrets.
+## Unveraendert
+Keine Aenderung an Leadership-/Rotation-Formeln, Phasenlogik, Breadth-Formel, Live-/Shadow-Ampel, Positions-/Exit-Engine, Early-Profit-Engine oder automatischen Orders.

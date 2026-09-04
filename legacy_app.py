@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3e"
+APP_VERSION = "v30.3f"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15030,7 +15030,17 @@ def _v303c_rotation_drilldown_context(rot_df, drilldown_groups):
     else:
         df = pd.DataFrame(columns=["Ticker"])
 
-    row_map = {str(r.get("Ticker") or "").strip().upper(): r for _, r in df.iterrows()}
+    # v30.3f: row_map muss echte Python-Dicts enthalten. pd.Series darf spaeter
+    # niemals implizit als bool ausgewertet werden ("Series truth value is ambiguous").
+    row_map = {}
+    for _, r in df.iterrows():
+        try:
+            row_dict = r.to_dict() if isinstance(r, pd.Series) else dict(r)
+        except Exception:
+            row_dict = {}
+        sym = str(row_dict.get("Ticker") or "").strip().upper()
+        if sym:
+            row_map[sym] = row_dict
 
     def _num(v, default=-999.0):
         try:
@@ -18996,7 +19006,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 if isinstance(x, pd.DataFrame) and not x.empty
                                             ]
                                             _dd_errors_v301d = pd.concat(_dd_err_frames_v301d, ignore_index=True) if _dd_err_frames_v301d else pd.DataFrame()
-                                            _dd_ctx_row_save_v303c = _dd_row_map_v301d.get(str(_dd_select_v301d), {}) or {}
+                                            # v30.3f: defensiv gegen alte/unerwartete pandas-Series im Kontext.
+                                            # Kein "... or {}" auf Series, weil pandas deren Wahrheitswert absichtlich verbietet.
+                                            _dd_ctx_row_save_v303c = _dd_row_map_v301d.get(str(_dd_select_v301d), {})
+                                            if isinstance(_dd_ctx_row_save_v303c, pd.Series):
+                                                _dd_ctx_row_save_v303c = _dd_ctx_row_save_v303c.to_dict()
+                                            elif not isinstance(_dd_ctx_row_save_v303c, dict):
+                                                _dd_ctx_row_save_v303c = {}
                                             st.session_state["rotation_stock_drilldown_v301d"] = {
                                                 "group": str(_dd_select_v301d),
                                                 "saved_at": pd.Timestamp.now(tz="UTC").isoformat(),

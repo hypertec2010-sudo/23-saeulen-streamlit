@@ -1,41 +1,23 @@
-# v30.3e - Rotation Drilldown Universe Alignment Fix
+# v30.3f - Rotation Drilldown Pandas-Series Crash Fix
 
-v30.3e behebt die konkrete Abweichung, dass die Investment-Rotation-Uebersicht z. B. **4 Emerging** meldet, im Feld **Rotation fuer Aktien-Drilldown** aber nur zwei dieser Emerging-Gruppen erscheinen.
+v30.3f behebt den unmittelbar nach v30.3e sichtbaren Streamlit-Crash beim Ausfuehren eines Aktien-Drilldowns.
 
-## Tatsaechliche Ursache
-Das war kein weiterer Cache-/Persistenzfehler. Die beiden Bereiche nutzten unterschiedliche Universen:
-- Die Radar-Uebersicht zaehlt alle Ebenen: Investmentklassen, Regionen, Sektoren und Branchen/Themen.
-- Der v30.1d Aktien-Drilldown enthielt urspruenglich nur Sektor-/Themen-Gruppen mit fest hinterlegtem Aktienkorb.
+## Fehlerbild
+Nach Auswahl einer Rotation und Klick auf **Top-Kandidaten fuer Auswahl pruefen** konnte Streamlit mit folgendem Fehler abbrechen:
 
-Damit konnte der Emerging-Zaehler korrekt 4 anzeigen, obwohl nur 2 dieser vier Gruppen im Drilldown-Universum lagen.
+`ValueError: The truth value of a Series is ambiguous`
 
-## Jetzt ein gemeinsames Universum
-Die Drilldown-Auswahl wird ab v30.3e aus exakt derselben aktuellen Radar-Population wie die Hauptuebersicht gebaut. Wenn oben vier Gruppen Emerging sind, stehen auch vier Emerging-Gruppen in der Auswahl.
+Der Trace zeigte auf die Speicherung des aktuellen Radar-Kontexts fuer den Drilldown.
 
-Jede Option zeigt jetzt zusaetzlich ihre **Radar-Ebene**, Phase, Rotation und Leadership. Damit ist sofort sichtbar, ob es sich um eine Region, einen Sektor, ein Thema oder eine andere Investmentklasse handelt.
+## Ursache
+Der Hilfsblock `_v303c_rotation_drilldown_context()` legte die Zeilen des aktuellen Radar-Frames als `pandas.Series` im internen `row_map` ab. Beim erfolgreichen Drilldown wurde anschliessend sinngemaess `row_map.get(...) or {}` verwendet.
 
-## Neue repraesentative Aktienkoerbe
-Fuer bisher nicht abgedeckte, aber sinnvoll in Aktien zerlegbare Gruppen wurden provider-schonende kompakte Koerbe ergaenzt:
-- SPY / breiter US-Markt
-- QQQ / Nasdaq
-- VGK / Europa
-- EWG / Deutschland
-- EEM / Emerging Markets
+Python versucht bei `or` den Wahrheitswert des linken Objekts auszuwerten. Fuer eine pandas-Series ist dieser Wahrheitswert absichtlich nicht eindeutig; pandas wirft deshalb den ValueError.
 
-Fuer GLD, DBC, USO und CPER werden Aktienkoerbe ausdruecklich als **Aktien-Proxy** markiert. Hier sind die Einzelaktien nicht der ETF selbst, sondern repraesentative Unternehmen mit direktem Exposure zum jeweiligen Rohstoff-/Assetthema.
-
-## Bond-/Credit-Gruppen
-TLT und HYG bleiben jetzt ebenfalls in der Auswahl sichtbar. Sie erhalten bewusst **keinen direkten Aktienkorb**, weil ein Aktienranking gegen eine Treasury-/High-Yield-Rotation fachlich eine andere Aussage waere. Die Radar-Phase und Rotation werden dennoch vollstaendig angezeigt.
-
-## Transparenz
-Direkt ueber der Auswahl steht nun ein Kontrollsatz nach dem Muster:
-
-`Emerging oben: 4 · Emerging hier: 4 · davon 3 mit Aktienkorb`
-
-Damit ist die Population sofort pruefbar und eine spaetere Differenz nicht mehr unsichtbar.
-
-## Provider-Schutz
-Der normale Rotation-Hauptscan wird nicht um Einzelaktien erweitert. Aktien des Drilldowns werden weiterhin nur auf expliziten Klick fuer genau eine ausgewaehlte Gruppe geladen.
+## Fix
+- Jede Radar-Kontextzeile wird bereits beim Aufbau des `row_map` in ein normales Python-Dictionary konvertiert.
+- Die spaetere Speicherstelle verwendet kein `or {}` mehr auf einem potenziellen pandas-Objekt.
+- Als zusaetzliche Schutzschicht wird eine unerwartete Series dort nochmals explizit per `.to_dict()` konvertiert.
 
 ## Unveraendert
-Keine Aenderung an Rotation-Score-/Phase-Formel, Live-/Shadow-Ampel, Positions-/Exit-Engine, Early-Profit-Learning, Portfolio Engine, SQL oder Secrets.
+Das v30.3e Universe-Alignment bleibt erhalten. Es gibt keine Aenderung an Rotation-/Leadership-Berechnung, Phasenlogik, Aktienkorb-Zuordnung, Live-/Shadow-Ampel, Early-Profit-/Exit-Engine oder Provider-Cadence.

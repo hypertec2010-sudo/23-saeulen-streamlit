@@ -1,3 +1,11 @@
+## v30.3f - Rotation Drilldown Pandas-Series Crash Fix
+- Streamlit-Crash beim Start eines Rotation-Aktien-Drilldowns behoben (`ValueError: The truth value of a Series is ambiguous`).
+- Ursache: `_v303c_rotation_drilldown_context()` speicherte pandas-Series als Werte im internen `row_map`; spaeter wurde eine solche Series durch `... or {}` implizit als bool ausgewertet.
+- `row_map` enthaelt jetzt ausschliesslich normale Python-Dictionaries.
+- Die Drilldown-Speicherstelle konvertiert unerwartete Series zusaetzlich defensiv in Dictionaries und verwendet keine Bool-Auswertung von pandas-Objekten mehr.
+- v30.3e Universe-Alignment bleibt unveraendert: alle Radar-Gruppen bleiben sichtbar; Gruppen mit Aktienkorb/Proxy koennen weiterhin on-demand geprueft werden.
+- Keine Aenderung an Rotation-Score, Phase, Kandidaten-Score, Live-/Shadow-Ampel, Provider-Refresh oder Positions-/Exit-Logik.
+
 ## v30.3e - Rotation Drilldown Universe Alignment Fix
 - Ursache der Abweichung 4x Emerging in der Radar-Uebersicht vs. nur 2x Emerging im Aktien-Drilldown behoben.
 - Hauptuebersicht und Drilldown-Auswahl verwenden jetzt dieselbe komplette Radar-Population ueber alle Ebenen.

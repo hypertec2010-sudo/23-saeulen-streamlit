@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.1d"
+APP_VERSION = "v30.2"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14628,6 +14628,7 @@ if _missing_module_files_v252:
 from modules import risk_calculator as _risk_module
 from modules import event_log as _event_module
 from modules import position_monitor as _position_module
+from modules import profit_protection as _profit_protection_v302
 from modules import trade_journal as _trade_journal_module
 from modules import trade_learning as _trade_learning_module
 from modules import portfolio_risk as _portfolio_risk_module
@@ -14794,6 +14795,136 @@ def _v301_rotation_age_text(saved_at):
         return "n/a"
 
 
+# ---------- v30.2: Early Profit Protection / historical Giveback ----------
+def _v302_position_peer_plan(pos, ticker):
+    """Return a compact peer basket from the existing Rotation Radar universe.
+
+    No provider call happens here. At most four peers are returned so the
+    explicit historical refresh remains provider-friendly.
+    """
+    symbol = str(ticker or "").strip().upper()
+    pos = dict(pos or {})
+    selected_group = ""
+    try:
+        for group in _rotation_radar_v301.drilldown_groups():
+            members = _rotation_radar_v301.drilldown_candidates(group)
+            if any(str(item.get("Ticker") or "").strip().upper() == symbol for item in members):
+                selected_group = str(group).strip().upper()
+                break
+    except Exception:
+        selected_group = ""
+
+    if not selected_group:
+        group_text = str(pos.get("portfolio_group") or "").strip().lower()
+        keyword_map = [
+            (("kommunikation", "communication", "media", "streaming"), "XLC"),
+            (("halbleiter", "semiconductor", "chip"), "SOXX"),
+            (("cyber",), "CIBR"),
+            (("software", "cloud"), "IGV"),
+            (("defense", "verteidigung", "aerospace"), "ITA"),
+            (("biotech",), "XBI"),
+            (("solar",), "TAN"),
+            (("energie", "energy"), "XLE"),
+            (("finanz", "bank"), "XLF"),
+            (("gesund", "health"), "XLV"),
+            (("industrie", "industrial"), "XLI"),
+            (("material", "rohstoff"), "XLB"),
+            (("versorger", "utilit"), "XLU"),
+            (("immobil", "real estate"), "XLRE"),
+            (("basiskonsum", "staples"), "XLP"),
+            (("zyklisch", "discretionary"), "XLY"),
+            (("technologie", "technology", "tech"), "XLK"),
+        ]
+        for keys, group in keyword_map:
+            if any(key in group_text for key in keys):
+                selected_group = group
+                break
+
+    peers = []
+    group_name = selected_group or "Keine Peer-Gruppe"
+    if selected_group:
+        try:
+            members = _rotation_radar_v301.drilldown_candidates(selected_group)
+            peers = [
+                str(item.get("Ticker") or "").strip().upper()
+                for item in members
+                if str(item.get("Ticker") or "").strip().upper() not in {"", symbol}
+            ][:4]
+            try:
+                uf = _rotation_radar_v301.universe_frame()
+                if isinstance(uf, pd.DataFrame) and not uf.empty and "Ticker" in uf.columns:
+                    hit = uf[uf["Ticker"].astype(str).str.upper() == selected_group]
+                    if not hit.empty:
+                        group_name = f"{selected_group} · {hit.iloc[0].get('Name', selected_group)}"
+            except Exception:
+                pass
+        except Exception:
+            peers = []
+    return {"group_symbol": selected_group, "group_name": group_name, "peers": peers}
+
+
+def _v302_download_ohlcv_frames(symbols, period="5y"):
+    """One explicit, batched yfinance history request for v30.2.
+
+    The normal Atomic scan never calls this helper. A single target fallback is
+    allowed if the batch did not return the selected position.
+    """
+    clean = []
+    for raw_symbol in list(symbols or []):
+        sym = str(raw_symbol or "").strip().upper()
+        if sym and sym not in clean:
+            clean.append(sym)
+    if not clean:
+        return {}, ["Keine Ticker definiert"]
+    frames = {}
+    errors = []
+    try:
+        raw = yf.download(
+            tickers=clean,
+            period=period,
+            interval="1d",
+            auto_adjust=True,
+            progress=False,
+            threads=False,
+            group_by="ticker",
+        )
+        if isinstance(raw, pd.DataFrame) and not raw.empty:
+            if isinstance(raw.columns, pd.MultiIndex):
+                level0 = {str(x).upper() for x in raw.columns.get_level_values(0)}
+                level1 = {str(x).upper() for x in raw.columns.get_level_values(1)}
+                for sym in clean:
+                    try:
+                        if sym in level0:
+                            part = raw.xs(sym, axis=1, level=0, drop_level=True)
+                        elif sym in level1:
+                            part = raw.xs(sym, axis=1, level=1, drop_level=True)
+                        else:
+                            continue
+                        if isinstance(part, pd.DataFrame):
+                            part = part.dropna(how="all")
+                            if not part.empty:
+                                frames[sym] = part
+                    except Exception as exc:
+                        errors.append(f"{sym}: {exc}")
+            elif len(clean) == 1:
+                frames[clean[0]] = raw.dropna(how="all")
+    except Exception as exc:
+        errors.append(f"Batch: {exc}")
+
+    target = clean[0]
+    if target not in frames:
+        try:
+            time.sleep(0.4)
+            hist = yf.Ticker(target).history(period=period, interval="1d", auto_adjust=True)
+            if isinstance(hist, pd.DataFrame) and not hist.empty:
+                frames[target] = hist
+            else:
+                errors.append(f"{target}: keine Historie")
+        except Exception as exc:
+            errors.append(f"{target}: {exc}")
+    return frames, errors
+
+
 _risk_module.configure_context(
     build_professional_radar_decision_v18=build_professional_radar_decision_v18,
     build_radar_entry_rr_package_v182=build_radar_entry_rr_package_v182,
@@ -14823,6 +14954,15 @@ _v2416_log_event = _event_module._v2416_log_event
 _v2416_events_dataframe = _event_module._v2416_events_dataframe
 _v2416_reset_events = _event_module._v2416_reset_events
 
+_profit_protection_v302.configure_context(
+    storage=_storage_v280,
+    time_provider=get_current_berlin_time,
+)
+_v302_assess_position = _profit_protection_v302.assess_position
+_v302_load_profile = _profit_protection_v302.load_profile
+_v302_save_profile = _profit_protection_v302.save_profile
+_v302_analyze_fast_move_history = _profit_protection_v302.analyze_fast_move_history
+
 _position_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
     event_logger=_v2416_log_event,
@@ -14830,6 +14970,7 @@ _position_module.configure_context(
     price_text=_v230_price_text,
     storage=_storage_v280,
     repository=_repositories_v281.positions,
+    profit_protection_engine=_v302_assess_position,
 )
 _v244_position_store_key = _position_module._v244_position_store_key
 _v245_positions_store_path = _position_module._v245_positions_store_path
@@ -18670,6 +18811,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.write(str(_pos_row_v289.get("Warum 2.0") or "-"))
                                                 st.write(f"Trade-Status: {_pos_row_v289.get('Trade-Status','-')}")
                                                 st.write(f"R: {_pos_row_v289.get('R','n/a')} · P/L: {_pos_row_v289.get('P/L %','n/a')}")
+                                                st.write(f"Early-Profit: {_pos_row_v289.get('⚡ Early-Profit','n/a')}")
+                                                st.write(f"Profit Velocity: {_pos_row_v289.get('Profit Velocity','n/a')} · Exhaustion: {_pos_row_v289.get('Exhaustion Risk','n/a')}")
                                 else:
                                     st.dataframe(pos_df, hide_index=True, use_container_width=True, height=min(420, 42 * len(pos_df) + 55))
                                 existing_position_tickers = sorted([str(t).strip().upper() for t in positions.keys() if str(t).strip()])
@@ -18888,13 +19031,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 manage_name_v270 = str(manage_pos_v270.get("name") or manage_ticker_v270)
                                 manage_live_price_v270 = _v230_safe_float(manage_pos_v270.get("last_price"), default=None)
                                 _manage_live_row_v289 = {}
+                                _manage_has_atomic_v302 = False
                                 try:
                                     _manage_match_v270 = _position_live_df_v289[_position_live_df_v289["Ticker"].astype(str).str.upper() == manage_ticker_v270]
                                     if not _manage_match_v270.empty:
                                         _manage_live_row_v289 = _manage_match_v270.iloc[0].to_dict()
+                                        _manage_has_atomic_v302 = True
                                         manage_live_price_v270 = _v244_row_price(_manage_live_row_v289) or manage_live_price_v270
                                 except Exception:
                                     _manage_live_row_v289 = {}
+                                    _manage_has_atomic_v302 = False
                                 if manage_live_price_v270 is not None:
                                     _manage_live_row_v289 = dict(_manage_live_row_v289 or {})
                                     _manage_live_row_v289.setdefault("Kurs", manage_live_price_v270)
@@ -18903,6 +19049,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _manage_live_row_v289,
                                 )
                                 manage_exit_engine_v289 = _v289_position_exit_engine(manage_pos_v270, _manage_live_row_v289)
+                                _manage_profile_v302 = _v302_load_profile(manage_ticker_v270)
+                                _manage_profit_v302 = _v302_assess_position(
+                                    manage_pos_v270,
+                                    _manage_live_row_v289 if _manage_has_atomic_v302 else {},
+                                    history_profile=_manage_profile_v302,
+                                )
                                 jm1, jm2, jm3, jm4 = st.columns(4)
                                 with jm1:
                                     st.metric("Offene Stück", int(_v230_safe_float(manage_pos_v270.get("shares"), default=0) or 0))
@@ -18959,6 +19111,178 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         st.write(f"**Abstandswert bis Stop:** ca. {_risk_to_stop_v289:,.2f}".replace(",", "."))
                                     if _locked_pnl_v289 is not None:
                                         st.write(f"**Am aktuellen Stop rechnerisch gesicherter Gewinn:** ca. {_locked_pnl_v289:,.2f}".replace(",", "."))
+
+                                # ---------- v30.2: Early Profit Protection & Giveback Engine ----------
+                                st.markdown(f"##### ⚡ Early Profit Protection & Giveback Engine · {APP_VERSION}")
+                                _pv_v302 = _manage_profit_v302.get("profit_velocity")
+                                _ex_v302 = _manage_profit_v302.get("exhaustion_risk")
+                                _gb_v302 = _manage_profit_v302.get("giveback_risk")
+                                _n_v302 = int(_manage_profit_v302.get("history_sample") or 0)
+                                _days_v302 = _manage_profit_v302.get("holding_days")
+                                _pp_cols_v302 = st.columns(2 if mobile_mode_v2842 else 4)
+                                _pp_metrics_v302 = [
+                                    ("Profit Velocity", "n/a" if _pv_v302 is None else f"{float(_pv_v302):.0f}/100"),
+                                    ("Exhaustion Risk", "n/a" if _ex_v302 is None else f"{float(_ex_v302):.0f}/100"),
+                                    ("Hist. Giveback", "n/a" if _gb_v302 is None else f"{float(_gb_v302):.0f}% · n={_n_v302}"),
+                                    ("Haltedauer", "n/a" if _days_v302 is None else f"{int(_days_v302)} Handelstag(e)"),
+                                ]
+                                for _idx_v302, (_lab_v302, _val_v302) in enumerate(_pp_metrics_v302):
+                                    with _pp_cols_v302[_idx_v302 % len(_pp_cols_v302)]:
+                                        st.metric(_lab_v302, _val_v302)
+
+                                _pp_level_v302 = str(_manage_profit_v302.get("level") or "neutral")
+                                _pp_message_v302 = (
+                                    f"{_manage_profit_v302.get('ampel','⚪')} {_manage_profit_v302.get('action','-')} · "
+                                    f"{_manage_profit_v302.get('recommendation','-')}"
+                                )
+                                if _pp_level_v302 == "red":
+                                    st.error(_pp_message_v302)
+                                elif _pp_level_v302 == "orange":
+                                    st.warning(_pp_message_v302)
+                                elif _pp_level_v302 == "yellow":
+                                    st.info(_pp_message_v302)
+                                elif _pp_level_v302 == "green":
+                                    st.success(_pp_message_v302)
+                                else:
+                                    st.info(_pp_message_v302)
+                                st.caption(
+                                    "Zusatzempfehlung für ungewöhnlich schnelle Frühgewinne. Sie verändert weder Exit Engine 2.0, "
+                                    "Live-/Shadow-Ampel noch Stop oder Order automatisch."
+                                )
+
+                                _peer_plan_v302 = _v302_position_peer_plan(manage_pos_v270, manage_ticker_v270)
+                                _peer_symbols_v302 = list(_peer_plan_v302.get("peers") or [])
+                                _flash_key_v302 = f"v302_history_flash::{selected_watchlist_name}::{manage_ticker_v270}"
+                                _flash_v302 = st.session_state.pop(_flash_key_v302, None)
+                                if _flash_v302:
+                                    st.success(str(_flash_v302))
+
+                                with st.expander("⚡ Early Profit · Details & historische Fast-Moves", expanded=False):
+                                    st.write(f"**Aktuelle Begründung:** {_manage_profit_v302.get('why_text','-')}")
+                                    _atr_units_v302 = _manage_profit_v302.get("atr_units")
+                                    _daily_v302 = _manage_profit_v302.get("daily_gain_pct")
+                                    if _atr_units_v302 is not None:
+                                        st.write(f"**Move seit Entry:** ca. {float(_atr_units_v302):.2f} ATR")
+                                    if _daily_v302 is not None:
+                                        st.write(f"**Durchschnittliches Tempo:** {float(_daily_v302):+.2f}% je Haltetag")
+                                    st.write(f"**Peer-Gruppe:** {_peer_plan_v302.get('group_name','Keine Peer-Gruppe')}")
+                                    if _peer_symbols_v302:
+                                        st.write(f"**Vergleichsaktien:** {', '.join(_peer_symbols_v302)}")
+                                    else:
+                                        st.write("**Vergleichsaktien:** keine passende kompakte Peer-Gruppe gefunden; Analyse nutzt dann nur die Aktie selbst.")
+
+                                    if _manage_profile_v302:
+                                        _profile_ok_v302 = bool(_manage_profit_v302.get("history_compatible", True))
+                                        if not _profile_ok_v302:
+                                            st.warning("Das gespeicherte Fast-Move-Profil passt nicht mehr ausreichend zum aktuellen Tempo/Haltefenster und beeinflusst die Empfehlung deshalb nicht. Bitte bei Bedarf aktualisieren.")
+                                        _profile_updated_v302 = str(_manage_profile_v302.get("updated_at") or "-")
+                                        _same_n_v302 = int(_manage_profile_v302.get("same_stock_n") or 0)
+                                        _peer_n_v302 = int(_manage_profile_v302.get("peer_n") or 0)
+                                        _combined_n_v302 = int(_manage_profile_v302.get("combined_n") or 0)
+                                        st.caption(
+                                            f"Letzte historische Analyse: {_profile_updated_v302} · "
+                                            f"Datenbasis {_manage_profile_v302.get('sample_label','-')} · n={_combined_n_v302}"
+                                        )
+                                        _hist_rows_v302 = [
+                                            {
+                                                "Datenbasis": "Gleiche Aktie",
+                                                "n": _same_n_v302,
+                                                "Giveback ≥50%": _manage_profile_v302.get("same_stock_giveback_rate"),
+                                                "Zurück zum Move-Start": _manage_profile_v302.get("same_stock_revisit_start_rate"),
+                                                "Direkter Follow-through": _manage_profile_v302.get("same_stock_followthrough_rate"),
+                                                "Median Rücksetzer %": _manage_profile_v302.get("same_stock_median_drawdown_pct"),
+                                                "Median weiterer Lauf %": _manage_profile_v302.get("same_stock_median_followthrough_pct"),
+                                            },
+                                            {
+                                                "Datenbasis": "Vergleichsaktien",
+                                                "n": _peer_n_v302,
+                                                "Giveback ≥50%": _manage_profile_v302.get("peer_giveback_rate"),
+                                                "Zurück zum Move-Start": _manage_profile_v302.get("peer_revisit_start_rate"),
+                                                "Direkter Follow-through": _manage_profile_v302.get("peer_followthrough_rate"),
+                                                "Median Rücksetzer %": _manage_profile_v302.get("peer_median_drawdown_pct"),
+                                                "Median weiterer Lauf %": _manage_profile_v302.get("peer_median_followthrough_pct"),
+                                            },
+                                            {
+                                                "Datenbasis": "Gewichtete Evidenz",
+                                                "n": _combined_n_v302,
+                                                "Giveback ≥50%": _manage_profile_v302.get("combined_giveback_rate"),
+                                                "Zurück zum Move-Start": _manage_profile_v302.get("combined_revisit_start_rate"),
+                                                "Direkter Follow-through": _manage_profile_v302.get("combined_followthrough_rate"),
+                                                "Median Rücksetzer %": _manage_profile_v302.get("combined_median_drawdown_pct"),
+                                                "Median weiterer Lauf %": _manage_profile_v302.get("combined_median_followthrough_pct"),
+                                            },
+                                        ]
+                                        st.dataframe(pd.DataFrame(_hist_rows_v302), hide_index=True, use_container_width=True)
+                                        st.caption(
+                                            f"Ähnliche historische Fast-Moves: {_manage_profile_v302.get('event_window_days','-')}T-Fenster, "
+                                            f"mind. {_manage_profile_v302.get('threshold_move_pct','-')}% und "
+                                            f"{_manage_profile_v302.get('threshold_atr','-')} ATR; danach 5T Giveback/Follow-through."
+                                        )
+                                        _events_v302 = _manage_profile_v302.get("events") or []
+                                        if _events_v302:
+                                            with st.expander("Historische Einzelfälle", expanded=False):
+                                                st.dataframe(pd.DataFrame(_events_v302), hide_index=True, use_container_width=True)
+                                    else:
+                                        st.info("Noch kein historisches Fast-Move-Profil gespeichert. Die aktuelle Empfehlung nutzt bis dahin nur Kursgeschwindigkeit und bestehende technische Exit-/RS-/Regime-Daten.")
+
+                                    _hist_symbols_v302 = [manage_ticker_v270] + _peer_symbols_v302
+                                    st.caption(
+                                        "Historik wird nur auf deinen Klick geladen: eine gebündelte 5-Jahres-Abfrage für die Position und maximal vier Vergleichsaktien. "
+                                        "Der normale Atomic-/Auto-Scan erzeugt dadurch keine Zusatzrequests."
+                                    )
+                                    if st.button(
+                                        "Historische Fast-Move-Analyse aktualisieren",
+                                        use_container_width=True,
+                                        disabled=not _manage_has_atomic_v302,
+                                        key=f"v302_refresh_history_{selected_watchlist_name}_{manage_ticker_v270}",
+                                    ):
+                                        with st.spinner("Ähnliche schnelle Anstiege in Aktie und Peer-Gruppe werden ausgewertet ..."):
+                                            _frames_v302, _hist_errors_v302 = _v302_download_ohlcv_frames(_hist_symbols_v302, period="5y")
+                                            if manage_ticker_v270 not in _frames_v302:
+                                                st.error("Für die ausgewählte Position konnte keine belastbare Historie geladen werden.")
+                                                if _hist_errors_v302:
+                                                    st.caption(" · ".join([str(x) for x in _hist_errors_v302[:4]]))
+                                            else:
+                                                _base_signal_v302 = _v302_assess_position(
+                                                    manage_pos_v270,
+                                                    _manage_live_row_v289 if _manage_has_atomic_v302 else {},
+                                                    history_profile={},
+                                                )
+                                                _new_profile_v302 = _v302_analyze_fast_move_history(
+                                                    _frames_v302,
+                                                    manage_ticker_v270,
+                                                    _base_signal_v302,
+                                                    horizon_days=5,
+                                                )
+                                                _new_profile_v302["peer_group"] = _peer_plan_v302.get("group_name")
+                                                _new_profile_v302["peer_tickers"] = _peer_symbols_v302
+                                                _saved_v302 = _v302_save_profile(manage_ticker_v270, _new_profile_v302)
+                                                _v2416_log_event(
+                                                    event_type="Fast-Move Historie aktualisiert",
+                                                    ticker=manage_ticker_v270,
+                                                    watchlist_name=selected_watchlist_name,
+                                                    source="Early Profit Protection",
+                                                    status=str(_new_profile_v302.get("sample_label") or "-"),
+                                                    price=manage_live_price_v270,
+                                                    trade_state=str(manage_calc_v270.get("Status") or "-"),
+                                                    details=(
+                                                        f"n={_new_profile_v302.get('combined_n',0)} · "
+                                                        f"Giveback {_new_profile_v302.get('combined_giveback_rate','n/a')}% · "
+                                                        f"Peer {_peer_plan_v302.get('group_name','-')}"
+                                                    ),
+                                                    payload=_new_profile_v302,
+                                                    signature=(
+                                                        f"v302hist|{_new_profile_v302.get('event_window_days')}|"
+                                                        f"{_new_profile_v302.get('threshold_move_pct')}|{_new_profile_v302.get('combined_n')}"
+                                                    ),
+                                                )
+                                                _save_txt_v302 = "persistent gespeichert" if _saved_v302 else "für diese Sitzung berechnet; Persistenz bitte prüfen"
+                                                st.session_state[_flash_key_v302] = (
+                                                    f"Fast-Move-Historie aktualisiert: n={_new_profile_v302.get('combined_n',0)} · "
+                                                    f"Giveback {_new_profile_v302.get('combined_giveback_rate','n/a')}% · {_save_txt_v302}."
+                                                )
+                                                st.rerun()
+
 
                                 manage_action_v270 = st.radio(
                                     "Journal-Aktion",

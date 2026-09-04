@@ -1,3 +1,17 @@
+## v30.2 - Early Profit Protection & Giveback Engine
+- Neue additive Fruehgewinn-Schutzschicht im Positions-/Exit-Monitor.
+- Profit Velocity 0-100 aus P/L, Haltedauer, ATR-Normalisierung und R-Multiple.
+- Exhaustion Risk 0-100 trennt Healthy Acceleration von Ueberdehnung/Ermuedung.
+- Bestehende Atomic-Felder wie MA10-Abstand, Exit-/Trendbruch-/Momentum-/Distribution-/RS-Scores sowie Markt-/Volatilitaetsregime werden providerfrei wiederverwendet.
+- Neue Empfehlungen: Healthy Acceleration, Gewinnschutz pruefen, Teilgewinn 25-50% pruefen und nur bei extremer technischer Bestaetigung Teilgewinn/Exit pruefen.
+- On-Demand 5-Jahres-Fast-Move-Historie fuer die Aktie plus maximal vier kompakte Rotation-/Sektor-Peers.
+- Historische Kennzahlen: Giveback >=50%, Ruecklauf zum Move-Start, direkter Follow-through, medianer Ruecksetzer und medianer weiterer Lauf.
+- Historische Evidenz erhaelt Stichprobenstatus und beeinflusst aktuelle Empfehlungen nur bei kompatiblem Tempo/Haltefenster.
+- Provider-Schutz: keine Zusatzrequests im normalen Atomic-/Auto-Scan; Historie nur auf expliziten Klick, gebuendelt.
+- Defensive Early-Profit-Zustaende werden dedupliziert fuer die bestehende Learning-/Event-Schicht protokolliert.
+- Keine automatische Order/Stop-Aenderung, keine Aenderung an Live-/Shadow-Ampel, Exit Engine 2.0 oder Cache-Schema.
+- Keine SQL-/Secrets-Aenderung.
+
 ## v30.1d - Rotation Stock Drilldown
 - Neuer On-Demand-Aktien-Drilldown direkt im Investment Rotation Radar.
 - Emerging/Leading-Sektoren und -Branchen koennen in einen kompakten repraesentativen Aktienkorb aufgebohrt werden.

@@ -1,4 +1,4 @@
-"""Persistent position and exit-monitor helpers. v28.9 adds Exit Engine 2.0."""
+"""Persistent position/exit helpers. v28.9 Exit Engine 2.0; v30.2 Early Profit Protection hook."""
 from __future__ import annotations
 
 import json
@@ -13,9 +13,10 @@ _v230_safe_float = None
 _v230_price_text = None
 _storage = None
 _repository = None
+_profit_protection_engine = None
 
-def configure_context(*, base_dir=None, event_logger=None, safe_float=None, price_text=None, storage=None, repository=None):
-    global _BASE_DIR, _event_logger, _v230_safe_float, _v230_price_text, _storage, _repository
+def configure_context(*, base_dir=None, event_logger=None, safe_float=None, price_text=None, storage=None, repository=None, profit_protection_engine=None):
+    global _BASE_DIR, _event_logger, _v230_safe_float, _v230_price_text, _storage, _repository, _profit_protection_engine
     if base_dir is not None:
         _BASE_DIR = Path(base_dir)
     if event_logger is not None:
@@ -28,6 +29,8 @@ def configure_context(*, base_dir=None, event_logger=None, safe_float=None, pric
         _storage = storage
     if repository is not None:
         _repository = repository
+    if profit_protection_engine is not None:
+        _profit_protection_engine = profit_protection_engine
 
 def _v244_position_store_key(watchlist_name=""):
     try:
@@ -686,6 +689,15 @@ def _v244_positions_dataframe(positions, live_df=None, watchlist_name=""):
         live_row = live_map.get(ticker, {})
         calc = _v244_calc_trade_state(pos, live_row)
         engine_v289 = _v289_position_exit_engine(pos, live_row)
+        # v30.2: Early Profit Protection arbeitet nur auf Positionsdaten + bereits
+        # vorhandenem Atomic-Live-Row. Historische Profile werden im Detailbereich
+        # explizit nachgeladen; die Tabellenbewertung erzeugt keine Provider-Calls.
+        early_v302 = {}
+        if callable(_profit_protection_engine):
+            try:
+                early_v302 = dict(_profit_protection_engine(pos, live_row) or {})
+            except Exception:
+                early_v302 = {}
         # v24.17: Management-Meilensteine dedupliziert protokollieren.
         trade_status = str(calc.get("Status") or "")
         milestone = None
@@ -741,12 +753,42 @@ def _v244_positions_dataframe(positions, live_df=None, watchlist_name=""):
                 )
             except Exception:
                 pass
+        # v30.2: Nur aktive defensive Early-Profit-Zustaende protokollieren.
+        # Deduplizierung erfolgt wie bei Exit Engine 2.0 ueber Action + Scoreband.
+        if early_v302.get("level") in {"yellow", "orange", "red"}:
+            try:
+                _velocity_band_v302 = int(float(early_v302.get("profit_velocity") or 0) // 10) * 10
+                _exhaust_band_v302 = int(float(early_v302.get("exhaustion_risk") or 0) // 10) * 10
+                _event_logger(
+                    event_type="Early Profit Protection",
+                    ticker=ticker,
+                    watchlist_name=watchlist_name,
+                    source="Positions-/Exit-Monitor",
+                    status=str(early_v302.get("action") or "-"),
+                    price=calc.get("Aktueller Kurs"),
+                    trade_state=str(calc.get("Status") or "-"),
+                    details=str(early_v302.get("why_text") or "-"),
+                    payload={
+                        "Profit Velocity": early_v302.get("profit_velocity"),
+                        "Exhaustion Risk": early_v302.get("exhaustion_risk"),
+                        "Giveback Risk": early_v302.get("giveback_risk"),
+                        "Haltedauer": early_v302.get("holding_days"),
+                        "P/L %": early_v302.get("pnl_pct"),
+                        "R": early_v302.get("r_multiple"),
+                    },
+                    signature=f"v302|{early_v302.get('action')}|{_velocity_band_v302}|{_exhaust_band_v302}",
+                )
+            except Exception:
+                pass
         rows.append({
             "Exit-Ampel 2.0": engine_v289.get("ampel"),
+            "⚡ Early-Profit": (f"{early_v302.get('ampel','⚪')} {early_v302.get('action','-')}" if early_v302 else "⚪ n/a"),
             "Ticker": ticker,
             "Name": pos.get("name") or live_row.get("Name") or ticker,
             "Führung 2.0": engine_v289.get("action"),
             "Exit-Druck 2.0": f"{float(engine_v289.get('score') or 0):.0f}/100",
+            "Profit Velocity": ("n/a" if early_v302.get("profit_velocity") is None else f"{float(early_v302.get('profit_velocity')):.0f}/100"),
+            "Exhaustion Risk": ("n/a" if early_v302.get("exhaustion_risk") is None else f"{float(early_v302.get('exhaustion_risk')):.0f}/100"),
             "Gewinnpuffer": engine_v289.get("buffer_text"),
             "Stop-Status 2.0": engine_v289.get("stop_status"),
             "Konfidenz 2.0": engine_v289.get("confidence"),

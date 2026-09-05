@@ -1,3 +1,12 @@
+## v30.4a - Trader-Ziel & Harvest-Ampel Highlighting
+- Reiner UI-Patch fuer den v30.4 Short-Term-Trader-/Profit-Harvest-Pfad; Berechnungslogik unveraendert.
+- Live-Screener ordnet Trader-Ziel, Harvest-Ampel und Trader-Modus direkt hinter Ticker/Name/Kurs ein.
+- Trader-Ziel wird mit `⚡` hervorgehoben; Harvest-Score wird als eigene 🟠/🟡/🟢 Ampel dargestellt.
+- Desktop-Spalten erhalten kompaktere Trader-/Harvest-Header.
+- Mobile Live-Karten erhalten einen separaten hervorgehobenen Trader-Block.
+- Ticker-Details zeigen Trader-Ziel, Harvest-Ampel und Trader-Modus in einer eigenen Infozeile.
+- Keine Aenderung an Live-/Shadow-/Exit-/TP-Logik und keine zusaetzlichen Provider-Requests.
+
 ## v30.4 - Short-Term Trader & Profit Harvest Engine
 - Neue additive, providerfreie Kurzfrist-Trader-/Profit-Harvest-Schicht; klassische TP-/Trendlogik bleibt unveraendert.
 - Dynamisches Kurzfrist-Trader-Ziel aus Kurs/Entry, ATR, Markt-/Volatilitaetskontext, RS-Dynamik und bestehenden technischen Risikofeldern.

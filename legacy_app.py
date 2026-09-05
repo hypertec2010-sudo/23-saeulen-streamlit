@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.4"
+APP_VERSION = "v30.4a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -18632,13 +18632,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
                             st.caption("Volatilität = ATR(14) in % des Kurses. Datenqualität bewertet nur Vollständigkeit/Historie der Marktdaten und verändert den Trading-Score nicht.")
                             st.caption("Statuswechsel können auch ohne sichtbare Kursbewegung entstehen: Die neue Spalte 'Warum geändert?' vergleicht Score, Trigger, Timing, Konfluenz, Radar-Bucket und harte Gates mit dem vorherigen Scan.")
-                            st.caption("v30.4: Trader-Ziel / Harvest-Score sind ein zusätzlicher taktischer Kurzfrist-Pfad für schwankende Märkte. Sie verändern weder Live-/Shadow-Ampel noch TP1/TP2/TP3 und erzeugen keine zusätzlichen Provider-Abfragen.")
+                            st.caption("v30.4a: Trader-Ziel und Harvest-Ampel stehen direkt vorne im Live-Screener. Die Hervorhebung ist rein visuell; Live-/Shadow-Ampel, TP1/TP2/TP3 und Provider-Verhalten bleiben unverändert.")
                             # v24.3: Lesbare operative Haupttabelle.
                             # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Trader-Ziel", "Harvest-Score", "Trader-Modus", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
+                                # v30.4a: Trader-Pfad direkt hinter Kurs/Titel sichtbar machen,
+                                # damit die taktischen Werte im breiten Live-Screener nicht
+                                # hinter Shadow-/Diagnosespalten verschwinden.
+                                "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Trader-Modus", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -18661,8 +18664,41 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 txt = _v243_clean_cell(x)
                                 return txt if len(txt) <= max_len else txt[:max_len - 1] + "…"
 
+                            # v30.4a: rein visuelle Trader-/Harvest-Badges. Die Werte
+                            # werden nur im Display-Frame formatiert; live_df und damit
+                            # Live-/Shadow-/Positionslogik bleiben unverändert.
+                            def _v304a_harvest_num(value):
+                                try:
+                                    txt = _v243_clean_cell(value).replace(",", ".")
+                                    if txt in {"", "-", "n/a"}:
+                                        return None
+                                    match = re.search(r"[-+]?\d+(?:\.\d+)?", txt)
+                                    return float(match.group(0)) if match else None
+                                except Exception:
+                                    return None
+
+                            def _v304a_harvest_badge(value):
+                                score = _v304a_harvest_num(value)
+                                if score is None:
+                                    return "⚪ n/a"
+                                if score >= 75:
+                                    icon = "🟠"
+                                elif score >= 60:
+                                    icon = "🟡"
+                                else:
+                                    icon = "🟢"
+                                return f"{icon} {score:.0f}/100"
+
+                            def _v304a_trader_target_badge(value):
+                                txt = _v243_clean_cell(value)
+                                return txt if txt in {"", "-", "n/a"} else f"⚡ {txt}"
+
                             for _col in live_display_df.columns:
                                 live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)
+                            if "Trader-Ziel" in live_display_df.columns:
+                                live_display_df["Trader-Ziel"] = live_display_df["Trader-Ziel"].apply(_v304a_trader_target_badge)
+                            if "Harvest-Score" in live_display_df.columns:
+                                live_display_df["Harvest-Score"] = live_display_df["Harvest-Score"].apply(_v304a_harvest_badge)
                             for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24, "Warum geändert?": 96}.items():
                                 if _col in live_display_df.columns:
                                     live_display_df[_col] = live_display_df[_col].apply(lambda x, m=_max: _v243_clip_cell(x, m))
@@ -18681,6 +18717,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     .v2842-mobile-title {font-size:1.05rem;font-weight:750;line-height:1.25;}
                                     .v2842-mobile-name {opacity:.72;font-size:.86rem;margin-top:2px;}
                                     .v2842-mobile-score {font-weight:750;white-space:nowrap;}
+                                    .v304a-trader-strip {display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;margin-top:10px;padding:9px 10px;border:1px solid rgba(96,165,250,.28);border-radius:11px;background:rgba(30,64,175,.08);}
+                                    .v304a-trader-strip.hot {border-color:rgba(251,146,60,.48);background:rgba(154,52,18,.10);}
+                                    .v304a-trader-strip.warm {border-color:rgba(250,204,21,.42);background:rgba(133,77,14,.09);}
+                                    .v304a-trader-strip .v304a-trader-value {font-weight:800;line-height:1.25;}
+                                    .v304a-trader-wide {grid-column:1 / -1;}
                                     .v2842-mobile-grid {display:grid;grid-template-columns:1fr 1fr;gap:7px 14px;margin-top:11px;font-size:.9rem;}
                                     .v2842-mobile-label {opacity:.68;font-size:.76rem;display:block;}
                                     .v2842-mobile-status {margin-top:10px;font-weight:650;line-height:1.35;}
@@ -18706,9 +18747,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _engine_rec_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Empfehlung")))
                                     _ctx_conf_v285a2 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Verlässlichkeit")))
                                     _price_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kurs")))
-                                    _trader_target_v304 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Trader-Ziel")))
+                                    _trader_target_text_v304a = _v243_clean_cell(_mobile_row_v2842.get("Trader-Ziel"))
+                                    if _trader_target_text_v304a.startswith("⚡ "):
+                                        _trader_target_text_v304a = _trader_target_text_v304a[2:].strip()
+                                    _trader_target_v304 = html.escape(_trader_target_text_v304a)
                                     _harvest_v304 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Harvest-Score")))
                                     _trader_mode_v304 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trader-Modus"), 64))
+                                    _harvest_num_v304a = _v304a_harvest_num(_mobile_row_v2842.get("Harvest-Score"))
+                                    _trader_strip_class_v304a = "hot" if (_harvest_num_v304a is not None and _harvest_num_v304a >= 75) else ("warm" if (_harvest_num_v304a is not None and _harvest_num_v304a >= 60) else "")
                                     _vol_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilität")))
                                     _dq_v2845d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Datenqualität")))
                                     _rs_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Relative Stärke")))
@@ -18753,11 +18799,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             </div>
                                             <div class="v2842-mobile-score">{_score_v2842}</div>
                                           </div>
+                                          <div class="v304a-trader-strip {_trader_strip_class_v304a}">
+                                            <div><span class="v2842-mobile-label">⚡ Trader-Ziel</span><span class="v304a-trader-value">{_trader_target_v304}</span></div>
+                                            <div><span class="v2842-mobile-label">Harvest-Ampel</span><span class="v304a-trader-value">{_harvest_v304}</span></div>
+                                            <div class="v304a-trader-wide"><span class="v2842-mobile-label">Trader-Modus</span><span class="v304a-trader-value">{_trader_mode_v304}</span></div>
+                                          </div>
                                           <div class="v2842-mobile-grid">
                                             <div><span class="v2842-mobile-label">Kurs</span>{_price_v2842}</div>
-                                            <div><span class="v2842-mobile-label">Trader-Ziel</span>{_trader_target_v304}</div>
-                                            <div><span class="v2842-mobile-label">Harvest</span>{_harvest_v304}</div>
-                                            <div><span class="v2842-mobile-label">Trader-Modus</span>{_trader_mode_v304}</div>
                                             <div><span class="v2842-mobile-label">Volatilität</span>{_vol_v2842}</div>
                                             <div><span class="v2842-mobile-label">Datenqualität</span>{_dq_v2845d}</div>
                                             <div><span class="v2842-mobile-label">Relative Stärke</span>{_rs_v2847}</div>
@@ -18841,6 +18889,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
                                             st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
                                             st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · RS-Dynamik: {_v243_clean_cell(_mobile_detail_row_v2842.get('RS-Dynamik'))} · Benchmark: {_v243_clean_cell(_mobile_detail_row_v2842.get('Benchmark'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
+                                            st.info(
+                                                f"⚡ Trader-Ziel {_v243_clean_cell(_mobile_detail_row_v2842.get('Trader-Ziel'))} · "
+                                                f"Harvest {_v304a_harvest_badge(_mobile_detail_row_v2842.get('Harvest-Score'))} · "
+                                                f"{_v243_clean_cell(_mobile_detail_row_v2842.get('Trader-Modus'))}"
+                                            )
                                             st.caption(f"Engine 2.0 (Shadow): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · Live {_detail_ampel_v2846} → Shadow {_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Ampel'))} ({_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Abweichung'))}) · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
                                             _detail_gates_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Aktive Einstiegsgates"))
                                             _detail_gate_text_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Gate-Details"))
@@ -18890,7 +18943,18 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 use_container_width=True,
                                             )
                             else:
-                                st.dataframe(live_display_df, hide_index=True, use_container_width=True, height=min(520, 42 * len(live_display_df) + 55))
+                                # v30.4a: Header nur im Desktop-Display umbenennen. Keine
+                                # Abhaengigkeit von Streamlit column_config notwendig.
+                                _desktop_live_display_v304a = live_display_df.rename(columns={
+                                    "Trader-Ziel": "⚡ Trader-Ziel",
+                                    "Harvest-Score": "Harvest-Ampel",
+                                })
+                                st.dataframe(
+                                    _desktop_live_display_v304a,
+                                    hide_index=True,
+                                    use_container_width=True,
+                                    height=min(520, 42 * len(_desktop_live_display_v304a) + 55),
+                                )
                                 with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
                                     detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
                                     try:

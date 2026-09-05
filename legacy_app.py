@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.4b"
+APP_VERSION = "v30.4c"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15417,12 +15417,57 @@ _v302_load_profile = _profit_protection_v302.load_profile
 _v302_save_profile = _profit_protection_v302.save_profile
 _v302_analyze_fast_move_history = _profit_protection_v302.analyze_fast_move_history
 
-# v30.4: provider-free Short-Term Trader / Profit Harvest layer.
+# v30.4c: provider-free Short-Term Trader / Profit Harvest layer.
+# Streamlit kann bei einem Patch-Rerun noch eine bereits importierte aeltere
+# modules.short_term_trader-Instanz in sys.modules halten. v30.4b erwartete
+# attach_scan_context() hart und konnte dadurch bei gemischtem Runtime-/Dateistand
+# mit AttributeError abbrechen. Falls die benoetigte API fehlt, laden wir exakt
+# die lokale Moduldatei unter einem eindeutigen Namen neu.
+def _v304c_resolve_short_term_trader_module(module):
+    required = (
+        "configure_context",
+        "build_screener_plan",
+        "assess_position",
+        "enrich_live_frame",
+        "attach_scan_context",
+    )
+    if all(callable(getattr(module, name, None)) for name in required):
+        return module, "package-import"
+    try:
+        import importlib.util as _importlib_util_v304c
+        _path_v304c = _MODULE_DIR_V252 / "short_term_trader.py"
+        _spec_v304c = _importlib_util_v304c.spec_from_file_location(
+            "_capital_hill_short_term_trader_v304c",
+            _path_v304c,
+        )
+        if _spec_v304c is not None and _spec_v304c.loader is not None:
+            _local_v304c = _importlib_util_v304c.module_from_spec(_spec_v304c)
+            _spec_v304c.loader.exec_module(_local_v304c)
+            if all(callable(getattr(_local_v304c, name, None)) for name in required):
+                return _local_v304c, "exact-local-file"
+    except Exception:
+        pass
+    return module, "compat-fallback"
+
+
+def _v304c_attach_scan_context_fallback(df):
+    # Fail-safe only: never mutate the productive Atomic frame and never invent
+    # a synthetic Scan-Chop value when the v30.4b helper cannot be loaded.
+    return df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+
+
+_short_term_trader_v304, _v304c_short_term_module_mode = _v304c_resolve_short_term_trader_module(
+    _short_term_trader_v304
+)
 _short_term_trader_v304.configure_context(time_provider=get_current_berlin_time)
 _v304_build_screener_plan = _short_term_trader_v304.build_screener_plan
 _v304_assess_position = _short_term_trader_v304.assess_position
 _v304_enrich_live_frame = _short_term_trader_v304.enrich_live_frame
-_v304b_attach_scan_context = _short_term_trader_v304.attach_scan_context
+_v304b_attach_scan_context = getattr(
+    _short_term_trader_v304,
+    "attach_scan_context",
+    _v304c_attach_scan_context_fallback,
+)
 
 _position_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
@@ -18640,7 +18685,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
                             st.caption("Volatilität = ATR(14) in % des Kurses. Datenqualität bewertet nur Vollständigkeit/Historie der Marktdaten und verändert den Trading-Score nicht.")
                             st.caption("Statuswechsel können auch ohne sichtbare Kursbewegung entstehen: Die neue Spalte 'Warum geändert?' vergleicht Score, Trigger, Timing, Konfluenz, Radar-Bucket und harte Gates mit dem vorherigen Scan.")
-                            st.caption("v30.4b: Harvest/Chop reagiert jetzt staerker auf Scan-Breite, RS-Verschlechterung und Volatilitaet. Die klassische TP-/Live-/Shadow-Logik bleibt unveraendert.")
+                            st.caption("v30.4c: Harvest/Chop nutzt weiterhin die v30.4b-Kalibrierung; der Modul-Import ist jetzt gegen gemischte/stale Runtime-Staende gehaertet. Die klassische TP-/Live-/Shadow-Logik bleibt unveraendert.")
                             try:
                                 _scan_chop_vals_v304b = pd.to_numeric(
                                     live_df.get("Scan-Chop", pd.Series(dtype=object)).astype(str).str.extract(r"(\d+(?:\.\d+)?)")[0],
@@ -21004,7 +21049,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     if _manage_trader_v304.get("resistance_pct") is not None:
                                         st.write(f"**Nächster vorhandener Ziel-/Widerstandskontext:** ca. +{float(_manage_trader_v304.get('resistance_pct')):.1f}% vom Entry")
                                     st.caption(
-                                        "v30.4b bleibt zunächst beobachtend. Aktive Harvest-Hinweise werden dedupliziert ins Event-Log geschrieben, "
+                                        "v30.4c bleibt zunächst beobachtend. Aktive Harvest-Hinweise werden dedupliziert ins Event-Log geschrieben, "
                                         "damit spätere Versionen gegen real geschlossene Trades lernen können."
                                     )
 

@@ -1,6 +1,6 @@
-"""v30.4b - Short-Term Trader & Profit Harvest Engine calibration.
+"""v30.4c - Short-Term Trader & Profit Harvest Engine calibration.
 
-Advisory/provider-free tactical layer. v30.4b adds scan-breadth and
+Advisory/provider-free tactical layer. v30.4c retains the v30.4b scan-breadth and
 RS-deterioration calibration while it complements the existing classic
 TP/Trend path with a dynamic short-term profit-harvest perspective. The module
 never places orders, changes stops, or alters productive Live/Shadow scores.

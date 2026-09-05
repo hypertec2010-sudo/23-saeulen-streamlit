@@ -1,3 +1,12 @@
+## v30.4c - Short-Term Trader Import Compatibility Fix
+- Fixed startup `AttributeError` at `_short_term_trader_v304.attach_scan_context`.
+- Root cause hardened: Streamlit/runpy may retain an older imported `modules.short_term_trader` object while `legacy_app.py` is already on the newer v30.4b API.
+- Added API capability check before wiring the Short-Term Trader aliases.
+- If the cached module is stale, the app reloads the exact local `modules/short_term_trader.py` under a unique module name.
+- Added fail-safe `attach_scan_context` fallback that preserves the Atomic frame unchanged instead of crashing; it never fabricates Scan-Chop data.
+- Re-ships `modules/short_term_trader.py` so legacy app and tactical module are deployed atomically.
+- v30.4b Harvest/Chop calibration, color thresholds, TP/Live/Shadow/Exit behavior and provider load remain unchanged.
+
 ## v30.4b - Harvest / Chop Calibration
 - Recalibrated the Short-Term Trader / Profit Harvest layer after real-scan review showed overly compressed green Harvest values.
 - Added provider-free cross-sectional `Scan-Chop` from the complete Atomic watchlist frame: active breadth, RS deterioration breadth, weak/neutral RS breadth, volatility and signal stability.

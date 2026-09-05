@@ -1,3 +1,11 @@
+## v30.3j - Compact Responsive Board Metrics
+- Globale `st.metric`-Darstellung fuer dichte Dashboard-/Board-Karten kompakter und responsiver gemacht.
+- Lange Labels umbrechen jetzt mehrzeilig und werden kleiner dargestellt, statt in 5-/6-Spalten-Layouts abgeschnitten zu werden.
+- Metric-Werte bleiben hervorgehoben, nutzen aber eine leicht reduzierte responsive Schriftgroesse.
+- Delta-/Hinweiszeilen duerfen ebenfalls umbrechen und werden kompakter dargestellt.
+- Desktop-Labels erhalten eine einheitliche Mindesthoehe fuer bessere Ausrichtung; auf Mobile wird diese wieder geloest.
+- Wirkt app-weit auf vergleichbare `st.metric`-Felder, ohne Berechnungs-, Daten- oder Providerlogik zu veraendern.
+
 ## v30.3i - Automatic ECB FX Layer
 - Portfolio-FX wird standardmaessig automatisch aus der offiziellen ECB-Euro-Referenzkurstabelle geladen.
 - Ein einziger ECB-XML-Abruf deckt alle unterstuetzten Waehrungen ab; keine Einzelabfrage pro Position.

@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3i"
+APP_VERSION = "v30.3j"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -16677,20 +16677,60 @@ st.markdown(
         font-weight:800;
     }
 
+    /* v30.3j: kompakte responsive Metric-Karten. Lange Board-Labels sollen
+       vollstaendig lesbar bleiben, ohne dass einzelne Portfolio-/Score-Felder
+       Sonder-CSS benoetigen. */
     div[data-testid="stMetric"]{
         background:linear-gradient(180deg,var(--bg-panel-2) 0%, var(--bg-panel) 100%);
         border:1px solid var(--border-soft);
         border-radius:16px;
-        padding:10px 12px 8px 12px;
+        padding:8px 9px 7px 9px;
         box-shadow:var(--shadow-card);
+        min-width:0 !important;
+        overflow:visible !important;
     }
     div[data-testid="stMetricLabel"]{
         color:var(--text-muted) !important;
         font-weight:800 !important;
+        font-size:clamp(0.64rem, 0.72vw, 0.74rem) !important;
+        line-height:1.14 !important;
+        min-height:2.28em;
+        align-items:flex-start !important;
+        white-space:normal !important;
+        word-break:normal !important;
+        overflow-wrap:anywhere !important;
+        hyphens:auto;
+    }
+    div[data-testid="stMetricLabel"] > div,
+    div[data-testid="stMetricLabel"] p,
+    div[data-testid="stMetricLabel"] span{
+        font-size:inherit !important;
+        line-height:inherit !important;
+        white-space:normal !important;
+        word-break:normal !important;
+        overflow-wrap:anywhere !important;
     }
     div[data-testid="stMetricValue"]{
         color:var(--text-main) !important;
         font-weight:900 !important;
+        font-size:clamp(0.96rem, 1.02vw, 1.10rem) !important;
+        line-height:1.14 !important;
+        white-space:normal !important;
+        overflow-wrap:anywhere !important;
+    }
+    div[data-testid="stMetricValue"] > div,
+    div[data-testid="stMetricValue"] p,
+    div[data-testid="stMetricValue"] span{
+        font-size:inherit !important;
+        line-height:inherit !important;
+        white-space:normal !important;
+        overflow-wrap:anywhere !important;
+    }
+    div[data-testid="stMetricDelta"]{
+        font-size:0.70rem !important;
+        line-height:1.15 !important;
+        white-space:normal !important;
+        overflow-wrap:anywhere !important;
     }
 
     div[data-testid="stExpander"]{
@@ -16764,6 +16804,13 @@ st.markdown(
     @media (max-width: 900px){
         .section-title{font-size:1.02rem !important;}
         .premium-value, .wrap-metric-value, .compact-summary-value{font-size:1.08rem !important;}
+        div[data-testid="stMetricLabel"]{
+            font-size:0.70rem !important;
+            min-height:auto;
+        }
+        div[data-testid="stMetricValue"]{
+            font-size:1.02rem !important;
+        }
         div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button{
             min-height:3.05rem !important;
             border-radius:16px !important;

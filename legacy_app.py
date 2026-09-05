@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.4a"
+APP_VERSION = "v30.4b"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15422,6 +15422,7 @@ _short_term_trader_v304.configure_context(time_provider=get_current_berlin_time)
 _v304_build_screener_plan = _short_term_trader_v304.build_screener_plan
 _v304_assess_position = _short_term_trader_v304.assess_position
 _v304_enrich_live_frame = _short_term_trader_v304.enrich_live_frame
+_v304b_attach_scan_context = _short_term_trader_v304.attach_scan_context
 
 _position_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
@@ -18598,6 +18599,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     # Risikomanagement entfernen.
                     _live_df_complete_v289 = live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame()
 
+                    # v30.4b: provider-free cross-sectional chop context for the tactical
+                    # Trader layer. Productive Live/Shadow/Portfolio inputs stay untouched.
+                    try:
+                        _live_df_trader_v304b = _v304b_attach_scan_context(_live_df_complete_v289)
+                    except Exception:
+                        _live_df_trader_v304b = _live_df_complete_v289.copy()
+
                     # v30.4: UI-only enrichment happens AFTER Shadow history and the
                     # complete position/portfolio frame were captured. This guarantees
                     # that the new tactical columns cannot change productive or shadow
@@ -18632,7 +18640,21 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
                             st.caption("Volatilität = ATR(14) in % des Kurses. Datenqualität bewertet nur Vollständigkeit/Historie der Marktdaten und verändert den Trading-Score nicht.")
                             st.caption("Statuswechsel können auch ohne sichtbare Kursbewegung entstehen: Die neue Spalte 'Warum geändert?' vergleicht Score, Trigger, Timing, Konfluenz, Radar-Bucket und harte Gates mit dem vorherigen Scan.")
-                            st.caption("v30.4a: Trader-Ziel und Harvest-Ampel stehen direkt vorne im Live-Screener. Die Hervorhebung ist rein visuell; Live-/Shadow-Ampel, TP1/TP2/TP3 und Provider-Verhalten bleiben unverändert.")
+                            st.caption("v30.4b: Harvest/Chop reagiert jetzt staerker auf Scan-Breite, RS-Verschlechterung und Volatilitaet. Die klassische TP-/Live-/Shadow-Logik bleibt unveraendert.")
+                            try:
+                                _scan_chop_vals_v304b = pd.to_numeric(
+                                    live_df.get("Scan-Chop", pd.Series(dtype=object)).astype(str).str.extract(r"(\d+(?:\.\d+)?)")[0],
+                                    errors="coerce",
+                                ).dropna()
+                                if not _scan_chop_vals_v304b.empty:
+                                    _scan_chop_now_v304b = float(_scan_chop_vals_v304b.iloc[0])
+                                    _scan_chop_icon_v304b = "\U0001f7e0" if _scan_chop_now_v304b >= 70 else ("\U0001f7e1" if _scan_chop_now_v304b >= 55 else "\U0001f7e2")
+                                    st.caption(
+                                        f"{_scan_chop_icon_v304b} Scan-Chop {_scan_chop_now_v304b:.0f}/100 · "
+                                        "querschnittlicher Schwankungs-/Breitenkontext des aktuellen Atomic-Vollscans; keine Zusatzabfrage."
+                                    )
+                            except Exception:
+                                pass
                             # v24.3: Lesbare operative Haupttabelle.
                             # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
@@ -18641,7 +18663,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # v30.4a: Trader-Pfad direkt hinter Kurs/Titel sichtbar machen,
                                 # damit die taktischen Werte im breiten Live-Screener nicht
                                 # hinter Shadow-/Diagnosespalten verschwinden.
-                                "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Trader-Modus", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
+                                "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Chop-Risk", "Trader-Modus", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -18753,6 +18775,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _trader_target_v304 = html.escape(_trader_target_text_v304a)
                                     _harvest_v304 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Harvest-Score")))
                                     _trader_mode_v304 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trader-Modus"), 64))
+                                    _chop_v304b = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Chop-Risk")))
                                     _harvest_num_v304a = _v304a_harvest_num(_mobile_row_v2842.get("Harvest-Score"))
                                     _trader_strip_class_v304a = "hot" if (_harvest_num_v304a is not None and _harvest_num_v304a >= 75) else ("warm" if (_harvest_num_v304a is not None and _harvest_num_v304a >= 60) else "")
                                     _vol_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilität")))
@@ -18802,7 +18825,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                           <div class="v304a-trader-strip {_trader_strip_class_v304a}">
                                             <div><span class="v2842-mobile-label">⚡ Trader-Ziel</span><span class="v304a-trader-value">{_trader_target_v304}</span></div>
                                             <div><span class="v2842-mobile-label">Harvest-Ampel</span><span class="v304a-trader-value">{_harvest_v304}</span></div>
-                                            <div class="v304a-trader-wide"><span class="v2842-mobile-label">Trader-Modus</span><span class="v304a-trader-value">{_trader_mode_v304}</span></div>
+                                            <div class="v304a-trader-wide"><span class="v2842-mobile-label">Trader-Modus · Chop</span><span class="v304a-trader-value">{_trader_mode_v304} · {_chop_v304b}</span></div>
                                           </div>
                                           <div class="v2842-mobile-grid">
                                             <div><span class="v2842-mobile-label">Kurs</span>{_price_v2842}</div>
@@ -18892,6 +18915,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.info(
                                                 f"⚡ Trader-Ziel {_v243_clean_cell(_mobile_detail_row_v2842.get('Trader-Ziel'))} · "
                                                 f"Harvest {_v304a_harvest_badge(_mobile_detail_row_v2842.get('Harvest-Score'))} · "
+                                                f"Chop {_v243_clean_cell(_mobile_detail_row_v2842.get('Chop-Risk'))} · "
                                                 f"{_v243_clean_cell(_mobile_detail_row_v2842.get('Trader-Modus'))}"
                                             )
                                             st.caption(f"Engine 2.0 (Shadow): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · Live {_detail_ampel_v2846} → Shadow {_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Ampel'))} ({_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Abweichung'))}) · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
@@ -18948,6 +18972,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 _desktop_live_display_v304a = live_display_df.rename(columns={
                                     "Trader-Ziel": "⚡ Trader-Ziel",
                                     "Harvest-Score": "Harvest-Ampel",
+                                    "Chop-Risk": "Chop / Schwankung",
                                 })
                                 st.dataframe(
                                     _desktop_live_display_v304a,
@@ -20542,9 +20567,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             st.caption("Überwacht offene Positionen: R-Multiple, P/L, Stop-/Teilgewinn- und Exit-Hinweise. Mit dem Trade-Journal können Teilverkäufe, Stop-Anpassungen, Notizen und vollständige Schließungen dokumentiert werden. Die App eröffnet oder schließt keine Trades automatisch.")
                             positions = _v244_get_positions(selected_watchlist_name)
                             _position_live_df_v289 = (
-                                _live_df_complete_v289.copy()
-                                if isinstance(_live_df_complete_v289, pd.DataFrame)
-                                else live_df.copy()
+                                _live_df_trader_v304b.copy()
+                                if isinstance(_live_df_trader_v304b, pd.DataFrame)
+                                else (_live_df_complete_v289.copy() if isinstance(_live_df_complete_v289, pd.DataFrame) else live_df.copy())
                             )
                             st.caption("Exit Engine 2.0 nutzt den letzten vollständig abgeschlossenen Atomic-Scan. Der Live-Filter 'nur aktive' beeinflusst Positionswarnungen nicht.")
                             pc1, pc2 = st.columns([0.72, 0.28])
@@ -20972,11 +20997,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.write(f"**Begründung:** {_manage_trader_v304.get('why_text','-')}")
                                     st.write(f"**Restposition:** {_manage_trader_v304.get('remainder_rule','-')}")
                                     st.write(f"**Trendqualität:** {float(_manage_trader_v304.get('trend_quality') or 0):.0f}/100")
+                                    _scan_chop_pos_v304b = _manage_trader_v304.get("scan_chop_score")
+                                    if _scan_chop_pos_v304b is not None:
+                                        st.write(f"**Scan-Chop:** {float(_scan_chop_pos_v304b):.0f}/100 · querschnittlicher Kontext des letzten Atomic-Vollscans")
                                     st.write(f"**Datenbasis:** {_manage_trader_v304.get('confidence','-')} · providerfrei aus aktuellem Atomic-Stand")
                                     if _manage_trader_v304.get("resistance_pct") is not None:
                                         st.write(f"**Nächster vorhandener Ziel-/Widerstandskontext:** ca. +{float(_manage_trader_v304.get('resistance_pct')):.1f}% vom Entry")
                                     st.caption(
-                                        "v30.4 ist zunächst beobachtend. Aktive Harvest-Hinweise werden dedupliziert ins Event-Log geschrieben, "
+                                        "v30.4b bleibt zunächst beobachtend. Aktive Harvest-Hinweise werden dedupliziert ins Event-Log geschrieben, "
                                         "damit spätere Versionen gegen real geschlossene Trades lernen können."
                                     )
 

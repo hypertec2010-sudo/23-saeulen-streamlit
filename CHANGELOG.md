@@ -1,3 +1,15 @@
+## v30.4b - Harvest / Chop Calibration
+- Recalibrated the Short-Term Trader / Profit Harvest layer after real-scan review showed overly compressed green Harvest values.
+- Added provider-free cross-sectional `Scan-Chop` from the complete Atomic watchlist frame: active breadth, RS deterioration breadth, weak/neutral RS breadth, volatility and signal stability.
+- Added positive-market/weak-breadth divergence so a constructive headline regime cannot hide choppy participation underneath.
+- RS deterioration now scales with the actual PP change; severe negative RS dynamics increase Chop/Harvest more strongly.
+- Clean-trend Live-score discount is now guarded by RS, risk pressure and signal stability instead of applying too broadly.
+- Harvest color thresholds remain unchanged at yellow >=60 and orange >=75; calibration changes the score inputs rather than moving the goalposts.
+- Live Screener now exposes `Chop / Schwankung` next to the Harvest ampelfield and shows one full-scan Scan-Chop summary.
+- Position Harvest receives the same scan context through a separate tactical frame; productive Live/Shadow/Portfolio semantics stay unchanged.
+- Regression on the pasted 49-row scan: Scan-Chop 55/100, 7 yellow Harvest rows from visible fields only, while clean leaders stayed green; no orange state is forced.
+- No new provider calls, orders, stops, productive score changes or automatic cutover.
+
 ## v30.4a - Trader-Ziel & Harvest-Ampel Highlighting
 - Reiner UI-Patch fuer den v30.4 Short-Term-Trader-/Profit-Harvest-Pfad; Berechnungslogik unveraendert.
 - Live-Screener ordnet Trader-Ziel, Harvest-Ampel und Trader-Modus direkt hinter Ticker/Name/Kurs ein.

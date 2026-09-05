@@ -1,6 +1,7 @@
-"""v30.4 - Short-Term Trader & Profit Harvest Engine.
+"""v30.4b - Short-Term Trader & Profit Harvest Engine calibration.
 
-Advisory/provider-free tactical layer. It complements the existing classic
+Advisory/provider-free tactical layer. v30.4b adds scan-breadth and
+RS-deterioration calibration while it complements the existing classic
 TP/Trend path with a dynamic short-term profit-harvest perspective. The module
 never places orders, changes stops, or alters productive Live/Shadow scores.
 """
@@ -9,6 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+import re
 import numpy as np
 import pandas as pd
 
@@ -73,6 +75,168 @@ def _first_num(row: dict[str, Any], *keys: str) -> float | None:
         if val is not None:
             return val
     return None
+
+
+def _first_text_number(value: Any) -> float | None:
+    try:
+        text = str(value or "").replace(",", ".")
+        match = re.search(r"[-+]?\d+(?:\.\d+)?", text)
+        return float(match.group(0)) if match else None
+    except Exception:
+        return None
+
+
+def _rs_delta_pp(live: dict[str, Any]) -> float | None:
+    for key in ("RS-Dynamik Delta PP", "RS-Dynamik Delta", "rs_dynamics_delta_pp", "rs_delta_pp"):
+        val = _num(live.get(key), None)
+        if val is not None:
+            return val
+    text = _text(live.get("RS-Dynamik"), "")
+    if text:
+        match = re.search(r"\(([-+]?\d+(?:[\.,]\d+)?)\s*PP\)", text, flags=re.IGNORECASE)
+        if match:
+            try:
+                return float(match.group(1).replace(",", "."))
+            except Exception:
+                pass
+    return None
+
+
+def _volatility_pct(live: dict[str, Any]) -> float | None:
+    direct = _first_num(live, "ATR-%", "ATR %", "atr_pct", "Volatilitaet %", "Volatilitaets-%")
+    if direct is not None:
+        return direct
+    return _first_text_number(live.get("Volatilit\u00e4t"))
+
+
+def _rs_deterioration_pressure(live: dict[str, Any]) -> float:
+    label = _text(live.get("RS-Dynamik"), "").lower()
+    delta = _rs_delta_pp(live)
+    if "verschlechter" in label:
+        if delta is None:
+            return 52.0
+        return _clamp(35.0 + abs(min(delta, 0.0)) * 2.6, 35.0, 100.0)
+    if delta is not None and delta <= -5.0:
+        return _clamp(abs(delta) * 2.2, 10.0, 75.0)
+    if "verbessert" in label or (delta is not None and delta >= 5.0):
+        return 0.0
+    if delta is not None and delta < 0:
+        return _clamp(abs(delta) * 1.5, 0.0, 18.0)
+    return 0.0
+
+
+def _scan_chop_context(df: pd.DataFrame | None) -> dict[str, Any]:
+    if not isinstance(df, pd.DataFrame) or len(df) < 8:
+        return {"score": None, "sample": int(len(df)) if isinstance(df, pd.DataFrame) else 0, "reasons": []}
+
+    records = [row.to_dict() for _, row in df.iterrows()]
+    n = max(1, len(records))
+
+    def share(predicate) -> float | None:
+        hits = 0
+        known = 0
+        for row in records:
+            value = predicate(row)
+            if value is None:
+                continue
+            known += 1
+            hits += int(bool(value))
+        return (hits / known) if known else None
+
+    active_share = share(lambda r: str(r.get("Ampel") or "").strip() in {"\U0001f7e2", "\U0001f7e1"} if str(r.get("Ampel") or "").strip() else None)
+    deteriorating_share = share(
+        lambda r: (
+            "verschlechter" in _text(r.get("RS-Dynamik"), "").lower()
+            or ((_rs_delta_pp(r) is not None) and float(_rs_delta_pp(r)) <= -5.0)
+        ) if _text(r.get("RS-Dynamik"), "") else None
+    )
+    weak_rs_share = share(
+        lambda r: any(x in _text(r.get("Relative St\u00e4rke"), "").lower() for x in ("sehr schwach", "schwach", "neutral"))
+        if _text(r.get("Relative St\u00e4rke"), "") else None
+    )
+    elevated_vol_share = share(
+        lambda r: any(x in _text(r.get("Volatilit\u00e4tsregime"), "").lower() for x in ("erh\u00f6ht", "erhoeht", "hoch"))
+        if _text(r.get("Volatilit\u00e4tsregime"), "") else ((_volatility_pct(r) or 0.0) >= 4.5 if _volatility_pct(r) is not None else None)
+    )
+    unstable_share = share(
+        lambda r: any(x in _text(r.get("Signal-Stabilit\u00e4t"), "").lower() for x in ("wackelig", "fragil", "instabil", "unruh", "defensiv"))
+        if _text(r.get("Signal-Stabilit\u00e4t"), "") else None
+    )
+    positive_market_share = share(
+        lambda r: any(x in _text(r.get("Marktregime"), "").lower() for x in ("positiv", "bull", "risk-on"))
+        if _text(r.get("Marktregime"), "") else None
+    )
+
+    weighted: list[tuple[float, float]] = []
+    if active_share is not None:
+        weighted.append(((1.0 - active_share) * 100.0, 0.44))
+    if deteriorating_share is not None:
+        weighted.append((deteriorating_share * 100.0, 0.24))
+    if weak_rs_share is not None:
+        weighted.append((weak_rs_share * 100.0, 0.14))
+    if elevated_vol_share is not None:
+        weighted.append((elevated_vol_share * 100.0, 0.10))
+    if unstable_share is not None:
+        weighted.append((unstable_share * 100.0, 0.08))
+    if not weighted:
+        return {"score": None, "sample": n, "reasons": []}
+    weight_sum = sum(w for _, w in weighted)
+    score = sum(v * w for v, w in weighted) / max(weight_sum, 1e-9)
+
+    reasons: list[str] = []
+    if active_share is not None and active_share < 0.50:
+        reasons.append(f"nur {active_share * 100.0:.0f}% des Scans gruen/gelb")
+    if deteriorating_share is not None and deteriorating_share >= 0.22:
+        reasons.append(f"RS verschlechtert sich bei {deteriorating_share * 100.0:.0f}%")
+    if weak_rs_share is not None and weak_rs_share >= 0.45:
+        reasons.append(f"schwache/neutrale RS bei {weak_rs_share * 100.0:.0f}%")
+    if elevated_vol_share is not None and elevated_vol_share >= 0.30:
+        reasons.append(f"erhoehte Volatilitaet bei {elevated_vol_share * 100.0:.0f}%")
+
+    # A positive index/regime with weak watchlist breadth is a classic mixed/choppy
+    # condition: the headline market looks constructive while many individual names
+    # do not participate cleanly.
+    if positive_market_share is not None and active_share is not None and positive_market_share >= 0.60 and active_share < 0.50:
+        score += 10.0
+        reasons.append("positives Marktregime, aber schwache Scan-Breite")
+    if active_share is not None and active_share < 0.32:
+        score += 6.0
+    if deteriorating_share is not None and deteriorating_share >= 0.38:
+        score += 6.0
+
+    score = _clamp(score)
+
+    def pct(value: float | None) -> float | None:
+        return None if value is None else round(value * 100.0, 1)
+
+    return {
+        "score": round(float(score), 1),
+        "sample": n,
+        "active_share_pct": pct(active_share),
+        "rs_deteriorating_share_pct": pct(deteriorating_share),
+        "weak_rs_share_pct": pct(weak_rs_share),
+        "elevated_vol_share_pct": pct(elevated_vol_share),
+        "unstable_share_pct": pct(unstable_share),
+        "positive_market_share_pct": pct(positive_market_share),
+        "reasons": reasons[:4],
+    }
+
+def attach_scan_context(df: pd.DataFrame | None) -> pd.DataFrame:
+    """Attach provider-free cross-sectional chop context to each Atomic row.
+
+    Hidden columns are additive only. They do not modify productive Live/Shadow
+    inputs and can safely be carried into the tactical position layer.
+    """
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+    out = df.copy()
+    ctx = _scan_chop_context(out)
+    score = ctx.get("score")
+    out["__v304b_scan_chop"] = np.nan if score is None else float(score)
+    out["__v304b_scan_chop_reason"] = " \u00b7 ".join(ctx.get("reasons") or [])
+    out["__v304b_scan_active_share_pct"] = ctx.get("active_share_pct")
+    out["__v304b_scan_rs_deteriorating_share_pct"] = ctx.get("rs_deteriorating_share_pct")
+    return out
 
 
 def _holding_days(pos: dict[str, Any], now: datetime | None = None) -> int | None:
@@ -140,59 +304,110 @@ def _chop_score(live: dict[str, Any]) -> tuple[float, list[str]]:
     market, volatility, rs, stability = _market_context(live)
     ml, vl, rl, sl = market.lower(), volatility.lower(), rs.lower(), stability.lower()
     risks = _risk_inputs(live)
-    score = 34.0
+    score = 36.0
     reasons: list[str] = []
 
     if any(x in ml for x in ("negativ", "bear", "risk-off")):
-        score += 18.0
+        score += 15.0
         reasons.append("schwieriges/negatives Marktregime")
     elif any(x in ml for x in ("neutral", "gemischt", "mixed", "seitw", "unklar")):
-        score += 11.0
+        score += 9.0
         reasons.append("gemischtes Marktregime")
     elif any(x in ml for x in ("positiv", "bull", "risk-on")):
-        score -= 8.0
+        score -= 3.0
 
     if "hoch" in vl:
-        score += 20.0
-        reasons.append("hohe Volatilit\u00e4t")
+        score += 18.0
+        reasons.append("hohe Volatilitaet")
     elif any(x in vl for x in ("erh\u00f6ht", "erhoeht", "mittel")):
         score += 10.0
-        reasons.append("erh\u00f6hte Volatilit\u00e4t")
+        reasons.append("erhoehte Volatilitaet")
     elif any(x in vl for x in ("niedrig", "ruhig")):
-        score -= 5.0
+        score -= 2.0
+
+    vol_pct = _volatility_pct(live)
+    if vol_pct is not None:
+        if vol_pct >= 6.0:
+            score += 5.0
+        elif vol_pct >= 4.5:
+            score += 3.0
+        elif vol_pct <= 2.0:
+            score -= 1.0
 
     vals = [v for k, v in risks.items() if k != "accumulation" and v is not None]
-    if vals:
-        risk_mean = float(np.mean(vals))
-        score += _clamp((risk_mean - 40.0) * 0.40, -10.0, 22.0)
+    risk_mean = float(np.mean(vals)) if vals else None
+    if risk_mean is not None:
+        score += _clamp((risk_mean - 42.0) * 0.36, -4.0, 20.0)
         if risk_mean >= 58:
             reasons.append(f"technischer Gegen-/Exit-Druck {risk_mean:.0f}/100")
 
+    rs_delta = _rs_delta_pp(live)
     if "verschlechter" in rl:
-        score += 9.0
-        reasons.append("RS-Dynamik verschlechtert sich")
+        if rs_delta is not None and rs_delta <= -20.0:
+            score += 24.0
+        elif rs_delta is not None and rs_delta <= -12.0:
+            score += 18.0
+        elif rs_delta is not None and rs_delta <= -6.0:
+            score += 12.0
+        else:
+            score += 9.0
+        if rs_delta is None:
+            reasons.append("RS-Dynamik verschlechtert sich")
+        else:
+            reasons.append(f"RS-Dynamik {rs_delta:+.1f} PP")
     elif "verbessert" in rl:
-        score -= 6.0
+        score -= 5.0
+    elif rs_delta is not None and rs_delta <= -6.0:
+        score += 7.0
+        reasons.append(f"RS-Dynamik {rs_delta:+.1f} PP")
 
-    if any(x in sl for x in ("wechsel", "instabil", "fragil", "unruh")):
-        score += 11.0
+    rel = _text(live.get("Relative St\u00e4rke"), "").lower()
+    if "sehr schwach" in rel:
+        score += 8.0
+        reasons.append("Relative Staerke sehr schwach")
+    elif "schwach" in rel:
+        score += 5.0
+    elif "neutral" in rel:
+        score += 3.0
+    elif "stark" in rel:
+        score -= 2.0
+
+    if any(x in sl for x in ("wechsel", "instabil", "fragil", "unruh", "wackelig")):
+        score += 9.0
         reasons.append("Signalbild wenig stabil")
+    elif "defensiv" in sl:
+        score += 5.0
     elif any(x in sl for x in ("stabil", "best\u00e4tigt", "bestaetigt")):
-        score -= 4.0
+        score -= 2.0
 
     ls = _live_score(live)
     setup = _text(live.get("Setup-Alert"), "-").lower()
+    rs_pressure = _rs_deterioration_pressure(live)
     if ls is not None:
-        if ls >= 75 and ("verbessert" in rl or any(x in setup for x in ("breakout", "trend", "trigger aktiv"))):
-            score -= 8.0
+        clean_trend_bonus = (
+            ls >= 75
+            and rs_pressure < 25
+            and (risk_mean is None or risk_mean < 50)
+            and not any(x in sl for x in ("wackelig", "fragil", "instabil", "unruh"))
+            and ("verbessert" in rl or any(x in setup for x in ("breakout", "trend", "trigger aktiv")))
+        )
+        if clean_trend_bonus:
+            score -= 4.0
         elif ls < 50:
-            score += 5.0
+            score += 4.0
+
+    scan_chop = _num(live.get("__v304b_scan_chop"), None)
+    if scan_chop is not None:
+        scan_uplift = _clamp((scan_chop - 42.0) * 0.40, 0.0, 14.0)
+        score += scan_uplift
+        if scan_uplift >= 3.0:
+            scan_reason = _text(live.get("__v304b_scan_chop_reason"), "")
+            reasons.append(f"Scan-Chop {scan_chop:.0f}/100" + (f": {scan_reason}" if scan_reason else ""))
 
     score = _clamp(score)
     if not reasons:
         reasons.append("kein dominanter Chop-Treiber; Markt-/Technikkontext eher geordnet")
-    return round(score, 1), reasons[:5]
-
+    return round(score, 1), reasons[:6]
 
 def _trend_quality(live: dict[str, Any]) -> float:
     market, _, rs, stability = _market_context(live)
@@ -235,7 +450,7 @@ def _nearest_resistance_pct(live: dict[str, Any], anchor: float) -> float | None
 
 
 def _target_structure(live: dict[str, Any], anchor: float, chop: float, trend: float) -> dict[str, Any]:
-    atr_pct = _first_num(live, "ATR-%", "ATR %", "atr_pct")
+    atr_pct = _volatility_pct(live)
     if anchor <= 0 or atr_pct is None or atr_pct <= 0:
         return {
             "atr_pct": atr_pct,
@@ -305,9 +520,18 @@ def build_screener_plan(live_row: dict[str, Any] | None) -> dict[str, Any]:
     risks = _risk_inputs(live)
     risk_vals = [v for k, v in risks.items() if k != "accumulation" and v is not None]
     risk_pressure = float(np.mean(risk_vals)) if risk_vals else 40.0
-    harvest = _clamp(chop * 0.72 + risk_pressure * 0.20 + (100.0 - trend) * 0.08)
-    if trend >= 75 and chop < 50:
-        harvest -= 8.0
+    rs_pressure = _rs_deterioration_pressure(live)
+    scan_chop = _num(live.get("__v304b_scan_chop"), None)
+    harvest = (
+        chop * 0.62
+        + risk_pressure * 0.14
+        + (100.0 - trend) * 0.08
+        + rs_pressure * 0.16
+    )
+    if scan_chop is not None:
+        harvest += _clamp((scan_chop - 50.0) * 0.18, 0.0, 7.0)
+    if trend >= 78 and chop < 45 and rs_pressure < 25:
+        harvest -= 6.0
     harvest = _clamp(harvest)
     mode = _mode(harvest)
 
@@ -347,6 +571,8 @@ def build_screener_plan(live_row: dict[str, Any] | None) -> dict[str, Any]:
         "harvest_score": round(float(harvest), 1),
         "chop_score": round(float(chop), 1),
         "trend_quality": round(float(trend), 1),
+        "scan_chop_score": None if scan_chop is None else round(float(scan_chop), 1),
+        "rs_deterioration_pressure": round(float(rs_pressure), 1),
         "anchor_price": price,
         **target,
         "partial_pct": 50 if harvest >= 78 else 40 if harvest >= 68 else 33 if harvest >= 60 else 25 if harvest >= 50 else 0,
@@ -498,6 +724,8 @@ def assess_position(
         "harvest_score": round(float(harvest), 1),
         "chop_score": round(float(chop), 1),
         "trend_quality": round(float(trend), 1),
+        "scan_chop_score": base.get("scan_chop_score"),
+        "rs_deterioration_pressure": base.get("rs_deterioration_pressure"),
         "holding_days": days,
         "pnl_pct": None if pnl_pct is None else round(float(pnl_pct), 2),
         "current": current,
@@ -525,11 +753,12 @@ def enrich_live_frame(df: pd.DataFrame | None) -> pd.DataFrame:
     """Add read-only short-term trader columns to an existing Atomic frame."""
     if not isinstance(df, pd.DataFrame) or df.empty:
         return df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
-    out = df.copy()
+    out = attach_scan_context(df)
     trader_target = []
     secure = []
     harvest = []
     chop = []
+    scan_chop = []
     mode = []
     horizon = []
     for _, row in out.iterrows():
@@ -541,12 +770,15 @@ def enrich_live_frame(df: pd.DataFrame | None) -> pd.DataFrame:
         secure.append("n/a" if sp is None else f"+{float(sp):.1f}%")
         harvest.append(f"{float(pkg.get('harvest_score') or 0):.0f}/100")
         chop.append(f"{float(pkg.get('chop_score') or 0):.0f}/100")
+        sc = pkg.get("scan_chop_score")
+        scan_chop.append("n/a" if sc is None else f"{float(sc):.0f}/100")
         mode.append(f"{pkg.get('ampel','\u26aa')} {pkg.get('mode','-')}")
         horizon.append(str(pkg.get("horizon") or "n/a"))
     out["Trader-Ziel"] = trader_target
     out["Trader-Sicherung ab"] = secure
     out["Harvest-Score"] = harvest
     out["Chop-Risk"] = chop
+    out["Scan-Chop"] = scan_chop
     out["Trader-Modus"] = mode
     out["Trader-Horizont"] = horizon
     return out

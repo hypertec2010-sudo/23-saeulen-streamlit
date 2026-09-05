@@ -1,3 +1,16 @@
+## v30.4 - Short-Term Trader & Profit Harvest Engine
+- Neue additive, providerfreie Kurzfrist-Trader-/Profit-Harvest-Schicht; klassische TP-/Trendlogik bleibt unveraendert.
+- Dynamisches Kurzfrist-Trader-Ziel aus Kurs/Entry, ATR, Markt-/Volatilitaetskontext, RS-Dynamik und bestehenden technischen Risikofeldern.
+- Neue Scores `Harvest Score` und `Chop Risk` 0-100 sowie `Gewinn sichern ab`, Trader-Horizont und Teilgewinn-Idee.
+- Live-Screener wird nach dem abgeschlossenen Atomic-Scan um Trader-Ziel, Sicherung, Harvest, Chop, Modus und Horizont angereichert; keine Zusatzrequests.
+- Haupttabelle und Mobile-Karten zeigen den taktischen Pfad direkt neben der bestehenden Live-Sicht.
+- Einzelanalyse/Trade-Plan zeigt Kurzfrist-Trader-Ziel parallel zu TP1/TP2/TP3; bestehende Ziel-/CRV-Berechnung wird nicht ersetzt.
+- Positions-/Exit-Monitor verbindet den taktischen Pfad mit Profit Velocity, Exhaustion Risk und ausreichend belastbarem Giveback Risk.
+- Starke Trendqualitaet reduziert Harvest-Druck; choppy/volatile Gewinnlagen koennen Teilgewinn 25-50% pruefbar machen, waehrend die Restposition separat weiterlaeuft.
+- Aktive Hinweise werden dedupliziert als `Short-Term Profit Harvest` Event gespeichert und schaffen eine spaetere Lern-/Kalibrierungsbasis.
+- Missing-data guard: kein aktueller Atomic-Kurs oder keine ATR-Basis erzeugt kein kuenstlich praezises taktisches Ziel.
+- Keine Orders, keine Stop-Aenderung, keine automatische Schwellenkalibrierung und keine Aenderung an Live-/Shadow-/Exit-/Validated-Logik.
+
 ## v30.3j - Compact Responsive Board Metrics
 - Globale `st.metric`-Darstellung fuer dichte Dashboard-/Board-Karten kompakter und responsiver gemacht.
 - Lange Labels umbrechen jetzt mehrzeilig und werden kleiner dargestellt, statt in 5-/6-Spalten-Layouts abgeschnitten zu werden.

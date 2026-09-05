@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.3j"
+APP_VERSION = "v30.4"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14595,6 +14595,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "trade_journal.py",
     _MODULE_DIR_V252 / "trade_learning.py",
     _MODULE_DIR_V252 / "early_profit_learning.py",
+    _MODULE_DIR_V252 / "short_term_trader.py",
     _MODULE_DIR_V252 / "portfolio_risk.py",
     _MODULE_DIR_V252 / "validated_engine.py",
     _MODULE_DIR_V252 / "rotation_radar.py",
@@ -14633,6 +14634,7 @@ from modules import profit_protection as _profit_protection_v302
 from modules import trade_journal as _trade_journal_module
 from modules import trade_learning as _trade_learning_module
 from modules import early_profit_learning as _early_profit_learning_v303
+from modules import short_term_trader as _short_term_trader_v304
 from modules import portfolio_risk as _portfolio_risk_module
 from modules import validated_engine as _validated_engine_v300
 from modules import rotation_radar as _rotation_radar_v301
@@ -15415,6 +15417,12 @@ _v302_load_profile = _profit_protection_v302.load_profile
 _v302_save_profile = _profit_protection_v302.save_profile
 _v302_analyze_fast_move_history = _profit_protection_v302.analyze_fast_move_history
 
+# v30.4: provider-free Short-Term Trader / Profit Harvest layer.
+_short_term_trader_v304.configure_context(time_provider=get_current_berlin_time)
+_v304_build_screener_plan = _short_term_trader_v304.build_screener_plan
+_v304_assess_position = _short_term_trader_v304.assess_position
+_v304_enrich_live_frame = _short_term_trader_v304.enrich_live_frame
+
 _position_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
     event_logger=_v2416_log_event,
@@ -15423,6 +15431,7 @@ _position_module.configure_context(
     storage=_storage_v280,
     repository=_repositories_v281.positions,
     profit_protection_engine=_v302_assess_position,
+    short_term_trader_engine=_v304_assess_position,
 )
 _v244_position_store_key = _position_module._v244_position_store_key
 _v245_positions_store_path = _position_module._v245_positions_store_path
@@ -18588,6 +18597,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     # darf rote/weisse Positionen nicht ausgerechnet aus dem
                     # Risikomanagement entfernen.
                     _live_df_complete_v289 = live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame()
+
+                    # v30.4: UI-only enrichment happens AFTER Shadow history and the
+                    # complete position/portfolio frame were captured. This guarantees
+                    # that the new tactical columns cannot change productive or shadow
+                    # scoring/history semantics.
+                    try:
+                        live_df = _v304_enrich_live_frame(live_df)
+                    except Exception:
+                        pass
+
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty and _live_df_complete_v289.empty and not rotation_radar_active_v301b:
@@ -18613,12 +18632,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
                             st.caption("Volatilität = ATR(14) in % des Kurses. Datenqualität bewertet nur Vollständigkeit/Historie der Marktdaten und verändert den Trading-Score nicht.")
                             st.caption("Statuswechsel können auch ohne sichtbare Kursbewegung entstehen: Die neue Spalte 'Warum geändert?' vergleicht Score, Trigger, Timing, Konfluenz, Radar-Bucket und harte Gates mit dem vorherigen Scan.")
+                            st.caption("v30.4: Trader-Ziel / Harvest-Score sind ein zusätzlicher taktischer Kurzfrist-Pfad für schwankende Märkte. Sie verändern weder Live-/Shadow-Ampel noch TP1/TP2/TP3 und erzeugen keine zusätzlichen Provider-Abfragen.")
                             # v24.3: Lesbare operative Haupttabelle.
                             # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
                             # scrollen, um den Unternehmensnamen zu sehen.
                             main_cols = [
-                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
+                                "Ampel", "Shadow-Ampel", "Shadow-Abweichung", "Ticker", "Name", "Kurs", "Live-Score", "Trader-Ziel", "Harvest-Score", "Trader-Modus", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
@@ -18686,6 +18706,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _engine_rec_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Empfehlung")))
                                     _ctx_conf_v285a2 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Verlässlichkeit")))
                                     _price_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kurs")))
+                                    _trader_target_v304 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Trader-Ziel")))
+                                    _harvest_v304 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Harvest-Score")))
+                                    _trader_mode_v304 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trader-Modus"), 64))
                                     _vol_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilität")))
                                     _dq_v2845d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Datenqualität")))
                                     _rs_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Relative Stärke")))
@@ -18732,6 +18755,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                           </div>
                                           <div class="v2842-mobile-grid">
                                             <div><span class="v2842-mobile-label">Kurs</span>{_price_v2842}</div>
+                                            <div><span class="v2842-mobile-label">Trader-Ziel</span>{_trader_target_v304}</div>
+                                            <div><span class="v2842-mobile-label">Harvest</span>{_harvest_v304}</div>
+                                            <div><span class="v2842-mobile-label">Trader-Modus</span>{_trader_mode_v304}</div>
                                             <div><span class="v2842-mobile-label">Volatilität</span>{_vol_v2842}</div>
                                             <div><span class="v2842-mobile-label">Datenqualität</span>{_dq_v2845d}</div>
                                             <div><span class="v2842-mobile-label">Relative Stärke</span>{_rs_v2847}</div>
@@ -20493,6 +20519,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.write(str(_pos_row_v289.get("Warum 2.0") or "-"))
                                                 st.write(f"Trade-Status: {_pos_row_v289.get('Trade-Status','-')}")
                                                 st.write(f"R: {_pos_row_v289.get('R','n/a')} · P/L: {_pos_row_v289.get('P/L %','n/a')}")
+                                                st.write(f"Trader-Harvest: {_pos_row_v289.get('⚡ Trader-Harvest','n/a')}")
+                                                st.write(f"Trader-Ziel: {_pos_row_v289.get('Trader-Ziel','n/a')} · Harvest: {_pos_row_v289.get('Harvest Score','n/a')} · Chop: {_pos_row_v289.get('Chop Risk','n/a')}")
                                                 st.write(f"Early-Profit: {_pos_row_v289.get('⚡ Early-Profit','n/a')}")
                                                 st.write(f"Profit Velocity: {_pos_row_v289.get('Profit Velocity','n/a')} · Exhaustion: {_pos_row_v289.get('Exhaustion Risk','n/a')}")
                                 else:
@@ -20737,6 +20765,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _manage_live_row_v289 if _manage_has_atomic_v302 else {},
                                     history_profile=_manage_profile_v302,
                                 )
+                                _manage_trader_v304 = _v304_assess_position(
+                                    manage_pos_v270,
+                                    _manage_live_row_v289 if _manage_has_atomic_v302 else {},
+                                    early_profit=_manage_profit_v302,
+                                )
                                 jm1, jm2, jm3, jm4 = st.columns(4)
                                 with jm1:
                                     st.metric("Offene Stück", int(_v230_safe_float(manage_pos_v270.get("shares"), default=0) or 0))
@@ -20831,6 +20864,57 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     "Zusatzempfehlung für ungewöhnlich schnelle Frühgewinne. Sie verändert weder Exit Engine 2.0, "
                                     "Live-/Shadow-Ampel noch Stop oder Order automatisch."
                                 )
+
+                                # ---------- v30.4: Short-Term Trader & Profit Harvest Engine ----------
+                                st.markdown(f"##### ⚡ Kurzfrist-Trader & Profit Harvest Engine · {APP_VERSION}")
+                                _tr_target_pct_v304 = _manage_trader_v304.get("target_pct")
+                                _tr_target_price_v304 = _manage_trader_v304.get("target_price")
+                                _tr_secure_pct_v304 = _manage_trader_v304.get("secure_pct")
+                                _tr_harvest_v304 = _manage_trader_v304.get("harvest_score")
+                                _tr_chop_v304 = _manage_trader_v304.get("chop_score")
+                                _tr_partial_v304 = int(_manage_trader_v304.get("partial_pct") or 0)
+                                _tr_cols_v304 = st.columns(2 if mobile_mode_v2842 else 5)
+                                _tr_metrics_v304 = [
+                                    ("Kurzfrist-Trader-Ziel", "n/a" if _tr_target_pct_v304 is None or _tr_target_price_v304 is None else f"+{float(_tr_target_pct_v304):.1f}% · {_v230_price_text(_tr_target_price_v304)}"),
+                                    ("Gewinn sichern ab", "n/a" if _tr_secure_pct_v304 is None else f"+{float(_tr_secure_pct_v304):.1f}%"),
+                                    ("Harvest Score", "n/a" if _tr_harvest_v304 is None else f"{float(_tr_harvest_v304):.0f}/100"),
+                                    ("Chop / Schwankung", "n/a" if _tr_chop_v304 is None else f"{float(_tr_chop_v304):.0f}/100"),
+                                    ("Teilgewinn", "kein taktischer Teilgewinn" if _tr_partial_v304 <= 0 else f"{_tr_partial_v304}% prüfen"),
+                                ]
+                                for _idx_v304, (_lab_v304, _val_v304) in enumerate(_tr_metrics_v304):
+                                    with _tr_cols_v304[_idx_v304 % len(_tr_cols_v304)]:
+                                        st.metric(_lab_v304, _val_v304)
+
+                                _tr_level_v304 = str(_manage_trader_v304.get("level") or "neutral")
+                                _tr_msg_v304 = (
+                                    f"{_manage_trader_v304.get('ampel','⚪')} {_manage_trader_v304.get('action','-')} · "
+                                    f"{_manage_trader_v304.get('recommendation','-')}"
+                                )
+                                if _tr_level_v304 == "orange":
+                                    st.warning(_tr_msg_v304)
+                                elif _tr_level_v304 == "yellow":
+                                    st.info(_tr_msg_v304)
+                                elif _tr_level_v304 == "green":
+                                    st.success(_tr_msg_v304)
+                                else:
+                                    st.info(_tr_msg_v304)
+                                st.caption(
+                                    "Parallelpfad für schwankende/choppy Marktphasen: kleine positive Bewegungen können taktisch teilweise monetarisiert werden. "
+                                    "TP1/TP2/TP3, Exit Engine 2.0 und Early Profit Protection bleiben unverändert und werden nicht automatisch überschrieben."
+                                )
+                                with st.expander("⚡ Kurzfrist-Trader · Herleitung", expanded=False):
+                                    st.write(f"**Modus:** {_manage_trader_v304.get('mode','-')}")
+                                    st.write(f"**Zeithorizont:** {_manage_trader_v304.get('horizon','n/a')}")
+                                    st.write(f"**Begründung:** {_manage_trader_v304.get('why_text','-')}")
+                                    st.write(f"**Restposition:** {_manage_trader_v304.get('remainder_rule','-')}")
+                                    st.write(f"**Trendqualität:** {float(_manage_trader_v304.get('trend_quality') or 0):.0f}/100")
+                                    st.write(f"**Datenbasis:** {_manage_trader_v304.get('confidence','-')} · providerfrei aus aktuellem Atomic-Stand")
+                                    if _manage_trader_v304.get("resistance_pct") is not None:
+                                        st.write(f"**Nächster vorhandener Ziel-/Widerstandskontext:** ca. +{float(_manage_trader_v304.get('resistance_pct')):.1f}% vom Entry")
+                                    st.caption(
+                                        "v30.4 ist zunächst beobachtend. Aktive Harvest-Hinweise werden dedupliziert ins Event-Log geschrieben, "
+                                        "damit spätere Versionen gegen real geschlossene Trades lernen können."
+                                    )
 
                                 _peer_plan_v302 = _v302_position_peer_plan(manage_pos_v270, manage_ticker_v270)
                                 _peer_symbols_v302 = list(_peer_plan_v302.get("peers") or [])
@@ -28356,6 +28440,44 @@ if result is not None:
                 c4.metric("Kursziel 1 (1R)", f"{tp1:.2f} {ccy}", f"+{(tp1/price-1)*100:.1f}%")
                 c5.metric("Kursziel 2 (Hauptziel)", f"{tp2:.2f} {ccy}", f"+{(tp2/price-1)*100:.1f}%")
                 c6.metric("Kursziel 3", f"{tp3:.2f} {ccy}", f"+{(tp3/price-1)*100:.1f}%")
+
+                # v30.4: Additiver Kurzfrist-Trader-Pfad neben den klassischen Zielen.
+                _tradeplan_row_v304 = {
+                    "Kurs": price,
+                    "ATR-%": atr_pct,
+                    "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
+                    "Volatilitätsregime": result.get("volatility_regime", result.get("volatility_regime_label", "n/a")),
+                    "RS-Dynamik": result.get("rs_dynamics", result.get("rs_dynamic_label", "n/a")),
+                    "Live-Score": trading_case_score,
+                    "Exit-Score": result.get("exit_trigger_score", result.get("exit_score")),
+                    "Tactical-Exit-Risk": result.get("tactical_exit_risk", result.get("tactical_risk_score")),
+                    "Trendbruch-Score": result.get("trend_break_score"),
+                    "Momentum-Collapse-Score": result.get("momentum_collapse_score"),
+                    "Distribution-Score": result.get("distribution_pressure_score", result.get("distribution_score")),
+                    "Relative-Schwäche-Score": result.get("relative_weakness_score"),
+                    "TP1": tp1,
+                }
+                _tradeplan_v304 = _v304_build_screener_plan(_tradeplan_row_v304)
+                _st_target_pct_v304 = _tradeplan_v304.get("target_pct")
+                _st_target_price_v304 = _tradeplan_v304.get("target_price")
+                _st_secure_pct_v304 = _tradeplan_v304.get("secure_pct")
+                _st_cols_v304 = st.columns(4)
+                _st_cols_v304[0].metric(
+                    "⚡ Kurzfrist-Trader-Ziel",
+                    "n/a" if _st_target_price_v304 is None else f"{float(_st_target_price_v304):.2f} {ccy}",
+                    "n/a" if _st_target_pct_v304 is None else f"+{float(_st_target_pct_v304):.1f}%",
+                )
+                _st_cols_v304[1].metric(
+                    "Gewinn sichern ab",
+                    "n/a" if _st_secure_pct_v304 is None else f"+{float(_st_secure_pct_v304):.1f}%",
+                    str(_tradeplan_v304.get("horizon") or "n/a"),
+                )
+                _st_cols_v304[2].metric("Harvest Score", f"{float(_tradeplan_v304.get('harvest_score') or 0):.0f}/100")
+                _st_cols_v304[3].metric("Trader-Modus", str(_tradeplan_v304.get("mode") or "-"))
+                st.caption(
+                    "v30.4 ergänzt TP1/TP2/TP3 nur um einen taktischen Gewinnpfad für schwankende Märkte. "
+                    "Die klassischen Ziele, das CRV und das valide Setup bleiben unverändert."
+                )
 
                 c7, c8, c9 = st.columns(3)
                 c7.metric(f"Chance-Risiko-Verhältnis {ampel_crv(crv)}", f"{crv:.1f}:1")

@@ -1,4 +1,4 @@
-"""Persistent position/exit helpers. v28.9 Exit Engine 2.0; v30.2 Early Profit Protection hook."""
+"""Persistent position/exit helpers. v28.9 Exit Engine 2.0; v30.2 Early Profit Protection; v30.4 Profit Harvest hook."""
 from __future__ import annotations
 
 import json
@@ -14,9 +14,10 @@ _v230_price_text = None
 _storage = None
 _repository = None
 _profit_protection_engine = None
+_short_term_trader_engine = None
 
-def configure_context(*, base_dir=None, event_logger=None, safe_float=None, price_text=None, storage=None, repository=None, profit_protection_engine=None):
-    global _BASE_DIR, _event_logger, _v230_safe_float, _v230_price_text, _storage, _repository, _profit_protection_engine
+def configure_context(*, base_dir=None, event_logger=None, safe_float=None, price_text=None, storage=None, repository=None, profit_protection_engine=None, short_term_trader_engine=None):
+    global _BASE_DIR, _event_logger, _v230_safe_float, _v230_price_text, _storage, _repository, _profit_protection_engine, _short_term_trader_engine
     if base_dir is not None:
         _BASE_DIR = Path(base_dir)
     if event_logger is not None:
@@ -31,6 +32,8 @@ def configure_context(*, base_dir=None, event_logger=None, safe_float=None, pric
         _repository = repository
     if profit_protection_engine is not None:
         _profit_protection_engine = profit_protection_engine
+    if short_term_trader_engine is not None:
+        _short_term_trader_engine = short_term_trader_engine
 
 def _v244_position_store_key(watchlist_name=""):
     try:
@@ -698,6 +701,12 @@ def _v244_positions_dataframe(positions, live_df=None, watchlist_name=""):
                 early_v302 = dict(_profit_protection_engine(pos, live_row) or {})
             except Exception:
                 early_v302 = {}
+        trader_v304 = {}
+        if callable(_short_term_trader_engine):
+            try:
+                trader_v304 = dict(_short_term_trader_engine(pos, live_row, early_profit=early_v302) or {})
+            except Exception:
+                trader_v304 = {}
         # v24.17: Management-Meilensteine dedupliziert protokollieren.
         trade_status = str(calc.get("Status") or "")
         milestone = None
@@ -753,6 +762,41 @@ def _v244_positions_dataframe(positions, live_df=None, watchlist_name=""):
                 )
             except Exception:
                 pass
+        # v30.4: Short-Term Trader / Profit Harvest bleibt beobachtend.
+        # Nur aktive Harvest-Zustaende werden dedupliziert protokolliert, damit
+        # spaeter real geschlossene Trades gegen die Warnungen gelernt werden koennen.
+        if trader_v304.get("event_active"):
+            try:
+                _harvest_band_v304 = int(float(trader_v304.get("harvest_score") or 0) // 10) * 10
+                _chop_band_v304 = int(float(trader_v304.get("chop_score") or 0) // 10) * 10
+                _event_logger(
+                    event_type="Short-Term Profit Harvest",
+                    ticker=ticker,
+                    watchlist_name=watchlist_name,
+                    source="Positions-/Exit-Monitor",
+                    status=str(trader_v304.get("action") or "-"),
+                    price=calc.get("Aktueller Kurs"),
+                    trade_state=str(calc.get("Status") or "-"),
+                    details=str(trader_v304.get("why_text") or "-"),
+                    payload={
+                        "Harvest Score": trader_v304.get("harvest_score"),
+                        "Chop Risk": trader_v304.get("chop_score"),
+                        "Trader Ziel %": trader_v304.get("target_pct"),
+                        "Trader Ziel": trader_v304.get("target_price"),
+                        "Sicherung ab %": trader_v304.get("secure_pct"),
+                        "Teilgewinn %": trader_v304.get("partial_pct"),
+                        "Haltedauer": trader_v304.get("holding_days"),
+                        "P/L %": trader_v304.get("pnl_pct"),
+                        "Profit Velocity": trader_v304.get("profit_velocity"),
+                        "Exhaustion Risk": trader_v304.get("exhaustion_risk"),
+                        "Giveback Risk": trader_v304.get("giveback_risk"),
+                        "Restregel": trader_v304.get("remainder_rule"),
+                    },
+                    signature=f"v304|{trader_v304.get('action')}|{_harvest_band_v304}|{_chop_band_v304}",
+                )
+            except Exception:
+                pass
+
         # v30.2: Nur aktive defensive Early-Profit-Zustaende protokollieren.
         # Deduplizierung erfolgt wie bei Exit Engine 2.0 ueber Action + Scoreband.
         if early_v302.get("level") in {"yellow", "orange", "red"}:
@@ -782,6 +826,14 @@ def _v244_positions_dataframe(positions, live_df=None, watchlist_name=""):
                 pass
         rows.append({
             "Exit-Ampel 2.0": engine_v289.get("ampel"),
+            "⚡ Trader-Harvest": (f"{trader_v304.get('ampel','⚪')} {trader_v304.get('action','-')}" if trader_v304 else "⚪ n/a"),
+            "Trader-Ziel": (
+                "n/a" if trader_v304.get("target_pct") is None or trader_v304.get("target_price") is None
+                else f"+{float(trader_v304.get('target_pct')):.1f}% @ {float(trader_v304.get('target_price')):.2f}"
+            ),
+            "Harvest Score": ("n/a" if trader_v304.get("harvest_score") is None else f"{float(trader_v304.get('harvest_score')):.0f}/100"),
+            "Chop Risk": ("n/a" if trader_v304.get("chop_score") is None else f"{float(trader_v304.get('chop_score')):.0f}/100"),
+            "Sicherung ab": ("n/a" if trader_v304.get("secure_pct") is None else f"+{float(trader_v304.get('secure_pct')):.1f}%"),
             "⚡ Early-Profit": (f"{early_v302.get('ampel','⚪')} {early_v302.get('action','-')}" if early_v302 else "⚪ n/a"),
             "Ticker": ticker,
             "Name": pos.get("name") or live_row.get("Name") or ticker,

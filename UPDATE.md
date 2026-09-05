@@ -1,20 +1,31 @@
-# v30.4c - Short-Term Trader Import Compatibility Fix
+# v30.4d - App-wide Fachbegriffe / Legende
 
-v30.4c fixes the Streamlit startup crash introduced when `legacy_app.py` already expected the v30.4b `attach_scan_context()` API while the running Python process could still hold an older imported `modules.short_term_trader` instance.
+v30.4d ergänzt eine zentrale, per Klick aufklappbare Legende für englische Trading-, Engine-, Daten- und Portfolio-Fachbegriffe. Die Funktion ist rein informativ und verändert keinerlei Berechnung.
 
-## Fix
-- The app no longer dereferences `attach_scan_context` unguarded during startup.
-- If the already imported `short_term_trader` module exposes the complete v30.4b/v30.4c API, it is used normally.
-- If the runtime still contains an older/stale module object, the app reloads **exactly the local `modules/short_term_trader.py` file** under a unique module name and uses that fresh implementation.
-- If even that local reload cannot provide the helper, a fail-safe fallback returns an unchanged copy of the Atomic frame instead of crashing the entire Watchlists page.
-- The fallback does **not** invent a Scan-Chop value and does not mutate the productive Atomic frame.
+## Neu
+- Neuer Sidebar-Expander `📖 Fachbegriffe / Legende`, auf den Workspace-Seiten direkt erreichbar.
+- Suchfeld für Begriffe und Teilwörter, z. B. `Chop`, `Harvest`, `ATR`, `Shadow`, `Entry`, `FX` oder `Giveback`.
+- Mehr als 100 Begriffe/Abkürzungen mit kurzer deutscher Erklärung.
+- Kategorien:
+  - Oberfläche & Bewertung
+  - Markt & Kursbewegung
+  - Relative Stärke & Rotation
+  - Setup, Einstieg & Risiko
+  - Gewinnziele & Kurzfrist-Trader
+  - Engine, Daten & Signale
+  - Portfolio & Währungen
+  - Fundamentale Kennzahlen
+  - Performance & Position
+- Enthält insbesondere die neueren Begriffe aus v30.4x wie `Chop`, `Chop Risk`, `Harvest`, `Harvest Score`, `Profit Velocity`, `Exhaustion Risk`, `Giveback Risk`, `Short-Term Trader` und `Runner / Restposition`.
+- Erklärt zusätzlich wiederkehrende UI-Begriffe wie `Watchlist`, `Live Screener`, `Score`, `Signal`, `Alert`, `Timing`, `Bucket`, `Grade`, `New Listing` und `Delayed Quote`.
 
-## Deployment hardening
-- `modules/short_term_trader.py` is shipped again in this patch even though the v30.4b calibration logic itself is unchanged. This guarantees that `legacy_app.py` and the tactical module arrive together.
-- The fix is specifically designed for Streamlit/runpy reruns where Python module caching can temporarily create a mixed old/new runtime state after a patch deployment.
+## Bedienung
+1. In der Sidebar `📖 Fachbegriffe / Legende` anklicken.
+2. Ohne Suche werden alle Kategorien angezeigt.
+3. Optional einen Begriff oder ein Teilwort ins Suchfeld eingeben; die Liste filtert sofort auf passende Einträge.
 
-## Unchanged
-- v30.4b Harvest/Chop calibration and thresholds remain unchanged.
-- Harvest green <60, yellow >=60, orange >=75.
-- No change to TP1/TP2/TP3, Live/Shadow, Exit Engine, Position logic or provider behavior.
-- No additional Yahoo/market-provider requests.
+## Unverändert
+- Keine Änderung an v30.4b/v30.4c Harvest-/Chop-Kalibrierung.
+- Keine Änderung an Live-/Shadow-/Exit-/TP-/Portfolio-Logik.
+- Keine zusätzlichen Yahoo-, ECB- oder sonstigen Provider-Abfragen.
+- Keine Speicherung oder Auswertung der Suchbegriffe; die Legende arbeitet rein lokal in der UI.

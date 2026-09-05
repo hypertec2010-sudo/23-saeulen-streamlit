@@ -1,3 +1,11 @@
+## v30.4d - App-wide Fachbegriffe / Legende
+- Neuer app-weiter Sidebar-Expander `📖 Fachbegriffe / Legende` mit Suchfeld.
+- Mehr als 100 wiederkehrende englische Trading-, Engine-, Daten-, Portfolio- und Fundamentalbegriffe auf Deutsch erklärt.
+- Kategorien für Oberfläche/Bewertung, Markt/Kursbewegung, Relative Stärke/Rotation, Setup/Risiko, Kurzfrist-Trader, Engine/Daten, Portfolio/FX, Fundamentals und Performance.
+- Neue v30.4x-Begriffe wie Chop, Harvest, Profit Velocity, Exhaustion Risk und Giveback Risk direkt erklärt.
+- Wiederkehrende UI-Begriffe wie Watchlist, Live Screener, Score, Alert, Timing, Bucket, Grade, New Listing und Delayed Quote ergänzt.
+- Rein informative UI-Erweiterung; keine Änderung an Berechnungen, Scores, Ampeln oder Provider-Verhalten.
+
 ## v30.4c - Short-Term Trader Import Compatibility Fix
 - Fixed startup `AttributeError` at `_short_term_trader_v304.attach_scan_context`.
 - Root cause hardened: Streamlit/runpy may retain an older imported `modules.short_term_trader` object while `legacy_app.py` is already on the newer v30.4b API.

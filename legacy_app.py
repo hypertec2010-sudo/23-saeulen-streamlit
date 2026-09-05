@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.4c"
+APP_VERSION = "v30.4d"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -16375,6 +16375,183 @@ if not _MULTIPAGE_BOOTSTRAPPED_V282:
             st.session_state.workspace_mode = "Kandidaten-Radar"
     st.markdown("""</div>""", unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+# ---------- v30.4d: App-weite Fachbegriffe-Legende ----------
+_V304D_GLOSSARY = {
+    "Oberfläche & Bewertung": [
+        ("Watchlist", "Beobachtungsliste mit Werten, die noch nicht zwingend im Depot liegen und auf Einstieg, Trigger oder Priorität geprüft werden."),
+        ("Live Screener", "Aktuelle Scan-Ansicht, die die beobachteten Werte nach den produktiven Regeln bewertet und priorisiert."),
+        ("Score", "Punktwert, meist 0-100, der mehrere Einzelkriterien zu einer kompakten Bewertung zusammenfasst."),
+        ("Signal", "Hinweis aus der Analyse, dass eine bestimmte technische oder risikobezogene Bedingung eingetreten ist."),
+        ("Alert", "Benachrichtigung bzw. Warnhinweis bei einem relevanten Signal oder Statuswechsel."),
+        ("Timing", "Bewertung, ob der aktuelle Zeitpunkt für Beobachtung, Einstieg, Teilgewinn oder Exit günstig ist."),
+        ("Bucket", "Kategorie bzw. Sammelgruppe im Radar/Screener, z. B. 'Jetzt prüfbar', 'Starke Watchlist' oder 'Später beobachten'."),
+        ("Grade", "Qualitätsstufe eines Setups bzw. Signals; eine kompakte Einordnung zusätzlich zum numerischen Score."),
+        ("Bullish", "Aufwärtsgerichtete bzw. konstruktive Markterwartung."),
+        ("Bearish", "Abwärtsgerichtete bzw. defensive Markterwartung."),
+        ("Neutral", "Keine ausreichend klare bullische oder bearische Richtung."),
+        ("New Listing", "Neu gelisteter Wert mit begrenzter Historie. Bestimmte Langfristvergleiche können deshalb weniger belastbar sein."),
+        ("Delayed Quote", "Zeitverzögerter Kurs statt Echtzeitkurs. Der Wert kann hinter dem aktuellen Marktstand zurückliegen."),
+    ],
+    "Markt & Kursbewegung": [
+        ("ATR (Average True Range)", "Durchschnittliche Handelsspanne. Misst die typische Schwankungsbreite eines Werts; ATR-% setzt sie ins Verhältnis zum Kurs."),
+        ("Volatility / Volatilität", "Stärke der Kursschwankungen. Hohe Volatilität bedeutet größere Bewegungen nach oben und unten."),
+        ("Chop", "Unruhige, wechselhafte bzw. richtungsarme Kursbewegung. Hoher Chop bedeutet: Trends laufen weniger sauber durch und Gewinne werden häufiger wieder abgegeben."),
+        ("Range", "Seitliche Handelsspanne zwischen einem oberen und unteren Kursbereich."),
+        ("Trend", "Übergeordnete Kursrichtung. Aufwärtstrend = steigende Hochs/Tiefs; Abwärtstrend = fallende Hochs/Tiefs."),
+        ("Momentum", "Geschwindigkeit und Stärke einer Kursbewegung. Starkes Momentum bedeutet, dass eine Bewegung aktuell mit Druck läuft."),
+        ("Breakout", "Ausbruch über einen wichtigen Widerstand oder aus einer Handelsspanne."),
+        ("Pullback", "Kontrollierter Rücksetzer innerhalb eines bestehenden Trends, oft zurück an einen Ausbruchs- oder Unterstützungsbereich."),
+        ("Reclaim", "Rückeroberung eines zuvor verlorenen Kursniveaus. Der Kurs fällt darunter und steigt anschließend wieder darüber."),
+        ("Undercut & Rally (U&R)", "Der Kurs unterschreitet ein relevantes Tief und erobert es anschließend zurück. Im Tool nur bei echtem Undercut plus Reclaim."),
+        ("Support", "Unterstützungszone, an der Nachfrage häufiger zunimmt und Kursrückgänge gebremst werden können."),
+        ("Resistance", "Widerstandszone, an der Angebot/Verkaufsdruck häufiger zunimmt und Kursanstiege gebremst werden können."),
+        ("Gap", "Kurslücke zwischen zwei Handelsperioden, in der kein Handel auf den dazwischenliegenden Kursen stattfand."),
+        ("Candle / Candlestick", "Kerze im Chart mit Eröffnung, Hoch, Tief und Schlusskurs einer Periode."),
+        ("Wick / Docht", "Dünner Teil einer Kerze ober- oder unterhalb des Kerzenkörpers; zeigt zurückgewiesene Kursbereiche."),
+        ("Volume / Volumen", "Gehandelte Stückzahl. Hohes Volumen kann die Aussagekraft einer Bewegung oder eines Ausbruchs erhöhen."),
+        ("Liquidity / Liquidität", "Wie leicht ein Wert gehandelt werden kann, ohne den Preis stark zu bewegen."),
+        ("Market Regime / Marktregime", "Übergeordnete Einordnung des Marktumfelds, z. B. positiv, neutral/gemischt oder defensiv."),
+        ("Risk-on / Risk-off", "Risk-on: Anleger bevorzugen riskantere Anlagen. Risk-off: Kapital wandert eher in defensivere bzw. sicherere Anlagen."),
+        ("FOMO (Fear of Missing Out)", "Risiko, einer bereits weit gelaufenen Bewegung hinterherzukaufen, weil man Angst hat, sie zu verpassen."),
+        ("Smart Money", "Sammelbegriff für institutionelles bzw. professionelles Kapital und dessen vermutete Aktivität."),
+        ("Accumulation / Akkumulation", "Phase, in der Käufe bzw. institutionelle Nachfrage zunehmen können."),
+        ("Distribution / Distribution", "Phase, in der Verkaufsdruck bzw. institutionelle Abgaben zunehmen können."),
+    ],
+    "Relative Stärke & Rotation": [
+        ("RS (Relative Strength)", "Relative Stärke gegenüber einer Benchmark. Zeigt, ob sich der Wert besser oder schlechter als sein Vergleichsmarkt entwickelt."),
+        ("RS Dynamics / RS-Dynamik", "Veränderung der relativen Stärke. Verbessert = relative Entwicklung zieht an; verschlechtert = sie verliert an Dynamik."),
+        ("Benchmark", "Vergleichsindex oder Vergleichs-ETF, gegen den die relative Entwicklung gemessen wird, z. B. SPY oder DAX."),
+        ("Leadership / Leader", "Wert oder Sektor mit überdurchschnittlicher relativer Stärke und technischer Führungsqualität."),
+        ("Relative Weakness", "Relative Schwäche gegenüber Benchmark oder Vergleichsgruppe."),
+        ("Sector Rotation", "Kapitalverschiebung zwischen Sektoren/Themen, wodurch einige Gruppen früh stärker und andere schwächer werden."),
+        ("Emerging", "Frühe Rotationsphase: Stärke beginnt sich aufzubauen, ist aber noch nicht vollständig bestätigt."),
+        ("Leading", "Bestätigte Führungsphase mit hoher relativer Stärke."),
+        ("Mature", "Fortgeschrittene starke Phase; Trend besteht noch, ist aber bereits reifer und potenziell später im Zyklus."),
+        ("Cooling", "Abkühlende Phase: Stärke ist noch vorhanden, verliert aber an Dynamik."),
+        ("Rotating Out", "Kapital rotiert aus der Gruppe heraus; relative Stärke und/oder Momentum bauen ab."),
+    ],
+    "Setup, Einstieg & Risiko": [
+        ("Setup", "Gesamtkonstellation aus Chart, Trend, Trigger, Risiko und weiteren Bedingungen, die einen möglichen Trade definiert."),
+        ("Entry", "Geplanter oder tatsächlicher Einstiegskurs."),
+        ("Entry Zone", "Kursbereich, in dem ein Einstieg laut Setup sinnvoll geprüft werden kann."),
+        ("Trigger", "Konkretes Ereignis bzw. Signal, das ein vorbereiteten Setup aktiviert oder bestätigt."),
+        ("Confirmation / Bestätigung", "Zusätzlicher Nachweis, dass ein Signal nicht nur kurz auftritt, sondern ausreichend bestätigt ist."),
+        ("Confluence / Konfluenz", "Mehrere unabhängige Signale zeigen gleichzeitig in dieselbe Richtung."),
+        ("Armed", "Setup ist vorbereitet bzw. scharfgestellt; der eigentliche Trigger oder die Bestätigung kann noch fehlen."),
+        ("Gate / Einstiegsgate", "Harte Bedingung, die einen Einstieg blockieren kann, selbst wenn andere Scores gut aussehen."),
+        ("Guardrail", "Sicherheitsregel, die eine zu optimistische Bewertung begrenzt oder blockiert."),
+        ("Invalidated / Invalidiert", "Setup ist nicht mehr gültig, weil eine wichtige technische oder risikobezogene Bedingung verletzt wurde."),
+        ("Stop / Stop-Loss", "Kursniveau, an dem ein Trade zur Risikobegrenzung beendet werden soll."),
+        ("Initial Stop", "Ursprünglicher Stop zum Zeitpunkt des Einstiegs; dient auch zur Berechnung des anfänglichen Risikos."),
+        ("Trailing Stop", "Nachgezogener Stop, der sich mit einer günstigen Kursbewegung nach oben bewegen kann."),
+        ("Position Size", "Positionsgröße, also wie viele Stücke bzw. welcher Kapitalbetrag in einem Trade eingesetzt wird."),
+        ("R / R-Multiple", "Gewinn oder Verlust relativ zum anfänglichen Risiko. +1R bedeutet Gewinn in Höhe des ursprünglich riskierten Betrags."),
+        ("RRR / Risk-Reward Ratio", "Englische Bezeichnung für Chance-Risiko-Verhältnis. Im Tool wird häufig CRV verwendet."),
+        ("CRV", "Chance-Risiko-Verhältnis: Verhältnis des möglichen Gewinns zum eingegangenen Risiko."),
+        ("Drawdown", "Rückgang vom vorherigen Kapital- oder Kurs-Hoch bis zu einem späteren Tief."),
+    ],
+    "Gewinnziele & Kurzfrist-Trader": [
+        ("TP / Take Profit", "Gewinnziel. TP1, TP2 und TP3 sind gestaffelte klassische Zielniveaus."),
+        ("Short-Term Trader", "Taktischer Kurzfrist-Pfad zusätzlich zur klassischen Trend-/TP-Logik."),
+        ("Harvest", "Wörtlich 'ernten': einen vorhandenen positiven Gewinnpuffer teilweise realisieren, bevor er in einem unruhigen Markt wieder verloren geht."),
+        ("Harvest Score", "0-100: Wie relevant eine taktische kurzfristige Gewinnmitnahme aktuell ist. Er ist nicht identisch mit Chop."),
+        ("Chop Risk", "0-100: Wie unruhig/wechselhaft das aktuelle Umfeld ist. Hoher Chop erhöht die Bedeutung kurzfristiger Gewinnsicherung, löst aber allein keinen Verkauf aus."),
+        ("Profit Velocity", "Wie schnell ein Gewinn nach dem Einstieg entstanden ist. Ein ungewöhnlich schneller Anstieg kann frühere Gewinnsicherung relevanter machen."),
+        ("Exhaustion Risk", "Risiko, dass eine schnelle Bewegung kurzfristig überdehnt bzw. erschöpft ist."),
+        ("Giveback", "Bereits vorhandener Buchgewinn, der durch einen späteren Rückgang wieder abgegeben wird."),
+        ("Giveback Risk", "Schätzung, wie hoch das Risiko einer Rückgabe des vorhandenen Gewinnpuffers ist."),
+        ("Partial Profit / Teilgewinn", "Nur einen Teil der Position verkaufen, um Gewinn zu sichern, während eine Restposition weiterlaufen kann."),
+        ("Runner / Restposition", "Nach einem Teilverkauf verbleibender Positionsanteil, der bei intaktem Trend weiterlaufen darf."),
+        ("Exit Pressure", "Zusammengefasster technischer Druck, der für engeres Management oder einen Ausstieg sprechen kann."),
+        ("Tactical Exit Risk", "Kurzfristiges technisches Ausstiegsrisiko; stärker auf taktische Verschlechterungen als auf den gesamten Langfristtrend fokussiert."),
+        ("Exit Score", "Gesamtscore der Exit Engine zur Einordnung des aktuellen Ausstiegs-/Schutzbedarfs."),
+        ("Momentum Collapse", "Deutlicher Einbruch der vorherigen Kursdynamik."),
+        ("Trend Break", "Technischer Bruch wichtiger Trendstrukturen."),
+    ],
+    "Engine, Daten & Signale": [
+        ("Live Score", "Produktiver aktueller Gesamtscore des Screener-/Trading-Modells."),
+        ("Shadow / Shadow-Ampel", "Parallel berechnete Vergleichslogik, die Änderungen testet, ohne die produktive Live-Entscheidung automatisch zu ersetzen."),
+        ("Engine Score", "Rohbewertung der Engine vor bestimmten Schutz- bzw. Kontextbegrenzungen."),
+        ("Guarded Engine Score", "Durch Guardrails begrenzte bzw. abgesicherte Engine-Bewertung."),
+        ("Confidence", "Verlässlichkeit einer Aussage auf Basis der verfügbaren und konsistenten Daten."),
+        ("Data Quality / Datenqualität", "Bewertung, wie vollständig und belastbar die für die Analyse benötigten Daten sind."),
+        ("Atomic Scan", "Ein vollständiger Scan wird erst gemeinsam veröffentlicht, wenn der komplette neue Datenstand fertig ist; alte und neue Zeilen werden nicht gemischt."),
+        ("Fresh", "Aktuell/frisch genug für die jeweilige Bewertung."),
+        ("Stale", "Veraltet. Ein gespeicherter Wert ist vorhanden, gilt aber nicht mehr als ausreichend aktuell."),
+        ("Coverage / Abdeckung", "Anteil der benötigten Daten, der tatsächlich vorhanden bzw. aktuell ist, z. B. Kurs-, Stop- oder FX-Abdeckung."),
+        ("Snapshot", "Gespeicherter konsistenter Zustand einer Analyse oder eines vollständigen Scans zu einem bestimmten Zeitpunkt."),
+        ("Last-Good", "Letzter erfolgreich gespeicherter, gültiger Datenstand, der bei einem temporären Provider-Ausfall als Fallback dienen kann."),
+        ("Fallback", "Ersatzpfad, der verwendet wird, wenn der bevorzugte Daten- oder Berechnungsweg nicht verfügbar ist."),
+        ("Cache", "Zwischenspeicher für bereits geladene/berechnete Daten, um unnötige Wiederholungen und Provider-Anfragen zu vermeiden."),
+        ("Provider", "Externe Datenquelle bzw. deren Zugriffsschicht, z. B. Marktdaten- oder FX-Datenanbieter."),
+    ],
+    "Portfolio & Währungen": [
+        ("Exposure", "Anteil des Depotkapitals, der aktuell investiert bzw. dem Marktrisiko ausgesetzt ist."),
+        ("Cash / Cash Reserve", "Nicht investierter Kapitalanteil bzw. bewusst vorgehaltene Reserve."),
+        ("Invested", "Aktuell investierter Kapitalbetrag."),
+        ("Risk to Stop", "Theoretischer Verlust bis zum hinterlegten Stop, basierend auf Positionsgröße und Abstand zwischen aktuellem/Entry-Kurs und Stop."),
+        ("FX (Foreign Exchange)", "Währungsumrechnung, z. B. USD nach EUR."),
+        ("Base Currency", "Basiswährung des Portfolios, in die Fremdwährungspositionen für die Gesamtübersicht umgerechnet werden."),
+        ("Quote Currency", "Währung, in der ein Wert an seinem Markt notiert wird, z. B. USD oder EUR."),
+        ("ECB Reference Rate", "Täglicher Referenzwechselkurs der Europäischen Zentralbank; im Tool für die Portfolio-Umrechnung verwendet."),
+        ("Current Price Coverage", "Anteil offener Positionen mit aktuellem Kurs."),
+        ("Stop Coverage", "Anteil offener Positionen mit gültigem Stop."),
+        ("FX Coverage", "Anteil der Fremdwährungspositionen, für die eine verwendbare Umrechnung in die Basiswährung vorhanden ist."),
+    ],
+    "Fundamentale Kennzahlen": [
+        ("Earnings", "Unternehmensgewinne bzw. Gewinnveröffentlichung. 'Earnings in x Tagen' weist auf ein bevorstehendes Ergebnisereignis hin."),
+        ("Free Cash Flow", "Freier Cashflow nach operativen Ausgaben und notwendigen Investitionen; zeigt vereinfacht, wie viel frei verfügbarer Mittelzufluss verbleibt."),
+        ("Current Ratio", "Liquiditätskennzahl: kurzfristiges Vermögen im Verhältnis zu kurzfristigen Verbindlichkeiten."),
+        ("Margin / Gewinnmarge", "Anteil des Umsatzes, der nach bestimmten Kosten als Gewinn verbleibt."),
+        ("Debt / Verschuldung", "Fremdkapitalbelastung eines Unternehmens; hohe Verschuldung kann das Risiko erhöhen."),
+    ],
+    "Performance & Position": [
+        ("P/L / PnL (Profit and Loss)", "Gewinn oder Verlust einer Position. Positiv = Gewinn, negativ = Verlust."),
+        ("Unrealized P/L", "Nicht realisierter Buchgewinn/-verlust einer noch offenen Position."),
+        ("Realized P/L", "Tatsächlich realisierter Gewinn/Verlust nach Verkauf bzw. Schließung."),
+        ("Holding Period", "Haltedauer einer Position."),
+        ("Entry Price", "Tatsächlicher Kauf-/Einstiegskurs einer offenen Position."),
+        ("Current Price", "Aktuell verwendeter Kurs zur Bewertung einer Position."),
+    ],
+}
+
+
+def _v304d_render_glossary():
+    """App-weite, rein lokale Legende fuer englische Trading-/Engine-Begriffe."""
+    with st.sidebar.expander("📖 Fachbegriffe / Legende", expanded=False):
+        st.caption(
+            "Englische Trading-, Engine- und Portfolio-Begriffe kurz auf Deutsch erklärt. "
+            "Die Legende verändert keine Berechnung und lädt keine zusätzlichen Marktdaten."
+        )
+        query = st.text_input(
+            "Begriff suchen",
+            value="",
+            placeholder="z. B. Chop, Harvest, ATR, Shadow ...",
+            key="v304d_glossary_search",
+        ).strip().lower()
+
+        visible_count = 0
+        for category, entries in _V304D_GLOSSARY.items():
+            filtered = []
+            for term, explanation in entries:
+                haystack = f"{term} {explanation} {category}".lower()
+                if not query or query in haystack:
+                    filtered.append((term, explanation))
+            if not filtered:
+                continue
+            visible_count += len(filtered)
+            st.markdown(f"**{category}**")
+            for term, explanation in filtered:
+                st.markdown(f"**{term}**  \n{explanation}")
+
+        if visible_count == 0:
+            st.info("Kein passender Begriff gefunden. Suche ggf. nach einem Teilwort oder einer Abkürzung.")
+        else:
+            st.caption(f"{visible_count} Begriff{'e' if visible_count != 1 else ''} angezeigt · {APP_VERSION}")
+
+
+_v304d_render_glossary()
 
 # v15.24.1: Hilfen nur noch als Expander, keine extra Karte.
 with st.sidebar.expander("Hilfen & Verwaltung", expanded=False):

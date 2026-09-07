@@ -22,6 +22,7 @@ import time
 import math
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
+from zoneinfo import ZoneInfo
 import html
 
 def require_google_login():
@@ -211,6 +212,52 @@ from logging_utils import (
     update_watchlist_alert_mode,
     update_watchlist_check_frequency,
 )
+
+# ---------- v30.5b: Europe/Berlin Zeitstempel ----------
+# Streamlit Cloud laeuft typischerweise in UTC. Historische naive ISO-Zeitstempel
+# aus datetime.now() werden deshalb beim ANZEIGEN als UTC interpretiert und nach
+# Europe/Berlin konvertiert. Neue sichtbare Zeitangaben nutzen direkt die IANA-
+# Zeitzone und wechseln automatisch zwischen MEZ und MESZ.
+_V305B_BERLIN_TZ = ZoneInfo("Europe/Berlin")
+
+def _v305b_berlin_now():
+    return datetime.now(_V305B_BERLIN_TZ)
+
+def _v305b_to_berlin_datetime(value, *, naive_source="UTC"):
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            raw = str(value).strip()
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            # Legacy-Scan-/Export-Zeitstempel wurden auf Streamlit Cloud mit
+            # datetime.now() erzeugt und sind daher UTC, obwohl der Offset fehlt.
+            if str(naive_source or "UTC").upper() == "BERLIN":
+                dt = dt.replace(tzinfo=_V305B_BERLIN_TZ)
+            else:
+                dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(_V305B_BERLIN_TZ)
+    except Exception:
+        return None
+
+def _v305b_format_berlin_timestamp(value, *, seconds=True, include_zone=True, naive_source="UTC"):
+    dt = _v305b_to_berlin_datetime(value, naive_source=naive_source)
+    if dt is None:
+        return str(value or "unbekannt")
+    fmt = "%d.%m.%Y %H:%M:%S" if seconds else "%d.%m.%Y %H:%M"
+    out = dt.strftime(fmt)
+    if include_zone:
+        try:
+            zone_label = "MESZ" if (dt.dst() and dt.dst() != timedelta(0)) else "MEZ"
+        except Exception:
+            zone_label = "Europe/Berlin"
+        out += f" {zone_label}"
+    return out
 
 # v28.0: Originale Google-Sheets-Funktionen fuer die einmalige Migration behalten.
 _legacy_load_watchlists_df_v280 = load_watchlists_df
@@ -695,9 +742,9 @@ def build_backtest_log_df_v1710(single_export_df, result=None, context=None):
 
     bt_prefix = {
         "Backtest_Log_Version": "v17.13.1",
-        "Backtest_Logged_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Backtest_Logged_At": _v305b_berlin_now().strftime("%Y-%m-%d %H:%M:%S"),
         "Backtest_Status": "Open",
-        "Backtest_Signal_Date": datetime.now().strftime("%Y-%m-%d"),
+        "Backtest_Signal_Date": _v305b_berlin_now().strftime("%Y-%m-%d"),
         "Backtest_Ticker": _bt_first(row.get("Ticker"), result.get("ticker")),
         "Backtest_Name": _bt_first(row.get("Name"), result.get("name")),
         "Backtest_Signal_Price": signal_price,
@@ -979,7 +1026,7 @@ def update_backtest_log_review_v1713(max_rows=200):
         # Nur die neuesten/maximalen Zeilen aktualisieren, um yfinance nicht zu ueberlasten.
         work_idx = list(df.index)[-int(max_rows):]
         summary_rows = []
-        reviewed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        reviewed_at = _v305b_berlin_now().strftime("%Y-%m-%d %H:%M:%S")
         for i in work_idx:
             row = df.loc[i]
             status = str(row.get("Backtest_Status", "Open") or "Open").strip().lower()
@@ -2453,7 +2500,7 @@ def enrich_single_export_df_v1516(export_df, result, context=None):
 
     result_fields = {
         "Export_Version": "v22.1",
-        "Export_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Export_Timestamp": _v305b_berlin_now().strftime("%Y-%m-%d %H:%M:%S"),
         "Ticker": (result or {}).get("ticker"),
         "Name": (result or {}).get("name"),
         "Analyse_Kursbasis": (result or {}).get("analysis_price", (result or {}).get("price")),
@@ -2678,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.5a"
+APP_VERSION = "v30.5b"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -16636,7 +16683,7 @@ with st.sidebar.expander("Hilfen & Verwaltung", expanded=False):
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     st.markdown("#### Auto-Run Control Center")
-    berlin_now = get_current_berlin_time()
+    berlin_now = _v305b_berlin_now()
     current_slot_label = get_current_schedule_slot(berlin_now)
     slot_options = ["10:30", "15:40", "18:30", "22:10"]
 
@@ -16735,7 +16782,7 @@ with st.sidebar.expander("Hilfen & Verwaltung", expanded=False):
             test_message = (
                 f"Capital Hill Test\n"
                 f"Version: {APP_VERSION}\n"
-                f"Zeit: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Zeit: {_v305b_berlin_now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                 f"Status: Telegram-Versand funktioniert."
             )
             ok, msg = send_telegram_message(test_message)
@@ -18345,7 +18392,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
             if cache_ok_v246 and st.session_state.get("v2842_snapshot_restored_id") == _snapshot_identity_v2842:
                 try:
-                    _snapshot_time_text_v2842 = datetime.fromisoformat(str(live_cache_v246.get("ts"))).strftime("%d.%m.%Y %H:%M:%S")
+                    _snapshot_time_text_v2842 = _v305b_format_berlin_timestamp(live_cache_v246.get("ts"))
                 except Exception:
                     _snapshot_time_text_v2842 = str(live_cache_v246.get("ts") or "unbekannt")
                 if reconnect_grace_active_v2842:
@@ -18662,7 +18709,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 _live_scan_completed_at_v2832 = datetime.now().isoformat()
                                 _scan_duration_v287b = max(0.0, (datetime.now() - _scan_started_dt_v287b).total_seconds())
                                 if not _working_live_df_v287b.empty:
-                                    _working_live_df_v287b["Scan-Zeit"] = _live_scan_completed_at_v2832
+                                    # Nur die sichtbare Scan-Zeit wird nach Berlin konvertiert.
+                                    # Der interne Cache-Anker bleibt im bisherigen Format, damit
+                                    # Refresh-/Snapshot-Kompatibilitaet unveraendert bleibt.
+                                    _working_live_df_v287b["Scan-Zeit"] = _v305b_format_berlin_timestamp(_live_scan_completed_at_v2832)
                                     _working_live_df_v287b["Scan-Lauf"] = _scan_run_id_v287b
 
                                 _final_scan_meta_v287b = _live_scan_batches.build_scan_meta(
@@ -18796,12 +18846,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         scan_meta_v2844 = dict(live_cache_v246.get("scan_meta") or {})
                         try:
                             _cache_dt_v287b = datetime.fromisoformat(str(live_cache_v246.get("ts")))
-                            cache_ts_txt_v246 = _cache_dt_v287b.strftime("%d.%m.%Y %H:%M:%S")
+                            cache_ts_txt_v246 = _v305b_format_berlin_timestamp(live_cache_v246.get("ts"))
                             _cache_age_sec_v287b = max(0.0, (datetime.now() - _cache_dt_v287b).total_seconds())
                             _cache_age_min_v287b = int(_cache_age_sec_v287b // 60)
                             _age_icon_v287b = "🟢" if _cache_age_sec_v287b < refresh_minutes_v246 * 60 else "🟡"
                             st.caption(
-                                f"{_age_icon_v287b} Letzter vollständig abgeschlossener Live-Stand: {cache_ts_txt_v246} "
+                                f"{_age_icon_v287b} Letzter vollständig abgeschlossener Live-Stand (Berlin): {cache_ts_txt_v246} "
                                 f"· Alter {_cache_age_min_v287b} Min. · neuer Stand nur per Auto-Vollscan oder 'Jetzt vollständig aktualisieren'."
                             )
                         except Exception:
@@ -19253,7 +19303,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.info(_why_score_v2846)
                                             _mobile_detail_df_v2842 = pd.DataFrame(
                                                 [
-                                                    {"Feld": str(key), "Wert": _v243_clean_cell(value)}
+                                                    {
+                                                        "Feld": str(key),
+                                                        "Wert": (
+                                                            _v305b_format_berlin_timestamp(value)
+                                                            if str(key) == "Scan-Zeit" else _v243_clean_cell(value)
+                                                        ),
+                                                    }
                                                     for key, value in _mobile_detail_row_v2842.items()
                                                     if not str(key).startswith("__")
                                                 ]
@@ -19279,6 +19335,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 )
                                 with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
                                     detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
+                                    if "Scan-Zeit" in detail_df.columns:
+                                        try:
+                                            detail_df["Scan-Zeit"] = detail_df["Scan-Zeit"].apply(_v305b_format_berlin_timestamp)
+                                        except Exception:
+                                            pass
                                     try:
                                         detail_df = detail_df.applymap(lambda x: "-" if "column index out of bounds" in str(x).lower() else x)
                                     except Exception:
@@ -19544,7 +19605,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         score_txt = f" · Score Ø {score_vals.mean():.0f}/100"
                                 except Exception:
                                     score_txt = ""
-                            st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {get_current_berlin_time().strftime('%d.%m.%Y %H:%M:%S')}")
+                            st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {_v305b_format_berlin_timestamp(_v305b_berlin_now())}")
 
                         # ---------- v30.1: Investment Rotation Radar ----------
                         elif cockpit_area == "🧭 Rotation Radar":
@@ -23366,7 +23427,7 @@ if workspace_mode:
 # ---------- Internal Auto-Run Mode ----------
 if st.session_state.get("auto_run_requested", False):
     slot_label = st.session_state.get("auto_run_slot_label", "")
-    berlin_now = get_current_berlin_time()
+    berlin_now = _v305b_berlin_now()
     due_df, due_err = get_due_watchlists_for_slot(slot_label)
     due_radar_jobs = get_due_radar_jobs_for_slot(slot_label)
 
@@ -23406,7 +23467,7 @@ if st.session_state.get("auto_run_requested", False):
             if tick_err:
                 st.error(f"{wl_name}: {tick_err}")
                 auto_run_rows.append({
-                    "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Run_Timestamp": _v305b_berlin_now().strftime("%Y-%m-%d %H:%M:%S"),
                     "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
                     "Slot": slot_label,
                     "Watchlist_Name": wl_name,
@@ -23451,7 +23512,7 @@ if st.session_state.get("auto_run_requested", False):
 
             total_sent += int(sent_count or 0)
             auto_run_rows.append({
-                "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Run_Timestamp": _v305b_berlin_now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
                 "Slot": slot_label,
                 "Watchlist_Name": wl_name,
@@ -23479,7 +23540,7 @@ if st.session_state.get("auto_run_requested", False):
             else:
                 st.error(f"Radar {radar_job.get('label')}: {msg}")
             auto_run_rows.append({
-                "Run_Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Run_Timestamp": _v305b_berlin_now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Berlin_Time": berlin_now.strftime("%Y-%m-%d %H:%M"),
                 "Slot": slot_label,
                 "Watchlist_Name": f"RADAR - {radar_job.get('label', radar_job.get('job_id', 'Job'))}",
@@ -24706,7 +24767,7 @@ if st.session_state.get("analysis_requested", False):
     results = []
     errors = []
 
-    st.session_state.current_run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    st.session_state.current_run_id = _v305b_berlin_now().strftime("%Y%m%d_%H%M%S")
 
     progress = st.progress(0)
     status = st.empty()
@@ -25032,7 +25093,7 @@ sheet_log_triggered = False
 
 if result is not None:
     ticker = result["ticker"]
-    csv_filename = f"capital_hill_single_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    csv_filename = f"capital_hill_single_{ticker}_{_v305b_berlin_now().strftime('%Y%m%d_%H%M%S')}.csv"
     csv_payload = single_export_df.to_csv(index=False).encode("utf-8-sig")
     csv_b64 = base64.b64encode(csv_payload).decode("utf-8")
     csv_href = f"data:text/csv;base64,{csv_b64}"

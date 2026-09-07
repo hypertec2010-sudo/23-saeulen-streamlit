@@ -1,3 +1,12 @@
+## v30.5b - Berlin Timezone / MEZ-MESZ Timestamp Fix
+- Sichtbare App-Zeitstempel auf `Europe/Berlin` vereinheitlicht.
+- `Letzter vollständig abgeschlossener Live-Stand` zeigt jetzt Berlin-Zeit statt Streamlit-Server-UTC.
+- Legacy-naive Scan-Zeitstempel werden als UTC interpretiert und zur Anzeige automatisch nach Berlin konvertiert.
+- Automatischer Wechsel zwischen MEZ (Winter) und MESZ (Sommer); keine pauschale +1/+2-Stunden-Korrektur.
+- Wiederhergestellte Snapshot-Zeit und `Scan-Zeit` in den Live-Details werden ebenfalls Berlin-normalisiert.
+- Backtest-, Review-, Export-, Auto-Run-, Run-ID- und CSV-Zeitstempel werden nutzerseitig in Berlin-Zeit erzeugt.
+- Interne Cache-/Refresh-Anker bleiben kompatibel; keine Änderung an Atomic-Scan-Scheduling oder Providerlogik.
+
 ## v30.5a - Watchlist Future Ticker Fix
 - Behebt `Keine neuen Werte zum Vormerken erkannt.` bei manueller Watchlist-Eingabe von `CL=F`.
 - Ursache: der lokale Watchlist-Tickercheck akzeptierte `.` und `-`, aber kein `=` und leitete Yahoo-Futures faelschlich in die Namenssuche weiter.

@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.5"
+APP_VERSION = "v30.5a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14088,6 +14088,15 @@ def looks_like_real_ticker(user_input):
 
     upper = raw.upper()
 
+    # v30.5a: Yahoo-Futures und Indizes explizit als echte Ticker zulassen.
+    # Beispiele: CL=F (WTI), BZ=F (Brent), GC=F (Gold), NG=F, ^GSPC.
+    # Das ist wichtig fuer Watchlist-/Batch-Eingaben, weil "=" vorher vom
+    # generischen Aktien-Tickercheck ausgeschlossen wurde.
+    if re.fullmatch(r"[A-Z0-9]{1,8}=F", upper):
+        return True
+    if re.fullmatch(r"\^[A-Z0-9.\-]{1,15}", upper):
+        return True
+
     if re.fullmatch(r"[A-Z0-9]{1,5}([.\-][A-Z0-9]{1,5})?", upper):
         # Wörter wie Apple, Siemens, Nvidia nicht blind als Ticker behandeln,
         # außer der Nutzer hat sie bewusst in echter Ticker-Schreibweise eingegeben.
@@ -17577,7 +17586,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     watchlist_bulk_add = st.text_area(
                         "Ticker oder Firmennamen für diese Watchlist",
                         value=st.session_state.watchlist_bulk_add,
-                        placeholder="Ein Wert pro Zeile oder mit Komma trennen",
+                        placeholder="Ticker/Firmenname, z. B. AAPL, CL=F oder WTI; pro Zeile/Komma trennen",
                         height=100,
                         key="watchlist_bulk_add_widget"
                     ).strip()
@@ -17616,14 +17625,38 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         )
                         else:
                             resolved_entries = []
+                            unresolved_entries_v305a = []
                             for entry in raw_entries:
-                                looks_like_ticker = (" " not in entry and len(entry) <= 12 and entry.replace(".", "").replace("-", "").isalnum())
-                                if looks_like_ticker:
+                                # v30.5a: dieselbe robuste Ticker-/Commodity-Aufloesung
+                                # wie in der Einzel-/Batchanalyse verwenden. Futures mit
+                                # Yahoo-Syntax (=F) duerfen nicht in die Namenssuche fallen.
+                                commodity_alias_v305a = resolve_commodity_alias_v1534_3(entry) if "resolve_commodity_alias_v1534_3" in globals() else None
+                                if commodity_alias_v305a:
+                                    resolved_entries.append(str(commodity_alias_v305a).upper())
+                                elif looks_like_real_ticker(entry):
                                     resolved_entries.append(entry.upper())
                                 else:
                                     matches = search_tickers(entry, max_results=1)
                                     if matches:
-                                        resolved_entries.append(matches[0]["symbol"])
+                                        resolved_entries.append(str(matches[0]["symbol"]).upper())
+                                    else:
+                                        resolved_fallback_v305a = resolve_input_to_ticker(entry, fallback=None)
+                                        if resolved_fallback_v305a:
+                                            resolved_entries.append(str(resolved_fallback_v305a).upper())
+                                        else:
+                                            unresolved_entries_v305a.append(entry)
+
+                            # Reihenfolge behalten, Duplikate vermeiden.
+                            _seen_resolved_v305a = set()
+                            resolved_entries = [
+                                _tk_v305a for _tk_v305a in resolved_entries
+                                if _tk_v305a and not (_tk_v305a in _seen_resolved_v305a or _seen_resolved_v305a.add(_tk_v305a))
+                            ]
+                            if unresolved_entries_v305a:
+                                st.caption(
+                                    "Nicht aufgeloest: " + ", ".join(unresolved_entries_v305a[:8])
+                                    + (" ..." if len(unresolved_entries_v305a) > 8 else "")
+                                )
                             ok, msg = queue_entries_to_watchlist_v228(
                                 selected_watchlist_name,
                                 selected_watchlist_type,

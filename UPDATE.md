@@ -1,37 +1,25 @@
-# v30.5 - WTI Commodity Context Layer
+# v30.5a - Watchlist Future Ticker Fix
 
-v30.5 erweitert den bestehenden Commodity-/Rohstoffmodus gezielt fuer WTI Oel (`CL=F`). Die klassische Aktien-/TP-/Live-/Shadow-/Exit-Logik bleibt unveraendert; hinzu kommt eine transparente, rohstoffspezifische Zusatzsicht.
+v30.5a behebt die Watchlist-Eingabe fuer Yahoo-Future-Ticker wie `CL=F`.
 
-## Neu fuer WTI
-- Eigener Block `WTI Oel · Commodity-Kontext` in der Einzelanalyse.
-- WTI-Trend ueber 5, 21 und 63 Handelstage.
-- Eigenes Trendbild: breit aufwaerts/abwaerts, kurzfristiger Ruecksetzer/Erholung oder gemischt.
-- Oel-Volatilitaet aus ATR-% mit Regime niedrig / normal / erhoeht / hoch.
-- Bestehender Kurzfrist-Trader-/Harvest-Pfad wird im WTI-Kontext direkt mit Trader-Ziel, Harvest, Chop und Horizont angezeigt.
+## Behoben
+- `CL=F` wurde in der manuellen Watchlist-Eingabe bisher nicht als direkter Ticker erkannt, weil der lokale Tickercheck das Zeichen `=` ausgeschlossen hat.
+- Dadurch fiel `CL=F` faelschlich in die Namenssuche; wenn dort kein Treffer kam, blieb die Aufloesung leer und die Queue meldete `Keine neuen Werte zum Vormerken erkannt.`
+- Yahoo-Futures mit `=F` werden jetzt explizit als valide direkte Ticker akzeptiert.
+- Ebenfalls robust: Yahoo-Indizes mit `^`, z. B. `^GSPC`.
+- Die Watchlist-Eingabe nutzt jetzt dieselbe Commodity-/Ticker-Aufloesung wie die Analyse: Rohstoff-Aliasse wie `WTI`, `Oil`, `Gold` werden zuerst aufgeloest; echte Future-Ticker werden direkt uebernommen; erst danach wird eine Namenssuche versucht.
+- Nicht aufloesbare Eingaben werden sichtbar genannt, statt still zu verschwinden.
+- Das Eingabefeld nennt `CL=F` und `WTI` jetzt explizit als Beispiele.
 
-## Optionaler externer Oel-Kontext
-- Brent (`BZ=F`) fuer den Brent-WTI-Spread.
-- XLE als liquider US-Energieaktien-Proxy fuer Relative-Performance-Vergleiche.
-- DXY (`DX-Y.NYB`) fuer Dollar-Richtung und WTI-DXY-Korrelation.
-- Dollar-Effekt wird nur als Kontextsignal interpretiert, nicht als Kausalitaet oder eigenstaendiges Handelssignal.
-
-## Provider-Schutz
-- Der normale Atomic-/Watchlist-Scan erzeugt keinerlei neue Requests.
-- Brent/XLE/DXY werden erst nach einem expliziten Klick im WTI-Expander geladen.
-- Ein Klick startet genau einen Batch-Request fuer alle drei Vergleichsreihen.
-- Erfolgreiche Daten werden ueber Streamlit 6 Stunden gecacht; der Aktualisieren-Button kann bewusst einen neuen Batch erzwingen.
-- Fehlende Vergleichsreihen werden sichtbar ausgewiesen statt still geschaetzt.
-
-## Transparenz-Hinweise
-- Brent und WTI basieren auf Yahoo-Front-Month-Futures; Futures-Rollwechsel koennen den Spread beeinflussen.
-- XLE ist ein Energieaktien-Proxy und kein Ersatz fuer physisches Rohöl oder den WTI-Future.
-- Der Dollar-Effekt nutzt DXY-Richtung und die juengste WTI-DXY-Korrelation. Ein statistischer Zusammenhang kann sich veraendern.
-
-## Fachbegriffe-Legende
-Neu hinzugekommen sind u. a. WTI, Brent, Brent-WTI Spread, Front-Month Future, XLE, DXY / US-Dollar-Index, Dollar-Effekt und Barrel.
+## Beispiele
+- `CL=F` -> `CL=F`
+- `WTI` -> `CL=F`
+- `BZ=F` -> `BZ=F`
+- `GC=F` -> `GC=F`
+- `NG=F` -> `NG=F`
+- `^GSPC` -> `^GSPC`
 
 ## Unveraendert
-- Keine Aenderung an TP1/TP2/TP3.
-- Keine Aenderung an Live-/Shadow-Ampel, Guardrails oder Exit Engine.
-- Keine Aenderung an v30.4b Harvest-/Chop-Kalibrierung.
-- Keine automatischen Orders, Stops oder Teilverkaeufe.
+- Keine Aenderung an WTI-Analyse, Commodity Context, Harvest/Chop, TP1/TP2/TP3, Live-/Shadow-/Exit-Logik.
+- Keine zusaetzlichen Provider-Abfragen fuer direkt erkannte Future-Ticker.
+- Watchlist-Queue und gebuendelte Speicherung bleiben unveraendert.

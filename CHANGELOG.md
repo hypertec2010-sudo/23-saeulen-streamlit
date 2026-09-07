@@ -1,3 +1,12 @@
+## v30.5a - Watchlist Future Ticker Fix
+- Behebt `Keine neuen Werte zum Vormerken erkannt.` bei manueller Watchlist-Eingabe von `CL=F`.
+- Ursache: der lokale Watchlist-Tickercheck akzeptierte `.` und `-`, aber kein `=` und leitete Yahoo-Futures faelschlich in die Namenssuche weiter.
+- Future-Syntax `[SYMBOL]=F` wird jetzt als direkter Ticker erkannt; ebenso Yahoo-Indizes mit `^`.
+- Manuelle Watchlist-Eingabe nutzt Commodity-Alias -> direkter Ticker -> Namenssuche/Fallback in robuster Reihenfolge.
+- `WTI`/`Oil` koennen direkt zu `CL=F` aufgeloest werden; `CL=F`, `BZ=F`, `GC=F`, `SI=F`, `NG=F` bleiben unveraendert erhalten.
+- Nicht aufloesbare Eingaben werden sichtbar ausgewiesen.
+- Keine Aenderung an Watchlist-Queue, Analyse-, Harvest-/Chop-, TP-, Live-/Shadow-/Exit- oder Providerlogik.
+
 ## v30.5 - WTI Commodity Context Layer
 - Rohstoffspezifischer WTI-Block fuer `CL=F` in der Einzelanalyse.
 - Zeigt WTI-Trend 5T/21T/63T, Trendbild und ATR-basiertes Oel-Volatilitaetsregime.

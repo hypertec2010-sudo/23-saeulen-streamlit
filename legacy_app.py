@@ -2678,7 +2678,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.4d"
+APP_VERSION = "v30.5"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14596,6 +14596,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "trade_learning.py",
     _MODULE_DIR_V252 / "early_profit_learning.py",
     _MODULE_DIR_V252 / "short_term_trader.py",
+    _MODULE_DIR_V252 / "commodity_context.py",
     _MODULE_DIR_V252 / "portfolio_risk.py",
     _MODULE_DIR_V252 / "validated_engine.py",
     _MODULE_DIR_V252 / "rotation_radar.py",
@@ -14635,6 +14636,7 @@ from modules import trade_journal as _trade_journal_module
 from modules import trade_learning as _trade_learning_module
 from modules import early_profit_learning as _early_profit_learning_v303
 from modules import short_term_trader as _short_term_trader_v304
+from modules import commodity_context as _commodity_context_v305
 from modules import portfolio_risk as _portfolio_risk_module
 from modules import validated_engine as _validated_engine_v300
 from modules import rotation_radar as _rotation_radar_v301
@@ -15468,6 +15470,36 @@ _v304b_attach_scan_context = getattr(
     "attach_scan_context",
     _v304c_attach_scan_context_fallback,
 )
+
+# v30.5: provider-transparenter Commodity-/WTI-Kontext. Lokale Trend-/ATR-
+# Berechnung ist providerfrei; Brent/XLE/DXY werden nur nach explizitem Klick
+# ueber einen einzigen gecachten Batch-Request geladen.
+_v305_build_local_wti_context = _commodity_context_v305.build_local_wti_context
+_v305_extract_commodity_close_frame = _commodity_context_v305.extract_close_frame
+_v305_build_external_wti_context = _commodity_context_v305.build_external_wti_context
+
+@st.cache_data(ttl=6 * 60 * 60, show_spinner=False)
+def _v305_load_wti_external_prices(refresh_token="default"):
+    symbols = ("BZ=F", "XLE", "DX-Y.NYB")
+    try:
+        raw = yf.download(
+            tickers=list(symbols),
+            period="9mo",
+            interval="1d",
+            auto_adjust=True,
+            progress=False,
+            threads=False,
+            group_by="column",
+        )
+        close = _v305_extract_commodity_close_frame(raw, symbols)
+        missing = [sym for sym in symbols if sym not in close.columns or close[sym].dropna().empty]
+        return {
+            "close": close,
+            "missing": missing,
+            "error": "" if not close.empty else "Batch lieferte keine verwendbaren Schlusskurse.",
+        }
+    except Exception as exc:
+        return {"close": pd.DataFrame(), "missing": list(symbols), "error": str(exc)}
 
 _position_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
@@ -16417,6 +16449,16 @@ _V304D_GLOSSARY = {
         ("Smart Money", "Sammelbegriff für institutionelles bzw. professionelles Kapital und dessen vermutete Aktivität."),
         ("Accumulation / Akkumulation", "Phase, in der Käufe bzw. institutionelle Nachfrage zunehmen können."),
         ("Distribution / Distribution", "Phase, in der Verkaufsdruck bzw. institutionelle Abgaben zunehmen können."),
+    ],
+    "Rohstoffe & Öl": [
+        ("WTI (West Texas Intermediate)", "Wichtige US-Rohölsorte und international beobachtete Öl-Benchmark. Im Tool wird der Yahoo-Front-Month-Future CL=F verwendet."),
+        ("Brent", "International wichtige Rohöl-Benchmark aus dem Nordsee-Raum. Im Tool wird für den Vergleich der Yahoo-Front-Month-Future BZ=F verwendet."),
+        ("Brent-WTI Spread", "Preisabstand Brent minus WTI in USD je Barrel. Ein positiver Wert bedeutet, dass Brent teurer als WTI notiert. Futures-Rollen können den Vergleich beeinflussen."),
+        ("Front-Month Future", "Der jeweils nächstfällige Futures-Kontrakt. Beim automatischen Rollen in den nächsten Kontrakt können Preissprünge entstehen, die nicht nur die physische Spotmarkt-Bewegung widerspiegeln."),
+        ("XLE", "Energy Select Sector SPDR Fund. Im Tool dient XLE als liquider Proxy für große US-Energieaktien und als Vergleich zu WTI, nicht als Ersatz für Rohöl selbst."),
+        ("DXY / US-Dollar-Index", "Index für die Stärke des US-Dollars gegenüber einem Währungskorb. Da Rohöl überwiegend in USD gehandelt wird, kann ein starker Dollar Gegenwind und ein schwächerer Dollar Rückenwind bedeuten; der Zusammenhang ist nicht immer stabil."),
+        ("Dollar Effect / Dollar-Effekt", "Kontextsignal aus DXY-Richtung und der jüngsten WTI-DXY-Korrelation. Es ist keine Kausalitätsbehauptung und kein eigenständiges Handelssignal."),
+        ("Barrel", "Standard-Mengeneinheit im Rohölhandel. Ein Barrel Rohöl entspricht rund 159 Litern."),
     ],
     "Relative Stärke & Rotation": [
         ("RS (Relative Strength)", "Relative Stärke gegenüber einer Benchmark. Zeigt, ob sich der Wert besser oder schlechter als sein Vergleichsmarkt entwickelt."),
@@ -28146,6 +28188,138 @@ if result is not None:
         """,
         unsafe_allow_html=True,
     )
+
+    # ---------- v30.5: WTI / Commodity Context Layer ----------
+    if str(ticker or "").strip().upper() == "CL=F":
+        try:
+            _wti_local_v305 = _v305_build_local_wti_context(df, atr_pct=atr_pct if pd.notna(atr_pct) else None)
+        except Exception:
+            _wti_local_v305 = {}
+
+        st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
+        st.markdown("### 🛢️ WTI Öl · Commodity-Kontext")
+        st.caption(
+            "Rohstoffspezifische Zusatzsicht für CL=F. Die klassische Analyse bleibt bestehen; "
+            "Unternehmens-Fundamentals werden hier nicht als Öl-Treiber interpretiert."
+        )
+
+        _wti_ret5_v305 = _wti_local_v305.get("ret5")
+        _wti_ret21_v305 = _wti_local_v305.get("ret21")
+        _wti_ret63_v305 = _wti_local_v305.get("ret63")
+        _wti_atr_v305 = _wti_local_v305.get("atr_pct")
+        _wti_cols_v305 = st.columns(5)
+        _wti_cols_v305[0].metric("WTI", price_display)
+        _wti_cols_v305[1].metric("Trend 5T", "n/a" if _wti_ret5_v305 is None else f"{float(_wti_ret5_v305):+.1f}%")
+        _wti_cols_v305[2].metric("Trend 21T", "n/a" if _wti_ret21_v305 is None else f"{float(_wti_ret21_v305):+.1f}%")
+        _wti_cols_v305[3].metric("Trend 63T", "n/a" if _wti_ret63_v305 is None else f"{float(_wti_ret63_v305):+.1f}%")
+        _wti_cols_v305[4].metric(
+            "Öl-Volatilität",
+            "n/a" if _wti_atr_v305 is None else f"{float(_wti_atr_v305):.1f}% ATR",
+            str(_wti_local_v305.get("volatility_regime") or "n/a"),
+        )
+        st.info(f"**WTI-Trendbild:** {_wti_local_v305.get('trend_label','n/a')}")
+
+        # Bestehenden v30.4 Trader-/Harvest-Pfad im Commodity-Kontext sichtbar machen.
+        try:
+            _wti_trader_row_v305 = {
+                "Kurs": price,
+                "ATR-%": _wti_atr_v305,
+                "Marktregime": market_regime_label(market_info.get("regime", "UNBEKANNT")),
+                "Volatilitätsregime": _wti_local_v305.get("volatility_regime", "n/a"),
+                "RS-Dynamik": result.get("rs_dynamics", result.get("rs_dynamic_label", "n/a")),
+                "Live-Score": result.get("live_score", result.get("trading_case_score", result.get("tb_score_100"))),
+                "Exit-Score": result.get("exit_trigger_score", result.get("exit_score")),
+                "Tactical-Exit-Risk": result.get("tactical_exit_risk", result.get("tactical_risk_score")),
+                "Trendbruch-Score": result.get("trend_break_score"),
+                "Momentum-Collapse-Score": result.get("momentum_collapse_score"),
+                "Distribution-Score": result.get("distribution_pressure_score", result.get("distribution_score")),
+                "Relative-Schwäche-Score": result.get("relative_weakness_score"),
+                "TP1": result.get("tp1"),
+            }
+            _wti_trader_v305 = _v304_build_screener_plan(_wti_trader_row_v305)
+        except Exception:
+            _wti_trader_v305 = {}
+
+        _wti_tgt_pct_v305 = _wti_trader_v305.get("target_pct")
+        _wti_tgt_px_v305 = _wti_trader_v305.get("target_price")
+        _wti_harvest_v305 = _wti_trader_v305.get("harvest_score")
+        _wti_chop_v305 = _wti_trader_v305.get("chop_score")
+        _wti_tc1, _wti_tc2, _wti_tc3, _wti_tc4 = st.columns(4)
+        _wti_tc1.metric(
+            "⚡ WTI Trader-Ziel",
+            "n/a" if _wti_tgt_px_v305 is None else f"{float(_wti_tgt_px_v305):.2f} {ccy}",
+            "n/a" if _wti_tgt_pct_v305 is None else f"+{float(_wti_tgt_pct_v305):.1f}%",
+        )
+        _wti_tc2.metric("Harvest", "n/a" if _wti_harvest_v305 is None else f"{float(_wti_harvest_v305):.0f}/100")
+        _wti_tc3.metric("Chop", "n/a" if _wti_chop_v305 is None else f"{float(_wti_chop_v305):.0f}/100")
+        _wti_tc4.metric("Trader-Horizont", str(_wti_trader_v305.get("horizon") or "n/a"))
+
+        with st.expander("🛢️ Externer Öl-Kontext: Brent · XLE · US-Dollar", expanded=False):
+            st.caption(
+                "Provider-transparent: Dieser Zusatzkontext wird NICHT beim normalen Atomic-/Watchlist-Scan geladen. "
+                "Erst der Button startet einen einzigen Batch-Request für Brent (BZ=F), XLE und DXY; danach gilt ein 6-Stunden-Cache."
+            )
+            _wti_peer_pkg_v305 = st.session_state.get("v305_wti_external_pkg")
+            _wti_has_peer_pkg_v305 = isinstance(_wti_peer_pkg_v305, dict)
+            _wti_button_label_v305 = "Brent / XLE / Dollar laden" if not _wti_has_peer_pkg_v305 else "Brent / XLE / Dollar aktualisieren"
+            if st.button(_wti_button_label_v305, key="v305_wti_external_load_btn", use_container_width=True):
+                # Nur dieser explizite Klick darf den Providerpfad ausloesen.
+                # Erster Abruf kann den 6h-Cache teilen; bewusstes Aktualisieren
+                # erzwingt mit einem neuen Token einen frischen Batch.
+                _wti_refresh_token_v305 = "default" if not _wti_has_peer_pkg_v305 else str(time.time_ns())
+                with st.spinner("Brent-, XLE- und Dollar-Kontext wird geladen …"):
+                    _wti_peer_pkg_v305 = _v305_load_wti_external_prices(_wti_refresh_token_v305)
+                st.session_state["v305_wti_external_pkg"] = _wti_peer_pkg_v305
+                st.session_state["v305_wti_external_loaded_at"] = get_current_berlin_time().isoformat()
+                _wti_has_peer_pkg_v305 = isinstance(_wti_peer_pkg_v305, dict)
+
+            if _wti_has_peer_pkg_v305:
+                # Auf spaeteren Reruns wird ausschliesslich der bereits geladene
+                # Session-Snapshot angezeigt; KEIN automatischer Providerabruf.
+                _wti_peer_close_v305 = _wti_peer_pkg_v305.get("close", pd.DataFrame()) if isinstance(_wti_peer_pkg_v305, dict) else pd.DataFrame()
+                try:
+                    _wti_external_v305 = _v305_build_external_wti_context(df, _wti_peer_close_v305)
+                except Exception:
+                    _wti_external_v305 = {}
+
+                if isinstance(_wti_peer_pkg_v305, dict) and _wti_peer_pkg_v305.get("error"):
+                    st.warning(f"Externer Öl-Kontext derzeit nicht vollständig verfügbar: {_wti_peer_pkg_v305.get('error')}")
+                _wti_missing_v305 = list(_wti_peer_pkg_v305.get("missing", []) or []) if isinstance(_wti_peer_pkg_v305, dict) else []
+                if _wti_missing_v305:
+                    st.caption("Fehlende Vergleichsreihen: " + ", ".join(_wti_missing_v305))
+
+                _spread_v305 = _wti_external_v305.get("spread_usd")
+                _spread_change_v305 = _wti_external_v305.get("spread_change_21d")
+                _xle_rel_v305 = _wti_external_v305.get("wti_vs_xle_21")
+                _dxy_ret_v305 = _wti_external_v305.get("dxy_ret21")
+                _corr_v305 = _wti_external_v305.get("wti_dxy_corr63")
+                _oc1, _oc2, _oc3, _oc4 = st.columns(4)
+                _oc1.metric(
+                    "Brent-WTI Spread",
+                    "n/a" if _spread_v305 is None else f"{float(_spread_v305):+.2f} USD/bbl",
+                    "n/a" if _spread_change_v305 is None else f"21T Δ {float(_spread_change_v305):+.2f}",
+                )
+                _oc2.metric(
+                    "WTI vs. XLE · 21T",
+                    "n/a" if _xle_rel_v305 is None else f"{float(_xle_rel_v305):+.1f} PP",
+                    str(_wti_external_v305.get("energy_leadership") or "n/a"),
+                )
+                _oc3.metric(
+                    "US-Dollar · 21T",
+                    "n/a" if _dxy_ret_v305 is None else f"{float(_dxy_ret_v305):+.1f}%",
+                    str(_wti_external_v305.get("dollar_effect") or "n/a"),
+                )
+                _oc4.metric(
+                    "WTI ↔ DXY Korrelation",
+                    "n/a" if _corr_v305 is None else f"{float(_corr_v305):+.2f}",
+                    "letzte bis zu 63 Handelstage",
+                )
+                st.caption(
+                    f"Referenzdatum: {_wti_external_v305.get('reference_date') or 'n/a'} · "
+                    f"geladen: {str(st.session_state.get('v305_wti_external_loaded_at') or 'n/a')} · "
+                    "Brent/WTI verwenden Yahoo-Front-Month-Futures; Rollwechsel können den Spread beeinflussen. "
+                    "XLE ist nur ein Energieaktien-Proxy. Der Dollar-Effekt ist Kontext, kein Kausalitäts- oder Handelssignal."
+                )
 
     # ---------- Tabs ----------
     st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)

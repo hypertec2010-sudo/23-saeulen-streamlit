@@ -1,3 +1,14 @@
+## v30.5 - WTI Commodity Context Layer
+- Rohstoffspezifischer WTI-Block fuer `CL=F` in der Einzelanalyse.
+- Zeigt WTI-Trend 5T/21T/63T, Trendbild und ATR-basiertes Oel-Volatilitaetsregime.
+- Integriert den bestehenden Short-Term-Trader-/Harvest-Pfad direkt in die WTI-Sicht.
+- Optionaler, explizit per Klick geladener Batch-Kontext fuer Brent (`BZ=F`), XLE und DXY (`DX-Y.NYB`).
+- Brent-WTI-Spread inkl. 21T-Veraenderung, WTI-vs.-XLE-Relative-Performance sowie DXY-Richtung und WTI-DXY-Korrelation.
+- Dollar-Effekt bleibt ein transparentes Kontextsignal, kein Kausalitaets- oder automatisches Handelssignal.
+- Keine versteckten Zusatzrequests im Atomic-/Watchlist-Scan; externer Oel-Kontext nutzt einen einzelnen 6h-gecachten Batch-Request nach Nutzerklick.
+- Fachbegriffe-Legende um WTI, Brent, Brent-WTI Spread, Front-Month Future, XLE, DXY, Dollar-Effekt und Barrel erweitert.
+- Keine Aenderung an TP-/Live-/Shadow-/Exit-/Harvest-Chop-Produktivlogik.
+
 ## v30.4d - App-wide Fachbegriffe / Legende
 - Neuer app-weiter Sidebar-Expander `📖 Fachbegriffe / Legende` mit Suchfeld.
 - Mehr als 100 wiederkehrende englische Trading-, Engine-, Daten-, Portfolio- und Fundamentalbegriffe auf Deutsch erklärt.

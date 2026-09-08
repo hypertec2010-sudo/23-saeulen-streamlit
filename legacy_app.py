@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.5b"
+APP_VERSION = "v30.5c"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -19062,6 +19062,77 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 txt = _v243_clean_cell(value)
                                 return txt if txt in {"", "-", "n/a"} else f"⚡ {txt}"
 
+                            # v30.5c: Aus den bereits vorhandenen Live-Feldern eine
+                            # handlungsnahe Kurzlesart ableiten. Rein darstellend:
+                            # keine Aenderung an Score, Gates, Ampeln oder Trading-Logik.
+                            def _v305c_live_takeaway(row):
+                                def _txt(key, default="-"):
+                                    val = _v243_clean_cell(row.get(key))
+                                    return default if val in {"", "-", "n/a"} else val
+
+                                ampel = _txt("Ampel", "⚪")
+                                status = _txt("Status")
+                                state = _txt("Trade-State")
+                                setup = _txt("Setup-Alert")
+                                gates = _txt("Aktive Einstiegsgates")
+                                rsdyn = _txt("RS-Dynamik")
+                                trader_mode = _txt("Trader-Modus")
+                                harvest = _v304a_harvest_num(row.get("Harvest-Score"))
+                                status_l = status.lower()
+                                state_l = state.lower()
+                                setup_l = setup.lower()
+                                gates_l = gates.lower()
+                                rsdyn_l = rsdyn.lower()
+
+                                has_gate = gates not in {"-", "Keine", "Keine harten Einstiegsgates aktiv."} and not (
+                                    "keine" in gates_l and "gate" in gates_l
+                                )
+                                trigger_ready = any(x in (state_l + " " + setup_l) for x in (
+                                    "armed", "bereit", "trigger aktiv", "bestätigt", "bestaetigt"
+                                ))
+
+                                if has_gate:
+                                    takeaway = f"Setup derzeit gebremst: {gates}."
+                                    action = "Kein neuer Einstieg, bis das aktive Gate wieder frei ist."
+                                    tone = "warning"
+                                elif "🔴" in ampel or any(x in status_l for x in ("meiden", "invalid", "blockiert")):
+                                    takeaway = "Aktuell keine belastbare Einstiegsfreigabe."
+                                    action = "Beobachten und erst nach erneuter technischer Freigabe handeln."
+                                    tone = "warning"
+                                elif "🟢" in ampel and trigger_ready:
+                                    takeaway = "Setup technisch aktiv bzw. triggernah; der Trendpfad bleibt primaer."
+                                    action = "Entry-/Trigger-Regel pruefen und nicht oberhalb der vorgesehenen Zone hinterherlaufen."
+                                    tone = "success"
+                                elif "🟢" in ampel:
+                                    takeaway = "Konstruktives Setup, aber noch kein Grund fuer einen aggressiven Einstieg."
+                                    action = "Trendpfad weiter beobachten und nur innerhalb der vorgesehenen Entry-/Trigger-Regeln handeln."
+                                    tone = "success"
+                                elif "🟡" in ampel:
+                                    takeaway = "Interessantes Setup, aber die Bestaetigung ist noch nicht vollstaendig."
+                                    action = "Trigger, Entry-Zone und CRV weiter beobachten; Bestaetigung abwarten."
+                                    tone = "info"
+                                else:
+                                    takeaway = "Beobachtungsstatus ohne klare aktuelle Handlungsfreigabe."
+                                    action = "Auf ein klareres Signal bzw. eine neue Freigabe warten."
+                                    tone = "info"
+
+                                extras = []
+                                if "verschlechter" in rsdyn_l:
+                                    extras.append("RS-Dynamik schwaecht sich ab")
+                                elif "verbessert" in rsdyn_l:
+                                    extras.append("RS-Dynamik verbessert sich")
+                                if harvest is not None and harvest >= 75:
+                                    extras.append(f"Harvest {harvest:.0f}/100: kurzfristige Gewinnsicherung hat hohe Relevanz")
+                                    action += " Falls bereits positioniert: Teilgewinn-/Harvest-Plan aktiv pruefen."
+                                elif harvest is not None and harvest >= 60:
+                                    extras.append(f"Harvest {harvest:.0f}/100: Kurzfrist-Ziel wird relevant")
+                                    action += " Falls bereits positioniert: Kurzfrist-Ziel und Giveback-Risiko enger beobachten."
+                                elif "hybrid" in trader_mode.lower():
+                                    extras.append("Trader-Pfad nur im Hybridmodus beobachten")
+                                if extras:
+                                    takeaway += " " + "; ".join(extras) + "."
+                                return takeaway, action, tone
+
                             for _col in live_display_df.columns:
                                 live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)
                             if "Trader-Ziel" in live_display_df.columns:
@@ -19145,20 +19216,21 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         if _why_brake_v286e3 not in {"", "-"}:
                                             _why_parts_v286e3.append("Bremsen: " + _why_brake_v286e3)
                                         _why_score_full_v2847 = ". ".join(_why_parts_v286e3)
-                                    _why_score_card_v286e3 = ""
-                                    if _why_score_full_v2847 not in {"", "-"}:
-                                        _why_score_card_v286e3 = (
-                                            '<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Warum dieser Score?</span>'
-                                            + html.escape(_v243_clip_cell(_why_score_full_v2847, 180)) + '</div>'
-                                        )
+                                    _takeaway_v305c, _next_action_v305c, _takeaway_tone_v305c = _v305c_live_takeaway(_mobile_row_v2842)
+                                    _why_score_card_v286e3 = (
+                                        '<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Kurzfazit</span>'
+                                        + html.escape(_v243_clip_cell(_takeaway_v305c, 210)) + '</div>'
+                                    )
                                     _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
                                     _status_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Status"), 52))
                                     _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV")))
                                     _distance_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Entry-Abstand")))
                                     _change_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Änderung")))
                                     _why_changed_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum geändert?"))
+                                    _change_full_v305c = _v243_clean_cell(_mobile_row_v2842.get("Änderung"))
                                     _why_changed_v2843 = html.escape(_v243_clip_cell(_why_changed_full_v2847, 135))
-                                    _why_block_v2843 = "" if _why_changed_v2843 in {"", "-"} else f'<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Warum geändert?</span>{_why_changed_v2843}</div>'
+                                    _has_real_change_v305c = _change_full_v305c not in {"", "-", "Unverändert", "Unveraendert"}
+                                    _why_block_v2843 = "" if (not _has_real_change_v305c or _why_changed_v2843 in {"", "-"}) else f'<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Seit letztem Scan</span>{_why_changed_v2843}</div>'
                                     st.markdown(
                                         f"""
                                         <div class="v2842-mobile-card">
@@ -19201,37 +19273,51 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     )
                                     _ticker_key_v2847 = re.sub(r"[^A-Za-z0-9_-]+", "_", _v243_clean_cell(_mobile_row_v2842.get("Ticker")))
                                     if _why_score_full_v2847 not in {"", "-"}:
-                                        with st.expander(f"Mehr anzeigen · Warum {_v243_clean_cell(_mobile_row_v2842.get('Ticker'))}?", expanded=False):
-                                            st.write(_why_score_full_v2847)
-                                            if _why_changed_full_v2847 not in {"", "-"}:
-                                                st.markdown("**Warum geändert?**")
+                                        with st.expander(f"Details · {_v243_clean_cell(_mobile_row_v2842.get('Ticker'))} · Entscheidung & Änderung", expanded=False):
+                                            st.markdown("**Kurzfazit**")
+                                            if _takeaway_tone_v305c == "warning":
+                                                st.warning(_takeaway_v305c)
+                                            elif _takeaway_tone_v305c == "success":
+                                                st.success(_takeaway_v305c)
+                                            else:
+                                                st.info(_takeaway_v305c)
+                                            st.markdown(f"**Nächste Handlung:** {_next_action_v305c}")
+
+                                            if _has_real_change_v305c and _why_changed_full_v2847 not in {"", "-"}:
+                                                st.markdown("**Seit letztem Scan**")
                                                 st.write(_why_changed_full_v2847)
+
                                             _driver_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Treiber"))
                                             _brake_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
-                                            if _driver_full_v2847 not in {"", "-"}: st.markdown(f"**Treiber:** {_driver_full_v2847}")
-                                            if _brake_full_v2847 not in {"", "-"}: st.markdown(f"**Bremsen:** {_brake_full_v2847}")
+                                            st.markdown("**Warum dieser Score?**")
+                                            if _driver_full_v2847 not in {"", "-"}:
+                                                st.write(f"Treiber: {_driver_full_v2847}")
+                                            if _brake_full_v2847 not in {"", "-"}:
+                                                st.write(f"Bremse: {_brake_full_v2847}")
+
                                             _gates_full_v286c = _v243_clean_cell(_mobile_row_v2842.get("Aktive Einstiegsgates"))
                                             _gate_details_full_v286c = _v243_clean_cell(_mobile_row_v2842.get("Gate-Details"))
-                                            if _gates_full_v286c not in {"", "-"}:
-                                                st.markdown(f"**Aktive Einstiegsgates:** {_gates_full_v286c}")
+                                            if _gates_full_v286c not in {"", "-"} and not ("keine" in _gates_full_v286c.lower() and "gate" in _gates_full_v286c.lower()):
+                                                st.markdown(f"**Aktives Einstiegsgate:** {_gates_full_v286c}")
                                                 if _gate_details_full_v286c not in {"", "-"}:
-                                                    st.markdown("**Gate-Details:**")
                                                     for _gate_detail_item_v286c in str(_gate_details_full_v286c).split(" | "):
                                                         if str(_gate_detail_item_v286c).strip():
                                                             st.write("• " + str(_gate_detail_item_v286c).strip())
-                                            _engine_full_v285a = _v243_clean_cell(_mobile_row_v2842.get("Engine-Erklärung"))
-                                            if _engine_full_v285a not in {"", "-"}:
-                                                st.markdown("**Engine 2.0 – Beobachtungsmodus**")
-                                                st.write(_engine_full_v285a)
-                                            _rs_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("RS-Details"))
-                                            _rsdyn_detail_v285b = _v243_clean_cell(_mobile_row_v2842.get("RS-Dynamik Details"))
-                                            _vol_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Volatilitäts-Details"))
-                                            _market_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Marktregime-Details"))
-                                            st.markdown("**Trading Context – Berechnungsbasis**")
-                                            if _rs_detail_v2848 not in {"", "-"}: st.write(_rs_detail_v2848)
-                                            if _rsdyn_detail_v285b not in {"", "-"}: st.write(_rsdyn_detail_v285b)
-                                            if _vol_detail_v2848 not in {"", "-"}: st.write(_vol_detail_v2848)
-                                            if _market_detail_v2848 not in {"", "-"}: st.write(_market_detail_v2848)
+
+                                            if st.checkbox("Berechnungsdetails anzeigen", key=f"v305c_context_{_ticker_key_v2847}"):
+                                                _engine_full_v285a = _v243_clean_cell(_mobile_row_v2842.get("Engine-Erklärung"))
+                                                if _engine_full_v285a not in {"", "-"}:
+                                                    st.markdown("**Engine 2.0 – Beobachtungsmodus**")
+                                                    st.write(_engine_full_v285a)
+                                                _rs_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("RS-Details"))
+                                                _rsdyn_detail_v285b = _v243_clean_cell(_mobile_row_v2842.get("RS-Dynamik Details"))
+                                                _vol_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Volatilitäts-Details"))
+                                                _market_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Marktregime-Details"))
+                                                st.markdown("**Technische Berechnungsbasis**")
+                                                if _rs_detail_v2848 not in {"", "-"}: st.write(_rs_detail_v2848)
+                                                if _rsdyn_detail_v285b not in {"", "-"}: st.write(_rsdyn_detail_v285b)
+                                                if _vol_detail_v2848 not in {"", "-"}: st.write(_vol_detail_v2848)
+                                                if _market_detail_v2848 not in {"", "-"}: st.write(_market_detail_v2848)
 
                                 _mobile_detail_tickers_v2842 = [
                                     str(value).strip()
@@ -19289,18 +19375,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.markdown("**Marktregime**")
                                                 st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Marktregime-Details")))
                                                 st.caption("Die Context-/Shadow-Werte laufen parallel; die produktive Live-Ampel bleibt unverändert.")
-                                            _why_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Warum dieser Score?"))
-                                            if _why_score_v2846 in {"", "-"}:
-                                                _detail_driver_v286e3 = _v243_clean_cell(_mobile_detail_row_v2842.get("Score-Treiber"))
-                                                _detail_brake_v286e3 = _v243_clean_cell(_mobile_detail_row_v2842.get("Score-Bremsen"))
-                                                _detail_parts_v286e3 = []
-                                                if _detail_driver_v286e3 not in {"", "-"}:
-                                                    _detail_parts_v286e3.append("Treiber: " + _detail_driver_v286e3)
-                                                if _detail_brake_v286e3 not in {"", "-"}:
-                                                    _detail_parts_v286e3.append("Bremsen: " + _detail_brake_v286e3)
-                                                _why_score_v2846 = ". ".join(_detail_parts_v286e3)
-                                            if _why_score_v2846 not in {"", "-"}:
-                                                st.info(_why_score_v2846)
+                                            _detail_takeaway_v305c, _detail_action_v305c, _detail_tone_v305c = _v305c_live_takeaway(_mobile_detail_row_v2842)
+                                            if _detail_tone_v305c == "warning":
+                                                st.warning(f"Kurzfazit: {_detail_takeaway_v305c}")
+                                            elif _detail_tone_v305c == "success":
+                                                st.success(f"Kurzfazit: {_detail_takeaway_v305c}")
+                                            else:
+                                                st.info(f"Kurzfazit: {_detail_takeaway_v305c}")
+                                            st.caption(f"Nächste Handlung: {_detail_action_v305c}")
                                             _mobile_detail_df_v2842 = pd.DataFrame(
                                                 [
                                                     {

@@ -1,3 +1,13 @@
+## v30.5c - Live-Screener Decision Summary Cleanup
+- Redundante Treiber-/Bremsen-Ausgabe im `Warum TICKER?`-Bereich entfernt.
+- Neuer Expander `Details · TICKER · Entscheidung & Änderung` mit handlungsnahem Kurzfazit.
+- `Nächste Handlung` fasst Entry-/Trigger-/Gate-/Harvest-Kontext in einer konkreten Lesart zusammen.
+- `Seit letztem Scan` wird nur noch bei echten Aenderungen gezeigt.
+- Score-Treiber und Score-Bremse erscheinen nur einmal unter `Warum dieser Score?`.
+- Technische Engine-/RS-/Volatilitaets-/Marktregime-Rohdetails sind optional ueber `Berechnungsdetails anzeigen`.
+- Mobile Karten und Ticker-Details zeigen nun Kurzfazit statt redundanter Roh-Erklaerung.
+- Rein darstellende Explainability-Aenderung; keine Score-, Trading-, Harvest-, TP- oder Providerlogik geaendert.
+
 ## v30.5b - Berlin Timezone / MEZ-MESZ Timestamp Fix
 - Sichtbare App-Zeitstempel auf `Europe/Berlin` vereinheitlicht.
 - `Letzter vollständig abgeschlossener Live-Stand` zeigt jetzt Berlin-Zeit statt Streamlit-Server-UTC.

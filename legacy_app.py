@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.6"
+APP_VERSION = "v30.7"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -7477,6 +7477,87 @@ def shorten_text(value, max_len=42):
         clipped = clipped.rsplit(" ", 1)[0]
     clipped = clipped.rstrip(" ,;:-")
     return clipped + "..."
+
+
+# ---------- v30.7: Einheitliche Decision Summary UI ----------
+def _v307_summary_text(value, fallback="-"):
+    if value is None:
+        return fallback
+    txt = str(value).strip()
+    if not txt or txt.lower() in {"nan", "none", "n/a"}:
+        return fallback
+    return txt
+
+
+def _v307_render_decision_summary(
+    *,
+    seeing,
+    action,
+    why=None,
+    changed=None,
+    tone="info",
+    title="Entscheidungs-Zusammenfassung",
+):
+    """Compact, provider-free UI summary used across workspaces.
+
+    The helper only renders already computed values. It does not modify scores,
+    gates, actions, positions or provider behavior. Optional fields are omitted
+    instead of being filled with invented text.
+    """
+    seeing_txt = _v307_summary_text(seeing)
+    action_txt = _v307_summary_text(action)
+    why_txt = _v307_summary_text(why)
+    changed_txt = _v307_summary_text(changed)
+    if changed_txt in {"-", "Unverändert", "Unveraendert"}:
+        changed_txt = "-"
+
+    tone_key = str(tone or "info").strip().lower()
+    tone_cls = {
+        "success": "good",
+        "green": "good",
+        "warning": "warn",
+        "yellow": "warn",
+        "orange": "hot",
+        "error": "bad",
+        "red": "bad",
+    }.get(tone_key, "info")
+
+    items = [("Was sehe ich?", seeing_txt)]
+    if changed_txt != "-":
+        items.append(("Was hat sich geändert?", changed_txt))
+    items.append(("Nächste Handlung", action_txt))
+    if why_txt != "-":
+        items.append(("Warum?", why_txt))
+
+    cards = "".join(
+        '<div class="v307-decision-card"><div class="v307-decision-label">'
+        + html.escape(label)
+        + '</div><div class="v307-decision-text">'
+        + html.escape(shorten_text(text, 260))
+        + '</div></div>'
+        for label, text in items
+    )
+    st.markdown(
+        f"""
+        <style>
+        .v307-decision-shell{{margin:.72rem 0 .92rem 0;padding:.82rem .9rem;border-radius:16px;border:1px solid rgba(96,165,250,.28);background:rgba(15,23,42,.22);}}
+        .v307-decision-shell.good{{border-color:rgba(34,197,94,.34);background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(15,23,42,.22));}}
+        .v307-decision-shell.warn{{border-color:rgba(234,179,8,.38);background:linear-gradient(135deg,rgba(234,179,8,.09),rgba(15,23,42,.22));}}
+        .v307-decision-shell.hot{{border-color:rgba(249,115,22,.44);background:linear-gradient(135deg,rgba(249,115,22,.11),rgba(15,23,42,.24));}}
+        .v307-decision-shell.bad{{border-color:rgba(239,68,68,.48);background:linear-gradient(135deg,rgba(239,68,68,.12),rgba(15,23,42,.25));}}
+        .v307-decision-title{{font-size:.72rem;letter-spacing:.11em;text-transform:uppercase;font-weight:850;color:#cbd5e1;margin-bottom:.5rem;}}
+        .v307-decision-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:.58rem;}}
+        .v307-decision-card{{padding:.58rem .64rem;border-radius:11px;background:rgba(15,23,42,.30);border:1px solid rgba(148,163,184,.16);}}
+        .v307-decision-label{{font-size:.66rem;letter-spacing:.07em;text-transform:uppercase;color:#9ca3af;font-weight:800;margin-bottom:.18rem;}}
+        .v307-decision-text{{font-size:.84rem;line-height:1.38;color:#e5e7eb;overflow-wrap:anywhere;}}
+        </style>
+        <div class="v307-decision-shell {tone_cls}">
+          <div class="v307-decision-title">{html.escape(str(title))}</div>
+          <div class="v307-decision-grid">{cards}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def display_mode_label(mode_label):
@@ -15625,13 +15706,13 @@ def _v306_render_harvest_learning(watchlist_name, event_df=None):
     try:
         _pkg_v306 = _v306_build_harvest_learning(watchlist_name, event_df)
     except Exception as _exc_v306:
-        with st.expander("⚡ Short-Term Harvest · Outcome & Validation · v30.6", expanded=False):
+        with st.expander(f"⚡ Short-Term Harvest · Outcome & Validation · {APP_VERSION}", expanded=False):
             st.warning(f"Harvest-Lerncheck aktuell nicht lesbar: {_exc_v306}")
         return
 
     _sum_v306 = dict(_pkg_v306.get("summary") or {})
     _days_v306 = int(_sum_v306.get("scan_days") or 0)
-    with st.expander("⚡ Short-Term Harvest · Outcome & Validation · v30.6", expanded=False):
+    with st.expander(f"⚡ Short-Term Harvest · Outcome & Validation · {APP_VERSION}", expanded=False):
         st.caption(
             "Beobachtungsmodus: Die App speichert pro Watchlist und Berlin-Tag nur den neuesten vollständig "
             "abgeschlossenen Atomic-Vollscan. Danach werden 1/3/5 Börsentage nur ausgewertet, wenn am exakten "
@@ -15640,7 +15721,7 @@ def _v306_render_harvest_learning(watchlist_name, event_df=None):
         )
         if _days_v306 <= 0:
             st.info(
-                "Noch keine v30.6-Vollscan-Tage gespeichert. Nach dem nächsten vollständig abgeschlossenen "
+                "Noch keine Vollscan-Tage für die Harvest-Validierung gespeichert. Nach dem nächsten vollständig abgeschlossenen "
                 "Live-Scan beginnt die Outcome-Historie automatisch."
             )
             return
@@ -19153,7 +19234,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
                             st.caption("Volatilität = ATR(14) in % des Kurses. Datenqualität bewertet nur Vollständigkeit/Historie der Marktdaten und verändert den Trading-Score nicht.")
                             st.caption("Statuswechsel können auch ohne sichtbare Kursbewegung entstehen: Die neue Spalte 'Warum geändert?' vergleicht Score, Trigger, Timing, Konfluenz, Radar-Bucket und harte Gates mit dem vorherigen Scan.")
-                            st.caption("v30.6: Harvest/Chop nutzt weiterhin die bewährte v30.4b-Kalibrierung. Vollständige Atomic-Scans werden zusätzlich providerfrei für die 1/3/5T-Outcome-Validierung protokolliert; die klassische TP-/Live-/Shadow-Logik bleibt unverändert.")
+                            st.caption(f"{APP_VERSION}: Harvest/Chop nutzt die bestehende Kalibrierung. Vollständige Atomic-Scans werden zusätzlich providerfrei für die 1/3/5T-Outcome-Validierung protokolliert; die klassische TP-/Live-/Shadow-Logik bleibt unverändert.")
                             try:
                                 _scan_chop_vals_v304b = pd.to_numeric(
                                     live_df.get("Scan-Chop", pd.Series(dtype=object)).astype(str).str.extract(r"(\d+(?:\.\d+)?)")[0],
@@ -19384,7 +19465,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _why_score_full_v2847 = ". ".join(_why_parts_v286e3)
                                     _takeaway_v305c, _next_action_v305c, _takeaway_tone_v305c = _v305c_live_takeaway(_mobile_row_v2842)
                                     _why_score_card_v286e3 = (
-                                        '<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Kurzfazit</span>'
+                                        '<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Was sehe ich?</span>'
                                         + html.escape(_v243_clip_cell(_takeaway_v305c, 210)) + '</div>'
                                     )
                                     _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
@@ -19396,7 +19477,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _change_full_v305c = _v243_clean_cell(_mobile_row_v2842.get("Änderung"))
                                     _why_changed_v2843 = html.escape(_v243_clip_cell(_why_changed_full_v2847, 135))
                                     _has_real_change_v305c = _change_full_v305c not in {"", "-", "Unverändert", "Unveraendert"}
-                                    _why_block_v2843 = "" if (not _has_real_change_v305c or _why_changed_v2843 in {"", "-"}) else f'<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Seit letztem Scan</span>{_why_changed_v2843}</div>'
+                                    _why_block_v2843 = "" if (not _has_real_change_v305c or _why_changed_v2843 in {"", "-"}) else f'<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Was hat sich geändert?</span>{_why_changed_v2843}</div>'
                                     st.markdown(
                                         f"""
                                         <div class="v2842-mobile-card">
@@ -19439,8 +19520,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     )
                                     _ticker_key_v2847 = re.sub(r"[^A-Za-z0-9_-]+", "_", _v243_clean_cell(_mobile_row_v2842.get("Ticker")))
                                     if _why_score_full_v2847 not in {"", "-"}:
-                                        with st.expander(f"Details · {_v243_clean_cell(_mobile_row_v2842.get('Ticker'))} · Entscheidung & Änderung", expanded=False):
-                                            st.markdown("**Kurzfazit**")
+                                        with st.expander(f"Details · {_v243_clean_cell(_mobile_row_v2842.get('Ticker'))} · Entscheidungs-Zusammenfassung", expanded=False):
+                                            st.markdown("**Was sehe ich?**")
                                             if _takeaway_tone_v305c == "warning":
                                                 st.warning(_takeaway_v305c)
                                             elif _takeaway_tone_v305c == "success":
@@ -19450,12 +19531,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.markdown(f"**Nächste Handlung:** {_next_action_v305c}")
 
                                             if _has_real_change_v305c and _why_changed_full_v2847 not in {"", "-"}:
-                                                st.markdown("**Seit letztem Scan**")
+                                                st.markdown("**Was hat sich geändert?**")
                                                 st.write(_why_changed_full_v2847)
 
                                             _driver_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Treiber"))
                                             _brake_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
-                                            st.markdown("**Warum dieser Score?**")
+                                            st.markdown("**Warum?**")
                                             if _driver_full_v2847 not in {"", "-"}:
                                                 st.write(f"Treiber: {_driver_full_v2847}")
                                             if _brake_full_v2847 not in {"", "-"}:
@@ -19543,11 +19624,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.caption("Die Context-/Shadow-Werte laufen parallel; die produktive Live-Ampel bleibt unverändert.")
                                             _detail_takeaway_v305c, _detail_action_v305c, _detail_tone_v305c = _v305c_live_takeaway(_mobile_detail_row_v2842)
                                             if _detail_tone_v305c == "warning":
-                                                st.warning(f"Kurzfazit: {_detail_takeaway_v305c}")
+                                                st.warning(f"Was sehe ich: {_detail_takeaway_v305c}")
                                             elif _detail_tone_v305c == "success":
-                                                st.success(f"Kurzfazit: {_detail_takeaway_v305c}")
+                                                st.success(f"Was sehe ich: {_detail_takeaway_v305c}")
                                             else:
-                                                st.info(f"Kurzfazit: {_detail_takeaway_v305c}")
+                                                st.info(f"Was sehe ich: {_detail_takeaway_v305c}")
                                             st.caption(f"Nächste Handlung: {_detail_action_v305c}")
                                             _mobile_detail_df_v2842 = pd.DataFrame(
                                                 [
@@ -20400,6 +20481,47 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 )
                                                 st.info(f"Aktueller Rotation-Fokus: {_top_txt_v301d}")
 
+                                                # v30.7: dieselbe Decision-Summary-Lesart wie in Live/Portfolio/Positionen.
+                                                _rot_top_v307 = _dd_top_v301d.iloc[0].to_dict()
+                                                _rot_ticker_v307 = str(_rot_top_v307.get("Ticker") or "-")
+                                                _rot_label_v307 = str(_rot_top_v307.get("Rotation-Kandidat") or "Rotation-Kandidat")
+                                                _rot_engine_v307 = str(_rot_top_v307.get("Engine-Bestätigung") or "-")
+                                                try:
+                                                    _rot_score_v307 = f"{float(_rot_top_v307.get('Kandidaten-Score')):.0f}/100"
+                                                except Exception:
+                                                    _rot_score_v307 = "n/a"
+                                                _rot_seeing_v307 = f"{_rot_label_v307}: {_rot_ticker_v307} führt den aktuellen Aktien-Drilldown mit Kandidaten-Score {_rot_score_v307}. {_rot_engine_v307}"
+                                                _rot_engine_low_v307 = _rot_engine_v307.lower()
+                                                if "✅" in _rot_engine_v307:
+                                                    _rot_action_v307 = "Top-Kandidat im Live-Screener bzw. in der Einzelanalyse prüfen; produktive Live-/Shadow-Ampeln und Einstiegsgates bleiben maßgeblich."
+                                                    _rot_tone_v307 = "success"
+                                                elif "bremst" in _rot_engine_low_v307 or "⚠" in _rot_engine_v307:
+                                                    _rot_action_v307 = "Rotation beobachten, aber keinen Einstieg allein aus dem Radar ableiten; erst Engine-/Guardrail-Freigabe abwarten."
+                                                    _rot_tone_v307 = "warning"
+                                                else:
+                                                    _rot_action_v307 = "Kandidat weiter beobachten und gegen Live-/Shadow-Kontext, Entry-Readiness und Gates prüfen."
+                                                    _rot_tone_v307 = "info"
+                                                _rot_why_bits_v307 = []
+                                                for _lab_v307, _key_v307, _fmt_v307 in [
+                                                    ("Sektor-RS21", "Sektor-RS 21T %", "+.1f"),
+                                                    ("RS-Beschleunigung", "RS-Beschl. Score", ".0f"),
+                                                    ("Trend", "Trend-Score", ".0f"),
+                                                    ("Entry-Readiness", "Entry-Readiness", ".0f"),
+                                                ]:
+                                                    try:
+                                                        _vv_v307 = float(_rot_top_v307.get(_key_v307))
+                                                        _suffix_v307 = "%" if _key_v307 == "Sektor-RS 21T %" else "/100"
+                                                        _rot_why_bits_v307.append(f"{_lab_v307} {format(_vv_v307, _fmt_v307)}{_suffix_v307}")
+                                                    except Exception:
+                                                        pass
+                                                _v307_render_decision_summary(
+                                                    seeing=_rot_seeing_v307,
+                                                    action=_rot_action_v307,
+                                                    why=" · ".join(_rot_why_bits_v307) if _rot_why_bits_v307 else str(_rot_top_v307.get("Warum") or "-"),
+                                                    tone=_rot_tone_v307,
+                                                    title="Rotation · Entscheidungs-Zusammenfassung",
+                                                )
+
                                             if not _dd_errors_show_v301d.empty:
                                                 with st.expander("Drilldown-Datenhinweise", expanded=False):
                                                     st.dataframe(_dd_errors_show_v301d, hide_index=True, use_container_width=True)
@@ -20998,23 +21120,42 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     if c != _base_currency_v291 and float(_fx_rates_v291.get(c, 0.0) or 0.0) <= 0.0
                                 ])
                                 _aggregate_fx_blocked_v303g = bool(_missing_fx_v303g and _native_count_v303g > 0)
+                                _drivers_v291 = _v303h_clean_portfolio_messages(
+                                    _portfolio_pkg_v291.get("drivers") or [], _portfolio_bridge_v303h, actions=False
+                                )
+                                _actions_v291 = _v303h_clean_portfolio_messages(
+                                    _portfolio_pkg_v291.get("actions") or [], _portfolio_bridge_v303h, actions=True
+                                )
 
-                                # v30.3h: do not present a numeric portfolio-risk score as fully
-                                # released while the chosen base-currency aggregation is impossible.
+                                # v30.7: einheitliche Portfolio-Entscheidungszusammenfassung.
+                                _portfolio_score_v307 = float(_portfolio_pkg_v291.get("score") or 0)
                                 if _aggregate_fx_blocked_v303g:
-                                    st.markdown("## ⚪ Portfolio-Risiko noch nicht vollständig berechenbar")
-                                    st.write("**Nächste Portfolio-Handlung:** Fehlende FX-Umrechnung ergänzen; Positions-/Stop-Daten bleiben davon getrennt auswertbar.")
-                                    st.caption(
-                                        f"Vorläufiger Engine-Score {float(_portfolio_pkg_v291.get('score') or 0):.0f}/100 · "
-                                        f"Konfidenz: {_portfolio_pkg_v291.get('confidence','-')} · keine Freigabe als vollständige Portfolio-Ampel"
+                                    _portfolio_seeing_v307 = (
+                                        "Portfolio-Gesamtrisiko in der gewählten Basiswährung ist noch nicht vollständig freigegeben, "
+                                        "weil mindestens eine FX-Umrechnung fehlt. Native Positions-/Stopdaten bleiben separat auswertbar."
                                     )
+                                    _portfolio_action_v307 = "Fehlende FX-Umrechnung ergänzen; bis dahin keine vollständige Basiswährungs-Ampel interpretieren."
+                                    _portfolio_tone_v307 = "warning"
                                 else:
-                                    st.markdown(
-                                        f"## {_portfolio_pkg_v291.get('ampel','⚪')} {_portfolio_pkg_v291.get('status','-')} · "
-                                        f"{float(_portfolio_pkg_v291.get('score') or 0):.0f}/100"
+                                    _portfolio_seeing_v307 = (
+                                        f"{_portfolio_pkg_v291.get('ampel','⚪')} {_portfolio_pkg_v291.get('status','-')} · "
+                                        f"Portfolio-Risiko {_portfolio_score_v307:.0f}/100 · Konfidenz {_portfolio_pkg_v291.get('confidence','-')}."
                                     )
-                                    st.write(f"**Nächste Portfolio-Handlung:** {_portfolio_pkg_v291.get('action','-')}")
-                                    st.caption(f"Konfidenz: {_portfolio_pkg_v291.get('confidence','-')}")
+                                    _portfolio_action_v307 = str(_portfolio_pkg_v291.get("action") or (_actions_v291[0] if _actions_v291 else "-"))
+                                    _portfolio_ampel_v307 = str(_portfolio_pkg_v291.get("ampel") or "⚪")
+                                    _portfolio_tone_v307 = "error" if "🔴" in _portfolio_ampel_v307 else "warning" if any(x in _portfolio_ampel_v307 for x in ("🟠", "🟡")) else "success" if "🟢" in _portfolio_ampel_v307 else "info"
+                                _portfolio_why_v307 = " · ".join([str(x) for x in _drivers_v291[:3]]) if _drivers_v291 else (
+                                    f"Aktuelle Kursabdeckung {float(_portfolio_bridge_v303h.get('current_price_coverage_pct') or 0):.0f}% · "
+                                    f"Stop-Abdeckung {float(_portfolio_bridge_v303h.get('stop_coverage_pct') or 0):.0f}%"
+                                )
+                                _v307_render_decision_summary(
+                                    seeing=_portfolio_seeing_v307,
+                                    action=_portfolio_action_v307,
+                                    why=_portfolio_why_v307,
+                                    tone=_portfolio_tone_v307,
+                                    title="Portfolio · Entscheidungs-Zusammenfassung",
+                                )
+                                st.caption(f"Konfidenz: {_portfolio_pkg_v291.get('confidence','-')} · Decision Summary verändert keine Portfolio-Berechnung.")
 
                                 if _aggregate_fx_blocked_v303g:
                                     st.warning(
@@ -21070,20 +21211,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Gespeicherte Kurse bleiben sichtbar, erzeugen aber keine grüne Datenfreigabe."
                                     )
 
-                                _drivers_v291 = _v303h_clean_portfolio_messages(
-                                    _portfolio_pkg_v291.get("drivers") or [], _portfolio_bridge_v303h, actions=False
-                                )
-                                _actions_v291 = _v303h_clean_portfolio_messages(
-                                    _portfolio_pkg_v291.get("actions") or [], _portfolio_bridge_v303h, actions=True
-                                )
-                                if _drivers_v291:
-                                    st.markdown("**Wichtigste Risikotreiber**")
-                                    for _d_v291 in _drivers_v291:
-                                        st.write(f"• {_d_v291}")
-                                if _actions_v291:
-                                    st.markdown("**Portfolio-Maßnahmen**")
-                                    for _a_v291 in _actions_v291:
-                                        st.write(f"• {_a_v291}")
+                                if _drivers_v291 or _actions_v291:
+                                    with st.expander("Portfolio · Risikotreiber & Maßnahmen im Detail", expanded=False):
+                                        if _drivers_v291:
+                                            st.markdown("**Wichtigste Risikotreiber**")
+                                            for _d_v291 in _drivers_v291:
+                                                st.write(f"• {_d_v291}")
+                                        if _actions_v291:
+                                            st.markdown("**Portfolio-Maßnahmen**")
+                                            for _a_v291 in _actions_v291:
+                                                st.write(f"• {_a_v291}")
 
                                 _clusters_v291 = _portfolio_pkg_v291.get("clusters")
                                 if isinstance(_clusters_v291, pd.DataFrame) and not _clusters_v291.empty:
@@ -21465,6 +21602,43 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _manage_live_row_v289 if _manage_has_atomic_v302 else {},
                                     early_profit=_manage_profit_v302,
                                 )
+
+                                # v30.7: Positionen zuerst als konkrete Management-Entscheidung lesen.
+                                _pos_exit_score_v307 = float(manage_exit_engine_v289.get("score") or 0)
+                                _pos_harvest_v307 = _v230_safe_float(_manage_trader_v304.get("harvest_score"), default=None)
+                                _pos_partial_v307 = int(_manage_trader_v304.get("partial_pct") or 0)
+                                _pos_seeing_v307 = (
+                                    f"{manage_exit_engine_v289.get('ampel','⚪')} {manage_exit_engine_v289.get('action','-')} · "
+                                    f"Exit-Druck {_pos_exit_score_v307:.0f}/100 · Kursbasis "
+                                    f"{'aktueller Atomic-Scan' if _manage_has_atomic_v302 else 'kein aktueller Atomic-Scan'}."
+                                )
+                                if _pos_harvest_v307 is not None and _pos_harvest_v307 >= 60:
+                                    _pos_seeing_v307 += f" Harvest {_pos_harvest_v307:.0f}/100 macht den Kurzfrist-Pfad relevant."
+                                _pos_action_parts_v307 = [str(manage_exit_engine_v289.get("action") or "-")]
+                                _pos_stop_plan_v307 = str(manage_exit_engine_v289.get("stop_plan") or "-")
+                                if _pos_stop_plan_v307 not in {"", "-", "n/a"}:
+                                    _pos_action_parts_v307.append("Stop: " + _pos_stop_plan_v307)
+                                if _pos_partial_v307 > 0:
+                                    _pos_action_parts_v307.append(f"taktischen Teilgewinn von {_pos_partial_v307}% prüfen")
+                                _pos_why_parts_v307 = []
+                                _pos_exit_why_v307 = str(manage_exit_engine_v289.get("why_text") or "-")
+                                if _pos_exit_why_v307 not in {"", "-", "n/a"}:
+                                    _pos_why_parts_v307.append(_pos_exit_why_v307)
+                                if _pos_harvest_v307 is not None and _pos_harvest_v307 >= 60:
+                                    _pos_trader_why_v307 = str(_manage_trader_v304.get("why_text") or "-")
+                                    if _pos_trader_why_v307 not in {"", "-", "n/a"}:
+                                        _pos_why_parts_v307.append(_pos_trader_why_v307)
+                                _pos_tone_v307 = "error" if str(manage_exit_engine_v289.get("level") or "").lower() == "red" else (
+                                    "warning" if str(manage_exit_engine_v289.get("level") or "").lower() in {"orange", "yellow"} or (_pos_harvest_v307 is not None and _pos_harvest_v307 >= 75) else "success"
+                                )
+                                _v307_render_decision_summary(
+                                    seeing=_pos_seeing_v307,
+                                    action=" · ".join([x for x in _pos_action_parts_v307 if x and x != "-"]),
+                                    why=" · ".join(_pos_why_parts_v307[:2]) if _pos_why_parts_v307 else "-",
+                                    tone=_pos_tone_v307,
+                                    title=f"Position {manage_ticker_v270} · Entscheidungs-Zusammenfassung",
+                                )
+
                                 jm1, jm2, jm3, jm4 = st.columns(4)
                                 with jm1:
                                     st.metric("Offene Stück", int(_v230_safe_float(manage_pos_v270.get("shares"), default=0) or 0))
@@ -21610,7 +21784,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     if _manage_trader_v304.get("resistance_pct") is not None:
                                         st.write(f"**Nächster vorhandener Ziel-/Widerstandskontext:** ca. +{float(_manage_trader_v304.get('resistance_pct')):.1f}% vom Entry")
                                     st.caption(
-                                        "v30.4c bleibt zunächst beobachtend. Aktive Harvest-Hinweise werden dedupliziert ins Event-Log geschrieben, "
+                                        f"{APP_VERSION}: Der Kurzfrist-Trader bleibt beobachtend. Aktive Harvest-Hinweise werden dedupliziert ins Event-Log geschrieben, "
                                         "damit spätere Versionen gegen real geschlossene Trades lernen können."
                                     )
 
@@ -27198,7 +27372,7 @@ if result is not None:
             background:linear-gradient(135deg, rgba(37,99,235,0.13), rgba(15,23,42,0.34));
         }}
         .action-bridge-kicker{{font-size:0.70rem; letter-spacing:.13em; text-transform:uppercase; color:#93c5fd; font-weight:800; margin-bottom:.35rem;}}
-        .action-bridge-grid{{display:grid; grid-template-columns:1.05fr 1.45fr 1.45fr; gap:.7rem;}}
+        .action-bridge-grid{{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.7rem;}}
         .action-bridge-item{{padding:.65rem .7rem; border-radius:13px; background:rgba(15,23,42,.34); border:1px solid rgba(148,163,184,.18);}}
         .action-bridge-label{{font-size:.68rem; letter-spacing:.09em; text-transform:uppercase; color:#9ca3af; font-weight:800; margin-bottom:.24rem;}}
         .action-bridge-value{{font-size:.88rem; line-height:1.35; color:#e5e7eb; overflow-wrap:anywhere;}}
@@ -27206,11 +27380,12 @@ if result is not None:
         @media(max-width:900px){{.action-bridge-grid{{grid-template-columns:1fr;}}}}
         </style>
         <div class="action-bridge-box">
-            <div class="action-bridge-kicker">Naechste Handlung</div>
+            <div class="action-bridge-kicker">Entscheidungs-Zusammenfassung</div>
             <div class="action-bridge-grid">
-                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_now_do_label)}</div><div class="action-bridge-value action-bridge-main">{html.escape(_now_do_value)}</div><div class="action-bridge-value">{html.escape(shorten_text(_why_txt, 120))}</div></div>
-                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_trigger_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_trigger_txt, 180))}</div></div>
-                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_invalid_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_invalid_txt, 180))}</div></div>
+                <div class="action-bridge-item"><div class="action-bridge-label">Was sehe ich?</div><div class="action-bridge-value">{html.escape(shorten_text(short_thesis, 190))}</div></div>
+                <div class="action-bridge-item"><div class="action-bridge-label">Nächste Handlung</div><div class="action-bridge-value action-bridge-main">{html.escape(_now_do_value)}</div><div class="action-bridge-value">{html.escape(shorten_text(_why_txt, 140))}</div></div>
+                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_trigger_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_trigger_txt, 190))}</div></div>
+                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_invalid_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_invalid_txt, 190))}</div></div>
             </div>
         </div>
         """,
@@ -28709,7 +28884,7 @@ if result is not None:
             # Die alten Render-Funktionen bleiben im Code verfügbar, aber werden hier nicht mehr angezeigt,
             # damit die Seite keine doppelten Aussagen enthält.
 
-            with st.expander("Diagnose-Details zwischen Einordnung und Kurzfazit anzeigen", expanded=False):
+            with st.expander("Diagnose-Details zur Entscheidungs-Zusammenfassung anzeigen", expanded=False):
                     st.markdown(
                         """
                         <div class="section-head">
@@ -28788,8 +28963,7 @@ if result is not None:
                     iq1.metric("Institutionelle Qualität", f"{fmt_num(institutional_quality_display,0)}/100", institutional_quality_text_display)
                     iq2.metric("Cashflow-Stabilität", f"{fmt_num(cashflow_stability_display,0)}/100")
                     iq3.metric("Margenstabilität", f"{fmt_num(margin_stability_display,0)}/100")
-            st.markdown("**Kurzfazit**")
-            st.write(short_thesis)
+            st.caption("Die Kernaussage steht bereits oben unter „Was sehe ich?“; Diagnose-Details bleiben hier optional verfügbar.")
 
             with st.expander("Unternehmensbeschreibung anzeigen", expanded=False):
                 summary_short = company_summary[:900] + "..." if len(company_summary) > 900 else company_summary

@@ -1,3 +1,14 @@
+## v30.7 - Unified Decision Summary
+- Einheitliche UI-Lesart über Live-Screener, Rotation, Portfolio, Positionen und Einzelanalyse.
+- Gemeinsames Muster: `Was sehe ich?`, optional `Was hat sich geändert?`, `Nächste Handlung`, `Warum?`.
+- Live-Screener-Benennungen aus v30.5c vereinheitlicht; Score-Treiber/Bremse bleiben einmalig und technische Rohdetails optional.
+- Rotation-Drilldown zeigt für den Top-Kandidaten eine kompakte Decision Summary aus Kandidaten-Score, Engine-Bestätigung, Sektor-RS, RS-Beschleunigung, Trend und Entry-Readiness.
+- Portfolio-Headline plus Risikotreiber/Maßnahmen verdichtet; vollständige Listen in einen optionalen Detail-Expander verschoben.
+- Offene Positionen erhalten vor Exit-/Early-Profit-/Trader-Details eine Management-Zusammenfassung mit Exit-Druck, Kursbasis, Stop-Plan und relevantem Harvest-/Teilgewinnpfad.
+- Einzelanalyse-Handlungsbox auf vier Felder vereinheitlicht und das spätere doppelte Kurzfazit entfernt.
+- Sichtbare Feature-Versionen an `APP_VERSION` gekoppelt, ohne die internen historischen Modulnamen zu verändern.
+- Rein darstellend: keine Score-, Gate-, Stop-, TP-, Order-, Harvest-/Chop- oder Provideränderung.
+
 ## v30.6 - Harvest Outcome & Learning Validation
 - Neue rein beobachtende Harvest-Outcome-Schicht mit persistenter Historie pro Watchlist.
 - Speichert nur den neuesten `complete + atomic` Vollscan pro Berlin-Tag; Reruns/Mehrfachscans übergewichten einen Tag nicht.

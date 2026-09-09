@@ -1,3 +1,16 @@
+## v30.6 - Harvest Outcome & Learning Validation
+- Neue rein beobachtende Harvest-Outcome-Schicht mit persistenter Historie pro Watchlist.
+- Speichert nur den neuesten `complete + atomic` Vollscan pro Berlin-Tag; Reruns/Mehrfachscans übergewichten einen Tag nicht.
+- Bewertet Harvest-/Chop-Zustände nach 1/3/5 Mo-Fr-Zieltagen nur bei exakt vorhandenem Folge-Vollscan.
+- Neue Outcome-Metriken: Forward Return, Scan-Max, Scan-Min, Giveback vom Scan-Peak und Trader-Ziel-Erreichung.
+- Rein beobachtende Einordnung `Teilgewinn eher sinnvoll`, `Laufenlassen eher besser` oder `gemischt`; keine produktive Regeländerung.
+- 3T-Kalibrierung nach Harvest-Bändern 0-44 / 45-59 / 60-74 / 75-100 sowie Chop-Bändern.
+- Echte deduplizierte `Short-Term Profit Harvest`-Positionsereignisse werden separat gegen Folge-Scans validiert.
+- Neue Trade-Journal-Ansicht `Short-Term Harvest · Outcome & Validation · v30.6` mit Tabs und CSV-Export.
+- Stichproben-Guard und transparente Datenlücken: fehlende Zieltage werden nicht mit späteren Kursen aufgefüllt.
+- Glossar um Outcome, Validation, Forward Return, MFE und MAE erweitert.
+- Keine neuen Provider-Requests; keine Änderungen an Harvest-/Chop-Schwellen, TP, Stops, Orders, Live/Shadow/Exit/Portfolio.
+
 ## v30.5c - Live-Screener Decision Summary Cleanup
 - Redundante Treiber-/Bremsen-Ausgabe im `Warum TICKER?`-Bereich entfernt.
 - Neuer Expander `Details · TICKER · Entscheidung & Änderung` mit handlungsnahem Kurzfazit.

@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.5c"
+APP_VERSION = "v30.6"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14651,6 +14651,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "trade_journal.py",
     _MODULE_DIR_V252 / "trade_learning.py",
     _MODULE_DIR_V252 / "early_profit_learning.py",
+    _MODULE_DIR_V252 / "harvest_outcome_learning.py",
     _MODULE_DIR_V252 / "short_term_trader.py",
     _MODULE_DIR_V252 / "commodity_context.py",
     _MODULE_DIR_V252 / "portfolio_risk.py",
@@ -14691,6 +14692,7 @@ from modules import profit_protection as _profit_protection_v302
 from modules import trade_journal as _trade_journal_module
 from modules import trade_learning as _trade_learning_module
 from modules import early_profit_learning as _early_profit_learning_v303
+from modules import harvest_outcome_learning as _harvest_outcome_learning_v306
 from modules import short_term_trader as _short_term_trader_v304
 from modules import commodity_context as _commodity_context_v305
 from modules import portfolio_risk as _portfolio_risk_module
@@ -15607,6 +15609,139 @@ _v290_build_learning_package = _trade_learning_module.build_learning_package
 
 # v30.3: read-only calibration of real Early-Profit events against closed trade outcomes.
 _v303_build_early_profit_learning = _early_profit_learning_v303.build_learning_package
+
+# v30.6: provider-free Harvest Outcome & Learning Validation. One latest Atomic
+# full-scan snapshot per Berlin date is stored for 1/3/5 business-day validation.
+# This layer is strictly observational and never changes productive thresholds.
+_harvest_outcome_learning_v306.configure_context(
+    storage=_storage_v280,
+    time_provider=get_current_berlin_time,
+)
+_v306_capture_harvest_scan = _harvest_outcome_learning_v306.capture_scan
+_v306_build_harvest_learning = _harvest_outcome_learning_v306.build_learning_package
+
+
+def _v306_render_harvest_learning(watchlist_name, event_df=None):
+    try:
+        _pkg_v306 = _v306_build_harvest_learning(watchlist_name, event_df)
+    except Exception as _exc_v306:
+        with st.expander("⚡ Short-Term Harvest · Outcome & Validation · v30.6", expanded=False):
+            st.warning(f"Harvest-Lerncheck aktuell nicht lesbar: {_exc_v306}")
+        return
+
+    _sum_v306 = dict(_pkg_v306.get("summary") or {})
+    _days_v306 = int(_sum_v306.get("scan_days") or 0)
+    with st.expander("⚡ Short-Term Harvest · Outcome & Validation · v30.6", expanded=False):
+        st.caption(
+            "Beobachtungsmodus: Die App speichert pro Watchlist und Berlin-Tag nur den neuesten vollständig "
+            "abgeschlossenen Atomic-Vollscan. Danach werden 1/3/5 Börsentage nur ausgewertet, wenn am exakten "
+            "Zieltag wieder ein vollständiger Scan vorliegt. Es gibt keine automatische Änderung an Harvest-, "
+            "Chop-, Stop-, TP- oder Order-Regeln."
+        )
+        if _days_v306 <= 0:
+            st.info(
+                "Noch keine v30.6-Vollscan-Tage gespeichert. Nach dem nächsten vollständig abgeschlossenen "
+                "Live-Scan beginnt die Outcome-Historie automatisch."
+            )
+            return
+
+        _hv1_v306, _hv2_v306, _hv3_v306, _hv4_v306, _hv5_v306 = st.columns(5)
+        with _hv1_v306:
+            st.metric("Vollscan-Tage", _days_v306)
+        with _hv2_v306:
+            st.metric("3T auswertbar", int(_sum_v306.get("evaluable_3t") or 0))
+        with _hv3_v306:
+            _alerts3_v306 = int(_sum_v306.get("alerts_3t") or 0)
+            st.metric("3T · Harvest ≥60", _alerts3_v306)
+        with _hv4_v306:
+            _part3_v306 = _sum_v306.get("partial_confirmed_3t_pct")
+            st.metric("Teilgewinn bestätigt", "n/a" if _part3_v306 is None else f"{float(_part3_v306):.0f}%")
+        with _hv5_v306:
+            _run3_v306 = _sum_v306.get("run_better_3t_pct")
+            st.metric("Laufenlassen besser", "n/a" if _run3_v306 is None else f"{float(_run3_v306):.0f}%")
+
+        _first_v306 = str(_sum_v306.get("first_day") or "-")
+        _last_v306 = str(_sum_v306.get("last_day") or "-")
+        st.caption(
+            f"Gespeicherter Zeitraum: {_first_v306} bis {_last_v306} · Reifegrad für Harvest ≥60 / 3T: "
+            f"{_sum_v306.get('sample_label','Zu klein')}. "
+            "Börsentage werden als Mo-Fr-Zieltage behandelt; fehlt dort ein Vollscan, bleibt der Fall offen statt "
+            "mit einem späteren Kurs künstlich aufgefüllt zu werden. Scan-Max/Giveback basiert nur auf vorhandenen "
+            "Vollscan-Punkten und kann Intraday-Hochs/-Tiefs daher unterschätzen."
+        )
+
+        _insights_v306 = list(_pkg_v306.get("insights") or [])
+        if _insights_v306:
+            st.markdown("**Was lernen wir bisher?**")
+            for _ins_v306 in _insights_v306:
+                st.write(f"• {_ins_v306}")
+
+        _horizon_v306 = _pkg_v306.get("horizon_summary")
+        _harvest_v306 = _pkg_v306.get("harvest_band_summary")
+        _chop_v306 = _pkg_v306.get("chop_band_summary")
+        _pevents_v306 = _pkg_v306.get("position_event_summary")
+        _tab_h_v306, _tab_harv_v306, _tab_chop_v306, _tab_pos_v306 = st.tabs([
+            "1/3/5T", "Harvest-Bänder", "Chop-Bänder", "Positions-Harvest"
+        ])
+        with _tab_h_v306:
+            if isinstance(_horizon_v306, pd.DataFrame) and not _horizon_v306.empty:
+                st.dataframe(_horizon_v306, hide_index=True, use_container_width=True)
+            else:
+                st.info("Noch kein exakter 1/3/5T-Zieltag mit vollständigem Folge-Scan auswertbar.")
+        with _tab_harv_v306:
+            st.caption("Primärvergleich auf 3T: Trennt ein höherer Harvest-Score späteren Giveback tatsächlich besser?")
+            if isinstance(_harvest_v306, pd.DataFrame) and not _harvest_v306.empty:
+                st.dataframe(_harvest_v306, hide_index=True, use_container_width=True)
+            else:
+                st.info("Noch keine 3T-Fälle für Harvest-Bänder.")
+        with _tab_chop_v306:
+            st.caption("Primärvergleich auf 3T: Wie stark steigt realer Giveback mit höherem Chop-Risk?")
+            if isinstance(_chop_v306, pd.DataFrame) and not _chop_v306.empty:
+                st.dataframe(_chop_v306, hide_index=True, use_container_width=True)
+            else:
+                st.info("Noch keine 3T-Fälle für Chop-Bänder.")
+        with _tab_pos_v306:
+            _pos_n_v306 = int(_sum_v306.get("position_events_evaluable_3t") or 0)
+            st.caption(
+                f"Auswertbare echte 'Short-Term Profit Harvest'-Positionsereignisse nach 3T: {_pos_n_v306}. "
+                "Diese Ereignisse stammen aus dem bestehenden deduplizierten Positions-/Exit-Eventlog."
+            )
+            if isinstance(_pevents_v306, pd.DataFrame) and not _pevents_v306.empty:
+                st.dataframe(_pevents_v306, hide_index=True, use_container_width=True)
+            else:
+                st.info("Noch keine Positions-Harvest-Ereignisse mit passendem 3T-Folge-Scan.")
+
+        _detail_v306 = _pkg_v306.get("detail")
+        _event_detail_v306 = _pkg_v306.get("position_event_detail")
+        with st.expander("Einzelfälle / Rohdaten", expanded=False):
+            if isinstance(_detail_v306, pd.DataFrame) and not _detail_v306.empty:
+                _show_cols_v306 = [
+                    "Datum", "Ticker", "Name", "Horizont", "Harvest Score", "Chop Risk",
+                    "Trader-Ziel", "Trader-Ziel erreicht", "Return %", "Scan-Max %",
+                    "Giveback vom Scan-Peak %", "Bewertung", "RS-Dynamik", "Marktregime",
+                ]
+                _show_cols_v306 = [c for c in _show_cols_v306 if c in _detail_v306.columns]
+                _view_v306 = _detail_v306.sort_values(["Datum", "Ticker", "Horizont"], ascending=[False, True, True])
+                st.dataframe(
+                    _view_v306[_show_cols_v306].head(600),
+                    hide_index=True,
+                    use_container_width=True,
+                    height=min(520, 42 * len(_view_v306.head(600)) + 55),
+                )
+                _csv_v306 = _detail_v306.to_csv(index=False).encode("utf-8-sig")
+                st.download_button(
+                    "Harvest-Outcome-Daten als CSV",
+                    data=_csv_v306,
+                    file_name=f"harvest_outcome_{watchlist_name}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key=f"v306_harvest_outcome_csv_{watchlist_name}",
+                )
+            else:
+                st.info("Outcome-Einzelfälle entstehen, sobald ein exakter Folge-Zieltag verfügbar ist.")
+            if isinstance(_event_detail_v306, pd.DataFrame) and not _event_detail_v306.empty:
+                st.markdown("**Echte Positions-Harvest-Ereignisse**")
+                st.dataframe(_event_detail_v306.head(300), hide_index=True, use_container_width=True)
 
 # v29.1: Portfolio & Risk Engine (advisory only)
 _portfolio_risk_module.configure_context(
@@ -16609,6 +16744,11 @@ _V304D_GLOSSARY = {
         ("Unrealized P/L", "Nicht realisierter Buchgewinn/-verlust einer noch offenen Position."),
         ("Realized P/L", "Tatsächlich realisierter Gewinn/Verlust nach Verkauf bzw. Schließung."),
         ("Holding Period", "Haltedauer einer Position."),
+        ("Outcome", "Später tatsächlich beobachtetes Ergebnis nach einem Signal oder Hinweis. v30.6 nutzt Outcomes zur Harvest-Validierung, ohne Regeln automatisch zu ändern."),
+        ("Validation / Validierung", "Prüfung, ob eine frühere Einschätzung in später beobachteten Daten tatsächlich eine erkennbare Trennschärfe hatte."),
+        ("Forward Return", "Kursveränderung nach einem früheren Beobachtungszeitpunkt über einen festgelegten Folge-Horizont, z. B. 1, 3 oder 5 Handelstage."),
+        ("MFE (Maximum Favorable Excursion)", "Größte günstige Kursbewegung nach einem Signal innerhalb eines Beobachtungsfensters."),
+        ("MAE (Maximum Adverse Excursion)", "Größte ungünstige Gegenbewegung nach einem Signal innerhalb eines Beobachtungsfensters."),
         ("Entry Price", "Tatsächlicher Kauf-/Einstiegskurs einer offenen Position."),
         ("Current Price", "Aktuell verwendeter Kurs zur Bewertung einer Position."),
     ],
@@ -18962,6 +19102,32 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     except Exception:
                         pass
 
+                    # v30.6: persist one provider-free tactical snapshot per Berlin day
+                    # only from an already completed Atomic full scan. The module dedupes
+                    # same-run rerenders and replaces only a later scan on the same day.
+                    try:
+                        _capture_meta_v306 = dict(scan_meta_v2844 or {})
+                        _capture_atomic_v306 = bool(
+                            _capture_meta_v306.get("complete", False)
+                            and _capture_meta_v306.get("atomic", False)
+                        )
+                        _capture_scan_id_v306 = str(_capture_meta_v306.get("run_id") or "").strip()
+                        if not _capture_scan_id_v306 and isinstance(live_df, pd.DataFrame) and not live_df.empty and "Scan-Lauf" in live_df.columns:
+                            _capture_scan_id_v306 = str(live_df["Scan-Lauf"].iloc[0] or "").strip()
+                        _capture_scan_time_v306 = _capture_meta_v306.get("completed_at")
+                        if not _capture_scan_time_v306 and isinstance(live_cache_v246, dict):
+                            _capture_scan_time_v306 = live_cache_v246.get("ts")
+                        _v306_capture_harvest_scan(
+                            selected_watchlist_name,
+                            live_df,
+                            scan_id=_capture_scan_id_v306,
+                            scan_time=_capture_scan_time_v306,
+                            atomic_complete=_capture_atomic_v306,
+                        )
+                    except Exception:
+                        # Outcome tracking must never block Live-Screener rendering.
+                        pass
+
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty and _live_df_complete_v289.empty and not rotation_radar_active_v301b:
@@ -18987,7 +19153,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
                             st.caption("Volatilität = ATR(14) in % des Kurses. Datenqualität bewertet nur Vollständigkeit/Historie der Marktdaten und verändert den Trading-Score nicht.")
                             st.caption("Statuswechsel können auch ohne sichtbare Kursbewegung entstehen: Die neue Spalte 'Warum geändert?' vergleicht Score, Trigger, Timing, Konfluenz, Radar-Bucket und harte Gates mit dem vorherigen Scan.")
-                            st.caption("v30.4c: Harvest/Chop nutzt weiterhin die v30.4b-Kalibrierung; der Modul-Import ist jetzt gegen gemischte/stale Runtime-Staende gehaertet. Die klassische TP-/Live-/Shadow-Logik bleibt unveraendert.")
+                            st.caption("v30.6: Harvest/Chop nutzt weiterhin die bewährte v30.4b-Kalibrierung. Vollständige Atomic-Scans werden zusätzlich providerfrei für die 1/3/5T-Outcome-Validierung protokolliert; die klassische TP-/Live-/Shadow-Logik bleibt unverändert.")
                             try:
                                 _scan_chop_vals_v304b = pd.to_numeric(
                                     live_df.get("Scan-Chop", pd.Series(dtype=object)).astype(str).str.extract(r"(\d+(?:\.\d+)?)")[0],
@@ -21812,6 +21978,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 st.success(_undo_flash_v287a)
                             st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Learning Engine wertet diese Daten zusätzlich beobachtend aus; produktive Regeln werden nicht automatisch verändert.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
+                            _event_df_v290 = _v2416_events_dataframe(selected_watchlist_name)
+                            _v306_render_harvest_learning(selected_watchlist_name, _event_df_v290)
                             if journal_df_v270 is None or journal_df_v270.empty:
                                 st.info("Noch keine Journal-Einträge für diese Watchlist. Aktionen aus dem Positions-/Exit-Monitor erscheinen hier.")
                             else:
@@ -21831,7 +21999,6 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.metric("Ø R geschlossen", "n/a" if _avg_r_v270 is None else f"{_avg_r_v270:.2f}R")
 
                                 # ---------- v29.0: Trading Journal & Learning Engine ----------
-                                _event_df_v290 = _v2416_events_dataframe(selected_watchlist_name)
                                 _learning_v290 = _v290_build_learning_package(journal_df_v270, _event_df_v290)
                                 _learn_summary_v290 = _learning_v290.get("summary") or {}
                                 _learn_trades_v290 = _learning_v290.get("trades")

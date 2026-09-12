@@ -1,3 +1,11 @@
+## v30.8a - Decision Confidence Consistency Fix
+- Echte Berlin-Scan-Zeitstempel fuer `Aktualitaet` in Live-Screener, Ticker-Details, Positionen und Portfolio, sofern vorhanden.
+- Positions-Konfidenz ohne aktuellen Atomic-Stand wird auf `Niedrig` begrenzt; fehlender Stop-Plan kann hohe Konfidenz auf `Mittel` deckeln.
+- Einzelanalyse asset-aware: Aktien nutzen Fundamental-Coverage; Commodities/Rohstoffe, ETFs und Indizes nutzen bereits geladene Kurs-/Historien-Evidenz statt irrelevanter Unternehmens-Fundamentals.
+- Bei Aktien deckelt fehlender belastbarer Benchmark-Kontext eine sonst hohe Decision-Confidence auf `Mittel`.
+- Mobile Ticker-Details warnen nicht mehr vor `Keine harten Einstiegsgates aktiv`.
+- Rein darstellende Evidenz-/Konfidenzkorrektur; keine neuen Provider-Calls und keine Aenderung an Trading-Scores, Gates, Stops, TP, Harvest/Chop oder Orders.
+
 ## v30.8 - Decision Confidence & Evidence Layer
 - Einheitliche `Entscheidungs-Konfidenz` unter den v30.7 Decision Summaries.
 - Zeigt transparent `Evidenz`, `Aktualitaet` und `Grenzen`, statt fehlende Daten still als ausreichend zu behandeln.

@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.8"
+APP_VERSION = "v30.8a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -7526,6 +7526,42 @@ def _v308_confidence_badge(level):
     if "niedrig" in low:
         return "🔴 Niedrig", "bad"
     return "⚪ Nicht bewertet", "info"
+
+
+def _v308a_row_freshness(row, fallback="vollständig abgeschlossener Atomic-Scan"):
+    """Prefer the real Berlin scan timestamp over a generic freshness label."""
+    row = row if isinstance(row, dict) else {}
+    raw = row.get("Scan-Zeit") or row.get("scan_time") or row.get("Timestamp")
+    txt = _v307_summary_text(raw)
+    if txt != "-":
+        # v30.5b already stores visible Scan-Zeit in Berlin format. If an older
+        # ISO/UTC value is encountered, the formatter normalizes it to Berlin.
+        try:
+            if "MEZ" in txt.upper() or "MESZ" in txt.upper():
+                return f"Scan {txt}"
+            return f"Scan {_v305b_format_berlin_timestamp(raw)}"
+        except Exception:
+            return f"Scan {txt}"
+    return fallback
+
+
+def _v308a_frame_freshness(frame, fallback="Aktuelle Atomic-Positionsbasis"):
+    if isinstance(frame, pd.DataFrame) and not frame.empty and "Scan-Zeit" in frame.columns:
+        vals = [v for v in frame["Scan-Zeit"].tolist() if _v307_summary_text(v) != "-"]
+        if vals:
+            return _v308a_row_freshness({"Scan-Zeit": vals[0]}, fallback=fallback)
+    return fallback
+
+
+def _v308a_cap_confidence(level, *, hard_missing=False, soft_missing=False):
+    """Cap a display-only confidence label when relevant evidence is missing."""
+    current = str(level or "Nicht bewertet")
+    order = {"Niedrig": 0, "Mittel": 1, "Hoch": 2, "Nicht bewertet": -1}
+    if hard_missing:
+        return "Niedrig"
+    if soft_missing and order.get(current, -1) > order["Mittel"]:
+        return "Mittel"
+    return current
 
 
 def _v308_live_decision_confidence(row):
@@ -19643,7 +19679,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             _v308_render_confidence_strip(
                                                 confidence=_live_conf_v308,
                                                 evidence=_live_evidence_v308,
-                                                freshness="vollständig abgeschlossener Atomic-Scan",
+                                                freshness=_v308a_row_freshness(_mobile_row_v2842),
                                                 limitations=_live_limits_v308,
                                             )
 
@@ -19718,7 +19754,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             st.caption(f"Engine 2.0 (Shadow): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · Live {_detail_ampel_v2846} → Shadow {_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Ampel'))} ({_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Abweichung'))}) · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
                                             _detail_gates_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Aktive Einstiegsgates"))
                                             _detail_gate_text_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Gate-Details"))
-                                            if _detail_gates_v286c not in {"", "-"}:
+                                            _detail_gates_low_v308a = str(_detail_gates_v286c or "").lower()
+                                            _detail_has_gate_v308a = (
+                                                _detail_gates_v286c not in {"", "-"}
+                                                and not ("keine" in _detail_gates_low_v308a and "gate" in _detail_gates_low_v308a)
+                                            )
+                                            if _detail_has_gate_v308a:
                                                 st.warning(f"Aktive Einstiegsgates: {_detail_gates_v286c}")
                                                 with st.expander("Einstiegsgates im Detail", expanded=True):
                                                     for _gate_item_v286c in str(_detail_gate_text_v286c).split(" | "):
@@ -19751,7 +19792,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             _v308_render_confidence_strip(
                                                 confidence=_detail_conf_v308,
                                                 evidence=_detail_evidence_v308,
-                                                freshness="vollständig abgeschlossener Atomic-Scan",
+                                                freshness=_v308a_row_freshness(_mobile_detail_row_v2842),
                                                 limitations=_detail_limits_v308,
                                             )
                                             _mobile_detail_df_v2842 = pd.DataFrame(
@@ -19825,7 +19866,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 title=f"{_desktop_decision_ticker_v308} · Entscheidungs-Zusammenfassung",
                                                 confidence=_desktop_conf_v308,
                                                 evidence=_desktop_evidence_v308,
-                                                freshness="vollständig abgeschlossener Atomic-Scan",
+                                                freshness=_v308a_row_freshness(_desktop_decision_row_v308),
                                                 limitations=_desktop_limits_v308,
                                             )
                                 with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
@@ -21349,7 +21390,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     title="Portfolio · Entscheidungs-Zusammenfassung",
                                     confidence=_portfolio_conf_v308,
                                     evidence=_portfolio_evidence_v308,
-                                    freshness="Aktuelle Atomic-Positionsbasis; keine Zusatzabfrage",
+                                    freshness=_v308a_frame_freshness(_live_df_complete_v289, fallback="Aktuelle Atomic-Positionsbasis; kein Scan-Zeitstempel verfügbar"),
                                     limitations=_portfolio_limits_v308,
                                 )
                                 st.caption("Entscheidungs-Konfidenz beschreibt nur die Datenbasis und verändert keine Portfolio-Berechnung.")
@@ -21832,6 +21873,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 _pos_conf_v308 = _v308_confidence_level(
                                     _pos_conf_raw_v308, critical_ok=bool(_manage_has_atomic_v302)
                                 )
+                                _pos_conf_v308 = _v308a_cap_confidence(
+                                    _pos_conf_v308,
+                                    hard_missing=not bool(_manage_has_atomic_v302),
+                                    soft_missing=_pos_stop_plan_v307 in {"", "-", "n/a"},
+                                )
                                 _pos_evidence_parts_v308 = [
                                     "aktueller Atomic-Kurs" if _manage_has_atomic_v302 else "kein aktueller Atomic-Kurs",
                                     f"Exit-Engine {_pos_conf_raw_v308}",
@@ -21851,7 +21897,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     title=f"Position {manage_ticker_v270} · Entscheidungs-Zusammenfassung",
                                     confidence=_pos_conf_v308,
                                     evidence=" · ".join(_pos_evidence_parts_v308),
-                                    freshness="Atomic-Stand der aktuellen Session" if _manage_has_atomic_v302 else "kein aktueller Atomic-Stand",
+                                    freshness=_v308a_row_freshness(_manage_live_row_v289, fallback="Atomic-Stand der aktuellen Session") if _manage_has_atomic_v302 else "kein aktueller Atomic-Stand",
                                     limitations=" · ".join(_pos_limits_v308) if _pos_limits_v308 else "Keine kritische Datenlücke ausgewiesen",
                                 )
 
@@ -27611,22 +27657,55 @@ if result is not None:
     # v30.8: Transparente Decision-Confidence direkt unter der zentralen Handlungsbox.
     # Sie nutzt nur bereits geladene Analyse-/Coverage-Daten und verändert keine Handlung.
     try:
-        _ind_cov_v308 = float((confidence_info or {}).get("coverage") or 0.0)
-        _ind_conf_raw_v308 = str((confidence_info or {}).get("confidence") or "-")
-        _ind_conf_v308 = _v308_confidence_level(_ind_conf_raw_v308, coverage=_ind_cov_v308)
-        _ind_loaded_v308 = (confidence_info or {}).get("loaded")
-        _ind_total_v308 = (confidence_info or {}).get("total")
-        _ind_derived_v308 = (confidence_info or {}).get("derived_estimate")
-        _ind_evidence_v308 = f"Coverage {_ind_cov_v308*100:.0f}%"
-        if _ind_loaded_v308 is not None and _ind_total_v308 is not None:
-            _ind_evidence_v308 += f" · Felder {_ind_loaded_v308}/{_ind_total_v308}"
-        if _ind_derived_v308 not in (None, 0, "0"):
-            _ind_evidence_v308 += f" · {_ind_derived_v308} abgeleitet"
+        _ind_asset_v308a = str(result.get("asset_type_label") or result.get("Asset_Typ") or "Aktie")
+        _ind_asset_low_v308a = _ind_asset_v308a.lower()
+        _ind_non_equity_v308a = any(token in _ind_asset_low_v308a for token in ("commodity", "rohstoff", "etf", "index"))
         _ind_limits_v308 = []
-        if _ind_cov_v308 < 0.65:
-            _ind_limits_v308.append("Datenabdeckung reduziert")
-        if not str(benchmark_symbol or "").strip():
+
+        if _ind_non_equity_v308a:
+            # Company-fundamental coverage is intentionally irrelevant for commodities,
+            # ETFs and indices. Use only already loaded instrument/technical evidence.
+            try:
+                _ind_hist_rows_v308a = int(len(df)) if isinstance(df, pd.DataFrame) else 0
+            except Exception:
+                _ind_hist_rows_v308a = 0
+            try:
+                _ind_price_ok_v308a = bool(np.isfinite(float(price)) and float(price) > 0)
+            except Exception:
+                _ind_price_ok_v308a = False
+            _ind_hist_level_v308a = "Hoch" if _ind_hist_rows_v308a >= 63 else "Mittel" if _ind_hist_rows_v308a >= 20 else "Niedrig"
+            _ind_conf_v308 = _ind_hist_level_v308a if _ind_price_ok_v308a else "Niedrig"
+            _ind_evidence_v308 = (
+                f"{_ind_asset_v308a}-Modus · Kurs {'verfügbar' if _ind_price_ok_v308a else 'fehlt'} · "
+                f"Historie {_ind_hist_rows_v308a} Handelstage"
+            )
+            if _ind_hist_rows_v308a < 63:
+                _ind_limits_v308.append("Technische Historie unter 63 Handelstagen")
+            if not _ind_price_ok_v308a:
+                _ind_limits_v308.append("kein belastbarer aktueller Kurs")
+        else:
+            _ind_cov_v308 = float((confidence_info or {}).get("coverage") or 0.0)
+            _ind_conf_raw_v308 = str((confidence_info or {}).get("confidence") or "-")
+            _ind_conf_v308 = _v308_confidence_level(_ind_conf_raw_v308, coverage=_ind_cov_v308)
+            _ind_loaded_v308 = (confidence_info or {}).get("loaded")
+            _ind_total_v308 = (confidence_info or {}).get("total")
+            _ind_derived_v308 = (confidence_info or {}).get("derived_estimate")
+            _ind_evidence_v308 = f"Fundamental-Coverage {_ind_cov_v308*100:.0f}%"
+            if _ind_loaded_v308 is not None and _ind_total_v308 is not None:
+                _ind_evidence_v308 += f" · Felder {_ind_loaded_v308}/{_ind_total_v308}"
+            if _ind_derived_v308 not in (None, 0, "0"):
+                _ind_evidence_v308 += f" · {_ind_derived_v308} abgeleitet"
+            if _ind_cov_v308 < 0.65:
+                _ind_limits_v308.append("Fundamental-Datenabdeckung reduziert")
+
+        _ind_benchmark_missing_v308a = not str(benchmark_symbol or "").strip()
+        if _ind_benchmark_missing_v308a:
             _ind_limits_v308.append("Benchmark nicht belastbar")
+            # For ordinary equities, missing relative context prevents a High label.
+            # Commodity/ETF/Index confidence is instrument/technical and benchmark is
+            # therefore a disclosed limitation rather than an automatic downgrade.
+            if not _ind_non_equity_v308a:
+                _ind_conf_v308 = _v308a_cap_confidence(_ind_conf_v308, soft_missing=True)
         _v308_render_confidence_strip(
             confidence=_ind_conf_v308,
             evidence=_ind_evidence_v308,

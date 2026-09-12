@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.8a"
+APP_VERSION = "v30.9"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -16842,6 +16842,8 @@ _V304D_GLOSSARY = {
         ("Neutral", "Keine ausreichend klare bullische oder bearische Richtung."),
         ("New Listing", "Neu gelisteter Wert mit begrenzter Historie. Bestimmte Langfristvergleiche können deshalb weniger belastbar sein."),
         ("Delayed Quote", "Zeitverzögerter Kurs statt Echtzeitkurs. Der Wert kann hinter dem aktuellen Marktstand zurückliegen."),
+        ("Decision Action Queue", "Kompakte Watchlist-Triage aus bereits vorhandenen Live-Scores, Einstiegsgates und Decision-Confidence. Sie erzeugt keinen neuen Trading-Score und priorisiert nur die Aufmerksamkeit."),
+        ("Triage", "Priorisierung nach Dringlichkeit bzw. nächstem sinnvollen Prüfschritt. Im Tool: Jetzt prüfen, Beobachten oder Blockiert."),
     ],
     "Markt & Kursbewegung": [
         ("ATR (Average True Range)", "Durchschnittliche Handelsspanne. Misst die typische Schwankungsbreite eines Werts; ATR-% setzt sie ins Verhältnis zum Kurs."),
@@ -19329,6 +19331,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     except Exception:
                         pass
 
+                    # v30.9: providerfreie Decision Action Queue nutzt den vollstaendigen,
+                    # bereits angereicherten Atomic-Stand. Der spaetere UI-Filter
+                    # "nur aktive" darf die Watchlist-Triage nicht kuenstlich verkleinern.
+                    _decision_queue_source_v309 = live_df.copy() if isinstance(live_df, pd.DataFrame) else pd.DataFrame()
+
                     # v30.6: persist one provider-free tactical snapshot per Berlin day
                     # only from an already completed Atomic full scan. The module dedupes
                     # same-run rerenders and replaces only a later scan on the same day.
@@ -19525,6 +19532,155 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 if extras:
                                     takeaway += " " + "; ".join(extras) + "."
                                 return takeaway, action, tone
+
+                            # ---------- v30.9: Decision Action Queue ----------
+                            # Reine Triage vorhandener Live-/Confidence-Felder. Kein neuer
+                            # Trading-Score, keine Schwellenkalibrierung, keine Provider-Calls.
+                            def _v309_has_hard_gate(row):
+                                gates = _v243_clean_cell(row.get("Aktive Einstiegsgates"))
+                                gates_l = gates.lower()
+                                if gates in {"", "-", "Keine", "Keine harten Einstiegsgates aktiv."}:
+                                    return False
+                                if "keine" in gates_l and "gate" in gates_l:
+                                    return False
+                                return True
+
+                            def _v309_queue_category(row):
+                                ampel = _v243_clean_cell(row.get("Ampel"))
+                                status = _v243_clean_cell(row.get("Status"))
+                                state = _v243_clean_cell(row.get("Trade-State"))
+                                setup = _v243_clean_cell(row.get("Setup-Alert"))
+                                engine = _v243_clean_cell(row.get("Engine-Empfehlung"))
+                                combined = " ".join([status, state, setup, engine]).lower()
+                                if _v309_has_hard_gate(row) or "blockiert" in combined or "invalid" in combined:
+                                    return "⛔ Blockiert"
+                                ready = any(token in combined for token in (
+                                    "jetzt prüfbar", "jetzt pruefbar", "trigger aktiv",
+                                    "kurzfrist-trigger aktiv", "armed / bereit", "entry-zone erreicht"
+                                ))
+                                if "🟢" in ampel and ready:
+                                    return "🎯 Jetzt prüfen"
+                                return "👀 Beobachten"
+
+                            def _v309_queue_reason(row, category):
+                                if category == "⛔ Blockiert":
+                                    gates = _v243_clean_cell(row.get("Aktive Einstiegsgates"))
+                                    if _v309_has_hard_gate(row):
+                                        return f"Gate: {gates}"
+                                    engine = _v243_clean_cell(row.get("Engine-Empfehlung"))
+                                    if engine not in {"", "-"}:
+                                        return engine
+                                change_state = _v243_clean_cell(row.get("Änderung"))
+                                change_why = _v243_clean_cell(row.get("Warum geändert?"))
+                                if change_state not in {"", "-", "Unverändert", "Unveraendert"} and change_why not in {"", "-"}:
+                                    return change_why
+                                drivers = _v243_clean_cell(row.get("Score-Treiber"))
+                                if drivers not in {"", "-"}:
+                                    return drivers
+                                return _v243_clean_cell(row.get("Status"))
+
+                            def _v309_build_action_queue(frame):
+                                if not isinstance(frame, pd.DataFrame) or frame.empty:
+                                    return pd.DataFrame()
+                                rows = []
+                                for _, _row_v309 in frame.iterrows():
+                                    raw = _row_v309.to_dict()
+                                    ticker = _v243_clean_cell(raw.get("Ticker"))
+                                    if ticker in {"", "-"}:
+                                        continue
+                                    category = _v309_queue_category(raw)
+                                    conf, evidence, limits = _v308_live_decision_confidence(raw)
+                                    _, action, _ = _v305c_live_takeaway(raw)
+                                    live_num = _v304a_harvest_num(raw.get("Live-Score"))
+                                    harvest_num = _v304a_harvest_num(raw.get("Harvest-Score"))
+                                    change_state = _v243_clean_cell(raw.get("Änderung"))
+                                    changed = change_state not in {"", "-", "Unverändert", "Unveraendert"}
+                                    rows.append({
+                                        "Priorität": category,
+                                        "Ampel": _v243_clean_cell(raw.get("Ampel")),
+                                        "Ticker": ticker,
+                                        "Name": _v243_clip_cell(raw.get("Name"), 30),
+                                        "Live-Score": None if live_num is None else float(live_num),
+                                        "Decision-Confidence": conf,
+                                        "Status": _v243_clip_cell(raw.get("Status"), 34),
+                                        "Trade-State": _v243_clip_cell(raw.get("Trade-State"), 30),
+                                        "CRV": _v243_clean_cell(raw.get("CRV")),
+                                        "Entry-Abstand": _v243_clean_cell(raw.get("Entry-Abstand")),
+                                        "Harvest": None if harvest_num is None else float(harvest_num),
+                                        "Änderung": change_state if changed else "-",
+                                        "Fokus-Grund": _v243_clip_cell(_v309_queue_reason(raw, category), 88),
+                                        "Nächste Handlung": _v243_clip_cell(action, 110),
+                                        "Evidenz": _v243_clip_cell(evidence, 95),
+                                        "Grenzen": _v243_clip_cell(limits, 80),
+                                        "Aktualität": _v243_clip_cell(_v308a_row_freshness(raw), 54),
+                                        "__changed_rank": 0 if changed else 1,
+                                        "__category_rank": {"🎯 Jetzt prüfen": 0, "👀 Beobachten": 1, "⛔ Blockiert": 2}.get(category, 9),
+                                        "__conf_rank": {"Hoch": 0, "Mittel": 1, "Niedrig": 2, "Nicht bewertet": 3}.get(conf, 3),
+                                        "__live_sort": -(float(live_num) if live_num is not None else -1.0),
+                                    })
+                                out = pd.DataFrame(rows)
+                                if out.empty:
+                                    return out
+                                return out.sort_values(
+                                    ["__category_rank", "__conf_rank", "__live_sort", "__changed_rank", "Ticker"],
+                                    ascending=[True, True, True, True, True],
+                                    kind="stable",
+                                ).reset_index(drop=True)
+
+                            def _v309_render_action_queue(frame):
+                                queue = _v309_build_action_queue(frame)
+                                if queue.empty:
+                                    return
+                                counts = queue["Priorität"].value_counts().to_dict()
+                                n_ready = int(counts.get("🎯 Jetzt prüfen", 0))
+                                n_watch = int(counts.get("👀 Beobachten", 0))
+                                n_block = int(counts.get("⛔ Blockiert", 0))
+                                n_high_conf = int((queue["Decision-Confidence"].astype(str) == "Hoch").sum())
+                                with st.expander("🎯 Decision Action Queue · Watchlist-Priorisierung", expanded=True):
+                                    st.caption(
+                                        "Providerfreie Triage des vollständig abgeschlossenen Atomic-Stands. "
+                                        "Es wird kein neuer Trading-Score berechnet: Kategorie → Decision-Confidence → bestehender Live-Score → Änderung. "
+                                        "Harte Einstiegsgates bleiben blockierend."
+                                    )
+                                    q1, q2, q3, q4 = st.columns(4)
+                                    q1.metric("Jetzt prüfen", n_ready)
+                                    q2.metric("Beobachten", n_watch)
+                                    q3.metric("Blockiert", n_block)
+                                    q4.metric("Confidence hoch", n_high_conf)
+
+                                    tab_ready, tab_watch, tab_block = st.tabs([
+                                        f"🎯 Jetzt prüfen ({n_ready})",
+                                        f"👀 Beobachten ({n_watch})",
+                                        f"⛔ Blockiert ({n_block})",
+                                    ])
+                                    _queue_cols_v309 = [
+                                        "Ticker", "Name", "Ampel", "Live-Score", "Decision-Confidence",
+                                        "Status", "Trade-State", "CRV", "Entry-Abstand", "Harvest",
+                                        "Änderung", "Fokus-Grund", "Nächste Handlung",
+                                    ]
+                                    for _tab_v309, _cat_v309 in [
+                                        (tab_ready, "🎯 Jetzt prüfen"),
+                                        (tab_watch, "👀 Beobachten"),
+                                        (tab_block, "⛔ Blockiert"),
+                                    ]:
+                                        with _tab_v309:
+                                            part = queue[queue["Priorität"] == _cat_v309].copy()
+                                            if part.empty:
+                                                st.info("Aktuell keine Werte in dieser Kategorie.")
+                                                continue
+                                            show = part[[c for c in _queue_cols_v309 if c in part.columns]].head(20)
+                                            st.dataframe(show, hide_index=True, use_container_width=True, height=min(520, 42 * len(show) + 55))
+                                            with st.expander("Evidenz / Aktualität / Grenzen", expanded=False):
+                                                detail_cols = [
+                                                    "Ticker", "Decision-Confidence", "Evidenz", "Aktualität", "Grenzen"
+                                                ]
+                                                st.dataframe(part[detail_cols].head(30), hide_index=True, use_container_width=True)
+
+                                    st.caption(
+                                        "Lesart: 'Jetzt prüfen' bedeutet nicht automatisch kaufen. Entry-Regeln, Gates, CRV und die bestehende Live-/Shadow-Logik bleiben maßgeblich."
+                                    )
+
+                            _v309_render_action_queue(_decision_queue_source_v309)
 
                             for _col in live_display_df.columns:
                                 live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)

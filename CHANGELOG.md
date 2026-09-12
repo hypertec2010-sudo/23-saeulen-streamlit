@@ -1,3 +1,14 @@
+## v30.9 - Decision Action Queue
+- Neue providerfreie Watchlist-Triage direkt im Live-Screener: `Jetzt prüfen`, `Beobachten`, `Blockiert`.
+- Queue nutzt den vollständigen angereicherten Atomic-Stand und bleibt unabhängig vom UI-Filter `nur aktive`.
+- Keine neue Trading-Score-Berechnung; transparente Sortierung nach Kategorie, Decision-Confidence, bestehendem Live-Score, echter Änderung und Ticker.
+- Harte Einstiegsgates, Engine-Blockierungen und Invalidierungen landen separat unter `Blockiert`.
+- `Jetzt prüfen` erfordert grünes Setup plus bestehende Trigger-/Entry-/Armed-Evidenz ohne hartes Gate.
+- Kompakte Tabellen zeigen Live-Score, Confidence, Status, Trade-State, CRV, Entry-Abstand, Harvest, Veränderung, Fokus-Grund und nächste Handlung.
+- Evidenz, tatsächliche Scan-Aktualität und Grenzen sind pro Queue-Kategorie optional einblendbar.
+- Glossar um `Decision Action Queue` und `Triage` erweitert.
+- Rein priorisierende UI-Schicht: keine Änderungen an Scores, Gates, TP, Stops, Orders, Harvest/Chop oder Providerlogik.
+
 ## v30.8a - Decision Confidence Consistency Fix
 - Echte Berlin-Scan-Zeitstempel fuer `Aktualitaet` in Live-Screener, Ticker-Details, Positionen und Portfolio, sofern vorhanden.
 - Positions-Konfidenz ohne aktuellen Atomic-Stand wird auf `Niedrig` begrenzt; fehlender Stop-Plan kann hohe Konfidenz auf `Mittel` deckeln.

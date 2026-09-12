@@ -1,26 +1,36 @@
-# v30.8a - Decision Confidence Consistency Fix
+# v30.9 - Decision Action Queue
 
-v30.8a ist ein gezielter Konsistenz-Patch fuer die in v30.8 eingefuehrte Decision-Confidence-/Evidence-Schicht. Die Trading-Entscheidungen selbst bleiben unveraendert; verbessert wird nur, wie belastbar, aktuell und asset-gerecht die Datenbasis beschrieben wird.
+v30.9 ergänzt den Live-Screener um eine kompakte, providerfreie Watchlist-Triage. Ziel ist nicht ein weiterer Score, sondern eine schnellere Antwort auf die operative Frage: **Welche Werte muss ich jetzt wirklich ansehen?**
 
-## Behoben
-- `Aktualitaet` zeigt im Live-Screener, in Ticker-Details, in Positionen und im Portfolio jetzt bevorzugt den **echten Berlin-Scan-Zeitstempel** statt nur generischer Texte wie `vollstaendig abgeschlossener Atomic-Scan` oder `aktuelle Session`.
-- Portfolio-Freshness nutzt den bereits vorhandenen Atomic-Vollscan-Zeitpunkt und erzeugt dafuer keinen Provider-Call.
-- Positions-Konfidenz wird ohne aktuellen Atomic-Stand konsequent auf **Niedrig** begrenzt. Ein fehlender belastbarer Stop-Plan kann eine ansonsten hohe Konfidenz auf **Mittel** deckeln.
-- Einzelanalyse ist jetzt **asset-aware**:
-  - Aktien nutzen weiterhin Fundamental-Coverage als Teil der Evidenz.
-  - Commodities/Rohstoffe, ETFs und Indizes werden nicht mehr wegen bewusst fehlender Unternehmens-Fundamentals als schwach belastbar dargestellt.
-  - Fuer diese Instrumente basiert die Decision-Confidence auf bereits geladener Kurs-/Historienbasis; eine Historie unter 63 Handelstagen wird transparent als Grenze gezeigt.
-- Bei Aktien verhindert ein fehlender belastbarer Benchmark-Kontext jetzt eine `Hoch`-Konfidenz, statt nur als Text unter `Grenzen` aufzutauchen.
-- Mobile Ticker-Details zeigen `Keine harten Einstiegsgates aktiv` nicht mehr als Warnbox `Aktive Einstiegsgates`.
+## Neu
+- Neuer Bereich `Decision Action Queue · Watchlist-Priorisierung` oberhalb der ausführlichen Live-Screener-Darstellung.
+- Drei klare Kategorien:
+  - `🎯 Jetzt prüfen`: grünes Setup mit bestehender Trigger-/Entry-/Armed-Evidenz und ohne hartes Einstiegsgate.
+  - `👀 Beobachten`: noch keine unmittelbare Prüffreigabe bzw. neutralere/gelbe/weiße Setups.
+  - `⛔ Blockiert`: hartes Einstiegsgate, Engine-Blockierung oder Invalidierung.
+- Vier Sofortmetriken: Anzahl `Jetzt prüfen`, `Beobachten`, `Blockiert` sowie Anzahl Werte mit hoher Decision-Confidence.
+- Jede Kategorie besitzt eine kompakte Tabelle mit Ticker, Name, Ampel, Live-Score, Decision-Confidence, Status, Trade-State, CRV, Entry-Abstand, Harvest, Veränderung, Fokus-Grund und nächster Handlung.
+- Unter jeder Kategorie können `Evidenz / Aktualität / Grenzen` separat eingeblendet werden.
+- Die Queue verwendet bewusst den **vollständigen angereicherten Atomic-Stand der Watchlist**, auch wenn in der Haupttabelle der UI-Filter `nur aktive` eingeschaltet ist.
+- Geänderte Werte werden im Fokus-Grund bevorzugt mit dem vorhandenen `Warum geändert?` erklärt; unveränderte Werte nutzen bestehende Score-Treiber bzw. Statusinformationen.
+- Glossar um `Decision Action Queue` und `Triage` erweitert.
 
-## Transparenz
-- Es wird weiterhin **kein neuer Trading-Score** berechnet.
-- Die Konfidenz beeinflusst weder Ampeln noch Scores, Gates, Harvest/Chop, Stops, TP-Ziele, Portfolio-Risiko oder Orders.
-- Fuer die Freshness-Anzeige werden ausschliesslich bereits vorhandene Scan-Zeitstempel verwendet.
-- Commodity-/ETF-/Index-Confidence ist eine Datenbasis-Einschaetzung und keine Aussage ueber Richtung oder Kaufqualitaet.
+## Sortierung ohne neuen Trading-Score
+Die Queue berechnet keinen eigenen Kauf-/Trading-Score. Innerhalb der bestehenden Kategorien wird transparent sortiert nach:
+1. Kategorie (`Jetzt prüfen` → `Beobachten` → `Blockiert`),
+2. Decision-Confidence (`Hoch` → `Mittel` → `Niedrig`),
+3. vorhandenem Live-Score absteigend,
+4. echter Änderung seit letztem Scan,
+5. Ticker.
 
-## Unveraendert
+## Sicherheits- und Interpretationsgrenzen
+- `Jetzt prüfen` bedeutet ausdrücklich **nicht automatisch kaufen**.
+- Harte Einstiegsgates bleiben vollständig blockierend.
+- CRV, Entry-Regeln, Live-/Shadow-Logik und Guardrails bleiben maßgeblich.
+- Decision-Confidence ist Daten-/Evidenzvertrauen und kein Renditeversprechen.
+
+## Unverändert
+- Keine Änderung an Live-, Shadow-, Guarded-, Rotation-, Exit-, Portfolio-, Harvest- oder Chop-Scores.
+- Keine Änderung an TP1/TP2/TP3, Stops, Orders, Positionsgrößen oder Einstiegsgates.
+- Keine automatische Kalibrierung aus v30.6.
 - Keine neuen Provider-Abfragen.
-- Keine Aenderung an Atomic-Scan-/Snapshot-Semantik.
-- Keine Aenderung an v30.6 Harvest-Learning.
-- Keine Aenderung an v30.7 Decision Summary oder produktiver Trading-Logik.

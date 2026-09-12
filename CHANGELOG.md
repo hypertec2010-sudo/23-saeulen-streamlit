@@ -1,3 +1,13 @@
+## v30.8 - Decision Confidence & Evidence Layer
+- Einheitliche `Entscheidungs-Konfidenz` unter den v30.7 Decision Summaries.
+- Zeigt transparent `Evidenz`, `Aktualitaet` und `Grenzen`, statt fehlende Daten still als ausreichend zu behandeln.
+- Live-Screener nutzt vorhandene Datenqualitaet, Kontext-Verlaesslichkeit und Benchmarkstatus; Desktop erhaelt einen kompakten Ticker-Decision-Expander.
+- Rotation nutzt vorhandene 4 Kernmetriken, Engine-Bestaetigung sowie Legacy-/Fresh-Snapshotstatus.
+- Portfolio nutzt Kursabdeckung, Stop-Abdeckung und FX-Vollstaendigkeit; fehlendes FX deckelt hohe Konfidenz.
+- Positionen nutzen aktuellen Atomic-Kursstand, Exit-Engine-Konfidenz und Stop-Plan als Datenbasis.
+- Einzelanalyse zeigt Coverage, geladene und abgeleitete Felder direkt unter der zentralen Handlungsbox.
+- Keine neuen Provider-Abfragen und keine Aenderung an Scores, Ampeln, Harvest/Chop, Gates, Stops, TP oder Orders.
+
 ## v30.7 - Unified Decision Summary
 - Einheitliche UI-Lesart über Live-Screener, Rotation, Portfolio, Positionen und Einzelanalyse.
 - Gemeinsames Muster: `Was sehe ich?`, optional `Was hat sich geändert?`, `Nächste Handlung`, `Warum?`.

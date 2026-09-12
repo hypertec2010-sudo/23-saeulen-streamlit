@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.7"
+APP_VERSION = "v30.8"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -7479,7 +7479,7 @@ def shorten_text(value, max_len=42):
     return clipped + "..."
 
 
-# ---------- v30.7: Einheitliche Decision Summary UI ----------
+# ---------- v30.8: Unified Decision Confidence / Evidence Layer ----------
 def _v307_summary_text(value, fallback="-"):
     if value is None:
         return fallback
@@ -7487,6 +7487,109 @@ def _v307_summary_text(value, fallback="-"):
     if not txt or txt.lower() in {"nan", "none", "n/a"}:
         return fallback
     return txt
+
+
+def _v308_confidence_level(value=None, coverage=None, critical_ok=True):
+    """Normalize already available confidence/coverage without creating a new score."""
+    txt = str(value or "").strip()
+    low = txt.lower()
+    level = None
+    if any(token in low for token in ("niedrig", "low", "schwach", "unvoll", "nicht voll", "fehlt")):
+        level = "Niedrig"
+    elif any(token in low for token in ("mittel", "medium", "reduziert", "begrenzt")):
+        level = "Mittel"
+    elif any(token in low for token in ("hoch", "high", "vollständig", "vollstaendig", "★★★★★")):
+        level = "Hoch"
+    try:
+        cov = float(coverage)
+        if cov <= 1.0:
+            cov *= 100.0
+        cov_level = "Hoch" if cov >= 85 else "Mittel" if cov >= 65 else "Niedrig"
+        order = {"Niedrig": 0, "Mittel": 1, "Hoch": 2}
+        if level is None or order[cov_level] < order[level]:
+            level = cov_level
+    except Exception:
+        pass
+    level = level or "Nicht bewertet"
+    if not critical_ok and level == "Hoch":
+        level = "Mittel"
+    return level
+
+
+def _v308_confidence_badge(level):
+    txt = str(level or "Nicht bewertet")
+    low = txt.lower()
+    if "hoch" in low:
+        return "🟢 Hoch", "good"
+    if "mittel" in low:
+        return "🟡 Mittel", "warn"
+    if "niedrig" in low:
+        return "🔴 Niedrig", "bad"
+    return "⚪ Nicht bewertet", "info"
+
+
+def _v308_live_decision_confidence(row):
+    row = row if isinstance(row, dict) else {}
+    dq = _v307_summary_text(row.get("Datenqualität"))
+    ctx = _v307_summary_text(row.get("Kontext-Verlässlichkeit"))
+    bench = _v307_summary_text(row.get("Primärbenchmark-Status"), _v307_summary_text(row.get("Benchmark")))
+    dq_low = dq.lower()
+    ctx_low = ctx.lower()
+    bench_low = bench.lower()
+    combined_low = dq_low + " " + ctx_low + " " + bench_low
+    critical_ok = not any(token in combined_low for token in ("fehl", "niedrig", "unvoll", "reduziert"))
+    if any(token in dq_low for token in ("★★★★★", "vollständig", "vollstaendig")) and any(token in ctx_low for token in ("hoch", "high", "vollständig", "vollstaendig", "★★★★★")) and "fehl" not in bench_low:
+        level = "Hoch"
+    elif any(token in combined_low for token in ("fehl", "niedrig", "unvoll")):
+        level = "Niedrig"
+    else:
+        level = "Mittel"
+    level = _v308_confidence_level(level, critical_ok=critical_ok)
+    evidence = f"Datenqualität {dq} · Kontext {ctx} · Benchmark {bench}"
+    limits = []
+    if dq == "-":
+        limits.append("Datenqualität nicht ausgewiesen")
+    if ctx == "-":
+        limits.append("Kontext-Confidence fehlt")
+    if bench == "-" or "fehl" in bench.lower():
+        limits.append("Benchmark-Kontext eingeschränkt")
+    return level, evidence, " · ".join(limits) if limits else "Keine kritische Datenlücke ausgewiesen"
+
+
+def _v308_render_confidence_strip(*, confidence=None, evidence=None, freshness=None, limitations=None):
+    conf_txt = _v307_summary_text(confidence)
+    evidence_txt = _v307_summary_text(evidence)
+    fresh_txt = _v307_summary_text(freshness)
+    limit_txt = _v307_summary_text(limitations)
+    if conf_txt == evidence_txt == fresh_txt == limit_txt == "-":
+        return
+    badge, badge_cls = _v308_confidence_badge(conf_txt)
+    bits = []
+    if evidence_txt != "-":
+        bits.append(("Evidenz", evidence_txt))
+    if fresh_txt != "-":
+        bits.append(("Aktualität", fresh_txt))
+    if limit_txt != "-":
+        bits.append(("Grenzen", limit_txt))
+    detail_html = "".join(
+        '<span class="v308-evidence-item"><b>' + html.escape(label) + ':</b> ' + html.escape(shorten_text(text, 180)) + '</span>'
+        for label, text in bits
+    )
+    st.markdown(
+        f"""
+        <style>
+        .v308-evidence-strip{{margin:.38rem 0 .72rem 0;padding:.56rem .7rem;border-radius:12px;border:1px solid rgba(148,163,184,.18);background:rgba(15,23,42,.22);display:flex;gap:.55rem;align-items:flex-start;flex-wrap:wrap;}}
+        .v308-evidence-badge{{font-size:.72rem;font-weight:850;padding:.20rem .45rem;border-radius:999px;background:rgba(148,163,184,.12);white-space:nowrap;}}
+        .v308-evidence-badge.good{{background:rgba(34,197,94,.13);}} .v308-evidence-badge.warn{{background:rgba(234,179,8,.14);}} .v308-evidence-badge.bad{{background:rgba(239,68,68,.15);}}
+        .v308-evidence-item{{font-size:.72rem;line-height:1.35;color:#cbd5e1;overflow-wrap:anywhere;}}
+        </style>
+        <div class="v308-evidence-strip">
+          <span class="v308-evidence-badge {badge_cls}">Entscheidungs-Konfidenz · {html.escape(badge)}</span>
+          {detail_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _v307_render_decision_summary(
@@ -7497,12 +7600,16 @@ def _v307_render_decision_summary(
     changed=None,
     tone="info",
     title="Entscheidungs-Zusammenfassung",
+    confidence=None,
+    evidence=None,
+    freshness=None,
+    limitations=None,
 ):
     """Compact, provider-free UI summary used across workspaces.
 
-    The helper only renders already computed values. It does not modify scores,
-    gates, actions, positions or provider behavior. Optional fields are omitted
-    instead of being filled with invented text.
+    v30.8 adds a transparent confidence/evidence strip from already available
+    inputs. It does not modify scores, gates, actions, positions or providers.
+    Missing evidence is shown as a limitation instead of being inferred.
     """
     seeing_txt = _v307_summary_text(seeing)
     action_txt = _v307_summary_text(action)
@@ -7540,7 +7647,7 @@ def _v307_render_decision_summary(
     st.markdown(
         f"""
         <style>
-        .v307-decision-shell{{margin:.72rem 0 .92rem 0;padding:.82rem .9rem;border-radius:16px;border:1px solid rgba(96,165,250,.28);background:rgba(15,23,42,.22);}}
+        .v307-decision-shell{{margin:.72rem 0 .38rem 0;padding:.82rem .9rem;border-radius:16px;border:1px solid rgba(96,165,250,.28);background:rgba(15,23,42,.22);}}
         .v307-decision-shell.good{{border-color:rgba(34,197,94,.34);background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(15,23,42,.22));}}
         .v307-decision-shell.warn{{border-color:rgba(234,179,8,.38);background:linear-gradient(135deg,rgba(234,179,8,.09),rgba(15,23,42,.22));}}
         .v307-decision-shell.hot{{border-color:rgba(249,115,22,.44);background:linear-gradient(135deg,rgba(249,115,22,.11),rgba(15,23,42,.24));}}
@@ -7557,6 +7664,9 @@ def _v307_render_decision_summary(
         </div>
         """,
         unsafe_allow_html=True,
+    )
+    _v308_render_confidence_strip(
+        confidence=confidence, evidence=evidence, freshness=freshness, limitations=limitations
     )
 
 
@@ -19529,6 +19639,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             else:
                                                 st.info(_takeaway_v305c)
                                             st.markdown(f"**Nächste Handlung:** {_next_action_v305c}")
+                                            _live_conf_v308, _live_evidence_v308, _live_limits_v308 = _v308_live_decision_confidence(_mobile_row_v2842)
+                                            _v308_render_confidence_strip(
+                                                confidence=_live_conf_v308,
+                                                evidence=_live_evidence_v308,
+                                                freshness="vollständig abgeschlossener Atomic-Scan",
+                                                limitations=_live_limits_v308,
+                                            )
 
                                             if _has_real_change_v305c and _why_changed_full_v2847 not in {"", "-"}:
                                                 st.markdown("**Was hat sich geändert?**")
@@ -19630,6 +19747,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             else:
                                                 st.info(f"Was sehe ich: {_detail_takeaway_v305c}")
                                             st.caption(f"Nächste Handlung: {_detail_action_v305c}")
+                                            _detail_conf_v308, _detail_evidence_v308, _detail_limits_v308 = _v308_live_decision_confidence(_mobile_detail_row_v2842)
+                                            _v308_render_confidence_strip(
+                                                confidence=_detail_conf_v308,
+                                                evidence=_detail_evidence_v308,
+                                                freshness="vollständig abgeschlossener Atomic-Scan",
+                                                limitations=_detail_limits_v308,
+                                            )
                                             _mobile_detail_df_v2842 = pd.DataFrame(
                                                 [
                                                     {
@@ -19662,6 +19786,48 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     use_container_width=True,
                                     height=min(520, 42 * len(_desktop_live_display_v304a) + 55),
                                 )
+                                _desktop_decision_tickers_v308 = [
+                                    str(value).strip()
+                                    for value in live_df.get("Ticker", pd.Series(dtype=str)).tolist()
+                                    if str(value).strip()
+                                ]
+                                if _desktop_decision_tickers_v308:
+                                    with st.expander("Entscheidungs-Zusammenfassung · Ticker", expanded=False):
+                                        _desktop_decision_ticker_v308 = st.selectbox(
+                                            "Ticker für Entscheidungs-Zusammenfassung",
+                                            options=_desktop_decision_tickers_v308,
+                                            key="v308_desktop_decision_ticker",
+                                        )
+                                        _desktop_decision_match_v308 = live_df[
+                                            live_df["Ticker"].astype(str) == str(_desktop_decision_ticker_v308)
+                                        ]
+                                        if not _desktop_decision_match_v308.empty:
+                                            _desktop_decision_row_v308 = _desktop_decision_match_v308.iloc[0].to_dict()
+                                            _desktop_seeing_v308, _desktop_action_v308, _desktop_tone_v308 = _v305c_live_takeaway(_desktop_decision_row_v308)
+                                            _desktop_change_state_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Änderung"))
+                                            _desktop_changed_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Warum geändert?"))
+                                            if _desktop_change_state_v308 in {"", "-", "Unverändert", "Unveraendert"}:
+                                                _desktop_changed_v308 = "-"
+                                            _desktop_drivers_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Score-Treiber"))
+                                            _desktop_brakes_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Score-Bremsen"))
+                                            _desktop_why_parts_v308 = []
+                                            if _desktop_drivers_v308 not in {"", "-"}:
+                                                _desktop_why_parts_v308.append("Treiber: " + _desktop_drivers_v308)
+                                            if _desktop_brakes_v308 not in {"", "-"}:
+                                                _desktop_why_parts_v308.append("Bremse: " + _desktop_brakes_v308)
+                                            _desktop_conf_v308, _desktop_evidence_v308, _desktop_limits_v308 = _v308_live_decision_confidence(_desktop_decision_row_v308)
+                                            _v307_render_decision_summary(
+                                                seeing=_desktop_seeing_v308,
+                                                action=_desktop_action_v308,
+                                                why=" · ".join(_desktop_why_parts_v308) if _desktop_why_parts_v308 else "-",
+                                                changed=_desktop_changed_v308,
+                                                tone=_desktop_tone_v308,
+                                                title=f"{_desktop_decision_ticker_v308} · Entscheidungs-Zusammenfassung",
+                                                confidence=_desktop_conf_v308,
+                                                evidence=_desktop_evidence_v308,
+                                                freshness="vollständig abgeschlossener Atomic-Scan",
+                                                limitations=_desktop_limits_v308,
+                                            )
                                 with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
                                     detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
                                     if "Scan-Zeit" in detail_df.columns:
@@ -20514,12 +20680,23 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                         _rot_why_bits_v307.append(f"{_lab_v307} {format(_vv_v307, _fmt_v307)}{_suffix_v307}")
                                                     except Exception:
                                                         pass
+                                                _rot_metric_count_v308 = len(_rot_why_bits_v307)
+                                                _rot_legacy_v308 = bool(_rot_meta_live_v301.get("legacy_fallback"))
+                                                _rot_conf_v308 = "Hoch" if _rot_metric_count_v308 >= 4 and not _rot_legacy_v308 else "Mittel" if _rot_metric_count_v308 >= 3 else "Niedrig"
+                                                _rot_evidence_v308 = f"{_rot_metric_count_v308}/4 Kernmetriken · Engine-Bestätigung {_rot_engine_v307}"
+                                                _rot_limits_v308 = "Legacy-Radar-Snapshot" if _rot_legacy_v308 else (
+                                                    "Kernmetriken teilweise unvollständig" if _rot_metric_count_v308 < 4 else "Keine kritische Datenlücke ausgewiesen"
+                                                )
                                                 _v307_render_decision_summary(
                                                     seeing=_rot_seeing_v307,
                                                     action=_rot_action_v307,
                                                     why=" · ".join(_rot_why_bits_v307) if _rot_why_bits_v307 else str(_rot_top_v307.get("Warum") or "-"),
                                                     tone=_rot_tone_v307,
                                                     title="Rotation · Entscheidungs-Zusammenfassung",
+                                                    confidence=_rot_conf_v308,
+                                                    evidence=_rot_evidence_v308,
+                                                    freshness=f"Radar-Daten bis {_snap_data_v303d}",
+                                                    limitations=_rot_limits_v308,
                                                 )
 
                                             if not _dd_errors_show_v301d.empty:
@@ -21148,14 +21325,34 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     f"Aktuelle Kursabdeckung {float(_portfolio_bridge_v303h.get('current_price_coverage_pct') or 0):.0f}% · "
                                     f"Stop-Abdeckung {float(_portfolio_bridge_v303h.get('stop_coverage_pct') or 0):.0f}%"
                                 )
+                                _portfolio_price_cov_v308 = float(_portfolio_bridge_v303h.get("current_price_coverage_pct") or 0)
+                                _portfolio_stop_cov_v308 = float(_portfolio_bridge_v303h.get("stop_coverage_pct") or 0)
+                                _portfolio_conf_raw_v308 = str(_portfolio_pkg_v291.get("confidence") or "-")
+                                _portfolio_conf_v308 = _v308_confidence_level(
+                                    _portfolio_conf_raw_v308,
+                                    coverage=min(_portfolio_price_cov_v308, _portfolio_stop_cov_v308),
+                                    critical_ok=not _aggregate_fx_blocked_v303g,
+                                )
+                                _portfolio_evidence_v308 = (
+                                    f"Kursabdeckung {_portfolio_price_cov_v308:.0f}% · Stop-Abdeckung {_portfolio_stop_cov_v308:.0f}% · "
+                                    + ("FX vollständig" if not _aggregate_fx_blocked_v303g else "FX unvollständig")
+                                )
+                                _portfolio_limits_v308 = (
+                                    "Fehlende FX-Umrechnung: " + ", ".join(_missing_fx_v303g)
+                                    if _aggregate_fx_blocked_v303g else "Keine kritische Datenlücke ausgewiesen"
+                                )
                                 _v307_render_decision_summary(
                                     seeing=_portfolio_seeing_v307,
                                     action=_portfolio_action_v307,
                                     why=_portfolio_why_v307,
                                     tone=_portfolio_tone_v307,
                                     title="Portfolio · Entscheidungs-Zusammenfassung",
+                                    confidence=_portfolio_conf_v308,
+                                    evidence=_portfolio_evidence_v308,
+                                    freshness="Aktuelle Atomic-Positionsbasis; keine Zusatzabfrage",
+                                    limitations=_portfolio_limits_v308,
                                 )
-                                st.caption(f"Konfidenz: {_portfolio_pkg_v291.get('confidence','-')} · Decision Summary verändert keine Portfolio-Berechnung.")
+                                st.caption("Entscheidungs-Konfidenz beschreibt nur die Datenbasis und verändert keine Portfolio-Berechnung.")
 
                                 if _aggregate_fx_blocked_v303g:
                                     st.warning(
@@ -21631,12 +21828,31 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 _pos_tone_v307 = "error" if str(manage_exit_engine_v289.get("level") or "").lower() == "red" else (
                                     "warning" if str(manage_exit_engine_v289.get("level") or "").lower() in {"orange", "yellow"} or (_pos_harvest_v307 is not None and _pos_harvest_v307 >= 75) else "success"
                                 )
+                                _pos_conf_raw_v308 = str(manage_exit_engine_v289.get("confidence") or "-")
+                                _pos_conf_v308 = _v308_confidence_level(
+                                    _pos_conf_raw_v308, critical_ok=bool(_manage_has_atomic_v302)
+                                )
+                                _pos_evidence_parts_v308 = [
+                                    "aktueller Atomic-Kurs" if _manage_has_atomic_v302 else "kein aktueller Atomic-Kurs",
+                                    f"Exit-Engine {_pos_conf_raw_v308}",
+                                ]
+                                if _pos_harvest_v307 is not None:
+                                    _pos_evidence_parts_v308.append(f"Harvest {_pos_harvest_v307:.0f}/100")
+                                _pos_limits_v308 = []
+                                if not _manage_has_atomic_v302:
+                                    _pos_limits_v308.append("Positionsentscheidung ohne aktuellen Atomic-Stand eingeschränkt")
+                                if _pos_stop_plan_v307 in {"", "-", "n/a"}:
+                                    _pos_limits_v308.append("kein belastbarer Stop-Plan ausgewiesen")
                                 _v307_render_decision_summary(
                                     seeing=_pos_seeing_v307,
                                     action=" · ".join([x for x in _pos_action_parts_v307 if x and x != "-"]),
                                     why=" · ".join(_pos_why_parts_v307[:2]) if _pos_why_parts_v307 else "-",
                                     tone=_pos_tone_v307,
                                     title=f"Position {manage_ticker_v270} · Entscheidungs-Zusammenfassung",
+                                    confidence=_pos_conf_v308,
+                                    evidence=" · ".join(_pos_evidence_parts_v308),
+                                    freshness="Atomic-Stand der aktuellen Session" if _manage_has_atomic_v302 else "kein aktueller Atomic-Stand",
+                                    limitations=" · ".join(_pos_limits_v308) if _pos_limits_v308 else "Keine kritische Datenlücke ausgewiesen",
                                 )
 
                                 jm1, jm2, jm3, jm4 = st.columns(4)
@@ -27391,6 +27607,34 @@ if result is not None:
         """,
         unsafe_allow_html=True,
     )
+
+    # v30.8: Transparente Decision-Confidence direkt unter der zentralen Handlungsbox.
+    # Sie nutzt nur bereits geladene Analyse-/Coverage-Daten und verändert keine Handlung.
+    try:
+        _ind_cov_v308 = float((confidence_info or {}).get("coverage") or 0.0)
+        _ind_conf_raw_v308 = str((confidence_info or {}).get("confidence") or "-")
+        _ind_conf_v308 = _v308_confidence_level(_ind_conf_raw_v308, coverage=_ind_cov_v308)
+        _ind_loaded_v308 = (confidence_info or {}).get("loaded")
+        _ind_total_v308 = (confidence_info or {}).get("total")
+        _ind_derived_v308 = (confidence_info or {}).get("derived_estimate")
+        _ind_evidence_v308 = f"Coverage {_ind_cov_v308*100:.0f}%"
+        if _ind_loaded_v308 is not None and _ind_total_v308 is not None:
+            _ind_evidence_v308 += f" · Felder {_ind_loaded_v308}/{_ind_total_v308}"
+        if _ind_derived_v308 not in (None, 0, "0"):
+            _ind_evidence_v308 += f" · {_ind_derived_v308} abgeleitet"
+        _ind_limits_v308 = []
+        if _ind_cov_v308 < 0.65:
+            _ind_limits_v308.append("Datenabdeckung reduziert")
+        if not str(benchmark_symbol or "").strip():
+            _ind_limits_v308.append("Benchmark nicht belastbar")
+        _v308_render_confidence_strip(
+            confidence=_ind_conf_v308,
+            evidence=_ind_evidence_v308,
+            freshness=f"Analysezeit {_v305b_format_berlin_timestamp(ts)}",
+            limitations=" · ".join(_ind_limits_v308) if _ind_limits_v308 else "Keine kritische Datenlücke ausgewiesen",
+        )
+    except Exception:
+        pass
 
     # ---------- v17.7: zentrale Exit-/Schutzampel ----------
     try:

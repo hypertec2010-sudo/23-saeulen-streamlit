@@ -1,23 +1,24 @@
-# v30.7 - Unified Decision Summary
+# v30.8 - Decision Confidence & Evidence Layer
 
-v30.7 vereinheitlicht die Lesart der wichtigsten Arbeitsbereiche. Statt je Bereich andere Überschriften, doppelte Kurzfassungen oder reine Roh-Scores zu zeigen, folgt die Oberfläche jetzt möglichst demselben Muster: **Was sehe ich? · Was hat sich geändert? · Nächste Handlung · Warum?**. Die Änderung ist rein darstellend und nutzt ausschließlich bereits berechnete Daten.
+v30.8 ergaenzt die in v30.7 vereinheitlichte Entscheidungs-Zusammenfassung um eine transparente zweite Ebene: **Wie belastbar ist diese Aussage eigentlich?**. Die neue Schicht veraendert keine Trading-Entscheidung, sondern zeigt nur, auf welcher Datenbasis die vorhandene Entscheidung beruht und wo Grenzen liegen.
 
 ## Neu
-- Gemeinsame, kompakte `Entscheidungs-Zusammenfassung` als wiederverwendbare UI-Schicht.
-- Live-Screener: Begriffe aus v30.5c vereinheitlicht. `Kurzfazit` heißt jetzt `Was sehe ich?`, `Seit letztem Scan` wird zu `Was hat sich geändert?`, und Treiber/Bremse stehen einmal unter `Warum?`.
-- Rotation Stock Drilldown: der aktuell führende Kandidat erhält eine kurze Entscheidungs-Zusammenfassung mit Kandidaten-Score, Engine-Bestätigung, Sektor-RS, RS-Beschleunigung, Trend und Entry-Readiness. Das Radar bleibt ausdrücklich Beobachtungslogik; Live-/Shadow-Ampeln und Gates bleiben maßgeblich.
-- Portfolio-Risiko: Status, nächste Handlung und wichtigste Risikotreiber erscheinen als eine kompakte Zusammenfassung. Vollständige Treiber und Maßnahmen liegen darunter in einem optionalen Detail-Expander.
-- Positionen / Exit: der ausgewählte offene Trade erhält vor den Engine-Details eine Management-Zusammenfassung aus Exit-Druck, aktueller Atomic-Kursbasis, Stop-Plan und – falls relevant – Harvest-/Teilgewinn-Hinweis.
-- Einzelanalyse: die bisherige `Nächste Handlung`-Box wurde zur vierteiligen Entscheidungs-Zusammenfassung erweitert: `Was sehe ich?`, `Nächste Handlung`, konkreter Trigger und Invalidierung/defensiver Punkt. Das spätere doppelte Kurzfazit im Überblick entfällt.
-- Feature-Überschriften mit sichtbaren Versionsnummern verwenden wieder `APP_VERSION`, damit die Oberfläche nicht gleichzeitig alte Versionslabels zeigt.
+- Einheitlicher Streifen `Entscheidungs-Konfidenz` mit `Hoch / Mittel / Niedrig / Nicht bewertet`.
+- Direkt daneben werden – sofern vorhanden – `Evidenz`, `Aktualitaet` und `Grenzen` angezeigt.
+- Fehlende Daten werden nicht still als ausreichend interpretiert; die Konfidenz wird bei kritischen Luecken begrenzt.
+- Live-Screener / Ticker-Details: nutzt bereits vorhandene Datenqualitaet, Kontext-Verlaesslichkeit und Benchmarkstatus. Auf Desktop gibt es zusaetzlich einen kompakten Ticker-Auswahlexpander mit derselben Entscheidungs-Zusammenfassung wie mobil.
+- Rotation Drilldown: Konfidenz basiert nur auf vorhandenen Kernmetriken (Sektor-RS, RS-Beschleunigung, Trend, Entry-Readiness), Engine-Bestaetigung und darauf, ob der Radar-Snapshot Legacy oder aktuell ist.
+- Portfolio: zeigt Kursabdeckung, Stop-Abdeckung und FX-Vollstaendigkeit als Evidenz. Fehlende FX-Umrechnung bleibt sichtbar und verhindert eine zu hohe Konfidenz.
+- Positionen: zeigt, ob ein aktueller Atomic-Kursstand vorliegt, welche Exit-Engine-Konfidenz vorhanden ist und ob ein belastbarer Stop-Plan existiert.
+- Einzelanalyse: nutzt die bereits vorhandene Analyse-/Fundamental-Coverage, geladene Felder und abgeleitete Felder als transparente Evidenz.
 
-## Transparenz / Grenzen
-- `Was hat sich geändert?` wird nur angezeigt, wenn im jeweiligen Bereich tatsächlich ein belastbarer Vergleichswert vorhanden ist; fehlende Historie wird nicht erfunden.
-- Die Rotation-Zusammenfassung bewertet nur bereits vorhandene Drilldown-/Atomic-Daten und startet keinen zusätzlichen Provider-Request.
-- Portfolio- und Positions-Zusammenfassungen verändern keine darunterliegenden Berechnungen. Die Detail-Engines bleiben vollständig sichtbar.
+## Wichtige Grenzen
+- Die neue Konfidenz ist **kein neuer Trading-Score** und wird nicht in Live-, Shadow-, Harvest-, Chop-, Exit-, Portfolio- oder Rotation-Scores eingerechnet.
+- `Hoch` bedeutet nur: die aktuell angezeigte Entscheidung hat eine vollstaendigere/sauberere Datenbasis. Es bedeutet nicht automatisch `Kaufen` oder `Halten`.
+- Bei fehlenden Vergleichs- oder Benchmarkdaten wird keine Information erfunden.
+- Keine neuen Provider-Abfragen; es werden ausschliesslich bereits geladene Werte verwendet.
 
-## Unverändert
-- Keine Änderung an Live-, Shadow-, Guarded-, Rotation-, Exit-, Portfolio-, Harvest- oder Chop-Scores.
-- Keine Änderung an TP1/TP2/TP3, Stops, Orders, Positionsgrößen oder Einstiegsgates.
-- Keine automatische Kalibrierung aus v30.6.
-- Keine neuen Provider-Abfragen.
+## Unveraendert
+- Keine Aenderung an TP1/TP2/TP3, Stops, Positionsgroessen, Orders oder Einstiegsgates.
+- Keine Aenderung an Harvest-/Chop-Schwellen oder v30.6-Lernlogik.
+- Keine Aenderung an Atomic-Scan- oder Snapshot-Semantik.

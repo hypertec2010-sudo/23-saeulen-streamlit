@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.9"
+APP_VERSION = "v30.10"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14879,6 +14879,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "trade_learning.py",
     _MODULE_DIR_V252 / "early_profit_learning.py",
     _MODULE_DIR_V252 / "harvest_outcome_learning.py",
+    _MODULE_DIR_V252 / "action_queue_learning.py",
     _MODULE_DIR_V252 / "short_term_trader.py",
     _MODULE_DIR_V252 / "commodity_context.py",
     _MODULE_DIR_V252 / "portfolio_risk.py",
@@ -14920,6 +14921,7 @@ from modules import trade_journal as _trade_journal_module
 from modules import trade_learning as _trade_learning_module
 from modules import early_profit_learning as _early_profit_learning_v303
 from modules import harvest_outcome_learning as _harvest_outcome_learning_v306
+from modules import action_queue_learning as _action_queue_learning_v3010
 from modules import short_term_trader as _short_term_trader_v304
 from modules import commodity_context as _commodity_context_v305
 from modules import portfolio_risk as _portfolio_risk_module
@@ -15846,6 +15848,116 @@ _harvest_outcome_learning_v306.configure_context(
 )
 _v306_capture_harvest_scan = _harvest_outcome_learning_v306.capture_scan
 _v306_build_harvest_learning = _harvest_outcome_learning_v306.build_learning_package
+
+# v30.10: provider-free validation of the v30.9 Decision Action Queue.
+# Stores only complete Atomic queue snapshots and never changes queue logic.
+_action_queue_learning_v3010.configure_context(
+    storage=_storage_v280,
+    time_provider=get_current_berlin_time,
+)
+_v3010_capture_action_queue = _action_queue_learning_v3010.capture_queue_snapshot
+_v3010_build_action_queue_learning = _action_queue_learning_v3010.build_learning_package
+
+
+def _v3010_render_action_queue_learning(watchlist_name):
+    try:
+        _pkg_v3010 = _v3010_build_action_queue_learning(watchlist_name)
+    except Exception as _exc_v3010:
+        with st.expander("📈 Action Queue · Outcome Validation", expanded=False):
+            st.warning(f"Queue-Outcome-Validierung aktuell nicht lesbar: {_exc_v3010}")
+        return
+
+    _sum_v3010 = dict(_pkg_v3010.get("summary") or {})
+    _days_v3010 = int(_sum_v3010.get("scan_days") or 0)
+    with st.expander("📈 Action Queue · Outcome Validation", expanded=False):
+        st.caption(
+            "Rein beobachtende Validierung der v30.9-Queue: Pro Watchlist und Berlin-Tag wird nur der letzte "
+            "vollständig abgeschlossene Atomic-Queue-Stand gespeichert. 1/3/5T-Outcomes werden nur gewertet, "
+            "wenn am exakten Zieltag erneut ein vollständiger Scan vorliegt. Keine automatische Änderung an "
+            "Queue-Kategorien, Live-Score, Confidence, Gates, Stops oder Orders."
+        )
+        if _days_v3010 <= 0:
+            st.info(
+                "Noch keine v30.10-Queue-Snapshots vorhanden. Nach dem nächsten vollständig abgeschlossenen "
+                "Atomic-Scan beginnt die Outcome-Historie automatisch."
+            )
+            return
+
+        _m1_v3010, _m2_v3010, _m3_v3010, _m4_v3010, _m5_v3010 = st.columns(5)
+        _m1_v3010.metric("Vollscan-Tage", _days_v3010)
+        _m2_v3010.metric("1T auswertbar", int(_sum_v3010.get("evaluable_1t") or 0))
+        _m3_v3010.metric("3T auswertbar", int(_sum_v3010.get("evaluable_3t") or 0))
+        _m4_v3010.metric("5T auswertbar", int(_sum_v3010.get("evaluable_5t") or 0))
+        _m5_v3010.metric("3T Reifegrad", str(_sum_v3010.get("sample_label") or "Zu klein"))
+
+        st.caption(
+            f"Zeitraum: {_sum_v3010.get('first_day') or '-'} bis {_sum_v3010.get('last_day') or '-'} · "
+            f"3T-Fälle: Jetzt prüfen {int(_sum_v3010.get('ready_3t') or 0)}, "
+            f"Beobachten {int(_sum_v3010.get('watch_3t') or 0)}, "
+            f"Blockiert {int(_sum_v3010.get('blocked_3t') or 0)}. "
+            "Scan-Max/Scan-Min basieren nur auf vorhandenen vollständigen Scanpunkten und sind keine Intraday-Hochs/-Tiefs."
+        )
+
+        _insights_v3010 = list(_pkg_v3010.get("insights") or [])
+        if _insights_v3010:
+            st.markdown("**Was zeigt die Queue bisher?**")
+            for _item_v3010 in _insights_v3010:
+                st.write(f"• {_item_v3010}")
+
+        _cat_v3010 = _pkg_v3010.get("category_summary")
+        _conf_v3010 = _pkg_v3010.get("confidence_summary")
+        _trans_v3010 = _pkg_v3010.get("transition_summary")
+        _detail_v3010 = _pkg_v3010.get("detail")
+        _tab_cat_v3010, _tab_conf_v3010, _tab_trans_v3010 = st.tabs([
+            "Kategorie 1/3/5T", "Confidence · 3T", "Kategorie-Wechsel · 3T"
+        ])
+        with _tab_cat_v3010:
+            st.caption(
+                "Kernfrage: Haben 'Jetzt prüfen', 'Beobachten' und 'Blockiert' später tatsächlich unterschiedliche "
+                "Return-/Upside-/Downside-Profile?"
+            )
+            if isinstance(_cat_v3010, pd.DataFrame) and not _cat_v3010.empty:
+                st.dataframe(_cat_v3010, hide_index=True, use_container_width=True)
+            else:
+                st.info("Noch keine exakten 1/3/5T-Folgefälle auswertbar.")
+        with _tab_conf_v3010:
+            st.caption("Prüft separat, ob höhere Decision-Confidence später tatsächlich stabilere Outcomes zeigt.")
+            if isinstance(_conf_v3010, pd.DataFrame) and not _conf_v3010.empty:
+                st.dataframe(_conf_v3010, hide_index=True, use_container_width=True)
+            else:
+                st.info("Noch keine ausreichenden 3T-Fälle für Confidence-Vergleiche.")
+        with _tab_trans_v3010:
+            st.caption("Zeigt, wie häufig eine frühere Queue-Kategorie am 3T-Zieltag in eine andere Kategorie übergeht.")
+            if isinstance(_trans_v3010, pd.DataFrame) and not _trans_v3010.empty:
+                st.dataframe(_trans_v3010, hide_index=True, use_container_width=True)
+            else:
+                st.info("Noch keine 3T-Kategorie-Wechsel auswertbar.")
+
+        with st.expander("Queue-Outcome-Einzelfälle / CSV", expanded=False):
+            if isinstance(_detail_v3010, pd.DataFrame) and not _detail_v3010.empty:
+                _show_cols_v3010 = [
+                    "Datum", "Ticker", "Name", "Horizont", "Priorität", "Decision-Confidence",
+                    "Live-Score", "Return %", "Scan-Max %", "Scan-Min %", "+2% im Pfad", "-2% im Pfad",
+                    "Folge-Priorität", "Fokus-Grund",
+                ]
+                _show_cols_v3010 = [c for c in _show_cols_v3010 if c in _detail_v3010.columns]
+                _view_v3010 = _detail_v3010.sort_values(["Datum", "Ticker", "Horizont"], ascending=[False, True, True])
+                st.dataframe(
+                    _view_v3010[_show_cols_v3010].head(700),
+                    hide_index=True,
+                    use_container_width=True,
+                    height=min(520, 42 * len(_view_v3010.head(700)) + 55),
+                )
+                st.download_button(
+                    "Action-Queue-Outcomes als CSV",
+                    data=_detail_v3010.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"action_queue_outcomes_{watchlist_name}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key=f"v3010_action_queue_csv_{watchlist_name}",
+                )
+            else:
+                st.info("Einzelfälle entstehen, sobald ein exakter 1T-, 3T- oder 5T-Zieltag verfügbar ist.")
 
 
 def _v306_render_harvest_learning(watchlist_name, event_df=None):
@@ -16843,6 +16955,7 @@ _V304D_GLOSSARY = {
         ("New Listing", "Neu gelisteter Wert mit begrenzter Historie. Bestimmte Langfristvergleiche können deshalb weniger belastbar sein."),
         ("Delayed Quote", "Zeitverzögerter Kurs statt Echtzeitkurs. Der Wert kann hinter dem aktuellen Marktstand zurückliegen."),
         ("Decision Action Queue", "Kompakte Watchlist-Triage aus bereits vorhandenen Live-Scores, Einstiegsgates und Decision-Confidence. Sie erzeugt keinen neuen Trading-Score und priorisiert nur die Aufmerksamkeit."),
+        ("Action Queue Outcome Validation", "Rein beobachtende Prüfung, ob die Queue-Kategorien Jetzt prüfen, Beobachten und Blockiert in späteren 1/3/5T-Folgeergebnissen tatsächlich unterschiedliche Profile zeigen."),
         ("Triage", "Priorisierung nach Dringlichkeit bzw. nächstem sinnvollen Prüfschritt. Im Tool: Jetzt prüfen, Beobachten oder Blockiert."),
     ],
     "Markt & Kursbewegung": [
@@ -16973,11 +17086,13 @@ _V304D_GLOSSARY = {
         ("Unrealized P/L", "Nicht realisierter Buchgewinn/-verlust einer noch offenen Position."),
         ("Realized P/L", "Tatsächlich realisierter Gewinn/Verlust nach Verkauf bzw. Schließung."),
         ("Holding Period", "Haltedauer einer Position."),
-        ("Outcome", "Später tatsächlich beobachtetes Ergebnis nach einem Signal oder Hinweis. v30.6 nutzt Outcomes zur Harvest-Validierung, ohne Regeln automatisch zu ändern."),
+        ("Outcome", "Später tatsächlich beobachtetes Ergebnis nach einem Signal oder Hinweis. Das Tool nutzt Outcomes für beobachtende Validierungen, ohne Regeln automatisch zu ändern."),
         ("Validation / Validierung", "Prüfung, ob eine frühere Einschätzung in später beobachteten Daten tatsächlich eine erkennbare Trennschärfe hatte."),
         ("Forward Return", "Kursveränderung nach einem früheren Beobachtungszeitpunkt über einen festgelegten Folge-Horizont, z. B. 1, 3 oder 5 Handelstage."),
         ("MFE (Maximum Favorable Excursion)", "Größte günstige Kursbewegung nach einem Signal innerhalb eines Beobachtungsfensters."),
         ("MAE (Maximum Adverse Excursion)", "Größte ungünstige Gegenbewegung nach einem Signal innerhalb eines Beobachtungsfensters."),
+        ("Positive Rate", "Anteil der später ausgewerteten Fälle mit positivem Folge-Return. Eine hohe Quote allein ist noch kein Beweis für eine belastbare Strategie."),
+        ("Scan-Max / Scan-Min", "Größte bzw. kleinste beobachtete Kursabweichung innerhalb der verfügbaren vollständigen Folge-Scans. Intraday-Hochs/-Tiefs können stärker ausfallen."),
         ("Entry Price", "Tatsächlicher Kauf-/Einstiegskurs einer offenen Position."),
         ("Current Price", "Aktuell verwendeter Kurs zur Bewertung einer Position."),
     ],
@@ -19600,6 +19715,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Ampel": _v243_clean_cell(raw.get("Ampel")),
                                         "Ticker": ticker,
                                         "Name": _v243_clip_cell(raw.get("Name"), 30),
+                                        "Kurs": _v230_safe_float(raw.get("Kurs"), default=None),
                                         "Live-Score": None if live_num is None else float(live_num),
                                         "Decision-Confidence": conf,
                                         "Status": _v243_clip_cell(raw.get("Status"), 34),
@@ -19630,7 +19746,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             def _v309_render_action_queue(frame):
                                 queue = _v309_build_action_queue(frame)
                                 if queue.empty:
-                                    return
+                                    return queue
                                 counts = queue["Priorität"].value_counts().to_dict()
                                 n_ready = int(counts.get("🎯 Jetzt prüfen", 0))
                                 n_watch = int(counts.get("👀 Beobachten", 0))
@@ -19679,8 +19795,33 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.caption(
                                         "Lesart: 'Jetzt prüfen' bedeutet nicht automatisch kaufen. Entry-Regeln, Gates, CRV und die bestehende Live-/Shadow-Logik bleiben maßgeblich."
                                     )
+                                return queue
 
-                            _v309_render_action_queue(_decision_queue_source_v309)
+                            _queue_snapshot_v3010 = _v309_render_action_queue(_decision_queue_source_v309)
+                            try:
+                                _queue_meta_v3010 = dict(scan_meta_v2844 or {})
+                                _queue_atomic_v3010 = bool(
+                                    _queue_meta_v3010.get("complete", False)
+                                    and _queue_meta_v3010.get("atomic", False)
+                                )
+                                _queue_scan_id_v3010 = str(_queue_meta_v3010.get("run_id") or "").strip()
+                                if not _queue_scan_id_v3010 and isinstance(_decision_queue_source_v309, pd.DataFrame) and not _decision_queue_source_v309.empty and "Scan-Lauf" in _decision_queue_source_v309.columns:
+                                    _queue_scan_id_v3010 = str(_decision_queue_source_v309["Scan-Lauf"].iloc[0] or "").strip()
+                                _queue_scan_time_v3010 = _queue_meta_v3010.get("completed_at")
+                                if not _queue_scan_time_v3010 and isinstance(live_cache_v246, dict):
+                                    _queue_scan_time_v3010 = live_cache_v246.get("ts")
+                                _v3010_capture_action_queue(
+                                    selected_watchlist_name,
+                                    _queue_snapshot_v3010,
+                                    scan_id=_queue_scan_id_v3010,
+                                    scan_time=_queue_scan_time_v3010,
+                                    atomic_complete=_queue_atomic_v3010,
+                                )
+                            except Exception:
+                                # Queue validation is strictly observational and must never
+                                # interrupt the productive Live-Screener.
+                                pass
+                            _v3010_render_action_queue_learning(selected_watchlist_name)
 
                             for _col in live_display_df.columns:
                                 live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)

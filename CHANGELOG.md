@@ -1,3 +1,14 @@
+## v30.10 - Action Queue Outcome Validation
+- Rein beobachtende 1T/3T/5T-Validierung der v30.9 Decision Action Queue.
+- Speichert pro Watchlist nur den letzten vollständigen Atomic-Queue-Snapshot je Berlin-Tag; Reruns und gleiche Scan-IDs werden dedupliziert.
+- Exakte Mo-Fr-Zieltage: fehlende Folge-Scans bleiben offen statt mit späteren Kursen ersetzt zu werden.
+- Bewertet spätere Returns, Scan-Max/Scan-Min sowie +2%- und -2%-Pfadquoten getrennt nach `Jetzt prüfen`, `Beobachten` und `Blockiert`.
+- Zusätzliche 3T-Validierung der Decision-Confidence und der Queue-Kategorie-Wechsel.
+- Diagnostische Hinweise zur Trennschärfe erst bei ausreichender Teilstichprobe; keine automatische Queue-/Score-/Gate-Anpassung.
+- Neue UI `Action Queue · Outcome Validation` mit Kategorie-, Confidence- und Wechsel-Tabs sowie CSV-Einzelfall-Export.
+- Glossar um Action Queue Outcome Validation, Positive Rate und Scan-Max / Scan-Min erweitert.
+- Keine neuen Provider-Requests; keine Änderungen an produktiven Scores, Harvest/Chop, TP, Stops, Orders oder Positionsgrößen.
+
 ## v30.9 - Decision Action Queue
 - Neue providerfreie Watchlist-Triage direkt im Live-Screener: `Jetzt prüfen`, `Beobachten`, `Blockiert`.
 - Queue nutzt den vollständigen angereicherten Atomic-Stand und bleibt unabhängig vom UI-Filter `nur aktive`.

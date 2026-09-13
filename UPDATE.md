@@ -1,36 +1,37 @@
-# v30.9 - Decision Action Queue
+# v30.10 - Action Queue Outcome Validation
 
-v30.9 ergänzt den Live-Screener um eine kompakte, providerfreie Watchlist-Triage. Ziel ist nicht ein weiterer Score, sondern eine schnellere Antwort auf die operative Frage: **Welche Werte muss ich jetzt wirklich ansehen?**
+v30.10 ergänzt die v30.9 `Decision Action Queue` um eine rein beobachtende Outcome-Validierung. Ziel ist nicht, die Queue automatisch zu verändern, sondern nach einigen Handelstagen messbar zu prüfen, ob `Jetzt prüfen`, `Beobachten` und `Blockiert` tatsächlich unterschiedliche Folgeergebnisse zeigen.
 
 ## Neu
-- Neuer Bereich `Decision Action Queue · Watchlist-Priorisierung` oberhalb der ausführlichen Live-Screener-Darstellung.
-- Drei klare Kategorien:
-  - `🎯 Jetzt prüfen`: grünes Setup mit bestehender Trigger-/Entry-/Armed-Evidenz und ohne hartes Einstiegsgate.
-  - `👀 Beobachten`: noch keine unmittelbare Prüffreigabe bzw. neutralere/gelbe/weiße Setups.
-  - `⛔ Blockiert`: hartes Einstiegsgate, Engine-Blockierung oder Invalidierung.
-- Vier Sofortmetriken: Anzahl `Jetzt prüfen`, `Beobachten`, `Blockiert` sowie Anzahl Werte mit hoher Decision-Confidence.
-- Jede Kategorie besitzt eine kompakte Tabelle mit Ticker, Name, Ampel, Live-Score, Decision-Confidence, Status, Trade-State, CRV, Entry-Abstand, Harvest, Veränderung, Fokus-Grund und nächster Handlung.
-- Unter jeder Kategorie können `Evidenz / Aktualität / Grenzen` separat eingeblendet werden.
-- Die Queue verwendet bewusst den **vollständigen angereicherten Atomic-Stand der Watchlist**, auch wenn in der Haupttabelle der UI-Filter `nur aktive` eingeschaltet ist.
-- Geänderte Werte werden im Fokus-Grund bevorzugt mit dem vorhandenen `Warum geändert?` erklärt; unveränderte Werte nutzen bestehende Score-Treiber bzw. Statusinformationen.
-- Glossar um `Decision Action Queue` und `Triage` erweitert.
+- Neue providerfreie Persistenz `decision_action_queue_learning_v3010`.
+- Pro Watchlist wird nur der **letzte vollständig abgeschlossene Atomic-Queue-Stand pro Berlin-Tag** gespeichert.
+- Streamlit-Reruns bzw. derselbe Scan werden dedupliziert; ein späterer kompletter Scan desselben Tages ersetzt den früheren Tagesstand.
+- 1T-/3T-/5T-Outcomes werden nur gewertet, wenn am exakten Mo-Fr-Zieltag wieder ein vollständiger Atomic-Scan vorhanden ist. Fehlende Tage bleiben offen und werden nicht mit einem späteren Kurs ersetzt.
+- Für jeden auswertbaren Fall werden u. a. gespeichert/abgeleitet:
+  - ursprüngliche Queue-Kategorie,
+  - Decision-Confidence,
+  - Live-Score,
+  - Folge-Return,
+  - beobachtetes Scan-Max / Scan-Min,
+  - ob im beobachteten Pfad mindestens +2% bzw. -2% erreicht wurden,
+  - Queue-Kategorie am Zieltag und Kategorie-Wechsel.
+- Neue Ansicht `Action Queue · Outcome Validation` direkt unter der Decision Action Queue.
+- Tab `Kategorie 1/3/5T`: Median Return, positive Quote, +2%-/ -2%-Pfadquote sowie Scan-Max/Scan-Min je Queue-Kategorie.
+- Tab `Confidence · 3T`: separate Beobachtung, ob `Hoch` / `Mittel` / `Niedrig` später unterschiedliche Outcomes zeigen.
+- Tab `Kategorie-Wechsel · 3T`: zeigt, wie stabil bzw. wechselhaft die Queue-Einstufung über drei Handelstage bleibt.
+- Automatische Text-Hinweise werden erst ab ausreichender Teilstichprobe erzeugt und bleiben rein diagnostisch.
+- CSV-Export der Outcome-Einzelfälle.
+- Glossar um `Action Queue Outcome Validation`, `Positive Rate` und `Scan-Max / Scan-Min` ergänzt.
 
-## Sortierung ohne neuen Trading-Score
-Die Queue berechnet keinen eigenen Kauf-/Trading-Score. Innerhalb der bestehenden Kategorien wird transparent sortiert nach:
-1. Kategorie (`Jetzt prüfen` → `Beobachten` → `Blockiert`),
-2. Decision-Confidence (`Hoch` → `Mittel` → `Niedrig`),
-3. vorhandenem Live-Score absteigend,
-4. echter Änderung seit letztem Scan,
-5. Ticker.
-
-## Sicherheits- und Interpretationsgrenzen
-- `Jetzt prüfen` bedeutet ausdrücklich **nicht automatisch kaufen**.
-- Harte Einstiegsgates bleiben vollständig blockierend.
-- CRV, Entry-Regeln, Live-/Shadow-Logik und Guardrails bleiben maßgeblich.
-- Decision-Confidence ist Daten-/Evidenzvertrauen und kein Renditeversprechen.
+## Interpretationsgrenzen
+- `Jetzt prüfen` bedeutet weiterhin **nicht automatisch kaufen**.
+- Scan-Max / Scan-Min beruhen auf vorhandenen vollständigen Scanpunkten, nicht auf Intraday-Hochs oder Intraday-Tiefs. Zwischen den Scans können größere Bewegungen stattgefunden haben.
+- Mo-Fr wird ohne zusätzlichen Börsenkalender als Zieltag verwendet. Fällt ein Zieltag auf einen Feiertag oder fehlt ein vollständiger Scan, wird der Fall nicht künstlich aufgefüllt.
+- Kleine Stichproben werden ausdrücklich als `Zu klein` bzw. `Früh` markiert.
+- Die Outcome-Auswertung ist eine Qualitätskontrolle der Priorisierung und keine Backtest-Garantie.
 
 ## Unverändert
-- Keine Änderung an Live-, Shadow-, Guarded-, Rotation-, Exit-, Portfolio-, Harvest- oder Chop-Scores.
-- Keine Änderung an TP1/TP2/TP3, Stops, Orders, Positionsgrößen oder Einstiegsgates.
-- Keine automatische Kalibrierung aus v30.6.
+- Keine Änderung an der v30.9 Queue-Kategorisierung oder Sortierung.
+- Keine automatische Anpassung an Live-Score, Decision-Confidence, Harvest/Chop, Gates oder Engine-Regeln.
+- Keine Änderung an TP1/TP2/TP3, Stops, Orders oder Positionsgrößen.
 - Keine neuen Provider-Abfragen.

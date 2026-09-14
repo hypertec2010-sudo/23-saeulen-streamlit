@@ -1,3 +1,17 @@
+## v30.11 - Calibration Advisor
+- Neue Shadow-only Kalibrierungsschicht auf Basis der bereits gespeicherten Action-Queue- und Harvest-3T-Outcomes.
+- Neuer providerfreier Modulbaustein `modules/calibration_advisor.py`.
+- Verbindlicher Stichproben-Guard: mindestens 15 auswertbare Fälle je Vergleichsgruppe, bevor ein Kalibrierungshinweis als prüfenswert gilt.
+- Action Queue: `Jetzt prüfen` vs. `Beobachten` nach Median-Return, positiver Quote und +2%-Pfad.
+- Blockierungs-Check: `Blockiert` vs. `Jetzt prüfen` nach Return und -2%-Pfad; spätere Kursanstiege lockern Gates nicht automatisch.
+- Decision Confidence: `Hoch` vs. `Mittel/Niedrig` wird auf reale 3T-Trennschärfe geprüft.
+- Harvest-Warnbeginn 60 wird gegen <60 anhand Giveback, bestätigten Teilgewinn-Situationen und `Laufenlassen besser` validiert.
+- Chop >=60 wird beobachtend gegen <60 verglichen.
+- Shadow-Vergleichstabelle für Harvest-Schwellen 55/60/65/70/75/80 ohne automatische Bestschwellenwahl.
+- Neuer Trade-Journal-Expander `Calibration Advisor · v30.11 · Shadow only` inklusive CSV-Export.
+- Glossar um Calibration Advisor, Shadow-Kalibrierung und Stichproben-Guard ergänzt.
+- Keine produktive Regeländerung und keine neuen Provider-Abfragen.
+
 ## v30.10 - Action Queue Outcome Validation
 - Rein beobachtende 1T/3T/5T-Validierung der v30.9 Decision Action Queue.
 - Speichert pro Watchlist nur den letzten vollständigen Atomic-Queue-Snapshot je Berlin-Tag; Reruns und gleiche Scan-IDs werden dedupliziert.

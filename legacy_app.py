@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.10"
+APP_VERSION = "v30.11"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14880,6 +14880,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "early_profit_learning.py",
     _MODULE_DIR_V252 / "harvest_outcome_learning.py",
     _MODULE_DIR_V252 / "action_queue_learning.py",
+    _MODULE_DIR_V252 / "calibration_advisor.py",
     _MODULE_DIR_V252 / "short_term_trader.py",
     _MODULE_DIR_V252 / "commodity_context.py",
     _MODULE_DIR_V252 / "portfolio_risk.py",
@@ -14922,6 +14923,7 @@ from modules import trade_learning as _trade_learning_module
 from modules import early_profit_learning as _early_profit_learning_v303
 from modules import harvest_outcome_learning as _harvest_outcome_learning_v306
 from modules import action_queue_learning as _action_queue_learning_v3010
+from modules import calibration_advisor as _calibration_advisor_v3011
 from modules import short_term_trader as _short_term_trader_v304
 from modules import commodity_context as _commodity_context_v305
 from modules import portfolio_risk as _portfolio_risk_module
@@ -15858,6 +15860,82 @@ _action_queue_learning_v3010.configure_context(
 _v3010_capture_action_queue = _action_queue_learning_v3010.capture_queue_snapshot
 _v3010_build_action_queue_learning = _action_queue_learning_v3010.build_learning_package
 
+# v30.11: guarded calibration recommendations from existing outcome packages.
+# Shadow-only: no productive threshold, queue, gate, stop or order is modified.
+_v3011_build_calibration_advice = _calibration_advisor_v3011.build_calibration_package
+
+
+def _v3011_render_calibration_advisor(watchlist_name, event_df=None):
+    try:
+        _queue_pkg_v3011 = _v3010_build_action_queue_learning(watchlist_name)
+        _harvest_pkg_v3011 = _v306_build_harvest_learning(watchlist_name, event_df)
+        _cal_v3011 = _v3011_build_calibration_advice(_queue_pkg_v3011, _harvest_pkg_v3011)
+    except Exception as _exc_v3011:
+        with st.expander(f"🧭 Calibration Advisor · {APP_VERSION}", expanded=False):
+            st.warning(f"Kalibrierungs-Advisor aktuell nicht lesbar: {_exc_v3011}")
+        return
+
+    _sum_v3011 = dict(_cal_v3011.get("summary") or {})
+    _overview_v3011 = _cal_v3011.get("overview")
+    _threshold_v3011 = _cal_v3011.get("harvest_threshold_table")
+    with st.expander(f"🧭 Calibration Advisor · {APP_VERSION} · Shadow only", expanded=False):
+        st.caption(
+            "Der Advisor verbindet ausschließlich bereits gespeicherte 3T-Outcomes aus Action Queue und Harvest. "
+            "Er darf nur Empfehlungen formulieren. Keine Schwelle, Kategorie, Confidence-Regel, Gate, Stop-, TP- oder Orderlogik "
+            "wird automatisch geändert. Vergleichsempfehlungen erscheinen erst ab mindestens "
+            f"{int(_sum_v3011.get('min_group_n') or 15)} Fällen je Gruppe."
+        )
+        _ca1_v3011, _ca2_v3011, _ca3_v3011, _ca4_v3011 = st.columns(4)
+        _ca1_v3011.metric("Queue · 3T", int(_sum_v3011.get("queue_3t") or 0))
+        _ca2_v3011.metric("Harvest · 3T", int(_sum_v3011.get("harvest_3t") or 0))
+        _ca3_v3011.metric("Shadow-Prüfungen", int(_sum_v3011.get("actionable_shadow_checks") or 0))
+        _ca4_v3011.metric("Gesamt-Reife", str(_sum_v3011.get("overall_maturity") or "Zu klein"))
+
+        if not isinstance(_overview_v3011, pd.DataFrame) or _overview_v3011.empty:
+            st.info(
+                "Noch keine belastbare Kalibrierungsbasis. Zuerst weitere vollständige Atomic-Scans und exakte 3T-Folge-Outcomes sammeln."
+            )
+            return
+
+        st.markdown("**Kalibrierungs-Entscheidungen**")
+        for _, _row_v3011 in _overview_v3011.iterrows():
+            _status_v3011 = str(_row_v3011.get("Status") or "-")
+            _area_v3011 = str(_row_v3011.get("Bereich") or "-")
+            _statement_v3011 = str(_row_v3011.get("Aussage") or "-")
+            _advice_v3011 = str(_row_v3011.get("Shadow-Empfehlung") or "-")
+            _evidence_v3011 = str(_row_v3011.get("Evidenz") or "-")
+            _sample_v3011 = str(_row_v3011.get("Stichprobe") or "-")
+            _msg_v3011 = f"**{_area_v3011} · {_status_v3011}**  \n{_statement_v3011}  \n**Shadow:** {_advice_v3011}  \nStichprobe {_sample_v3011} · {_evidence_v3011}"
+            if "🟠" in _status_v3011 or "🟡" in _status_v3011:
+                st.warning(_msg_v3011)
+            elif "✅" in _status_v3011:
+                st.success(_msg_v3011)
+            else:
+                st.info(_msg_v3011)
+
+        with st.expander("Advisor-Tabelle / Evidenz", expanded=False):
+            st.dataframe(_overview_v3011, hide_index=True, use_container_width=True)
+
+        st.markdown("**Harvest-Schwellen im Shadow vergleichen**")
+        st.caption(
+            "Die Tabelle zeigt 55/60/65/70/75/80 nur als Vergleich. Sie wählt bewusst keine 'beste' Schwelle, "
+            "damit kleine oder zufällige Stichproben nicht automatisch überoptimiert werden."
+        )
+        if isinstance(_threshold_v3011, pd.DataFrame) and not _threshold_v3011.empty:
+            st.dataframe(_threshold_v3011, hide_index=True, use_container_width=True)
+        else:
+            st.info("Noch keine 3T-Harvest-Fälle für den Schwellenvergleich.")
+
+        _advisor_csv_v3011 = _overview_v3011.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "Calibration-Advisor als CSV",
+            data=_advisor_csv_v3011,
+            file_name=f"calibration_advisor_{watchlist_name}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key=f"v3011_calibration_csv_{watchlist_name}",
+        )
+
 
 def _v3010_render_action_queue_learning(watchlist_name):
     try:
@@ -15878,7 +15956,7 @@ def _v3010_render_action_queue_learning(watchlist_name):
         )
         if _days_v3010 <= 0:
             st.info(
-                "Noch keine v30.10-Queue-Snapshots vorhanden. Nach dem nächsten vollständig abgeschlossenen "
+                "Noch keine Queue-Outcome-Snapshots vorhanden. Nach dem nächsten vollständig abgeschlossenen "
                 "Atomic-Scan beginnt die Outcome-Historie automatisch."
             )
             return
@@ -16956,6 +17034,9 @@ _V304D_GLOSSARY = {
         ("Delayed Quote", "Zeitverzögerter Kurs statt Echtzeitkurs. Der Wert kann hinter dem aktuellen Marktstand zurückliegen."),
         ("Decision Action Queue", "Kompakte Watchlist-Triage aus bereits vorhandenen Live-Scores, Einstiegsgates und Decision-Confidence. Sie erzeugt keinen neuen Trading-Score und priorisiert nur die Aufmerksamkeit."),
         ("Action Queue Outcome Validation", "Rein beobachtende Prüfung, ob die Queue-Kategorien Jetzt prüfen, Beobachten und Blockiert in späteren 1/3/5T-Folgeergebnissen tatsächlich unterschiedliche Profile zeigen."),
+        ("Calibration Advisor", "Shadow-only Auswertung der bereits gespeicherten Queue- und Harvest-Outcomes. Formuliert erst bei ausreichender Stichprobe Kalibrierungs-Hinweise, ändert aber keine produktive Regel automatisch."),
+        ("Shadow-Kalibrierung", "Vergleich einer möglichen Schwellen- oder Evidenzanpassung nur analytisch im Hintergrund. Produktive Live-Regeln bleiben unverändert."),
+        ("Stichproben-Guard", "Mindestanzahl unabhängiger auswertbarer Fälle, bevor eine Kalibrierungs-Aussage als prüfenswert gilt. v30.11 verlangt für Gruppenvergleiche mindestens 15 Fälle je Gruppe."),
         ("Triage", "Priorisierung nach Dringlichkeit bzw. nächstem sinnvollen Prüfschritt. Im Tool: Jetzt prüfen, Beobachten oder Blockiert."),
     ],
     "Markt & Kursbewegung": [
@@ -22713,6 +22794,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             _event_df_v290 = _v2416_events_dataframe(selected_watchlist_name)
                             _v306_render_harvest_learning(selected_watchlist_name, _event_df_v290)
+                            _v3011_render_calibration_advisor(selected_watchlist_name, _event_df_v290)
                             if journal_df_v270 is None or journal_df_v270.empty:
                                 st.info("Noch keine Journal-Einträge für diese Watchlist. Aktionen aus dem Positions-/Exit-Monitor erscheinen hier.")
                             else:

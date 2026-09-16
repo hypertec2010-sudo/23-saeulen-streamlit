@@ -1,66 +1,37 @@
-# v30.13 - Depot Excel Transaction Import
+# v30.14 - Depot Import Reconciliation Guard
 
-v30.13 ergänzt den Positions-/Exit-Bereich um einen providerfreien Broker-/Depot-Transaktionsimport. Ziel ist, Käufe, Verkäufe und andere Depotbewegungen aus einem bestehenden Excel-/CSV-Export nachzuziehen, wenn die manuelle Pflege im Tool nicht vollständig geschafft wurde.
-
-## Unterstütztes Importformat
-Die Importlogik erkennt die vom Nutzer genannte Spaltenstruktur, insbesondere:
-- Action
-- Time (UTC)
-- ISIN
-- Ticker
-- Name
-- Notes
-- ID
-- No. of shares
-- Price / share
-- Currency (Price / share)
-- Exchange rate
-- Result / Currency (Result)
-- Gross Total / Currency (Gross Total)
-- Withholding tax / Currency (Withholding tax)
-- Currency conversion fee / zugehörige Währung
-- Taxes / Currency (Taxes)
-- Net Total / Currency (Net Total)
-
-Pflichtfelder für eine Positionsbuchung sind `Action`, `Time (UTC)`, `Ticker`, `No. of shares` und `Price / share`.
+v30.14 erweitert den Depot-Excel-Import aus v30.13 um einen expliziten Bestands-Abgleich für den typischen Mischfall: Im Tool existieren bereits manuell gepflegte Positionen, während anschließend nur ein begrenzter Broker-Zeitraum, z. B. die letzten zwei Monate, importiert werden soll.
 
 ## Neu
-- Neuer Expander `Depot-Excel importieren` im Bereich `Positionen / Exit`.
-- Unterstützt `.xlsx`, `.xlsm`, `.csv` und `.txt`.
-- UTC-Zeitstempel werden automatisch nach `Europe/Berlin` konvertiert.
-- Erkennt Buy-/Sell-Varianten wie `Market buy`, `Limit buy`, `Market sell`, `Limit sell` sowie einfache deutsche/englische Kauf-/Verkaufsbegriffe.
-- Negative Broker-Stückzahlen bei eindeutigem Buy/Sell werden als Betragsstückzahl normalisiert.
-- Käufe erhöhen die Position und bilden einen gewichteten Durchschnitts-Entry (`Weighted Average Entry`).
-- Verkäufe reduzieren offene Stücke; vollständige Verkäufe schließen die Position.
-- Teilverkäufe und vollständige Schließungen werden zusätzlich in das bestehende Trade-Journal geschrieben.
-- Broker-Result, Result-Währung, Preis-Währung, Notizen und Import-ID bleiben in den importierten Journal-/Archivdaten erhalten.
-- Dividenden, Zinsen, Ein-/Auszahlungen und sonstige Actions werden archiviert, verändern aber bewusst keine Aktienposition.
-- Neue offene Broker-Positionen werden in die aktuelle Positions-Watchlist synchronisiert, ohne dafür Marktdaten abzurufen.
+- Neuer Bereich `Bestands-Abgleich · manuelle Positionen vs. Datei` direkt in der Import-Vorschau.
+- Prüfung pro Ticker auf:
+  - aktuell offene Tool-Stückzahl,
+  - Tool-Entry,
+  - Herkunft der Position (`Depot-Excel` oder manuell/nicht markiert),
+  - gespeicherten Positionsbeginn,
+  - ersten und letzten Datei-Zeitpunkt,
+  - erste Broker-Aktion,
+  - Datei-Käufe, Datei-Verkäufe und Netto-Stückzahl,
+  - Replay-Fähigkeit der Datei `ab Null`.
+- Manuell gepflegte offene Position + noch nicht importierte Brokerzeilen wird nicht mehr still angewendet. Der Ticker erhält `ABGLEICH` und benötigt eine zweite explizite Bestätigung.
+- Im Modus `Nur neue Transaktionen anwenden` muss bestätigt werden, dass der aktuelle Tool-Bestand dem Stand unmittelbar **vor** der ersten noch nicht importierten Broker-Transaktion entspricht.
+- Im Modus `Enthaltene Ticker aus Datei neu aufbauen` muss bei markierten manuellen Positionen bestätigt werden, dass die Datei den vollständigen Kauf-/Verkaufszyklus enthält.
+- Rebuild-Historien werden pro Ticker chronologisch ab Stückzahl Null geprüft. Ein Verkauf, für den innerhalb der Datei zuvor nicht genügend Stück aufgebaut wurden, erzeugt `BLOCKIERT` und kann nicht über eine Checkbox übergangen werden.
+- Bereits mit `broker_source = Depot-Excel` geführte Positionen werden erkannt; der bestehende Broker-ID/Hash-Dublettenschutz bleibt maßgeblich.
+- Bereits verarbeitete Broker-IDs werden im inkrementellen Modus aus dem neuen Abgleich herausgenommen und erzeugen keine unnötige Warnung.
 
-## Zwei Importmodi
-### Nur neue Transaktionen anwenden
-Für regelmäßige Folgeexporte. Bereits importierte Broker-IDs werden nicht nochmals gebucht. Fehlt eine Broker-ID, wird ein deterministischer Transaktions-Hash verwendet.
+## Beispiel: nur die letzten zwei Monate importieren
+Wenn im Tool am Beginn des Importzeitraums bereits 10 Stück manuell korrekt hinterlegt waren und die Datei danach einen Kauf von 5 Stück enthält, kann `Nur neue Transaktionen anwenden` nach expliziter Abgleich-Bestätigung daraus 15 Stück mit gewichteter Entry-Berechnung machen.
 
-### Enthaltene Ticker aus Datei neu aufbauen
-Für eine vollständige Historie. Alle Buy-/Sell-Zeilen der Datei werden für die enthaltenen Ticker chronologisch ab Null rekonstruiert. Bereits manuell gepflegte Management-Metadaten wie Stop, Ziel, Portfolio-Gruppe und vorhandener Entry-Kontext werden bei weiterhin offenen Positionen nach Möglichkeit erhalten.
+Wenn die manuell hinterlegten 15 Stück den Kauf aus der Datei jedoch bereits enthalten, warnt v30.14 vor dem möglichen Doppelzählen. Die App kann diese semantische Überschneidung nicht automatisch über Broker-ID erkennen, weil die manuelle Position keine Broker-Transaktions-ID besitzt.
 
-## Sicherheitslogik
-- Vorschau vor jeder Buchung.
-- Explizite Bestätigung erforderlich.
-- Verkauf größer als bekannte offene Stückzahl blockiert den gesamten Import und wird als Anomalie angezeigt.
-- Doppelte Zeilen innerhalb derselben Datei werden nicht gebucht.
-- Wiederholter Import derselben Datei führt im Modus `Nur neue` nicht zu Doppelbuchungen.
-- Neue Stop-/Target-Werte werden nicht aus der Brokerdatei erfunden.
-- Broker-importierte Schließungen werden nicht im manuellen `Schließung rückgängig machen` angeboten; Korrekturen erfolgen über einen korrigierten Export + Rebuild.
-
-## Fractional Shares
-- Der Import verarbeitet Bruchstücke wie `0.25` exakt.
-- Die sichtbare Positions-Tabelle zeigt importierte Fractional Shares ohne Integer-Rundung.
-- Einige ältere manuelle Teilverkaufs-/Schließungsdialoge arbeiten weiterhin mit ganzen Stückzahlen. Bei Fractional-Positionen werden manuelle Verkäufe deshalb blockiert und sollen erneut über den Depot-Import eingespielt werden.
-- Stop-Anpassungen und Notizen bleiben auch bei Fractional Shares manuell nutzbar.
+## Kompatibilität
+- Der vorhandene Storage-Namespace `depot_transaction_import_v3013` bleibt absichtlich erhalten. Dadurch bleiben bereits gespeicherte Broker-IDs, Hashes und Importarchive nach dem Update gültig.
+- Weighted Average Entry, Fractional Shares, Teil-/Vollverkäufe, Trade-Journal und UTC->Berlin-Konvertierung aus v30.13 bleiben unverändert.
+- Manuelle Stops, Targets, Gruppen und Kontexte bleiben weiterhin erhalten.
 
 ## Unverändert
+- Keine Provider-Abfrage durch den Depot-Import oder den neuen Guard.
 - Keine Orderausführung.
-- Keine automatische Kauf-/Verkaufsentscheidung.
-- Keine Änderung an Live-/Shadow-/Guarded-, Exit-, Harvest-, Chop-, Queue-, Confidence- oder Calibration-Logik.
-- Keine neuen Yahoo-/Web-/Provider-Abfragen.
+- Keine automatische Erfindung fehlender Anfangsbestände.
+- Kein automatisches Überschreiben einer Warnung ohne ausdrückliche Benutzerbestätigung.

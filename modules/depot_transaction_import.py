@@ -1,4 +1,8 @@
-"""v30.13 provider-free broker/depot transaction import.
+"""v30.14 provider-free broker/depot transaction import.
+
+Adds a reconciliation guard for overlapping manually maintained positions while
+preserving the v30.13 storage namespace so existing Broker-ID/hash history remains
+valid across the upgrade.
 
 Reads transaction exports (xlsx/csv), normalises the supplied broker columns,
 classifies buy/sell rows, protects against duplicate booking, and reconstructs
@@ -519,6 +523,216 @@ def _journal_record(*, watchlist_name, ticker, name, typ, date_text, time_text, 
         "Broker Preis-Währung": currency,
         "Broker Result": broker_result,
         "Broker Result-Währung": broker_result_currency,
+    }
+
+
+def _parse_any_time(value: Any):
+    text = _txt(value)
+    if not text:
+        return None
+    try:
+        ts = pd.Timestamp(text)
+    except Exception:
+        return None
+    try:
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("Europe/Berlin")
+        else:
+            ts = ts.tz_convert("Europe/Berlin")
+    except Exception:
+        pass
+    return ts
+
+
+def _is_broker_position(position: dict[str, Any] | None) -> bool:
+    src = _txt((position or {}).get("broker_source")).lower().replace("_", " ").replace("-", " ")
+    return "depot" in src and "excel" in src
+
+
+def reconciliation_guard(
+    normalized: pd.DataFrame,
+    positions: dict[str, Any] | None,
+    *,
+    mode: str = "incremental",
+    already_processed: set[str] | None = None,
+) -> dict[str, Any]:
+    """Assess overlap between incoming broker rows and existing open positions.
+
+    The guard is intentionally conservative. A manually maintained open position
+    has no Broker-ID lineage, so incoming broker rows cannot be proven to be new
+    relative to that manual state. Such overlaps require explicit user review.
+
+    For rebuild mode, the file is additionally replayed from zero per ticker. A
+    sell that occurs before enough file-contained buys is a hard blocker because
+    the file cannot reconstruct that ticker from zero.
+    """
+    df = normalized.copy() if isinstance(normalized, pd.DataFrame) else pd.DataFrame()
+    current = {str(k).upper(): dict(v or {}) for k, v in dict(positions or {}).items()}
+    processed = {str(x) for x in set(already_processed or set()) if str(x)}
+    mode_key = str(mode or "incremental").lower()
+    if df.empty:
+        return {
+            "table": pd.DataFrame(), "flagged_tickers": [], "blockers": [],
+            "requires_confirmation": False, "hard_block": False,
+            "summary": {"tickers": 0, "manual_overlaps": 0, "blockers": 0},
+        }
+
+    work = df[df.get("Import-Status", pd.Series("", index=df.index)).astype(str).eq("OK")].copy()
+    if "Action-Typ" not in work.columns:
+        return {
+            "table": pd.DataFrame(), "flagged_tickers": [], "blockers": [],
+            "requires_confirmation": False, "hard_block": False,
+            "summary": {"tickers": 0, "manual_overlaps": 0, "blockers": 0},
+        }
+    work = work[work["Action-Typ"].astype(str).isin(["BUY", "SELL"])].copy()
+    if mode_key != "rebuild" and "Import-ID" in work.columns:
+        work = work[~work["Import-ID"].astype(str).isin(processed)].copy()
+    if work.empty:
+        return {
+            "table": pd.DataFrame(), "flagged_tickers": [], "blockers": [],
+            "requires_confirmation": False, "hard_block": False,
+            "summary": {"tickers": 0, "manual_overlaps": 0, "blockers": 0},
+        }
+
+    if "Zeit Berlin" in work.columns:
+        work["__guard_time"] = pd.to_datetime(work["Zeit Berlin"], errors="coerce", utc=True)
+    else:
+        work["__guard_time"] = pd.NaT
+    work = work.sort_values(["Ticker", "__guard_time", "Zeile"], ascending=[True, True, True], na_position="last")
+
+    rows = []
+    flagged = []
+    blockers = []
+    for ticker, part in work.groupby(work["Ticker"].astype(str).str.upper(), sort=True):
+        ticker = str(ticker or "").strip().upper()
+        if not ticker:
+            continue
+        part = part.copy().sort_values(["__guard_time", "Zeile"], ascending=[True, True], na_position="last")
+        old = dict(current.get(ticker) or {})
+        existing_qty = _num(old.get("shares"), 0.0) or 0.0
+        existing_entry = _num(old.get("entry"), None)
+        existing_source = _txt(old.get("broker_source"), "Manuell / nicht als Broker-Import markiert") if old else "Keine offene Position"
+        manual_existing = bool(old and existing_qty > 1e-12 and not _is_broker_position(old))
+        broker_existing = bool(old and existing_qty > 1e-12 and _is_broker_position(old))
+
+        buy_qty = float(pd.to_numeric(part.loc[part["Action-Typ"] == "BUY", "Stück"], errors="coerce").fillna(0).sum())
+        sell_qty = float(pd.to_numeric(part.loc[part["Action-Typ"] == "SELL", "Stück"], errors="coerce").fillna(0).sum())
+        net_qty = buy_qty - sell_qty
+        first = part.iloc[0].to_dict()
+        first_action = _txt(first.get("Action-Typ"), "-")
+        first_time = _parse_any_time(first.get("Zeit Berlin"))
+        last_time = _parse_any_time(part.iloc[-1].to_dict().get("Zeit Berlin"))
+        opened_time = _parse_any_time(old.get("opened_at_iso")) if old else None
+
+        # Can the file reconstruct this ticker from zero?
+        replay_balance = 0.0
+        replay_problem = ""
+        for _, ser in part.iterrows():
+            act = _txt(ser.get("Action-Typ"))
+            qty = _num(ser.get("Stück"), 0.0) or 0.0
+            if act == "BUY":
+                replay_balance += qty
+            elif act == "SELL":
+                if qty > replay_balance + 1e-8:
+                    replay_problem = (
+                        f"Datei ist ab Null nicht vollständig: Verkauf {_shares_display(qty)} Stück, "
+                        f"zuvor in Datei nur {_shares_display(replay_balance)} Stück aufgebaut."
+                    )
+                    break
+                replay_balance = max(0.0, replay_balance - qty)
+
+        starts_after_manual_open = False
+        if opened_time is not None and first_time is not None:
+            try:
+                starts_after_manual_open = bool(first_time > opened_time + pd.Timedelta(minutes=1))
+            except Exception:
+                starts_after_manual_open = False
+
+        level = "OK"
+        guidance = "Keine Überschneidung mit einer manuell gepflegten offenen Position erkannt."
+        if mode_key == "rebuild" and replay_problem:
+            level = "BLOCKIERT"
+            guidance = replay_problem + " Für Rebuild vollständige Historie ab Positionsbeginn exportieren."
+            blockers.append(ticker)
+        elif manual_existing:
+            level = "ABGLEICH"
+            flagged.append(ticker)
+            if mode_key == "incremental":
+                if first_action == "BUY":
+                    guidance = (
+                        "Manuelle offene Position + neuer Kauf in Datei: Doppelzählung ist möglich, falls der aktuelle "
+                        "Tool-Bestand diesen Kauf bereits enthält. Nur bestätigen, wenn der Tool-Bestand dem Stand direkt "
+                        "vor der ersten noch nicht importierten Datei-Transaktion entspricht."
+                    )
+                else:
+                    guidance = (
+                        "Manuelle offene Position + Datei beginnt mit Verkauf: Der manuelle Bestand kann der nötige Anfangsbestand sein. "
+                        "Nur bestätigen, wenn dieser Verkauf im aktuell gespeicherten Tool-Bestand noch nicht berücksichtigt ist."
+                    )
+                if starts_after_manual_open:
+                    guidance += " Die Datei beginnt nach dem gespeicherten manuellen Positionsbeginn."
+            else:
+                if starts_after_manual_open:
+                    guidance = (
+                        "Rebuild-Datei beginnt nach dem gespeicherten manuellen Positionsbeginn. Dadurch kann ein älterer Anfangsbestand "
+                        "fehlen. Nur freigeben, wenn die Datei trotzdem die vollständige Kauf-/Verkaufshistorie dieses Positionszyklus enthält."
+                    )
+                elif opened_time is None:
+                    guidance = (
+                        "Manuelle Position ohne belastbaren Eröffnungszeitpunkt. Für Rebuild kann nicht automatisch bewiesen werden, "
+                        "dass die Datei den gesamten Positionszyklus enthält. Vollständigkeit explizit bestätigen."
+                    )
+                else:
+                    guidance = (
+                        "Manuelle Position wird im Rebuild ersetzt. Die Datei beginnt spätestens zum gespeicherten Positionsbeginn und "
+                        "ist aus Käufen/Verkäufen ab Null replay-fähig; Vollständigkeit trotzdem explizit bestätigen."
+                    )
+        elif broker_existing:
+            guidance = (
+                "Bestehende Position stammt bereits aus Depot-Excel; Broker-ID/Hash-Dublettenschutz wird berücksichtigt."
+                if mode_key != "rebuild" else
+                "Bestehende Broker-Position wird aus den Datei-Transaktionen neu aufgebaut."
+            )
+        elif mode_key == "rebuild" and not replay_problem:
+            guidance = "Datei ist für diesen Ticker aus Käufen/Verkäufen ab Null replay-fähig."
+
+        def fmt_ts(ts):
+            if ts is None:
+                return "-"
+            try:
+                return ts.strftime("%d.%m.%Y %H:%M")
+            except Exception:
+                return _txt(ts, "-")
+
+        rows.append({
+            "Ticker": ticker,
+            "Abgleich": level,
+            "Tool-Stück": round(float(existing_qty), 8) if old else 0.0,
+            "Tool-Entry": None if existing_entry is None else round(float(existing_entry), 6),
+            "Tool-Quelle": existing_source,
+            "Tool-Eröffnung": fmt_ts(opened_time),
+            "Datei von": fmt_ts(first_time),
+            "Datei bis": fmt_ts(last_time),
+            "Erste Datei-Aktion": first_action,
+            "Datei Käufe": round(buy_qty, 8),
+            "Datei Verkäufe": round(sell_qty, 8),
+            "Datei Netto-Stück": round(net_qty, 8),
+            "Rebuild ab Null": "Nein" if replay_problem else "Ja",
+            "Hinweis": guidance,
+        })
+
+    table = pd.DataFrame(rows)
+    return {
+        "table": table,
+        "flagged_tickers": sorted(set(flagged)),
+        "blockers": sorted(set(blockers)),
+        "requires_confirmation": bool(flagged),
+        "hard_block": bool(blockers),
+        "summary": {
+            "tickers": int(len(table)),
+            "manual_overlaps": int(len(set(flagged))),
+            "blockers": int(len(set(blockers))),
+        },
     }
 
 

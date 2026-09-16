@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.13"
+APP_VERSION = "v30.14"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15886,6 +15886,7 @@ _depot_transaction_import_v3013.configure_context(
 _v3013_read_depot_file = _depot_transaction_import_v3013.read_transaction_file
 _v3013_normalize_depot_transactions = _depot_transaction_import_v3013.normalize_transactions
 _v3013_preview_depot_import = _depot_transaction_import_v3013.preview_summary
+_v3014_reconcile_depot_import = _depot_transaction_import_v3013.reconciliation_guard
 _v3013_apply_depot_transactions = _depot_transaction_import_v3013.apply_transactions
 _v3013_processed_depot_ids = _depot_transaction_import_v3013.processed_ids
 _v3013_mark_depot_imported = _depot_transaction_import_v3013.mark_imported
@@ -15979,14 +15980,66 @@ def _v3013_render_depot_import(watchlist_name, positions):
             key=f"v3013_import_mode_{watchlist_name}",
             help=(
                 "'Nur neue' ist für regelmäßige Folgeexporte gedacht und schützt über Broker-ID/Hash vor Doppelbuchungen. "
-                "'Neu aufbauen' replayt alle Kauf-/Verkaufszeilen der Datei für deren Ticker ab Null und eignet sich für eine vollständige Historie."
+                "'Neu aufbauen' replayt alle Kauf-/Verkaufszeilen der Datei für deren Ticker ab Null und eignet sich nur für eine vollständige Historie. v30.14 prüft zusätzlich Überschneidungen mit manuell gepflegten Positionen."
             ),
         )
         mode = "rebuild" if mode_label.startswith("Enthaltene") else "incremental"
         processed = _v3013_processed_depot_ids(watchlist_name)
+        reconciliation = _v3014_reconcile_depot_import(
+            norm_df, positions, mode=mode, already_processed=processed
+        )
         plan = _v3013_apply_depot_transactions(
             watchlist_name, norm_df, positions, mode=mode, already_processed=processed
         )
+
+        _recon_table_v3014 = reconciliation.get("table")
+        _recon_summary_v3014 = dict(reconciliation.get("summary") or {})
+        _recon_flagged_v3014 = list(reconciliation.get("flagged_tickers") or [])
+        _recon_blockers_v3014 = list(reconciliation.get("blockers") or [])
+        if isinstance(_recon_table_v3014, pd.DataFrame) and not _recon_table_v3014.empty:
+            st.markdown("**Bestands-Abgleich · manuelle Positionen vs. Datei**")
+            st.caption(
+                "Dieser Guard verhindert stille Doppelbuchungen: Eine manuell gepflegte Position hat keine Broker-ID-Historie. "
+                "Darum kann die App nicht automatisch beweisen, ob eine Datei-Transaktion bereits im manuellen Bestand steckt. "
+                "Die Prüfung ist providerfrei und verändert noch keine Position."
+            )
+            _rg1_v3014, _rg2_v3014, _rg3_v3014 = st.columns(3)
+            _rg1_v3014.metric("Ticker geprüft", int(_recon_summary_v3014.get("tickers") or 0))
+            _rg2_v3014.metric("Manueller Abgleich", int(_recon_summary_v3014.get("manual_overlaps") or 0))
+            _rg3_v3014.metric("Rebuild-Blocker", int(_recon_summary_v3014.get("blockers") or 0))
+            _recon_cols_v3014 = [c for c in [
+                "Ticker", "Abgleich", "Tool-Stück", "Tool-Entry", "Tool-Quelle", "Tool-Eröffnung",
+                "Datei von", "Datei bis", "Erste Datei-Aktion", "Datei Käufe", "Datei Verkäufe",
+                "Datei Netto-Stück", "Rebuild ab Null", "Hinweis"
+            ] if c in _recon_table_v3014.columns]
+            st.dataframe(
+                _recon_table_v3014[_recon_cols_v3014],
+                hide_index=True,
+                use_container_width=True,
+                height=min(520, 42 * len(_recon_table_v3014) + 70),
+            )
+            if _recon_blockers_v3014:
+                st.error(
+                    "Rebuild ist für mindestens einen Ticker nicht aus der Datei allein rekonstruierbar: "
+                    + ", ".join(_recon_blockers_v3014[:20])
+                    + (" …" if len(_recon_blockers_v3014) > 20 else "")
+                    + ". Bitte vollständige Historie ab Positionsbeginn exportieren oder den passenden inkrementellen Anfangsbestand verwenden."
+                )
+            elif _recon_flagged_v3014:
+                if mode == "incremental":
+                    st.warning(
+                        "Manuell gepflegte offene Position(en) überschneiden sich mit noch nicht importierten Brokerzeilen: "
+                        + ", ".join(_recon_flagged_v3014[:20])
+                        + (" …" if len(_recon_flagged_v3014) > 20 else "")
+                        + ". Im Modus 'Nur neue' darf der aktuelle Tool-Bestand nur den Stand unmittelbar VOR der ersten noch nicht importierten Datei-Transaktion darstellen."
+                    )
+                else:
+                    st.warning(
+                        "Manuell gepflegte Position(en) werden beim Rebuild ersetzt: "
+                        + ", ".join(_recon_flagged_v3014[:20])
+                        + (" …" if len(_recon_flagged_v3014) > 20 else "")
+                        + ". Die Datei muss für diese Ticker den vollständigen Kauf-/Verkaufszyklus enthalten."
+                    )
 
         preview_cols = [c for c in [
             "Zeit Berlin", "Action", "Action-Typ", "Ticker", "Name", "Stück", "Preis/Aktie",
@@ -16023,11 +16076,29 @@ def _v3013_render_depot_import(watchlist_name, positions):
         if errors:
             st.warning(f"{errors} Datei-Zeile(n) sind fehlerhaft oder innerhalb der Datei doppelt und werden nicht gebucht.")
 
+        _recon_confirm_v3014 = True
+        if _recon_flagged_v3014 and not _recon_blockers_v3014:
+            if mode == "incremental":
+                _recon_confirm_v3014 = st.checkbox(
+                    "Abgleich bestätigt: Bei den markierten manuellen Positionen entspricht der aktuelle Tool-Bestand dem Stand unmittelbar vor der ersten noch nicht importierten Broker-Transaktion.",
+                    key=f"v3014_recon_confirm_inc_{watchlist_name}",
+                )
+            else:
+                _recon_confirm_v3014 = st.checkbox(
+                    "Abgleich bestätigt: Die Datei enthält für alle markierten Ticker die vollständige Kauf-/Verkaufshistorie des Positionszyklus und darf den manuellen Bestand neu aufbauen.",
+                    key=f"v3014_recon_confirm_rebuild_{watchlist_name}",
+                )
+
         confirm = st.checkbox(
             "Ich habe Importmodus und Vorschau geprüft.",
             key=f"v3013_import_confirm_{watchlist_name}",
         )
-        disabled = (not confirm) or (isinstance(anomalies, pd.DataFrame) and not anomalies.empty)
+        disabled = (
+            (not confirm)
+            or (not _recon_confirm_v3014)
+            or bool(_recon_blockers_v3014)
+            or (isinstance(anomalies, pd.DataFrame) and not anomalies.empty)
+        )
         if st.button(
             "Transaktionen jetzt importieren",
             type="primary",
@@ -16064,10 +16135,11 @@ def _v3013_render_depot_import(watchlist_name, positions):
                     status="Import abgeschlossen",
                     details=(
                         f"Datei {upload.name} · Modus {mode} · Käufe {stats.get('buy_rows',0)} · "
-                        f"Verkäufe {stats.get('sell_rows',0)} · offene Ticker {len(plan.get('open_tickers') or [])}"
+                        f"Verkäufe {stats.get('sell_rows',0)} · offene Ticker {len(plan.get('open_tickers') or [])} · "
+                        f"Abgleich {len(_recon_flagged_v3014)} · Blocker {len(_recon_blockers_v3014)}"
                     ),
-                    payload={**stats, "Datei": upload.name, "Modus": mode, "Journalzeilen": journal_n},
-                    signature=f"v3013|{upload.name}|{len(archived_df) if isinstance(archived_df,pd.DataFrame) else 0}|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
+                    payload={**stats, "Datei": upload.name, "Modus": mode, "Journalzeilen": journal_n, "Abgleich-Ticker": _recon_flagged_v3014, "Rebuild-Blocker": _recon_blockers_v3014},
+                    signature=f"v3014|{upload.name}|{len(archived_df) if isinstance(archived_df,pd.DataFrame) else 0}|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
                 )
             except Exception:
                 pass
@@ -17455,6 +17527,8 @@ _V304D_GLOSSARY = {
         ("Depot-Excel Import", "Importiert ausgeführte Broker-Transaktionen providerfrei in den Positionsspeicher. Käufe/Verkäufe verändern offene Stückzahl und Entry; andere Actions bleiben als Importhistorie erhalten."),
         ("Weighted Average Entry", "Gewichteter Durchschnitts-Einstiegskurs bei mehreren Käufen: ältere und neue Stücke werden nach ihrer jeweiligen Stückzahl und ihrem Preis gewichtet."),
         ("Import-ID / Dublettenschutz", "Broker-ID oder deterministischer Hash einer Transaktion. Bereits verarbeitete IDs werden bei Folgeimporten nicht nochmals gebucht."),
+        ("Bestands-Abgleich", "v30.14-Prüfung zwischen bereits offener Tool-Position und neu hochgeladener Brokerhistorie. Manuelle Positionen besitzen keine Broker-ID-Herkunft; Überschneidungen müssen deshalb ausdrücklich bestätigt werden."),
+        ("Rebuild ab Null", "Prüft, ob die Kauf-/Verkaufszeilen eines Tickers innerhalb der Datei allein chronologisch einen gültigen Bestand aufbauen. Ein Verkauf vor ausreichenden Datei-Käufen blockiert den Rebuild."),
         ("Fractional Shares", "Bruchteile einer Aktie, z. B. 0,25 Stück. Der Depot-Excel-Import verarbeitet sie exakt; ältere manuelle Verkaufsdialoge der App sind teilweise noch auf ganze Stücke ausgelegt."),
         ("MFE (Maximum Favorable Excursion)", "Größte günstige Kursbewegung nach einem Signal innerhalb eines Beobachtungsfensters."),
         ("MAE (Maximum Adverse Excursion)", "Größte ungünstige Gegenbewegung nach einem Signal innerhalb eines Beobachtungsfensters."),

@@ -1,3 +1,14 @@
+## v30.14 - Depot Import Reconciliation Guard
+- Neuer Bestands-Abgleich für bereits manuell gepflegte Positionen und nachträglich hochgeladene Broker-Historien.
+- Pro Ticker werden Tool-Bestand/Entry/Quelle, Positionsbeginn, Datei-Zeitraum, erste Aktion, Käufe/Verkäufe, Netto-Stück und `Rebuild ab Null` transparent gegenübergestellt.
+- Manuelle Position + noch nicht importierte Brokerzeilen erfordert eine zusätzliche explizite Abgleich-Bestätigung; dadurch keine stille Doppelbuchung.
+- Inkrementell: Bestätigung bedeutet, dass der gespeicherte Tool-Bestand den Stand unmittelbar vor der ersten neuen Brokerzeile darstellt.
+- Rebuild: Bestätigung bedeutet, dass die Datei den vollständigen Kauf-/Verkaufszyklus des markierten Tickers enthält.
+- Rebuild mit Verkauf vor ausreichenden Datei-Käufen wird hart blockiert und kann nicht per Checkbox erzwungen werden.
+- Bereits importierte Broker-IDs werden im inkrementellen Abgleich ignoriert; bestehender ID-/Hash-Dublettenschutz bleibt erhalten.
+- Storage-Namespace aus v30.13 bleibt absichtlich unverändert, damit Import-Ledger und Archiv nicht verloren gehen.
+- Keine neuen Provider-Aufrufe und keine Änderung an Stops, Targets, Orders oder sonstiger Trading-Logik.
+
 ## v30.13 - Depot Excel Transaction Import
 - Providerfreier Import von Broker-/Depot-Transaktionsdateien direkt im Positions-/Exit-Bereich.
 - Unterstützt `.xlsx`, `.xlsm`, `.csv` und `.txt` mit der angegebenen Spaltenstruktur `Action`, `Time (UTC)`, `Ticker`, `No. of shares`, `Price / share` usw.

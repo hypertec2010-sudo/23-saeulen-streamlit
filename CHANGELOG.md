@@ -1,3 +1,15 @@
+## v30.12 - Calibration Stability & Experiment Tracker
+- Neue providerfreie Persistenz `calibration_stability_v3012` für historische Calibration-Advisor-Zustände.
+- Speichert pro Watchlist höchstens einen Stand je Berlin-Tag und nur dann einen neuen Stabilitätsstand, wenn sich die Advisor-Evidenz tatsächlich verändert hat.
+- Evidenz-Fingerprint verhindert Scheinstabilität durch bloßes erneutes Öffnen der App mit identischen Daten.
+- Misst je Advisor-Bereich Empfehlungs-Streak, Trefferquote der aktuellen Stance in den letzten 8 Evidenzständen und Anzahl der Wechsel.
+- Neue Stabilitätsklassen von `Noch zu kurz` über `Wechselhaft` / `Vorläufig stabil` bis `Stabil`.
+- `Manuell prüfbarer Kandidat` erst bei mindestens 5 unabhängigen gleichen Evidenzständen und Mindest-Stichprobe >=30 je Vergleichsgruppe.
+- Calibration Advisor zeigt Evidenzstände, stabile Hinweise, manuell prüfbare Kandidaten und wechselhafte Bereiche.
+- Historie ist einsehbar und als CSV exportierbar.
+- Rein Shadow/Beobachtung: keine automatische Regel-, Schwellen-, Gate-, Stop-, TP-, Queue- oder Orderänderung.
+- Keine neuen Provider-Aufrufe.
+
 ## v30.11 - Calibration Advisor
 - Neue Shadow-only Kalibrierungsschicht auf Basis der bereits gespeicherten Action-Queue- und Harvest-3T-Outcomes.
 - Neuer providerfreier Modulbaustein `modules/calibration_advisor.py`.

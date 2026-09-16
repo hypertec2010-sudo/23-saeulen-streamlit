@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.11"
+APP_VERSION = "v30.12"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14881,6 +14881,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "harvest_outcome_learning.py",
     _MODULE_DIR_V252 / "action_queue_learning.py",
     _MODULE_DIR_V252 / "calibration_advisor.py",
+    _MODULE_DIR_V252 / "calibration_stability.py",
     _MODULE_DIR_V252 / "short_term_trader.py",
     _MODULE_DIR_V252 / "commodity_context.py",
     _MODULE_DIR_V252 / "portfolio_risk.py",
@@ -14924,6 +14925,7 @@ from modules import early_profit_learning as _early_profit_learning_v303
 from modules import harvest_outcome_learning as _harvest_outcome_learning_v306
 from modules import action_queue_learning as _action_queue_learning_v3010
 from modules import calibration_advisor as _calibration_advisor_v3011
+from modules import calibration_stability as _calibration_stability_v3012
 from modules import short_term_trader as _short_term_trader_v304
 from modules import commodity_context as _commodity_context_v305
 from modules import portfolio_risk as _portfolio_risk_module
@@ -15864,6 +15866,15 @@ _v3010_build_action_queue_learning = _action_queue_learning_v3010.build_learning
 # Shadow-only: no productive threshold, queue, gate, stop or order is modified.
 _v3011_build_calibration_advice = _calibration_advisor_v3011.build_calibration_package
 
+# v30.12: persist daily advisor states and measure recommendation stability.
+# A manual-review candidate requires repeated independent daily states; nothing is auto-applied.
+_calibration_stability_v3012.configure_context(
+    storage=_storage_v280,
+    time_provider=get_current_berlin_time,
+)
+_v3012_capture_calibration_state = _calibration_stability_v3012.capture_advisor_snapshot
+_v3012_build_calibration_stability = _calibration_stability_v3012.build_stability_package
+
 
 def _v3011_render_calibration_advisor(watchlist_name, event_df=None):
     try:
@@ -15878,6 +15889,19 @@ def _v3011_render_calibration_advisor(watchlist_name, event_df=None):
     _sum_v3011 = dict(_cal_v3011.get("summary") or {})
     _overview_v3011 = _cal_v3011.get("overview")
     _threshold_v3011 = _cal_v3011.get("harvest_threshold_table")
+    try:
+        _v3012_capture_calibration_state(
+            watchlist_name,
+            _overview_v3011,
+            summary=_sum_v3011,
+        )
+        _stability_pkg_v3012 = _v3012_build_calibration_stability(
+            watchlist_name,
+            strong_group_n=int(_sum_v3011.get("strong_group_n") or 30),
+        )
+    except Exception:
+        _stability_pkg_v3012 = {"summary": {}, "stability": pd.DataFrame(), "history": pd.DataFrame()}
+
     with st.expander(f"🧭 Calibration Advisor · {APP_VERSION} · Shadow only", expanded=False):
         st.caption(
             "Der Advisor verbindet ausschließlich bereits gespeicherte 3T-Outcomes aus Action Queue und Harvest. "
@@ -15915,6 +15939,53 @@ def _v3011_render_calibration_advisor(watchlist_name, event_df=None):
 
         with st.expander("Advisor-Tabelle / Evidenz", expanded=False):
             st.dataframe(_overview_v3011, hide_index=True, use_container_width=True)
+
+        _stab_sum_v3012 = dict(_stability_pkg_v3012.get("summary") or {})
+        _stab_df_v3012 = _stability_pkg_v3012.get("stability")
+        _stab_hist_v3012 = _stability_pkg_v3012.get("history")
+        st.markdown("**Stabilität der Empfehlungen über mehrere Evidenzstände**")
+        st.caption(
+            "v30.12 speichert pro Watchlist höchstens einen neuen Advisor-Stand pro Berlin-Tag – und nur, wenn sich die zugrunde liegende Evidenz tatsächlich verändert hat. Eine Empfehlung wird erst als "
+            "stabil markiert, wenn sie über mehrere unabhängige Evidenzstände gleich bleibt. 'Manuell prüfbar' bedeutet "
+            "ausschließlich: mindestens 5 gleiche Evidenzstände in Folge, hohe Stabilität und eine Mindest-Stichprobe von "
+            f"{int(_stab_sum_v3012.get('strong_group_n') or 30)} Fällen je Vergleichsgruppe. Es erfolgt keine automatische Regeländerung."
+        )
+        _cs1_v3012, _cs2_v3012, _cs3_v3012, _cs4_v3012 = st.columns(4)
+        _cs1_v3012.metric("Evidenzstände", int(_stab_sum_v3012.get("history_days") or 0))
+        _cs2_v3012.metric("Stabile Hinweise", int(_stab_sum_v3012.get("stable") or 0))
+        _cs3_v3012.metric("Manuell prüfbar", int(_stab_sum_v3012.get("manual_candidates") or 0))
+        _cs4_v3012.metric("Wechselhaft", int(_stab_sum_v3012.get("volatile") or 0))
+        if isinstance(_stab_df_v3012, pd.DataFrame) and not _stab_df_v3012.empty:
+            _stab_cols_v3012 = [
+                "Bereich", "Aktuelle Empfehlung", "Stabilität", "Gleiche Empfehlung in Folge",
+                "Trefferquote letzte 8", "Wechsel letzte 8", "Aktuelle Mindest-Stichprobe",
+                "Manuell prüfbarer Kandidat",
+            ]
+            _stab_cols_v3012 = [c for c in _stab_cols_v3012 if c in _stab_df_v3012.columns]
+            st.dataframe(_stab_df_v3012[_stab_cols_v3012], hide_index=True, use_container_width=True)
+            _manual_v3012 = _stab_df_v3012[_stab_df_v3012.get("Manuell prüfbarer Kandidat", pd.Series(dtype=str)).astype(str) == "Ja"]
+            if not _manual_v3012.empty:
+                st.warning(
+                    "Mindestens ein Shadow-Hinweis ist über mehrere unabhängige Evidenzstände stabil und hat die stärkere Stichproben-Hürde erreicht. "
+                    "Das ist ein Kandidat für eine bewusste manuelle Prüfung – noch keine Freigabe für eine produktive Änderung."
+                )
+            with st.expander("Calibration-Historie", expanded=False):
+                if isinstance(_stab_hist_v3012, pd.DataFrame) and not _stab_hist_v3012.empty:
+                    st.dataframe(
+                        _stab_hist_v3012.sort_values(["Datum", "Bereich"], ascending=[False, True]).head(500),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+                    st.download_button(
+                        "Calibration-Stability-Historie als CSV",
+                        data=_stab_hist_v3012.to_csv(index=False).encode("utf-8-sig"),
+                        file_name=f"calibration_stability_{watchlist_name}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                        key=f"v3012_calibration_stability_csv_{watchlist_name}",
+                    )
+        else:
+            st.info("Die Stabilitätshistorie beginnt mit dem ersten v30.12-Advisor-Stand. Identische Evidenz an Folgetagen wird nicht erneut gezählt.")
 
         st.markdown("**Harvest-Schwellen im Shadow vergleichen**")
         st.caption(
@@ -17035,6 +17106,8 @@ _V304D_GLOSSARY = {
         ("Decision Action Queue", "Kompakte Watchlist-Triage aus bereits vorhandenen Live-Scores, Einstiegsgates und Decision-Confidence. Sie erzeugt keinen neuen Trading-Score und priorisiert nur die Aufmerksamkeit."),
         ("Action Queue Outcome Validation", "Rein beobachtende Prüfung, ob die Queue-Kategorien Jetzt prüfen, Beobachten und Blockiert in späteren 1/3/5T-Folgeergebnissen tatsächlich unterschiedliche Profile zeigen."),
         ("Calibration Advisor", "Shadow-only Auswertung der bereits gespeicherten Queue- und Harvest-Outcomes. Formuliert erst bei ausreichender Stichprobe Kalibrierungs-Hinweise, ändert aber keine produktive Regel automatisch."),
+        ("Calibration Stability", "Prüft, ob dieselbe Kalibrierungs-Empfehlung über mehrere unabhängige Evidenzstände stabil bleibt oder häufig wechselt. Identische Daten an Folgetagen zählen nicht erneut; Stabilität allein ändert keine produktive Regel."),
+        ("Manuell prüfbarer Kandidat", "Shadow-Hinweis, der in v30.12 mindestens fünf unabhängige Evidenzstände in Folge stabil war und zusätzlich die stärkere Stichproben-Hürde erreicht. Er bleibt ein Prüfhinweis, keine automatische Freigabe."),
         ("Shadow-Kalibrierung", "Vergleich einer möglichen Schwellen- oder Evidenzanpassung nur analytisch im Hintergrund. Produktive Live-Regeln bleiben unverändert."),
         ("Stichproben-Guard", "Mindestanzahl unabhängiger auswertbarer Fälle, bevor eine Kalibrierungs-Aussage als prüfenswert gilt. v30.11 verlangt für Gruppenvergleiche mindestens 15 Fälle je Gruppe."),
         ("Triage", "Priorisierung nach Dringlichkeit bzw. nächstem sinnvollen Prüfschritt. Im Tool: Jetzt prüfen, Beobachten oder Blockiert."),

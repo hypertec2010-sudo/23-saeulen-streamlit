@@ -1,3 +1,12 @@
+## v30.15a - Chart-Stop Source Transparency
+- Risiko-Rechner trennt echte `Chart-Invalidierung`, `3,5%-Fallback`, `ATR-Schutz` und finalen `Empfohlenen Risiko-Stop`.
+- Numerische Chartquelle wird transparent ausgewiesen: Swing-/Higher-Low, Supportzonen-Unterkante, explizites Supportniveau oder Entry-/Reclaim-Zonen-Unterkante.
+- 3,5% werden nicht mehr pauschal als technischer Stop dargestellt; ohne belastbare Chartmarke erscheint ein expliziter Fallback-Hinweis.
+- Charttechnik bestimmt die Vor-ATR-Basis, wenn ihr Invalidierungsniveau weiter als der 3,5%-Mindestabstand liegt.
+- Engere Chartmarken werden durch den defensiveren 3,5%-Mindestabstand geschuetzt; danach greift unveraendert der dynamische ATR-Schutz aus v30.15.
+- Risiko-Cache und Stop-Widget-Keys versioniert, damit alte Session-Werte die neue Herkunftsdarstellung nicht ueberlagern.
+- Keine Aenderung an produktiver Exit-/Positionslogik, bestehenden Stops, TP, Gates, Orders oder Provider-Aufrufen.
+
 ## v30.15 - Volatility-Aware Risk Stop
 - Risiko-Rechner kombiniert technischen Stop jetzt mit einem ATR-basierten Mindestpuffer; produktive Setup-/Exit-Logik bleibt unverändert.
 - Empfohlener Long-Risiko-Stop ist immer der weiter entfernte Wert aus technischer Invalidierung und ATR-Schutz; technische Stops werden nie künstlich enger gesetzt.

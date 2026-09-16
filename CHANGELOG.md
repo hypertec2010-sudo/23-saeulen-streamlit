@@ -1,3 +1,18 @@
+## v30.13 - Depot Excel Transaction Import
+- Providerfreier Import von Broker-/Depot-Transaktionsdateien direkt im Positions-/Exit-Bereich.
+- Unterstützt `.xlsx`, `.xlsm`, `.csv` und `.txt` mit der angegebenen Spaltenstruktur `Action`, `Time (UTC)`, `Ticker`, `No. of shares`, `Price / share` usw.
+- UTC-Zeiten werden automatisch nach Europe/Berlin konvertiert.
+- Buy-/Sell-Transaktionen aktualisieren offene Positionen chronologisch und berechnen bei mehreren Käufen einen gewichteten Durchschnitts-Entry.
+- Teilverkäufe und vollständige Schließungen fließen in das bestehende Trade-Journal; Broker-Result/Währung und Import-ID bleiben nachvollziehbar.
+- Dividenden, Zinsen und sonstige Actions werden als Broker-Importhistorie archiviert, verändern aber keine Position.
+- Zwei Modi: `Nur neue Transaktionen anwenden` mit ID-/Hash-Dublettenschutz sowie `Enthaltene Ticker aus Datei neu aufbauen` für vollständige Historien.
+- Oversell-/unvollständige-Historie-Schutz: Verkauf größer als bekannte offene Stückzahl blockiert den Import statt negative Positionen zu erzeugen.
+- Neue Brokerpositionen erfinden keinen historischen Stop/Target; bestehende manuelle Stop-/Ziel-/Portfolio-/Kontextdaten bleiben beim Abgleich erhalten.
+- Fractional Shares werden im Import exakt verarbeitet und sichtbar nicht auf ganze Stücke gekürzt. Alte manuelle Verkaufsdialoge werden für Fractional-Positionen geschützt.
+- Broker-importierte Full-Close-Zeilen sind vom manuellen Undo-Close ausgeschlossen; Korrekturen laufen über Rebuild aus korrigierter Brokerhistorie.
+- Glossar um Depot-Excel Import, Weighted Average Entry, Import-ID/Dublettenschutz und Fractional Shares ergänzt.
+- Keine neuen Provider-Requests und keine Änderung an Trading-, Score-, Gate-, Stop-, TP-, Queue-, Harvest-/Chop- oder Calibration-Logik.
+
 ## v30.12 - Calibration Stability & Experiment Tracker
 - Neue providerfreie Persistenz `calibration_stability_v3012` für historische Calibration-Advisor-Zustände.
 - Speichert pro Watchlist höchstens einen Stand je Berlin-Tag und nur dann einen neuen Stabilitätsstand, wenn sich die Advisor-Evidenz tatsächlich verändert hat.

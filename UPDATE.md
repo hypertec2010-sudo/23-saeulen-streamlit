@@ -1,41 +1,66 @@
-# v30.12 - Calibration Stability & Experiment Tracker
+# v30.13 - Depot Excel Transaction Import
 
-v30.12 erweitert den Shadow-only Calibration Advisor aus v30.11 um eine Stabilitäts- und Experimenthistorie. Der Advisor soll nicht nur einen punktuellen Kalibrierungshinweis liefern, sondern zeigen, ob dieselbe Empfehlung bei wachsender Outcome-Evidenz tatsächlich wiederholt bestehen bleibt oder zwischen den Auswertungsständen kippt.
+v30.13 ergänzt den Positions-/Exit-Bereich um einen providerfreien Broker-/Depot-Transaktionsimport. Ziel ist, Käufe, Verkäufe und andere Depotbewegungen aus einem bestehenden Excel-/CSV-Export nachzuziehen, wenn die manuelle Pflege im Tool nicht vollständig geschafft wurde.
+
+## Unterstütztes Importformat
+Die Importlogik erkennt die vom Nutzer genannte Spaltenstruktur, insbesondere:
+- Action
+- Time (UTC)
+- ISIN
+- Ticker
+- Name
+- Notes
+- ID
+- No. of shares
+- Price / share
+- Currency (Price / share)
+- Exchange rate
+- Result / Currency (Result)
+- Gross Total / Currency (Gross Total)
+- Withholding tax / Currency (Withholding tax)
+- Currency conversion fee / zugehörige Währung
+- Taxes / Currency (Taxes)
+- Net Total / Currency (Net Total)
+
+Pflichtfelder für eine Positionsbuchung sind `Action`, `Time (UTC)`, `Ticker`, `No. of shares` und `Price / share`.
 
 ## Neu
-- Neue providerfreie Persistenz `calibration_stability_v3012`.
-- Pro Watchlist wird höchstens ein Advisor-Stand pro Berlin-Tag gespeichert.
-- Zusätzlich schützt ein Evidenz-Fingerprint vor Scheinstabilität: Wird die App an einem späteren Tag mit exakt derselben Advisor-Evidenz erneut geöffnet, entsteht **kein** neuer Stabilitätsstand.
-- Ein neuer unabhängiger Evidenzstand entsteht erst, wenn sich z. B. Stichprobe, Outcome-Metriken, Status, Aussage oder zugrunde liegende Advisor-Evidenz verändert.
-- Für jeden Calibration-Advisor-Bereich werden gespeichert und ausgewertet:
-  - aktuelle Empfehlung / normalisierte Stance,
-  - gleiche Empfehlung in Folge,
-  - Trefferquote der aktuellen Empfehlung in den letzten bis zu 8 Evidenzständen,
-  - Anzahl der Wechsel in den letzten bis zu 8 Evidenzständen,
-  - aktuelle Mindest-Stichprobe,
-  - erster und letzter Historienstand.
-- Stabilitätsstufen:
-  - `Noch zu kurz / Daten sammeln`,
-  - `Beobachten`,
-  - `Wechselhaft`,
-  - `Vorläufig stabil`,
-  - `Stabil`.
-- Ein Shadow-Hinweis wird erst als **`Manuell prüfbarer Kandidat`** markiert, wenn:
-  - mindestens 5 unabhängige Evidenzstände in Folge dieselbe Shadow-Prüfempfehlung tragen,
-  - die Empfehlung in den letzten Ständen eine hohe Stabilität zeigt,
-  - und die aktuelle Mindest-Stichprobe mindestens 30 Fälle je Vergleichsgruppe erreicht.
-- Neue Metriken im Calibration Advisor: `Evidenzstände`, `Stabile Hinweise`, `Manuell prüfbar`, `Wechselhaft`.
-- Vollständige Calibration-Historie kann angezeigt und als CSV exportiert werden.
-- Glossar ergänzt um `Calibration Stability` und `Manuell prüfbarer Kandidat`.
+- Neuer Expander `Depot-Excel importieren` im Bereich `Positionen / Exit`.
+- Unterstützt `.xlsx`, `.xlsm`, `.csv` und `.txt`.
+- UTC-Zeitstempel werden automatisch nach `Europe/Berlin` konvertiert.
+- Erkennt Buy-/Sell-Varianten wie `Market buy`, `Limit buy`, `Market sell`, `Limit sell` sowie einfache deutsche/englische Kauf-/Verkaufsbegriffe.
+- Negative Broker-Stückzahlen bei eindeutigem Buy/Sell werden als Betragsstückzahl normalisiert.
+- Käufe erhöhen die Position und bilden einen gewichteten Durchschnitts-Entry (`Weighted Average Entry`).
+- Verkäufe reduzieren offene Stücke; vollständige Verkäufe schließen die Position.
+- Teilverkäufe und vollständige Schließungen werden zusätzlich in das bestehende Trade-Journal geschrieben.
+- Broker-Result, Result-Währung, Preis-Währung, Notizen und Import-ID bleiben in den importierten Journal-/Archivdaten erhalten.
+- Dividenden, Zinsen, Ein-/Auszahlungen und sonstige Actions werden archiviert, verändern aber bewusst keine Aktienposition.
+- Neue offene Broker-Positionen werden in die aktuelle Positions-Watchlist synchronisiert, ohne dafür Marktdaten abzurufen.
 
-## Schutz vor Overfitting
-- Ein stabiler Hinweis ist **keine** automatische Freigabe zur Regeländerung.
-- `Manuell prüfbar` bedeutet nur: Der Shadow-Hinweis ist inzwischen wiederholt und mit stärkerer Stichprobe sichtbar genug, um ihn bewusst zu untersuchen.
-- Gleiche Daten an mehreren Kalendertagen zählen nicht mehrfach.
-- Wechselhafte Empfehlungen werden ausdrücklich als solche sichtbar und nicht zu einem Änderungsvorschlag verdichtet.
+## Zwei Importmodi
+### Nur neue Transaktionen anwenden
+Für regelmäßige Folgeexporte. Bereits importierte Broker-IDs werden nicht nochmals gebucht. Fehlt eine Broker-ID, wird ein deterministischer Transaktions-Hash verwendet.
+
+### Enthaltene Ticker aus Datei neu aufbauen
+Für eine vollständige Historie. Alle Buy-/Sell-Zeilen der Datei werden für die enthaltenen Ticker chronologisch ab Null rekonstruiert. Bereits manuell gepflegte Management-Metadaten wie Stop, Ziel, Portfolio-Gruppe und vorhandener Entry-Kontext werden bei weiterhin offenen Positionen nach Möglichkeit erhalten.
+
+## Sicherheitslogik
+- Vorschau vor jeder Buchung.
+- Explizite Bestätigung erforderlich.
+- Verkauf größer als bekannte offene Stückzahl blockiert den gesamten Import und wird als Anomalie angezeigt.
+- Doppelte Zeilen innerhalb derselben Datei werden nicht gebucht.
+- Wiederholter Import derselben Datei führt im Modus `Nur neue` nicht zu Doppelbuchungen.
+- Neue Stop-/Target-Werte werden nicht aus der Brokerdatei erfunden.
+- Broker-importierte Schließungen werden nicht im manuellen `Schließung rückgängig machen` angeboten; Korrekturen erfolgen über einen korrigierten Export + Rebuild.
+
+## Fractional Shares
+- Der Import verarbeitet Bruchstücke wie `0.25` exakt.
+- Die sichtbare Positions-Tabelle zeigt importierte Fractional Shares ohne Integer-Rundung.
+- Einige ältere manuelle Teilverkaufs-/Schließungsdialoge arbeiten weiterhin mit ganzen Stückzahlen. Bei Fractional-Positionen werden manuelle Verkäufe deshalb blockiert und sollen erneut über den Depot-Import eingespielt werden.
+- Stop-Anpassungen und Notizen bleiben auch bei Fractional Shares manuell nutzbar.
 
 ## Unverändert
-- Keine automatische Änderung an Harvest-/Chop-Schwellen.
-- Keine Änderung an Action Queue, Decision Confidence, Live-/Shadow-Score oder Einstiegsgates.
-- Keine Änderung an Stops, TP1/TP2/TP3, Orders oder Positionsgrößen.
-- Keine neuen Provider-Abfragen.
+- Keine Orderausführung.
+- Keine automatische Kauf-/Verkaufsentscheidung.
+- Keine Änderung an Live-/Shadow-/Guarded-, Exit-, Harvest-, Chop-, Queue-, Confidence- oder Calibration-Logik.
+- Keine neuen Yahoo-/Web-/Provider-Abfragen.

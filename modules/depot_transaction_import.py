@@ -1,4 +1,4 @@
-"""v30.14 provider-free broker/depot transaction import.
+"""v30.14a provider-free broker/depot transaction import.
 
 Adds a reconciliation guard for overlapping manually maintained positions while
 preserving the v30.13 storage namespace so existing Broker-ID/hash history remains
@@ -383,6 +383,98 @@ def normalize_transactions(df: pd.DataFrame) -> dict[str, Any]:
         "warnings": warnings,
         "column_mapping": mapping,
         "available_columns": [str(c) for c in work.columns],
+    }
+
+
+def _eur_transaction_volume(row: dict[str, Any]) -> tuple[float | None, str]:
+    """Return absolute EUR transaction volume when the export supports it.
+
+    Priority is a broker total already denominated in EUR. Falling back to
+    shares * price is only safe when the price currency itself is EUR. We do
+    not guess FX directions or make provider requests.
+    """
+    net = _num(row.get("Netto"), None)
+    net_ccy = _txt(row.get("Netto-Währung")).upper()
+    if net is not None and net_ccy == "EUR":
+        return abs(float(net)), "Net Total (EUR)"
+
+    gross = _num(row.get("Brutto"), None)
+    gross_ccy = _txt(row.get("Brutto-Währung")).upper()
+    if gross is not None and gross_ccy == "EUR":
+        return abs(float(gross)), "Gross Total (EUR)"
+
+    qty = _num(row.get("Stück"), None)
+    price = _num(row.get("Preis/Aktie"), None)
+    price_ccy = _txt(row.get("Preis-Währung")).upper()
+    if qty is not None and price is not None and price_ccy == "EUR":
+        return abs(float(qty) * float(price)), "Stück × Preis/Aktie (EUR)"
+
+    return None, "EUR-Volumen nicht eindeutig bestimmbar"
+
+
+def filter_min_eur_transaction_volume(
+    normalized: pd.DataFrame,
+    *,
+    enabled: bool = False,
+    minimum_eur: float = 500.0,
+) -> dict[str, Any]:
+    """Optionally exclude small BUY/SELL rows before preview and booking.
+
+    Only rows whose EUR transaction volume is reliably available are filtered.
+    Archive-only actions (dividends, interest, etc.) remain unchanged. Unknown
+    currency rows are retained rather than silently discarded.
+    """
+    df = normalized.copy() if isinstance(normalized, pd.DataFrame) else pd.DataFrame()
+    try:
+        minimum = max(0.0, float(minimum_eur or 0.0))
+    except Exception:
+        minimum = 500.0
+
+    if df.empty:
+        return {
+            "data": df,
+            "excluded": pd.DataFrame(),
+            "enabled": bool(enabled),
+            "minimum_eur": minimum,
+            "excluded_rows": 0,
+            "excluded_tickers": [],
+            "unknown_volume_rows": 0,
+        }
+
+    volumes = []
+    sources = []
+    for _, series in df.iterrows():
+        value, source = _eur_transaction_volume(series.to_dict())
+        volumes.append(value)
+        sources.append(source)
+    df["Transaktionsvolumen EUR"] = volumes
+    df["Volumen-Quelle"] = sources
+
+    trade_mask = df.get("Action-Typ", pd.Series("", index=df.index)).astype(str).isin(["BUY", "SELL"])
+    unknown_mask = trade_mask & df["Transaktionsvolumen EUR"].isna()
+    if not enabled:
+        return {
+            "data": df,
+            "excluded": df.iloc[0:0].copy(),
+            "enabled": False,
+            "minimum_eur": minimum,
+            "excluded_rows": 0,
+            "excluded_tickers": [],
+            "unknown_volume_rows": int(unknown_mask.sum()),
+        }
+
+    small_mask = trade_mask & df["Transaktionsvolumen EUR"].notna() & (df["Transaktionsvolumen EUR"] < minimum - 1e-9)
+    excluded = df.loc[small_mask].copy()
+    kept = df.loc[~small_mask].copy().reset_index(drop=True)
+    tickers = sorted({str(x).strip().upper() for x in excluded.get("Ticker", pd.Series(dtype=str)).tolist() if str(x).strip()})
+    return {
+        "data": kept,
+        "excluded": excluded.reset_index(drop=True),
+        "enabled": True,
+        "minimum_eur": minimum,
+        "excluded_rows": int(len(excluded)),
+        "excluded_tickers": tickers,
+        "unknown_volume_rows": int(unknown_mask.sum()),
     }
 
 

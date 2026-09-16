@@ -1,37 +1,38 @@
-# v30.14 - Depot Import Reconciliation Guard
+# v30.14a - Depot Import Mindest-Transaktionsvolumen
 
-v30.14 erweitert den Depot-Excel-Import aus v30.13 um einen expliziten Bestands-Abgleich für den typischen Mischfall: Im Tool existieren bereits manuell gepflegte Positionen, während anschließend nur ein begrenzter Broker-Zeitraum, z. B. die letzten zwei Monate, importiert werden soll.
+v30.14a ist ein kleiner Zusatz zum Depot-Excel-Import aus v30.14. Er ist speziell für Broker-Exporte wie Trading 212 gedacht, in denen neben den bewusst im Tool geführten Positionen auch viele kleine Pie-/Fractional-Transaktionen enthalten sein können.
 
 ## Neu
-- Neuer Bereich `Bestands-Abgleich · manuelle Positionen vs. Datei` direkt in der Import-Vorschau.
-- Prüfung pro Ticker auf:
-  - aktuell offene Tool-Stückzahl,
-  - Tool-Entry,
-  - Herkunft der Position (`Depot-Excel` oder manuell/nicht markiert),
-  - gespeicherten Positionsbeginn,
-  - ersten und letzten Datei-Zeitpunkt,
-  - erste Broker-Aktion,
-  - Datei-Käufe, Datei-Verkäufe und Netto-Stückzahl,
-  - Replay-Fähigkeit der Datei `ab Null`.
-- Manuell gepflegte offene Position + noch nicht importierte Brokerzeilen wird nicht mehr still angewendet. Der Ticker erhält `ABGLEICH` und benötigt eine zweite explizite Bestätigung.
-- Im Modus `Nur neue Transaktionen anwenden` muss bestätigt werden, dass der aktuelle Tool-Bestand dem Stand unmittelbar **vor** der ersten noch nicht importierten Broker-Transaktion entspricht.
-- Im Modus `Enthaltene Ticker aus Datei neu aufbauen` muss bei markierten manuellen Positionen bestätigt werden, dass die Datei den vollständigen Kauf-/Verkaufszyklus enthält.
-- Rebuild-Historien werden pro Ticker chronologisch ab Stückzahl Null geprüft. Ein Verkauf, für den innerhalb der Datei zuvor nicht genügend Stück aufgebaut wurden, erzeugt `BLOCKIERT` und kann nicht über eine Checkbox übergangen werden.
-- Bereits mit `broker_source = Depot-Excel` geführte Positionen werden erkannt; der bestehende Broker-ID/Hash-Dublettenschutz bleibt maßgeblich.
-- Bereits verarbeitete Broker-IDs werden im inkrementellen Modus aus dem neuen Abgleich herausgenommen und erzeugen keine unnötige Warnung.
+- Optionaler Schalter `Nur Kauf-/Verkaufstransaktionen ab Mindestvolumen importieren`.
+- Standardwert des Mindestvolumens: **500 EUR**; der Wert ist im Importdialog anpassbar.
+- Standardmäßig ist der Filter **aus**, sodass sich das bisherige Importverhalten nicht verändert.
+- Der Filter wirkt pro einzelner BUY-/SELL-Transaktion bereits **vor**:
+  - Import-Vorschau,
+  - v30.14 Bestands-Abgleich,
+  - Rebuild-/Oversell-Prüfung,
+  - Positionsbuchung,
+  - Trade-Journal.
+- Ausgeschlossene Kleintransaktionen werden separat in einem aufklappbaren Bereich angezeigt und nicht als importiert markiert.
+- Die Import-Vorschau zeigt zusätzlich `Transaktionsvolumen EUR`.
 
-## Beispiel: nur die letzten zwei Monate importieren
-Wenn im Tool am Beginn des Importzeitraums bereits 10 Stück manuell korrekt hinterlegt waren und die Datei danach einen Kauf von 5 Stück enthält, kann `Nur neue Transaktionen anwenden` nach expliziter Abgleich-Bestätigung daraus 15 Stück mit gewichteter Entry-Berechnung machen.
+## EUR-Ermittlung
+Das Transaktionsvolumen wird providerfrei aus der Brokerdatei bestimmt. Priorität:
+1. absoluter `Net Total`, wenn dessen Währung EUR ist,
+2. absoluter `Gross Total`, wenn dessen Währung EUR ist,
+3. `Stück × Preis/Aktie`, wenn die Preiswährung EUR ist.
 
-Wenn die manuell hinterlegten 15 Stück den Kauf aus der Datei jedoch bereits enthalten, warnt v30.14 vor dem möglichen Doppelzählen. Die App kann diese semantische Überschneidung nicht automatisch über Broker-ID erkennen, weil die manuelle Position keine Broker-Transaktions-ID besitzt.
+Es wird bewusst keine FX-Richtung geraten und keine externe Kursabfrage durchgeführt. Kann das EUR-Volumen einer Kauf-/Verkaufszeile nicht eindeutig bestimmt werden, bleibt die Zeile aus Sicherheitsgründen im Import enthalten und die UI weist darauf hin.
 
-## Kompatibilität
-- Der vorhandene Storage-Namespace `depot_transaction_import_v3013` bleibt absichtlich erhalten. Dadurch bleiben bereits gespeicherte Broker-IDs, Hashes und Importarchive nach dem Update gültig.
-- Weighted Average Entry, Fractional Shares, Teil-/Vollverkäufe, Trade-Journal und UTC->Berlin-Konvertierung aus v30.13 bleiben unverändert.
-- Manuelle Stops, Targets, Gruppen und Kontexte bleiben weiterhin erhalten.
+## Beispiel Trading 212 Pie
+Bei aktivem Filter mit 500 EUR:
+- Kauf über 42 EUR -> wird aus Positionsimport und Journal ausgeschlossen.
+- Kauf über 499,99 EUR -> wird ausgeschlossen.
+- Kauf über 600 EUR -> wird normal verarbeitet.
+- Eine Dividende/Zins-/sonstige Archiv-Action bleibt vom Mindestvolumenfilter unberührt, da sie ohnehin keine offene Aktienposition verändert.
 
 ## Unverändert
-- Keine Provider-Abfrage durch den Depot-Import oder den neuen Guard.
-- Keine Orderausführung.
-- Keine automatische Erfindung fehlender Anfangsbestände.
-- Kein automatisches Überschreiben einer Warnung ohne ausdrückliche Benutzerbestätigung.
+- v30.14 Reconciliation Guard und dessen Bestätigungs-/Blockierlogik.
+- Weighted Average Entry, Fractional Shares, Teil-/Vollverkäufe und Dublettenschutz.
+- Storage-Namespace und bestehendes Broker-ID-/Hash-Ledger.
+- Stops, Targets, Trading-Scores, Gates, Harvest/Chop und Orders.
+- Keine neuen Provider-Abfragen.

@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.14"
+APP_VERSION = "v30.14a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -15885,6 +15885,7 @@ _depot_transaction_import_v3013.configure_context(
 )
 _v3013_read_depot_file = _depot_transaction_import_v3013.read_transaction_file
 _v3013_normalize_depot_transactions = _depot_transaction_import_v3013.normalize_transactions
+_v3014a_filter_depot_min_volume = _depot_transaction_import_v3013.filter_min_eur_transaction_volume
 _v3013_preview_depot_import = _depot_transaction_import_v3013.preview_summary
 _v3014_reconcile_depot_import = _depot_transaction_import_v3013.reconciliation_guard
 _v3013_apply_depot_transactions = _depot_transaction_import_v3013.apply_transactions
@@ -15961,6 +15962,58 @@ def _v3013_render_depot_import(watchlist_name, positions):
             return positions
 
         norm_df = normalized_pkg.get("data")
+
+        st.markdown("**Optionaler Mindest-Transaktionswert**")
+        _minvol_enabled_v3014a = st.checkbox(
+            "Nur Kauf-/Verkaufstransaktionen ab Mindestvolumen importieren",
+            value=False,
+            key=f"v3014a_min_volume_enabled_{watchlist_name}",
+            help=(
+                "Praktisch für Trading-212-Pies mit vielen kleinen Fractional-Positionen. Der Filter wirkt pro einzelner BUY-/SELL-Transaktion "
+                "bereits vor Vorschau, Bestands-Abgleich und Buchung. Dividenden/Zinsen/sonstige Archiv-Actions bleiben unverändert."
+            ),
+        )
+        _minvol_eur_v3014a = st.number_input(
+            "Mindestvolumen je Kauf/Verkauf (€)",
+            min_value=0.0,
+            value=500.0,
+            step=50.0,
+            format="%.2f",
+            disabled=not _minvol_enabled_v3014a,
+            key=f"v3014a_min_volume_eur_{watchlist_name}",
+        )
+        _volume_filter_v3014a = _v3014a_filter_depot_min_volume(
+            norm_df,
+            enabled=_minvol_enabled_v3014a,
+            minimum_eur=_minvol_eur_v3014a,
+        )
+        norm_df = _volume_filter_v3014a.get("data")
+        _excluded_volume_df_v3014a = _volume_filter_v3014a.get("excluded")
+        _excluded_volume_n_v3014a = int(_volume_filter_v3014a.get("excluded_rows") or 0)
+        _unknown_volume_n_v3014a = int(_volume_filter_v3014a.get("unknown_volume_rows") or 0)
+        if _minvol_enabled_v3014a:
+            _excluded_tickers_v3014a = list(_volume_filter_v3014a.get("excluded_tickers") or [])
+            st.info(
+                f"Volumenfilter aktiv: BUY/SELL unter {_minvol_eur_v3014a:,.2f} € werden nicht importiert. "
+                f"Ausgeschlossen: {_excluded_volume_n_v3014a} Transaktion(en) / {len(_excluded_tickers_v3014a)} Ticker."
+            )
+            if _unknown_volume_n_v3014a:
+                st.warning(
+                    f"Bei {_unknown_volume_n_v3014a} Kauf-/Verkaufszeile(n) ist das EUR-Transaktionsvolumen aus der Datei nicht eindeutig bestimmbar. "
+                    "Diese Zeilen bleiben aus Sicherheitsgründen enthalten und werden nicht still herausgefiltert."
+                )
+            if isinstance(_excluded_volume_df_v3014a, pd.DataFrame) and not _excluded_volume_df_v3014a.empty:
+                with st.expander("Vom Mindestvolumen ausgeschlossene Transaktionen", expanded=False):
+                    _excluded_cols_v3014a = [c for c in [
+                        "Zeit Berlin", "Action", "Ticker", "Name", "Stück", "Preis/Aktie", "Preis-Währung",
+                        "Transaktionsvolumen EUR", "Volumen-Quelle", "Broker-ID"
+                    ] if c in _excluded_volume_df_v3014a.columns]
+                    st.dataframe(
+                        _excluded_volume_df_v3014a[_excluded_cols_v3014a].head(1000),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+
         summary = _v3013_preview_depot_import(norm_df, watchlist_name)
         p1,p2,p3,p4,p5,p6 = st.columns(6)
         p1.metric("Zeilen", summary.get("rows",0))
@@ -16043,7 +16096,7 @@ def _v3013_render_depot_import(watchlist_name, positions):
 
         preview_cols = [c for c in [
             "Zeit Berlin", "Action", "Action-Typ", "Ticker", "Name", "Stück", "Preis/Aktie",
-            "Preis-Währung", "Result", "Result-Währung", "Import-Status", "Import-Hinweis", "Broker-ID"
+            "Preis-Währung", "Transaktionsvolumen EUR", "Result", "Result-Währung", "Import-Status", "Import-Hinweis", "Broker-ID"
         ] if c in norm_df.columns]
         st.markdown("**Import-Vorschau**")
         st.dataframe(norm_df[preview_cols].head(1000), hide_index=True, use_container_width=True, height=min(500, 34*min(len(norm_df),13)+70))
@@ -16136,9 +16189,10 @@ def _v3013_render_depot_import(watchlist_name, positions):
                     details=(
                         f"Datei {upload.name} · Modus {mode} · Käufe {stats.get('buy_rows',0)} · "
                         f"Verkäufe {stats.get('sell_rows',0)} · offene Ticker {len(plan.get('open_tickers') or [])} · "
-                        f"Abgleich {len(_recon_flagged_v3014)} · Blocker {len(_recon_blockers_v3014)}"
+                        f"Abgleich {len(_recon_flagged_v3014)} · Blocker {len(_recon_blockers_v3014)} · "
+                        f"Volumenfilter {'ab ' + format(_minvol_eur_v3014a, '.2f') + ' EUR' if _minvol_enabled_v3014a else 'aus'} · ausgeschlossen {_excluded_volume_n_v3014a}"
                     ),
-                    payload={**stats, "Datei": upload.name, "Modus": mode, "Journalzeilen": journal_n, "Abgleich-Ticker": _recon_flagged_v3014, "Rebuild-Blocker": _recon_blockers_v3014},
+                    payload={**stats, "Datei": upload.name, "Modus": mode, "Journalzeilen": journal_n, "Abgleich-Ticker": _recon_flagged_v3014, "Rebuild-Blocker": _recon_blockers_v3014, "Volumenfilter aktiv": bool(_minvol_enabled_v3014a), "Mindestvolumen EUR": float(_minvol_eur_v3014a), "Volumenfilter ausgeschlossen": int(_excluded_volume_n_v3014a)},
                     signature=f"v3014|{upload.name}|{len(archived_df) if isinstance(archived_df,pd.DataFrame) else 0}|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
                 )
             except Exception:
@@ -17525,6 +17579,7 @@ _V304D_GLOSSARY = {
         ("Validation / Validierung", "Prüfung, ob eine frühere Einschätzung in später beobachteten Daten tatsächlich eine erkennbare Trennschärfe hatte."),
         ("Forward Return", "Kursveränderung nach einem früheren Beobachtungszeitpunkt über einen festgelegten Folge-Horizont, z. B. 1, 3 oder 5 Handelstage."),
         ("Depot-Excel Import", "Importiert ausgeführte Broker-Transaktionen providerfrei in den Positionsspeicher. Käufe/Verkäufe verändern offene Stückzahl und Entry; andere Actions bleiben als Importhistorie erhalten."),
+        ("Mindest-Transaktionsvolumen", "Optionaler Depot-Importfilter pro einzelner Kauf-/Verkaufstransaktion. v30.14a kann z. B. BUY/SELL unter 500 EUR aus Vorschau, Bestands-Abgleich und Buchung ausschließen; nicht eindeutig in EUR bestimmbare Zeilen bleiben sicherheitshalber enthalten."),
         ("Weighted Average Entry", "Gewichteter Durchschnitts-Einstiegskurs bei mehreren Käufen: ältere und neue Stücke werden nach ihrer jeweiligen Stückzahl und ihrem Preis gewichtet."),
         ("Import-ID / Dublettenschutz", "Broker-ID oder deterministischer Hash einer Transaktion. Bereits verarbeitete IDs werden bei Folgeimporten nicht nochmals gebucht."),
         ("Bestands-Abgleich", "v30.14-Prüfung zwischen bereits offener Tool-Position und neu hochgeladener Brokerhistorie. Manuelle Positionen besitzen keine Broker-ID-Herkunft; Überschneidungen müssen deshalb ausdrücklich bestätigt werden."),

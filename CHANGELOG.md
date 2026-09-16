@@ -1,3 +1,12 @@
+## v30.14a - Depot Import Mindest-Transaktionsvolumen
+- Optionaler BUY-/SELL-Filter im Depot-Excel-Import mit anpassbarem Mindestvolumen; Standard 500 EUR und standardmäßig deaktiviert.
+- Der Filter greift pro Einzeltransaktion vor Vorschau, Bestands-Abgleich, Rebuild-/Oversell-Prüfung, Positionsbuchung und Trade-Journal.
+- EUR-Volumen wird providerfrei bevorzugt aus `Net Total (EUR)`, danach `Gross Total (EUR)` und sonst aus `Stück x Preis/Aktie` bei EUR-Preiswährung bestimmt.
+- Nicht eindeutig in EUR bestimmbare Kauf-/Verkaufszeilen werden nicht still entfernt, sondern bleiben enthalten und werden als nicht filterbar ausgewiesen.
+- Ausgeschlossene Kleintransaktionen sind separat einsehbar und werden nicht ins Import-Ledger geschrieben; bei später deaktiviertem Filter können sie daher weiterhin importiert werden.
+- Dividenden, Zinsen und sonstige Archiv-Actions bleiben vom Mindestvolumenfilter unberührt.
+- Keine Änderung am v30.14 Reconciliation Guard, am Storage-Namespace oder an Provider-Aufrufen.
+
 ## v30.14 - Depot Import Reconciliation Guard
 - Neuer Bestands-Abgleich für bereits manuell gepflegte Positionen und nachträglich hochgeladene Broker-Historien.
 - Pro Ticker werden Tool-Bestand/Entry/Quelle, Positionsbeginn, Datei-Zeitraum, erste Aktion, Käufe/Verkäufe, Netto-Stück und `Rebuild ab Null` transparent gegenübergestellt.

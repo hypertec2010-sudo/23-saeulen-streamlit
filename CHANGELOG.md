@@ -1,3 +1,15 @@
+## v30.15 - Volatility-Aware Risk Stop
+- Risiko-Rechner kombiniert technischen Stop jetzt mit einem ATR-basierten Mindestpuffer; produktive Setup-/Exit-Logik bleibt unverändert.
+- Empfohlener Long-Risiko-Stop ist immer der weiter entfernte Wert aus technischer Invalidierung und ATR-Schutz; technische Stops werden nie künstlich enger gesetzt.
+- Dynamischer Schutz von 1,6 / 1,7 / 1,8 / 2,0 / 2,2 ATR je Volatilitätsregime plus mindestens 3,5% Abstand.
+- Separate Anzeige von `Technischer Stop`, `ATR-Schutz` und `Empfohlener Risiko-Stop`.
+- ATR-Schutz wird gegen den tatsächlich gewählten Entry neu berechnet.
+- Neue Schaltfläche zum Übernehmen des empfohlenen Risiko-Stops; manuelle engere Stops bleiben möglich, erhalten aber eine Volatilitätswarnung.
+- Bei ATR-bedingter Stop-Erweiterung zeigt der Rechner optional den Effekt auf die Stückzahl bei unverändertem Risikobudget.
+- Sehr große Stop-Abstände empfehlen kleinere Position/besseren Entry statt künstlich engeren Stop.
+- Risiko-Basis-Cache für v30.15 versioniert, damit alte enge Stop-Vorschläge nicht aus einer laufenden Session wiederverwendet werden.
+- Keine neuen Provider-Aufrufstellen; keine Änderungen an TP, Stops bestehender Positionen, Gates, Orders, Harvest/Chop oder Portfolio-Engine.
+
 ## v30.14a - Depot Import Mindest-Transaktionsvolumen
 - Optionaler BUY-/SELL-Filter im Depot-Excel-Import mit anpassbarem Mindestvolumen; Standard 500 EUR und standardmäßig deaktiviert.
 - Der Filter greift pro Einzeltransaktion vor Vorschau, Bestands-Abgleich, Rebuild-/Oversell-Prüfung, Positionsbuchung und Trade-Journal.

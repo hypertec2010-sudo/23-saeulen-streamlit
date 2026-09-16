@@ -1,38 +1,42 @@
-# v30.14a - Depot Import Mindest-Transaktionsvolumen
+# v30.15 - Volatility-Aware Risk Stop
 
-v30.14a ist ein kleiner Zusatz zum Depot-Excel-Import aus v30.14. Er ist speziell für Broker-Exporte wie Trading 212 gedacht, in denen neben den bewusst im Tool geführten Positionen auch viele kleine Pie-/Fractional-Transaktionen enthalten sein können.
+v30.15 verbessert ausschließlich den Stop-Vorschlag im Bereich `📐 Risiko-Rechner`. Die produktive Setup-, Exit-, Portfolio-, Harvest-/Chop- und Orderlogik bleibt unverändert.
+
+## Hintergrund
+Bei volatilen Aktien konnte ein technisch plausibler Stop trotzdem innerhalb der normalen täglichen Schwankungsbreite liegen. Der Risiko-Rechner übernahm diesen engen technischen Stop direkt für die Positionsgrößenberechnung. Dadurch konnte die rechnerische Stückzahl relativ groß werden, während gleichzeitig die Wahrscheinlichkeit eines normalen Volatilitäts-Stopouts höher war.
 
 ## Neu
-- Optionaler Schalter `Nur Kauf-/Verkaufstransaktionen ab Mindestvolumen importieren`.
-- Standardwert des Mindestvolumens: **500 EUR**; der Wert ist im Importdialog anpassbar.
-- Standardmäßig ist der Filter **aus**, sodass sich das bisherige Importverhalten nicht verändert.
-- Der Filter wirkt pro einzelner BUY-/SELL-Transaktion bereits **vor**:
-  - Import-Vorschau,
-  - v30.14 Bestands-Abgleich,
-  - Rebuild-/Oversell-Prüfung,
-  - Positionsbuchung,
-  - Trade-Journal.
-- Ausgeschlossene Kleintransaktionen werden separat in einem aufklappbaren Bereich angezeigt und nicht als importiert markiert.
-- Die Import-Vorschau zeigt zusätzlich `Transaktionsvolumen EUR`.
+- Der bestehende technische Stop bleibt als `Technischer Stop` sichtbar.
+- Zusätzlich berechnet der Risiko-Rechner einen `ATR-Schutz` aus ATR(14) in Prozent des Kurses.
+- Der vorgeschlagene `Empfohlene Risiko-Stop` verwendet für Long-Setups immer den **weiter entfernten** Wert aus technischer Invalidierung und ATR-Schutz. Ein bereits weiter entfernter technischer Stop wird niemals künstlich enger gesetzt.
+- Dynamischer ATR-Multiplikator:
+  - ATR < 3,5%: 1,6 ATR,
+  - ATR 3,5–<5%: 1,7 ATR,
+  - ATR 5–<7%: 1,8 ATR,
+  - ATR 7–<10%: 2,0 ATR,
+  - ATR >=10%: 2,2 ATR.
+- Zusätzlich bleibt ein Mindestpuffer von 3,5% im Risiko-Rechner bestehen.
+- Der ATR-Schutz wird auf den tatsächlich gewählten `Geplanten Entry` neu berechnet.
+- Neue Schaltfläche `Empfohlenen Risiko-Stop übernehmen` für den Fall, dass der Entry oder der Stop manuell verändert wurde.
+- Wird ein Stop manuell enger als der ATR-Schutz gewählt, zeigt die App eine klare Warnung, überschreibt den Benutzerwert aber nicht.
+- Wenn der ATR-Schutz den technischen Stop erweitert und der empfohlene Stop verwendet wird, zeigt die App den Effekt auf die Positionsgröße: enge technische Stückzahl -> ATR-geschützte Stückzahl.
+- Ab 18% notwendigem Stop-Abstand wird nicht mehr empfohlen, den Stop nur für mehr Stücke enger zu setzen. Stattdessen: kleinere Positionsgröße oder besseren Entry/Pullback abwarten.
+- Bei fehlendem ATR bleibt der technische Stop unverändert.
+- Glossar ergänzt um `Volatility-Aware Risk Stop` und `ATR-Schutz / ATR-Puffer`.
 
-## EUR-Ermittlung
-Das Transaktionsvolumen wird providerfrei aus der Brokerdatei bestimmt. Priorität:
-1. absoluter `Net Total`, wenn dessen Währung EUR ist,
-2. absoluter `Gross Total`, wenn dessen Währung EUR ist,
-3. `Stück × Preis/Aktie`, wenn die Preiswährung EUR ist.
+## Beispiel
+Entry 100, technischer Stop 96, ATR 6%:
+- technischer Abstand: 4%,
+- ATR-Multiplikator: 1,8,
+- ATR-Schutzabstand: 10,8%,
+- ATR-Schutzstop: 89,20,
+- vorgeschlagener Risiko-Stop: 89,20.
 
-Es wird bewusst keine FX-Richtung geraten und keine externe Kursabfrage durchgeführt. Kann das EUR-Volumen einer Kauf-/Verkaufszeile nicht eindeutig bestimmt werden, bleibt die Zeile aus Sicherheitsgründen im Import enthalten und die UI weist darauf hin.
+Das maximale Depotrisiko bleibt z. B. bei 0,5%. Der weitere Stop führt daher zu weniger Stück statt zu mehr absolutem Risiko.
 
-## Beispiel Trading 212 Pie
-Bei aktivem Filter mit 500 EUR:
-- Kauf über 42 EUR -> wird aus Positionsimport und Journal ausgeschlossen.
-- Kauf über 499,99 EUR -> wird ausgeschlossen.
-- Kauf über 600 EUR -> wird normal verarbeitet.
-- Eine Dividende/Zins-/sonstige Archiv-Action bleibt vom Mindestvolumenfilter unberührt, da sie ohnehin keine offene Aktienposition verändert.
-
-## Unverändert
-- v30.14 Reconciliation Guard und dessen Bestätigungs-/Blockierlogik.
-- Weighted Average Entry, Fractional Shares, Teil-/Vollverkäufe und Dublettenschutz.
-- Storage-Namespace und bestehendes Broker-ID-/Hash-Ledger.
-- Stops, Targets, Trading-Scores, Gates, Harvest/Chop und Orders.
-- Keine neuen Provider-Abfragen.
+## Sicherheitsgrenzen
+- v30.15 ändert keine bestehenden Positions-Stops automatisch.
+- Keine Änderung an TP1/TP2/TP3, Exit-Engine, Entry-Gates oder Trade-Journal.
+- Der Stop bleibt im Risiko-Rechner manuell überschreibbar.
+- Extrem hohe rechnerische ATR-Abstände werden für die Darstellung bei 80% gekappt und als sehr volatil markiert.
+- Keine neuen Provider-Aufrufe; die Risiko-Basis wird weiterhin nur beim expliziten Öffnen/Nutzen des Risiko-Rechners geladen und tickerbezogen gecacht.

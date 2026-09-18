@@ -1,4 +1,4 @@
-"""v30.14a provider-free broker/depot transaction import.
+"""v30.16a provider-free broker/depot transaction import.
 
 Adds a reconciliation guard for overlapping manually maintained positions while
 preserving the v30.13 storage namespace so existing Broker-ID/hash history remains
@@ -573,6 +573,7 @@ def _position_metadata(old: dict[str, Any] | None) -> dict[str, Any]:
     keep = [
         "stop", "initial_stop", "target", "stop_history", "journal_notes",
         "portfolio_group", "entry_context", "last_context", "last_price",
+        "strategy_origin", "execution_status", "planned_entry", "planned_shares",
     ]
     return {k: old.get(k) for k in keep if k in old}
 
@@ -835,6 +836,7 @@ def apply_transactions(
     *,
     mode: str = "incremental",
     already_processed: set[str] | None = None,
+    screener_only: bool = False,
 ) -> dict[str, Any]:
     """Apply BUY/SELL rows to a copy of the position store.
 
@@ -869,7 +871,11 @@ def apply_transactions(
     applied_rows = []
     skipped_rows = []
     anomalies = []
-    stats = {"buy_rows": 0, "sell_rows": 0, "other_rows": 0, "new_positions": 0, "closed_positions": 0, "partial_sales": 0}
+    stats = {
+        "buy_rows": 0, "sell_rows": 0, "other_rows": 0,
+        "new_positions": 0, "closed_positions": 0, "partial_sales": 0,
+        "external_rows": 0, "baseline_rows": 0, "mixed_sales": 0, "external_shares_ignored": 0.0,
+    }
 
     for _, s in valid.iterrows():
         row = s.to_dict()
@@ -904,9 +910,39 @@ def apply_transactions(
         open_qty = _num(pos.get("shares"), 0.0) or 0.0
         avg_entry = _num(pos.get("entry"), None)
         realized_before = _num(pos.get("realized_pnl"), 0.0) or 0.0
+        is_screener_position = bool(
+            pos and (
+                _txt(pos.get("strategy_origin")).lower() == "screener"
+                or isinstance(pos.get("entry_context"), dict) and bool(pos.get("entry_context"))
+                or _txt(pos.get("broker_source")).lower() != "depot-excel"
+            )
+        )
+        row_time = _parse_any_time(row.get("Zeit Berlin"))
+        opened_time = _parse_any_time(pos.get("opened_at_iso")) if pos else None
+        before_screener_open = False
+        if row_time is not None and opened_time is not None:
+            try:
+                before_screener_open = bool(row_time < opened_time - pd.Timedelta(minutes=5))
+            except Exception:
+                before_screener_open = False
 
         if action == "BUY":
             stats["buy_rows"] += 1
+            if screener_only and (not is_screener_position or before_screener_open):
+                row["Import-Hinweis"] = (
+                    "Extern/Pie: Transaktion liegt vor dem Screener-Trade" if before_screener_open else
+                    "Extern/Pie: kein vorgemerkter Screener-Trade; nicht in Screener-Position gebucht"
+                )
+                row["Screener-Klassifizierung"] = "EXTERN/PIE"
+                stats["external_rows"] += 1
+                applied_rows.append(row)
+                continue
+            if screener_only and open_qty > 1e-12 and _txt(pos.get("broker_source")).lower() != "depot-excel":
+                row["Import-Hinweis"] = "Legacy-Bestand: Kauf ist bereits in der manuell geführten Screener-Stückzahl enthalten; nicht doppelt gebucht"
+                row["Screener-Klassifizierung"] = "BASELINE"
+                stats["baseline_rows"] += 1
+                applied_rows.append(row)
+                continue
             new_qty = open_qty + qty
             if new_qty <= 0:
                 anomalies.append({**row, "Problem": "Ungültige resultierende Stückzahl"})
@@ -935,6 +971,10 @@ def apply_transactions(
                 "broker_isin": _txt(row.get("ISIN")) or _txt(pos.get("broker_isin")),
                 "broker_source": "Depot-Excel",
                 "broker_last_import_id": txid,
+                "strategy_origin": _txt(pos.get("strategy_origin"), "screener" if screener_only else ""),
+                "execution_status": "open",
+                "planned_entry": _num(pos.get("planned_entry"), None),
+                "planned_shares": _num(pos.get("planned_shares"), None),
             }
             # Preserve manual management fields. New broker-only positions have no
             # invented stop/target; zero keeps legacy UI compatible.
@@ -960,13 +1000,34 @@ def apply_transactions(
 
         # SELL
         stats["sell_rows"] += 1
+        if screener_only and before_screener_open:
+            row["Import-Hinweis"] = "Extern/Pie: Verkauf liegt vor dem gespeicherten Screener-Positionsbeginn"
+            row["Screener-Klassifizierung"] = "EXTERN/PIE"
+            stats["external_rows"] += 1
+            applied_rows.append(row)
+            continue
         if open_qty <= 1e-12 or avg_entry is None:
+            if screener_only:
+                row["Import-Hinweis"] = "Extern/Pie: keine offene Screener-Position; Verkauf archiviert, aber nicht gebucht"
+                row["Screener-Klassifizierung"] = "EXTERN/PIE"
+                stats["external_rows"] += 1
+                applied_rows.append(row)
+                continue
             anomalies.append({**row, "Problem": "Verkauf ohne bekannte offene Stückzahl; Historie vermutlich unvollständig"})
             continue
-        if qty > open_qty + 1e-8:
+        external_excess = max(0.0, float(qty) - float(open_qty))
+        if external_excess > 1e-8 and not screener_only:
             anomalies.append({**row, "Problem": f"Verkauf {_shares_display(qty)} > offen {_shares_display(open_qty)}; nicht gebucht"})
             continue
         sold = min(qty, open_qty)
+        if screener_only and external_excess > 1e-8:
+            row["Import-Hinweis"] = (
+                f"GEMISCHT: {_shares_display(sold)} Screener-Stück gebucht; "
+                f"{_shares_display(external_excess)} externe/Pie-Stück ignoriert"
+            )
+            row["Screener-Klassifizierung"] = "GEMISCHT"
+            stats["mixed_sales"] += 1
+            stats["external_shares_ignored"] += float(external_excess)
         remaining = max(0.0, open_qty - sold)
         calc_pnl = (price - avg_entry) * sold
         calc_pct = (price / avg_entry - 1.0) * 100.0 if avg_entry else None
@@ -980,9 +1041,11 @@ def apply_transactions(
         is_close = remaining <= 1e-8
         typ = "Position geschlossen" if is_close else "Teilverkauf"
         details = (
-            f"Broker-Import: {_shares_display(sold)} Stück verkauft; "
-            + ("Position geschlossen." if is_close else f"{_shares_display(remaining)} Stück verbleiben.")
+            f"Broker-Import: {_shares_display(sold)} Screener-Stück verkauft; "
+            + ("Position geschlossen." if is_close else f"{_shares_display(remaining)} Screener-Stück verbleiben.")
         )
+        if screener_only and external_excess > 1e-8:
+            details += f" {_shares_display(external_excess)} externe/Pie-Stück aus derselben Broker-Ausführung wurden ignoriert."
         broker_result = _num(row.get("Result"), None)
         broker_result_currency = _txt(row.get("Result-Währung"))
         if broker_result is not None:
@@ -1013,6 +1076,7 @@ def apply_transactions(
             stats["closed_positions"] += 1
         else:
             pos["shares"] = float(remaining)
+            pos["execution_status"] = "open"
             current[ticker] = pos
             stats["partial_sales"] += 1
         applied_rows.append(row)

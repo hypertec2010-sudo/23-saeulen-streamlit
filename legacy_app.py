@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.15a"
+APP_VERSION = "v30.16a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -16287,23 +16287,27 @@ def _v3013_render_depot_import(watchlist_name, positions):
         mode_label = st.radio(
             "Importmodus",
             [
-                "Nur neue Transaktionen anwenden",
-                "Enthaltene Ticker aus Datei neu aufbauen",
+                "Screener-Trades mit Broker abgleichen (empfohlen)",
+                "Nur neue Transaktionen anwenden (Legacy)",
+                "Enthaltene Ticker aus Datei neu aufbauen (Legacy)",
             ],
             horizontal=False,
             key=f"v3013_import_mode_{watchlist_name}",
             help=(
-                "'Nur neue' ist für regelmäßige Folgeexporte gedacht und schützt über Broker-ID/Hash vor Doppelbuchungen. "
-                "'Neu aufbauen' replayt alle Kauf-/Verkaufszeilen der Datei für deren Ticker ab Null und eignet sich nur für eine vollständige Historie. v30.14 prüft zusätzlich Überschneidungen mit manuell gepflegten Positionen."
+                "Im empfohlenen Modus werden nur bereits im Screener vorgemerkte/verwaltete Trades mit Broker-Ausführungen verknüpft. "
+                "Reine Pie-/externe Käufe erzeugen keine Screener-Position. Enthält ein Broker-Verkauf Screener- und Pie-Stücke, "
+                "wird nur der offene Screener-Anteil für Journal und Erfolgsanalyse gebucht. Die Legacy-Modi bleiben für Altbestände verfügbar."
             ),
         )
+        screener_only = mode_label.startswith("Screener-Trades")
         mode = "rebuild" if mode_label.startswith("Enthaltene") else "incremental"
         processed = _v3013_processed_depot_ids(watchlist_name)
         reconciliation = _v3014_reconcile_depot_import(
             norm_df, positions, mode=mode, already_processed=processed
         )
         plan = _v3013_apply_depot_transactions(
-            watchlist_name, norm_df, positions, mode=mode, already_processed=processed
+            watchlist_name, norm_df, positions, mode=mode, already_processed=processed,
+            screener_only=screener_only,
         )
 
         _recon_table_v3014 = reconciliation.get("table")
@@ -16365,8 +16369,8 @@ def _v3013_render_depot_import(watchlist_name, positions):
         anomalies = plan.get("anomalies")
         if isinstance(anomalies, pd.DataFrame) and not anomalies.empty:
             st.error(
-                "Der Import wird noch nicht freigegeben: Mindestens ein Verkauf passt nicht zur bekannten offenen Stückzahl. "
-                "Das deutet meist auf eine unvollständige Historie oder den falschen Importmodus hin."
+                "Der Import wird noch nicht freigegeben: Mindestens eine Brokerzeile ist im gewählten Legacy-Modus nicht eindeutig. "
+                "Im empfohlenen Screener-Abgleich werden Verkäufe mit zusätzlichen Pie-/externen Stücken anteilig auf die offene Screener-Position begrenzt."
             )
             show_cols = [c for c in ["Zeile","Zeit Berlin","Ticker","Action","Stück","Preis/Aktie","Problem"] if c in anomalies.columns]
             st.dataframe(anomalies[show_cols], hide_index=True, use_container_width=True)
@@ -16375,6 +16379,9 @@ def _v3013_render_depot_import(watchlist_name, positions):
         st.caption(
             f"Geplanter Effekt: {stats.get('new_positions',0)} neue Positionszyklen · "
             f"{stats.get('partial_sales',0)} Teilverkäufe · {stats.get('closed_positions',0)} Schließungen · "
+            f"{stats.get('external_rows',0)} externe/Pie-Zeilen ohne Screener-Wirkung · "
+            f"{stats.get('baseline_rows',0)} historische Baseline-Zeilen nicht doppelt gebucht · "
+            f"{stats.get('mixed_sales',0)} gemischte Verkäufe · "
             f"{len(plan.get('open_tickers') or [])} offene Ticker nach Import."
         )
         fractional = list(plan.get("fractional_tickers") or [])
@@ -16404,7 +16411,7 @@ def _v3013_render_depot_import(watchlist_name, positions):
                 )
 
         confirm = st.checkbox(
-            "Ich habe Importmodus und Vorschau geprüft.",
+            "Ich habe Importmodus, Screener-Zuordnung und Vorschau geprüft.",
             key=f"v3013_import_confirm_{watchlist_name}",
         )
         disabled = (
@@ -22851,7 +22858,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 add_options = [_v244_label(row) for _, row in add_df.iterrows()]
                                 a1, a2 = st.columns([1.4, 1.0])
                                 with a1:
-                                    selected_pos_label = st.selectbox("Position aus Live-Signal anlegen/aktualisieren", add_options, index=0, key="v244_position_select_row")
+                                    selected_pos_label = st.selectbox("Screener-Trade vormerken / Position aktualisieren", add_options, index=0, key="v244_position_select_row")
                                 selected_pos_row = add_df.iloc[add_options.index(selected_pos_label)].to_dict()
                                 pos_ticker = str(selected_pos_row.get("Ticker") or "").strip().upper()
                                 pos_name = str(selected_pos_row.get("Name") or pos_ticker).strip()
@@ -22906,7 +22913,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 )
                                 b1, b2, b3 = st.columns([1.0, 1.0, 1.0])
                                 with b1:
-                                    if st.button("Position speichern/aktualisieren", use_container_width=True, key=f"v244_save_{pos_ticker}"):
+                                    if st.button("Screener-Trade vormerken / speichern", use_container_width=True, key=f"v244_save_{pos_ticker}"):
                                         _initial_stop_v270 = _v230_safe_float(old_pos.get("initial_stop"), default=None)
                                         if _initial_stop_v270 is None:
                                             try:
@@ -22953,6 +22960,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             "entry_context": dict(_entry_context_v290 or {}),
                                             "last_context": dict(_current_context_v290 or {}),
                                             "portfolio_group": str(portfolio_group_v291 or "").strip(),
+                                            "strategy_origin": "screener",
+                                            "execution_status": "planned" if int(shares_v or 0) <= 0 else "open",
+                                            "planned_entry": float(entry_v or 0.0),
+                                            "planned_shares": int(shares_v or 0),
                                         }
                                         _v244_save_positions(selected_watchlist_name, positions)
                                         _v2416_log_event(

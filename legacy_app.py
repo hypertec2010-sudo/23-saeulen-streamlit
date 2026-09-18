@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.16a"
+APP_VERSION = "v30.16b"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -16192,6 +16192,23 @@ def _v3013_render_depot_import(watchlist_name, positions):
             "Neue Broker-Positionen enthalten aus der Exportdatei keinen historischen Stop oder Zielkurs. Stop/Target werden "
             "daher nicht erfunden. Bereits manuell gepflegte Stops, Ziele, Gruppen und Entry-Kontexte bleiben beim Abgleich erhalten."
         )
+        _last_import_key_v3016b = f"v3016b_last_depot_import_{watchlist_name}"
+        _last_import_v3016b = st.session_state.get(_last_import_key_v3016b)
+        if isinstance(_last_import_v3016b, dict) and _last_import_v3016b:
+            _status_v3016b = str(_last_import_v3016b.get("status") or "ok")
+            _message_v3016b = (
+                f"Letzter Depotimport: {_last_import_v3016b.get('filename') or '-'} · "
+                f"{int(_last_import_v3016b.get('applied_rows') or 0)} Brokerzeilen verarbeitet · "
+                f"{int(_last_import_v3016b.get('journal_rows') or 0)} Journalzeilen · "
+                f"{int(_last_import_v3016b.get('closed_positions') or 0)} Schließungen · "
+                f"{int(_last_import_v3016b.get('partial_sales') or 0)} Teilverkäufe · "
+                f"{int(_last_import_v3016b.get('external_rows') or 0)} extern/Pie ignoriert · "
+                f"{int(_last_import_v3016b.get('mixed_sales') or 0)} gemischte Verkäufe anteilig zugeordnet."
+            )
+            if _status_v3016b == "ok":
+                st.success(_message_v3016b)
+            else:
+                st.warning(_message_v3016b + " Journal/Import-Ledger bitte prüfen.")
         upload = st.file_uploader(
             "Depot-Transaktionsdatei",
             type=["xlsx", "xlsm", "csv", "txt"],
@@ -16465,6 +16482,17 @@ def _v3013_render_depot_import(watchlist_name, positions):
                 )
             except Exception:
                 pass
+            _applied_rows_v3016b = len(archived_df) if isinstance(archived_df, pd.DataFrame) else 0
+            st.session_state[_last_import_key_v3016b] = {
+                "status": "ok" if (journal_ok and ledger_ok) else "warning",
+                "filename": upload.name,
+                "applied_rows": int(_applied_rows_v3016b),
+                "journal_rows": int(journal_n or 0),
+                "closed_positions": int(stats.get("closed_positions") or 0),
+                "partial_sales": int(stats.get("partial_sales") or 0),
+                "external_rows": int(stats.get("external_rows") or 0),
+                "mixed_sales": int(stats.get("mixed_sales") or 0),
+            }
             if journal_ok and ledger_ok:
                 st.success(
                     f"Import abgeschlossen: {len(plan.get('open_tickers') or [])} offene Ticker · "

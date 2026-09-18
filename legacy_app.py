@@ -16205,7 +16205,12 @@ def _v3013_render_depot_import(watchlist_name, positions):
                 f"{int(_last_import_v3016b.get('external_rows') or 0)} extern/Pie ignoriert · "
                 f"{int(_last_import_v3016b.get('mixed_sales') or 0)} gemischte Verkäufe anteilig zugeordnet."
             )
-            if _status_v3016b == "ok":
+            if _status_v3016b == "no_changes":
+                st.info(
+                    f"Depotdatei bereits vollständig verarbeitet: "
+                    f"{_last_import_v3016b.get('filename') or '-'} · keine neuen Brokerzeilen, keine Änderungen vorgenommen."
+                )
+            elif _status_v3016b == "ok":
                 st.success(_message_v3016b)
             else:
                 st.warning(_message_v3016b + " Journal/Import-Ledger bitte prüfen.")
@@ -16483,8 +16488,18 @@ def _v3013_render_depot_import(watchlist_name, positions):
             except Exception:
                 pass
             _applied_rows_v3016b = len(archived_df) if isinstance(archived_df, pd.DataFrame) else 0
+            _no_changes_v3016c = bool(
+                _applied_rows_v3016b == 0
+                and int(journal_n or 0) == 0
+                and int(stats.get("closed_positions") or 0) == 0
+                and int(stats.get("partial_sales") or 0) == 0
+            )
+            _status_v3016c = (
+                "no_changes" if (_no_changes_v3016c and journal_ok and ledger_ok)
+                else ("ok" if (journal_ok and ledger_ok) else "warning")
+            )
             st.session_state[_last_import_key_v3016b] = {
-                "status": "ok" if (journal_ok and ledger_ok) else "warning",
+                "status": _status_v3016c,
                 "filename": upload.name,
                 "applied_rows": int(_applied_rows_v3016b),
                 "journal_rows": int(journal_n or 0),

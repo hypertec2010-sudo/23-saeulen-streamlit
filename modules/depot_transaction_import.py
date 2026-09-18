@@ -530,8 +530,13 @@ def import_history(watchlist_name: str) -> pd.DataFrame:
 
 
 def mark_imported(watchlist_name: str, normalized_rows: pd.DataFrame, *, filename: str = "", result_summary: dict | None = None) -> bool:
-    if not isinstance(normalized_rows, pd.DataFrame) or normalized_rows.empty:
+    # An empty frame is a valid no-op: it means every row in the uploaded file
+    # was already present in the import ledger. Treat this as success so a
+    # repeated import is not reported as a storage warning.
+    if not isinstance(normalized_rows, pd.DataFrame):
         return False
+    if normalized_rows.empty:
+        return True
     wl = str(watchlist_name or "Standard")
     store = _load_store()
     watchlists = dict(store.get("watchlists") or {})

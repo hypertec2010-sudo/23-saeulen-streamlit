@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.18c"
+APP_VERSION = "v30.18d"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -23871,7 +23871,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         for _i_v318, (_ccy_v318, _amt_v318) in enumerate(_pnl_items_v318[:4]):
                                             _pnl_cols_v318[_i_v318].metric(str(_ccy_v318), f"{float(_amt_v318):+,.2f}")
                                         _cov_idx_v318 = min(len(_pnl_items_v318), 4)
-                                        _pnl_cols_v318[_cov_idx_v318].metric("P/L-Abdeckung", f"{_pnl_known_v318}/{_pnl_total_v318}")
+                                        _pnl_cols_v318[_cov_idx_v318].metric("P/L-Abdeckung", f"{_pnl_known_v318}/{_pnl_total_v318}", help="Anteil der Exit-Buchungen mit belastbar zugeordneter P/L-Währung.")
                                         if len(_pnl_items_v318) > 4:
                                             st.caption("Weitere Währungen: " + " · ".join(f"{float(v):+,.2f} {k}" for k, v in _pnl_items_v318[4:]))
                                     elif _pnl_total_v318:

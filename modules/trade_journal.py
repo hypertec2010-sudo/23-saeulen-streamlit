@@ -810,9 +810,23 @@ def _v270_journal_summary(df: pd.DataFrame) -> dict:
     for _, row in exit_rows.iterrows():
         details = str(row.get("Details") or "")
         broker_val = pd.to_numeric(pd.Series([row.get("Broker Result")]), errors="coerce").iloc[0]
-        broker_ccy = str(row.get("Broker Result-Währung") or "").strip().upper()
+        def _clean_ccy_v318d(value: Any) -> str:
+            # pandas missing values become float NaN; str(np.nan) == "nan" and must
+            # never be treated as a real currency code. Keep only plausible ISO-like
+            # three-letter currency codes.
+            try:
+                if pd.isna(value):
+                    return ""
+            except Exception:
+                pass
+            text = str(value or "").strip().upper()
+            if text in {"", "NAN", "NONE", "NULL", "<NA>"}:
+                return ""
+            return text if len(text) == 3 and text.isalpha() else ""
+
+        broker_ccy = _clean_ccy_v318d(row.get("Broker Result-Währung"))
         native_val = pd.to_numeric(pd.Series([row.get("Realisiert P/L")]), errors="coerce").iloc[0]
-        native_ccy = str(row.get("Realisiert P/L-Währung") or row.get("Broker Preis-Währung") or "").strip().upper()
+        native_ccy = _clean_ccy_v318d(row.get("Realisiert P/L-Währung")) or _clean_ccy_v318d(row.get("Broker Preis-Währung"))
         amount = None
         ccy = ""
         if pd.notna(broker_val) and broker_ccy and "GEMISCHT" not in details.upper():

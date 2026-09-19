@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.16b"
+APP_VERSION = "v30.17a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -23684,409 +23684,402 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             _undo_flash_v287a = st.session_state.pop("v287a_undo_flash", None)
                             if _undo_flash_v287a:
                                 st.success(_undo_flash_v287a)
-                            st.caption("Dokumentiert Teilverkäufe, geschlossene Positionen, Stop-Anpassungen und Erkenntnisse. Die Learning Engine wertet diese Daten zusätzlich beobachtend aus; produktive Regeln werden nicht automatisch verändert.")
                             journal_df_v270 = _v270_journal_entries_dataframe(selected_watchlist_name)
                             _event_df_v290 = _v2416_events_dataframe(selected_watchlist_name)
-                            _v306_render_harvest_learning(selected_watchlist_name, _event_df_v290)
-                            _v3011_render_calibration_advisor(selected_watchlist_name, _event_df_v290)
+                            with st.expander("ℹ️ Bereich erklären", expanded=False):
+                                st.write("Hier werden reale Screener-Trades, Entry-/Exit-Lernen, Forward-Validierung und Shadow-Kalibrierung getrennt dargestellt. Auswertungen und konkrete Lernhinweise bleiben sichtbar; Methodik und technische Erklärungen sind standardmäßig eingeklappt.")
                             if journal_df_v270 is None or journal_df_v270.empty:
                                 st.info("Noch keine Journal-Einträge für diese Watchlist. Aktionen aus dem Positions-/Exit-Monitor erscheinen hier.")
                             else:
                                 summary_v270 = _v270_journal_summary(journal_df_v270)
-                                js1, js2, js3, js4, js5 = st.columns(5)
-                                with js1:
-                                    st.metric("Geschlossene Trades", summary_v270.get("closed_trades", 0))
-                                with js2:
-                                    st.metric("Teilverkäufe", summary_v270.get("partial_exits", 0))
-                                with js3:
-                                    st.metric("Realisiert P/L", f"{summary_v270.get('realized_pnl', 0.0):,.2f}".replace(",", "."))
-                                with js4:
-                                    _wr_v270 = summary_v270.get("win_rate")
-                                    st.metric("Trefferquote", "n/a" if _wr_v270 is None else f"{_wr_v270:.1f}%")
-                                with js5:
-                                    _avg_r_v270 = summary_v270.get("avg_r")
-                                    st.metric("Ø R geschlossen", "n/a" if _avg_r_v270 is None else f"{_avg_r_v270:.2f}R")
 
-                                # ---------- v29.0: Trading Journal & Learning Engine ----------
+                                # ---------- v30.17: Performance & Learning Cockpit (presentation only) ----------
+                                # Die fachlichen Berechnungen bleiben unverändert. Diese Schicht ordnet REAL-,
+                                # FORWARD- und SHADOW-Auswertungen nur neu und hält Methodik standardmäßig eingeklappt.
                                 _learning_v290 = _v290_build_learning_package(journal_df_v270, _event_df_v290)
                                 _learn_summary_v290 = _learning_v290.get("summary") or {}
                                 _learn_trades_v290 = _learning_v290.get("trades")
-                                with st.container(border=True):
-                                    st.markdown(f"#### 🧠 Trading Journal & Learning Engine · {APP_VERSION}")
+                                _segments_v290 = _learning_v290.get("segments") or {}
+                                _insights_v290 = list(_learning_v290.get("insights") or [])
+                                _exit_summary_v290 = _learning_v290.get("exit_summary")
+                                _exit_detail_v290 = _learning_v290.get("exit_detail")
+                                _early_learn_v303 = _v303_build_early_profit_learning(_learn_trades_v290, _event_df_v290)
+                                _early_sum_v303 = dict(_early_learn_v303.get("summary") or {})
+                                _early_detail_v303 = _early_learn_v303.get("detail")
+
+                                try:
+                                    _queue_pkg_v317 = _v3010_build_action_queue_learning(selected_watchlist_name)
+                                    _queue_sum_v317 = dict(_queue_pkg_v317.get("summary") or {})
+                                except Exception:
+                                    _queue_sum_v317 = {}
+                                try:
+                                    _harvest_pkg_v317 = _v306_build_harvest_learning(selected_watchlist_name, _event_df_v290)
+                                    _harvest_sum_v317 = dict(_harvest_pkg_v317.get("summary") or {})
+                                except Exception:
+                                    _harvest_sum_v317 = {}
+                                try:
+                                    _cal_pkg_v317 = _v3011_build_calibration_advice(_queue_pkg_v317, _harvest_pkg_v317)
+                                    _cal_sum_v317 = dict(_cal_pkg_v317.get("summary") or {})
+                                except Exception:
+                                    _cal_sum_v317 = {}
+
+                                st.markdown("#### Performance & Learning")
+                                st.markdown("🟢 **REAL** · echte Screener-Trades &nbsp;&nbsp; 🔵 **FORWARD** · beobachtete Signale &nbsp;&nbsp; 🟣 **SHADOW** · Kalibrierung ohne Regeländerung")
+                                with st.expander("ℹ️ Was bedeuten REAL, FORWARD und SHADOW?", expanded=False):
+                                    st.markdown(
+                                        "**REAL** wertet tatsächlich geführte Screener-Positionen aus.  \
+"
+                                        "**FORWARD** beobachtet Signale nach dem Scan weiter, unabhängig davon, ob sie gehandelt wurden.  \
+"
+                                        "**SHADOW** vergleicht mögliche Kalibrierungen nur beobachtend; produktive Schwellen, Stops, TPs oder Orders bleiben unverändert."
+                                    )
+
+                                _tab_over_v317, _tab_real_v317, _tab_entry_v317, _tab_exit_v317, _tab_forward_v317, _tab_cal_v317, _tab_raw_v317 = st.tabs([
+                                    "📊 Überblick", "🟢 Reale Trades", "🎯 Entry", "🚪 Exit", "🔵 Forward", "🟣 Kalibrierung", "🗂 Journal & Rohdaten"
+                                ])
+
+                                with _tab_over_v317:
+                                    _ov1_v317, _ov2_v317, _ov3_v317, _ov4_v317, _ov5_v317, _ov6_v317 = st.columns(6)
+                                    _ov1_v317.metric("Reale Trades", int(_learn_summary_v290.get("closed_trades") or summary_v270.get("closed_trades") or 0))
+                                    _ov_wr_v317 = _learn_summary_v290.get("win_rate")
+                                    _ov2_v317.metric("Trefferquote", "n/a" if _ov_wr_v317 is None else f"{float(_ov_wr_v317):.1f}%")
+                                    _ov_r_v317 = _learn_summary_v290.get("avg_r")
+                                    _ov3_v317.metric("Ø R", "n/a" if _ov_r_v317 is None else f"{float(_ov_r_v317):+.2f}R")
+                                    _ov_pf_v317 = _learn_summary_v290.get("profit_factor")
+                                    _ov_pf_txt_v317 = "n/a" if _ov_pf_v317 is None else ("∞" if math.isinf(float(_ov_pf_v317)) else f"{float(_ov_pf_v317):.2f}")
+                                    _ov4_v317.metric("Profit Factor", _ov_pf_txt_v317)
+                                    _ov5_v317.metric("Gesamt P/L", f"{float(_learn_summary_v290.get('total_pnl') or summary_v270.get('realized_pnl') or 0):+,.2f}")
+                                    _ctx_v317 = float(_learn_summary_v290.get("context_coverage") or 0)
+                                    _ov6_v317.metric("Entry-Kontext", f"{_ctx_v317:.0f}%")
+
+                                    _sample_v317 = str(_learn_summary_v290.get("sample_label") or "Zu klein")
+                                    _hold_v317 = _learn_summary_v290.get("avg_hold_days")
                                     st.caption(
-                                        "Beobachtungsmodus: Die Engine verbindet reale Trade-Ergebnisse mit dem beim Entry gespeicherten "
-                                        "Live-/Shadow-/Regime-Kontext sowie Exit-Engine-Events. Sie liefert Lernhinweise, ändert aber keine "
-                                        "Ampel, Schwelle, Gewichtung, Position oder Order automatisch."
+                                        f"Stichprobe: {_sample_v317} · Ø Haltedauer: " +
+                                        ("n/a" if _hold_v317 is None else f"{float(_hold_v317):.1f} Tage") +
+                                        f" · Teilverkäufe im Journal: {int(summary_v270.get('partial_exits') or 0)}"
                                     )
-                                    if not isinstance(_learn_trades_v290, pd.DataFrame) or _learn_trades_v290.empty:
-                                        st.info("Noch keine gültig geschlossenen Trades für die Learning Engine. Neue Positionen speichern automatisch ihren Entry-Kontext.")
+
+                                    st.markdown("**Die wichtigsten Aussagen**")
+                                    _headline_v317 = []
+                                    _ntr_v317 = int(_learn_summary_v290.get("closed_trades") or 0)
+                                    if _ntr_v317 < 10:
+                                        _headline_v317.append("⚪ Reale Trade-Stichprobe noch klein; Performancewerte sind erste Beobachtungen, keine belastbare Kalibrierungsbasis.")
+                                    elif _ntr_v317 < 30:
+                                        _headline_v317.append("🟡 Reale Trade-Stichprobe wächst, Segmentvergleiche sollten aber weiterhin vorsichtig interpretiert werden.")
                                     else:
-                                        _lm1_v290, _lm2_v290, _lm3_v290, _lm4_v290, _lm5_v290 = st.columns(5)
-                                        with _lm1_v290:
-                                            st.metric("Trades", int(_learn_summary_v290.get("closed_trades") or 0))
-                                        with _lm2_v290:
-                                            _lwr_v290 = _learn_summary_v290.get("win_rate")
-                                            st.metric("Trefferquote", "n/a" if _lwr_v290 is None else f"{_lwr_v290:.1f}%")
-                                        with _lm3_v290:
-                                            _lar_v290 = _learn_summary_v290.get("avg_r")
-                                            st.metric("Ø R / Trade", "n/a" if _lar_v290 is None else f"{_lar_v290:+.2f}R")
-                                        with _lm4_v290:
-                                            _lpf_v290 = _learn_summary_v290.get("profit_factor")
-                                            if _lpf_v290 is None:
-                                                _lpf_text_v290 = "n/a"
-                                            elif math.isinf(float(_lpf_v290)):
-                                                _lpf_text_v290 = "∞"
-                                            else:
-                                                _lpf_text_v290 = f"{float(_lpf_v290):.2f}"
-                                            st.metric("Profit Factor", _lpf_text_v290)
-                                        with _lm5_v290:
-                                            st.metric("Entry-Kontext", f"{float(_learn_summary_v290.get('context_coverage') or 0):.0f}%")
+                                        _headline_v317.append("🟢 Reale Trade-Stichprobe ist breit genug für stabilere Gruppenvergleiche; Untergruppen trotzdem separat auf Mindestgröße prüfen.")
+                                    if _ctx_v317 < 50:
+                                        _headline_v317.append(f"⚪ Entry-Kontext nur bei {_ctx_v317:.0f}% der geschlossenen Trades vorhanden; Grade-/Regime-/Setup-Vergleiche sind noch eingeschränkt.")
+                                    elif _ctx_v317 < 80:
+                                        _headline_v317.append(f"🟡 Entry-Kontext bei {_ctx_v317:.0f}% der Trades; neuere Trades sind für Entry-Analysen deutlich aussagekräftiger als Legacy-Fälle.")
+                                    else:
+                                        _headline_v317.append(f"🟢 Entry-Kontext bei {_ctx_v317:.0f}% der Trades; Entry-Segmentierung ist gut abgedeckt.")
+                                    for _ins_v317 in _insights_v290[:2]:
+                                        _headline_v317.append(f"💡 {_ins_v317}")
+                                    for _line_v317 in _headline_v317[:4]:
+                                        st.write(_line_v317)
 
-                                        st.caption(
-                                            f"Stichprobe: {_learn_summary_v290.get('sample_label','Zu klein')} · "
-                                            f"Gesamt P/L: {float(_learn_summary_v290.get('total_pnl') or 0):+,.2f} · "
-                                            f"Ø Haltedauer: " + (
-                                                "n/a" if _learn_summary_v290.get("avg_hold_days") is None
-                                                else f"{float(_learn_summary_v290.get('avg_hold_days')):.1f} Tage"
-                                            )
+                                    with st.expander("ℹ️ Methodik & Grenzen des Überblicks", expanded=False):
+                                        st.write("Der Überblick verdichtet vorhandene Journal- und Learning-Kennzahlen. Er erzeugt keine neuen Scores und verändert keine produktive Regel. Kleine Stichproben und fehlender Entry-Kontext werden bewusst sichtbar gemacht, damit Prozentwerte nicht überinterpretiert werden.")
+
+                                with _tab_real_v317:
+                                    st.markdown("##### 🟢 REAL · tatsächlich gehandelte Screener-Trades")
+                                    _rr1_v317, _rr2_v317, _rr3_v317, _rr4_v317, _rr5_v317 = st.columns(5)
+                                    _rr1_v317.metric("Geschlossen", int(summary_v270.get("closed_trades") or 0))
+                                    _rr2_v317.metric("Teilverkäufe", int(summary_v270.get("partial_exits") or 0))
+                                    _rr3_v317.metric("Realisiert P/L", f"{float(summary_v270.get('realized_pnl') or 0):+,.2f}")
+                                    _rr_wr_v317 = summary_v270.get("win_rate")
+                                    _rr4_v317.metric("Trefferquote", "n/a" if _rr_wr_v317 is None else f"{float(_rr_wr_v317):.1f}%")
+                                    _rr_r_v317 = summary_v270.get("avg_r")
+                                    _rr5_v317.metric("Ø R geschlossen", "n/a" if _rr_r_v317 is None else f"{float(_rr_r_v317):+.2f}R")
+                                    if _insights_v290:
+                                        st.markdown("**Aktuelle Lernhinweise**")
+                                        for _ins_v317 in _insights_v290:
+                                            st.write(f"• {_ins_v317}")
+                                    _manual_tags_v290 = _learning_v290.get("manual_tags")
+                                    if isinstance(_manual_tags_v290, pd.DataFrame) and not _manual_tags_v290.empty:
+                                        with st.expander("Manuelle Erkenntnisse · wiederkehrende Themen", expanded=False):
+                                            st.dataframe(_manual_tags_v290, hide_index=True, use_container_width=True)
+                                    with st.expander("ℹ️ Was wird hier gezählt?", expanded=False):
+                                        st.write("Nur Journal-Ergebnisse tatsächlich geführter Screener-Positionen. Pie-/externe Brokerbestände sollen durch den Depotimport nicht als Screener-Performance einfließen.")
+
+                                with _tab_entry_v317:
+                                    st.markdown("##### 🎯 Entry-Qualität")
+                                    _en1_v317, _en2_v317, _en3_v317 = st.columns(3)
+                                    _en1_v317.metric("Geschlossene Trades", int(_learn_summary_v290.get("closed_trades") or 0))
+                                    _en2_v317.metric("Entry-Kontext", f"{_ctx_v317:.0f}%")
+                                    _en3_v317.metric("Reifegrad", _sample_v317)
+                                    if _ctx_v317 < 50:
+                                        st.info(f"Entry-Analyse noch eingeschränkt: Nur {_ctx_v317:.0f}% der geschlossenen Trades besitzen den neueren gespeicherten Entry-Kontext. Die Tabellen bleiben verfügbar, werden aber nicht als belastbare Schlussfolgerung präsentiert.")
+                                    elif _ctx_v317 < 80:
+                                        st.warning("Entry-Kontext ist teilweise vorhanden. Gruppen mit weniger als 5 Trades bitte weiterhin nur als Beobachtung behandeln.")
+                                    else:
+                                        st.success("Entry-Kontext ist breit abgedeckt. Gruppenvergleiche bleiben trotzdem an ihre jeweilige Stichprobengröße gebunden.")
+
+                                    if _segments_v290:
+                                        _segment_name_v290 = st.selectbox(
+                                            "Entry-/Kontextsegment",
+                                            options=list(_segments_v290.keys()),
+                                            key=f"v317_learning_segment_{selected_watchlist_name}",
                                         )
+                                        _segment_df_v290 = _segments_v290.get(_segment_name_v290)
+                                        if isinstance(_segment_df_v290, pd.DataFrame) and not _segment_df_v290.empty:
+                                            st.dataframe(_segment_df_v290, hide_index=True, use_container_width=True, height=min(360, 42 * len(_segment_df_v290) + 55))
+                                    else:
+                                        st.info("Noch keine Entry-/Kontextsegmente auswertbar.")
+                                    with st.expander("ℹ️ Interpretation der Entry-Segmente", expanded=False):
+                                        st.write("Die Segmente vergleichen den beim Entry gespeicherten Screener-Kontext mit dem später realisierten Trade-Ergebnis. Gruppen unter 5 Trades bleiben kleine Stichproben und lösen keine automatischen Regeländerungen aus.")
 
-                                        _insights_v290 = list(_learning_v290.get("insights") or [])
-                                        if _insights_v290:
-                                            st.markdown("**Aktuelle Lernhinweise**")
-                                            for _insight_v290 in _insights_v290:
-                                                st.write(f"• {_insight_v290}")
+                                with _tab_exit_v317:
+                                    st.markdown("##### 🚪 Exit-Qualität")
+                                    if isinstance(_exit_summary_v290, pd.DataFrame) and not _exit_summary_v290.empty:
+                                        st.markdown("**Exit Engine 2.0 · Ergebnisübersicht**")
+                                        st.dataframe(_exit_summary_v290, hide_index=True, use_container_width=True, height=min(320, 42 * len(_exit_summary_v290) + 55))
+                                    else:
+                                        st.info("Noch keine sicher zuordenbaren Exit-Engine-Warnungen. Bei älteren Trades fehlt häufig ein belastbarer Entry-Zeitpunkt.")
 
-                                        _segments_v290 = _learning_v290.get("segments") or {}
-                                        if _segments_v290:
-                                            st.markdown("**Setup- und Kontextvergleich**")
-                                            _segment_name_v290 = st.selectbox(
-                                                "Lernsegment",
-                                                options=list(_segments_v290.keys()),
-                                                key=f"v290_learning_segment_{selected_watchlist_name}",
-                                            )
-                                            _segment_df_v290 = _segments_v290.get(_segment_name_v290)
-                                            if isinstance(_segment_df_v290, pd.DataFrame) and not _segment_df_v290.empty:
-                                                st.dataframe(_segment_df_v290, hide_index=True, use_container_width=True, height=min(360, 42 * len(_segment_df_v290) + 55))
-                                            st.caption("Segmente unter 5 Trades bleiben ausdrücklich als kleine Stichprobe markiert. Daraus werden keine automatischen Regeländerungen abgeleitet.")
+                                    st.markdown("**Early Profit Protection**")
+                                    if isinstance(_early_detail_v303, pd.DataFrame) and not _early_detail_v303.empty:
+                                        _ex1_v317, _ex2_v317, _ex3_v317 = st.columns(3)
+                                        _ex1_v317.metric("Auswertbare Fälle", int(_early_sum_v303.get("evaluable") or 0))
+                                        _pc_v317 = _early_sum_v303.get("protect_confirmed_pct")
+                                        _hb_v317 = _early_sum_v303.get("hold_better_pct")
+                                        _ex2_v317.metric("Gewinnschutz bestätigt", "n/a" if _pc_v317 is None else f"{float(_pc_v317):.0f}%")
+                                        _ex3_v317.metric("Laufenlassen besser", "n/a" if _hb_v317 is None else f"{float(_hb_v317):.0f}%")
+                                        _ep_insights_v317 = list(_early_learn_v303.get("insights") or [])
+                                        for _ins_v317 in _ep_insights_v317[:4]:
+                                            st.write(f"• {_ins_v317}")
+                                    else:
+                                        st.info("Noch keine sicher zuordenbaren geschlossenen Trades mit Early-Profit-Warnung.")
 
-                                        _exit_summary_v290 = _learning_v290.get("exit_summary")
-                                        _exit_detail_v290 = _learning_v290.get("exit_detail")
-                                        with st.expander("Exit Engine 2.0 · Lerncheck", expanded=False):
-                                            st.caption(
-                                                "Ordnet Exit-Engine-Warnungen nur dann einem geschlossenen Trade zu, wenn Entry- und Exit-Zeit sicher bekannt sind. "
-                                                "Die R-Veränderung danach misst, ob sich der Trade nach der Erstwarnung weiter verbessert oder verschlechtert hat; sie ist kein hypothetischer Backtest-Exit."
-                                            )
-                                            if isinstance(_exit_summary_v290, pd.DataFrame) and not _exit_summary_v290.empty:
-                                                st.dataframe(_exit_summary_v290, hide_index=True, use_container_width=True, height=min(320, 42 * len(_exit_summary_v290) + 55))
-                                                if isinstance(_exit_detail_v290, pd.DataFrame) and not _exit_detail_v290.empty:
-                                                    st.caption("Zugeordnete Trades")
-                                                    st.dataframe(_exit_detail_v290.head(100), hide_index=True, use_container_width=True, height=min(360, 42 * len(_exit_detail_v290.head(100)) + 55))
-                                            else:
-                                                st.info("Noch keine sicher zuordenbaren Exit-Engine-Warnungen. Bei alten Trades fehlt häufig ein belastbarer Entry-Zeitpunkt.")
+                                    with st.expander("Exit Engine · zugeordnete Trades", expanded=False):
+                                        if isinstance(_exit_detail_v290, pd.DataFrame) and not _exit_detail_v290.empty:
+                                            st.dataframe(_exit_detail_v290.head(100), hide_index=True, use_container_width=True, height=min(360, 42 * len(_exit_detail_v290.head(100)) + 55))
+                                        else:
+                                            st.info("Noch keine Detailfälle.")
+                                    with st.expander("Early Profit · Details & Kalibrierung", expanded=False):
+                                        if isinstance(_early_detail_v303, pd.DataFrame) and not _early_detail_v303.empty:
+                                            _ep_action_v317 = _early_learn_v303.get("action_summary")
+                                            _ep_velocity_v317 = _early_learn_v303.get("velocity_summary")
+                                            _ep_exhaust_v317 = _early_learn_v303.get("exhaustion_summary")
+                                            _ep_cal_v317 = _early_learn_v303.get("risk_calibration")
+                                            for _label_v317, _df_v317 in [("Nach Empfehlung", _ep_action_v317), ("Profit Velocity", _ep_velocity_v317), ("Exhaustion", _ep_exhaust_v317), ("Giveback-Kalibrierung", _ep_cal_v317)]:
+                                                if isinstance(_df_v317, pd.DataFrame) and not _df_v317.empty:
+                                                    st.markdown(f"**{_label_v317}**")
+                                                    st.dataframe(_df_v317, hide_index=True, use_container_width=True)
+                                            st.markdown("**Zugeordnete Fälle**")
+                                            st.dataframe(_early_detail_v303.head(300), hide_index=True, use_container_width=True, height=min(520, 42 * len(_early_detail_v303.head(300)) + 55))
+                                        else:
+                                            st.info("Noch keine Early-Profit-Detailfälle.")
+                                    with st.expander("ℹ️ Methodik der Exit-Auswertung", expanded=False):
+                                        st.write("Exit- und Early-Profit-Warnungen werden nur dann einem real geschlossenen Trade zugeordnet, wenn Entry-, Warn- und Exit-Zeit belastbar zusammenpassen. Gemessen wird die spätere reale Entwicklung; es handelt sich nicht um einen hypothetischen Sofortverkaufs-Backtest.")
 
-                                        # ---------- v30.3: Early Profit Learning & Calibration ----------
-                                        _early_learn_v303 = _v303_build_early_profit_learning(_learn_trades_v290, _event_df_v290)
-                                        _early_sum_v303 = dict(_early_learn_v303.get("summary") or {})
-                                        _early_detail_v303 = _early_learn_v303.get("detail")
-                                        with st.expander("⚡ Early Profit Protection · Lern- & Kalibrierungscheck", expanded=False):
-                                            st.caption(
-                                                "Ordnet die erste Early-Profit-Warnung einem real geschlossenen Trade nur dann zu, wenn Entry-, Warn- und Exit-Zeit sicher zusammenpassen. "
-                                                "Gemessen wird die Veränderung des tatsächlich realisierten R nach der Warnung. Das ist bewusst kein hypothetischer Sofortverkaufs-Backtest und verändert die v30.2-Empfehlung nicht automatisch."
-                                            )
-                                            if not isinstance(_early_detail_v303, pd.DataFrame) or _early_detail_v303.empty:
-                                                st.info(
-                                                    "Noch keine sicher zuordenbaren geschlossenen Trades mit Early-Profit-Warnung. "
-                                                    "v30.2 sammelt die Ereignisse automatisch; nach geschlossenen Trade-Zyklen entsteht hier die persönliche Kalibrierung."
-                                                )
-                                            else:
-                                                _ep1_v303, _ep2_v303, _ep3_v303, _ep4_v303, _ep5_v303 = st.columns(5)
-                                                with _ep1_v303:
-                                                    st.metric("Auswertbare Fälle", int(_early_sum_v303.get("evaluable") or 0))
-                                                with _ep2_v303:
-                                                    _pc_v303 = _early_sum_v303.get("protect_confirmed_pct")
-                                                    st.metric("Gewinnschutz bestätigt", "n/a" if _pc_v303 is None else f"{float(_pc_v303):.0f}%")
-                                                with _ep3_v303:
-                                                    _hb_v303 = _early_sum_v303.get("hold_better_pct")
-                                                    st.metric("Laufenlassen besser", "n/a" if _hb_v303 is None else f"{float(_hb_v303):.0f}%")
-                                                with _ep4_v303:
-                                                    _md_v303 = _early_sum_v303.get("median_delta_r")
-                                                    st.metric("Median ΔR danach", "n/a" if _md_v303 is None else f"{float(_md_v303):+.2f}R")
-                                                with _ep5_v303:
-                                                    st.metric("Reifegrad", str(_early_sum_v303.get("status") or "Daten sammeln"))
+                                with _tab_forward_v317:
+                                    st.markdown("##### 🔵 FORWARD · Signale nach dem Scan weiterbeobachten")
+                                    _fw1_v317, _fw2_v317, _fw3_v317, _fw4_v317 = st.columns(4)
+                                    _fw1_v317.metric("Queue · 3T", int(_queue_sum_v317.get("evaluable_3t") or 0))
+                                    _fw2_v317.metric("Queue-Reife", str(_queue_sum_v317.get("sample_label") or "Zu klein"))
+                                    _fw3_v317.metric("Harvest · 3T", int(_harvest_sum_v317.get("evaluable_3t") or 0))
+                                    _fw4_v317.metric("Harvest-Reife", str(_harvest_sum_v317.get("sample_label") or "Zu klein"))
+                                    if int(_queue_sum_v317.get("evaluable_3t") or 0) < 15 and int(_harvest_sum_v317.get("evaluable_3t") or 0) < 15:
+                                        st.info("Forward-Validierung befindet sich noch in einer frühen Stichprobe. Details sind verfügbar, sollten aber noch nicht als Modelländerung interpretiert werden.")
+                                    _v3010_render_action_queue_learning(selected_watchlist_name)
+                                    _v306_render_harvest_learning(selected_watchlist_name, _event_df_v290)
+                                    with st.expander("ℹ️ Warum Forward-Validierung getrennt von REAL?", expanded=False):
+                                        st.write("FORWARD beobachtet Screener-Signale systematisch weiter, auch wenn kein realer Trade eröffnet wurde. Dadurch kann die Signalqualität untersucht werden, ohne sie mit deiner persönlichen Ausführung oder Positionsgröße zu vermischen.")
 
-                                                st.caption(
-                                                    f"Stichprobe: {_early_sum_v303.get('sample_label','Zu klein')} · "
-                                                    f"zugeordnete Trades: {int(_early_sum_v303.get('matched_trades') or 0)} · "
-                                                    f"R-Auswertungsabdeckung: {float(_early_sum_v303.get('coverage_pct') or 0):.0f}%. "
-                                                    "Gewinnschutz gilt hier als bestätigt, wenn das final realisierte Ergebnis mindestens 0,25R unter dem R am ersten Warnzeitpunkt lag; "
-                                                    "ab +0,25R war Weiterlaufen im Nachhinein besser."
-                                                )
+                                with _tab_cal_v317:
+                                    st.markdown("##### 🟣 SHADOW · Modell-Kalibrierung")
+                                    _ca1_v317, _ca2_v317, _ca3_v317, _ca4_v317 = st.columns(4)
+                                    _ca1_v317.metric("Queue · 3T", int(_cal_sum_v317.get("queue_3t") or 0))
+                                    _ca2_v317.metric("Harvest · 3T", int(_cal_sum_v317.get("harvest_3t") or 0))
+                                    _ca3_v317.metric("Shadow-Prüfungen", int(_cal_sum_v317.get("actionable_shadow_checks") or 0))
+                                    _ca4_v317.metric("Gesamt-Reife", str(_cal_sum_v317.get("overall_maturity") or "Zu klein"))
+                                    if int(_cal_sum_v317.get("actionable_shadow_checks") or 0) <= 0:
+                                        st.info("Aktuell keine belastbare Shadow-Kalibrierung, die eine bewusste manuelle Prüfung erfordert.")
+                                    else:
+                                        st.warning("Es liegen Shadow-Hinweise vor. Sie sind Prüfmaterial und ändern weiterhin keine produktive Regel automatisch.")
+                                    _v3011_render_calibration_advisor(selected_watchlist_name, _event_df_v290)
 
-                                                _ep_insights_v303 = list(_early_learn_v303.get("insights") or [])
-                                                if _ep_insights_v303:
-                                                    st.markdown("**Persönliche Early-Profit-Lernhinweise**")
-                                                    for _ep_insight_v303 in _ep_insights_v303:
-                                                        st.write(f"• {_ep_insight_v303}")
-
-                                                _ep_action_v303 = _early_learn_v303.get("action_summary")
-                                                _ep_velocity_v303 = _early_learn_v303.get("velocity_summary")
-                                                _ep_exhaust_v303 = _early_learn_v303.get("exhaustion_summary")
-                                                _ep_cal_v303 = _early_learn_v303.get("risk_calibration")
-
-                                                _tab1_v303, _tab2_v303, _tab3_v303, _tab4_v303 = st.tabs([
-                                                    "Nach Empfehlung", "Profit Velocity", "Exhaustion", "Giveback-Kalibrierung"
-                                                ])
-                                                with _tab1_v303:
-                                                    if isinstance(_ep_action_v303, pd.DataFrame) and not _ep_action_v303.empty:
-                                                        st.dataframe(_ep_action_v303, hide_index=True, use_container_width=True)
-                                                    else:
-                                                        st.info("Noch keine auswertbare Gruppierung nach Empfehlung.")
-                                                with _tab2_v303:
-                                                    if isinstance(_ep_velocity_v303, pd.DataFrame) and not _ep_velocity_v303.empty:
-                                                        st.dataframe(_ep_velocity_v303, hide_index=True, use_container_width=True)
-                                                    else:
-                                                        st.info("Noch keine auswertbaren Profit-Velocity-Bänder.")
-                                                with _tab3_v303:
-                                                    if isinstance(_ep_exhaust_v303, pd.DataFrame) and not _ep_exhaust_v303.empty:
-                                                        st.dataframe(_ep_exhaust_v303, hide_index=True, use_container_width=True)
-                                                    else:
-                                                        st.info("Noch keine auswertbaren Exhaustion-Risk-Bänder.")
-                                                with _tab4_v303:
-                                                    st.caption(
-                                                        "Vergleicht den damals gespeicherten Historical Giveback Risk mit dem später real beobachteten R-Giveback. "
-                                                        "Bänder unter 5 Fällen bleiben kleine Stichproben und werden nicht zur Regeländerung verwendet."
-                                                    )
-                                                    if isinstance(_ep_cal_v303, pd.DataFrame) and not _ep_cal_v303.empty:
-                                                        st.dataframe(_ep_cal_v303, hide_index=True, use_container_width=True)
-                                                    else:
-                                                        st.info("Noch nicht genug Events mit gespeichertem Historical Giveback Risk.")
-
-                                                with st.expander("Zugeordnete Early-Profit-Fälle", expanded=False):
-                                                    _ep_cols_v303 = [
-                                                        "Erste Warnung", "Ticker", "Name", "Warn-Aktion", "Stärkste Aktion",
-                                                        "Profit Velocity", "Exhaustion Risk", "Giveback Risk",
-                                                        "Warn-R", "Final R", "ΔR nach Warnung", "Giveback R",
-                                                        "Ampel", "Bewertung", "Events im Trade", "Exit-Zeit",
-                                                    ]
-                                                    _ep_cols_v303 = [c for c in _ep_cols_v303 if c in _early_detail_v303.columns]
-                                                    st.dataframe(
-                                                        _early_detail_v303[_ep_cols_v303].head(300),
-                                                        hide_index=True,
-                                                        use_container_width=True,
-                                                        height=min(520, 42 * len(_early_detail_v303.head(300)) + 55),
-                                                    )
-                                                    _ep_csv_v303 = _early_detail_v303.drop(columns=["Entry-Zeit", "Erste Warnung", "Exit-Zeit"], errors="ignore").to_csv(index=False).encode("utf-8-sig")
-                                                    st.download_button(
-                                                        "Early-Profit-Lerndaten als CSV",
-                                                        data=_ep_csv_v303,
-                                                        file_name=f"early_profit_learning_{selected_watchlist_name}.csv",
-                                                        mime="text/csv",
-                                                        use_container_width=True,
-                                                        key=f"v303_early_profit_learning_csv_{selected_watchlist_name}",
-                                                    )
-
-                                        _manual_tags_v290 = _learning_v290.get("manual_tags")
-                                        if isinstance(_manual_tags_v290, pd.DataFrame) and not _manual_tags_v290.empty:
-                                            with st.expander("Manuelle Erkenntnisse · wiederkehrende Themen", expanded=False):
-                                                st.caption("Einfache Themenzählung aus deinen selbst eingetragenen Erkenntnis-Texten; keine automatische Interpretation oder Regeländerung.")
-                                                st.dataframe(_manual_tags_v290, hide_index=True, use_container_width=True)
-
-                                        with st.expander("Learning-Datensatz · einzelne Trades", expanded=False):
-                                            _learn_cols_v290 = [
-                                                "Exit-Zeit", "Ticker", "Name", "Outcome", "Gesamt P/L", "Gesamt R", "Kapitalrendite %", "Haltedauer Tage",
-                                                "Entry Live-Ampel", "Entry Shadow-Ampel", "Shadow vs Live", "Entry Live-Score", "Entry Guarded Score",
-                                                "Entry Radar-Bucket", "Entry Marktregime", "Entry Volatilitätsregime", "Entry RS-Dynamik", "Entry Guardrail", "Erkenntnis",
-                                            ]
-                                            _learn_cols_v290 = [c for c in _learn_cols_v290 if c in _learn_trades_v290.columns]
-                                            st.dataframe(_learn_trades_v290[_learn_cols_v290].head(500), hide_index=True, use_container_width=True, height=min(520, 42 * len(_learn_trades_v290.head(500)) + 55))
-                                            _learn_csv_v290 = _learn_trades_v290.drop(columns=["Entry-Zeit", "Exit-Zeit"], errors="ignore").to_csv(index=False).encode("utf-8-sig")
-                                            st.download_button(
-                                                "Learning-Datensatz als CSV",
-                                                data=_learn_csv_v290,
-                                                file_name=f"trade_learning_{selected_watchlist_name}.csv",
-                                                mime="text/csv",
-                                                use_container_width=True,
-                                                key=f"v290_learning_csv_{selected_watchlist_name}",
-                                            )
-
-                                jf1, jf2 = st.columns(2)
-                                with jf1:
-                                    journal_types_v270 = ["Alle"] + sorted(journal_df_v270["Typ"].dropna().astype(str).unique().tolist())
-                                    journal_type_filter_v270 = st.selectbox("Journal-Typ", journal_types_v270, key="v270_journal_type_filter")
-                                with jf2:
-                                    journal_tickers_v270 = ["Alle"] + sorted(journal_df_v270["Ticker"].dropna().astype(str).unique().tolist())
-                                    journal_ticker_filter_v270 = st.selectbox("Ticker", journal_tickers_v270, key="v270_journal_ticker_filter")
-                                journal_view_v270 = journal_df_v270.copy()
-                                if journal_type_filter_v270 != "Alle":
-                                    journal_view_v270 = journal_view_v270[journal_view_v270["Typ"].astype(str) == journal_type_filter_v270]
-                                if journal_ticker_filter_v270 != "Alle":
-                                    journal_view_v270 = journal_view_v270[journal_view_v270["Ticker"].astype(str) == journal_ticker_filter_v270]
-                                journal_display_cols_v270 = [
-                                    "Datum", "Ticker", "Name", "Typ", "Kurs", "Stück", "Verbleibend",
-                                    "Realisiert P/L", "Realisiert %", "Realisiert R", "Gesamt P/L", "Gesamt R",
-                                    "Alter Stop", "Neuer Stop", "Notiz", "Erkenntnis", "Details",
-                                    "Broker Quelle", "Broker Result", "Broker Result-Währung",
-                                ]
-                                journal_display_cols_v270 = [c for c in journal_display_cols_v270 if c in journal_view_v270.columns]
-                                st.dataframe(
-                                    journal_view_v270[journal_display_cols_v270].head(500),
-                                    hide_index=True,
-                                    use_container_width=True,
-                                    height=min(600, 42 * len(journal_view_v270.head(500)) + 55),
-                                )
-
-                                # v28.7a: reversible full-close workflow. A close row is
-                                # neutralized for P/L statistics and the position is restored.
-                                _closed_for_undo_v287a = journal_df_v270[journal_df_v270["Typ"].astype(str) == "Position geschlossen"].copy()
-                                if "Broker Import ID" in _closed_for_undo_v287a.columns:
-                                    _broker_close_mask_v3013 = _closed_for_undo_v287a["Broker Import ID"].fillna("").astype(str).str.strip() != ""
-                                    _broker_closed_count_v3013 = int(_broker_close_mask_v3013.sum())
-                                    _closed_for_undo_v287a = _closed_for_undo_v287a[~_broker_close_mask_v3013].copy()
-                                    if _broker_closed_count_v3013:
-                                        st.caption(
-                                            f"{_broker_closed_count_v3013} Broker-importierte Schließung(en) werden nicht in 'Rückgängig' angeboten. "
-                                            "Korrekturen dafür bitte über einen korrigierten Depot-Export und den Modus 'neu aufbauen' einspielen."
-                                        )
-                                if not _closed_for_undo_v287a.empty:
-                                    with st.expander("↩️ Versehentliche Schließung rückgängig machen", expanded=False):
-                                        st.caption(
-                                            "Stellt die Position wieder als offen her und neutralisiert die versehentliche Schließung im Journal. "
-                                            "Es wird kein künstlicher Gegentrade erzeugt."
-                                        )
-                                        _undo_options_v287a = {}
-                                        for _, _undo_row_v287a in _closed_for_undo_v287a.head(100).iterrows():
-                                            _undo_id_v287a = str(_undo_row_v287a.get("ID") or "").strip()
-                                            if not _undo_id_v287a:
-                                                continue
-                                            _undo_ticker_v287a = str(_undo_row_v287a.get("Ticker") or "").strip().upper()
-                                            _undo_name_v287a = str(_undo_row_v287a.get("Name") or _undo_ticker_v287a).strip()
-                                            _undo_date_v287a = str(_undo_row_v287a.get("Datum") or "-")
-                                            _undo_px_v287a = _v230_safe_float(_undo_row_v287a.get("Kurs"), default=None)
-                                            _undo_px_text_v287a = "n/a" if _undo_px_v287a is None else f"{_undo_px_v287a:.4f}"
-                                            _undo_label_v287a = f"{_undo_date_v287a} · {_undo_ticker_v287a} · {_undo_name_v287a} · Exit {_undo_px_text_v287a} · {_undo_id_v287a[-6:]}"
-                                            _undo_options_v287a[_undo_label_v287a] = _undo_id_v287a
-
-                                        if _undo_options_v287a:
-                                            _undo_label_selected_v287a = st.selectbox(
-                                                "Geschlossene Position auswählen",
-                                                options=list(_undo_options_v287a.keys()),
-                                                key=f"v287a_undo_close_select_{selected_watchlist_name}",
-                                            )
-                                            _undo_id_selected_v287a = _undo_options_v287a[_undo_label_selected_v287a]
-                                            _undo_match_v287a = _closed_for_undo_v287a[
-                                                _closed_for_undo_v287a["ID"].astype(str) == _undo_id_selected_v287a
-                                            ]
-                                            _undo_entry_v287a = _undo_match_v287a.iloc[0].to_dict() if not _undo_match_v287a.empty else {}
-                                            _undo_ticker_selected_v287a = str(_undo_entry_v287a.get("Ticker") or "").strip().upper()
-                                            _undo_shares_selected_v287a = int(_v230_safe_float(_undo_entry_v287a.get("Stück"), default=0) or 0)
-                                            _undo_entry_price_v287a = _v230_safe_float(_undo_entry_v287a.get("Entry"), default=None)
-                                            _undo_wrong_exit_v287a = _v230_safe_float(_undo_entry_v287a.get("Kurs"), default=None)
-                                            _undo_realized_v287a = _v230_safe_float(_undo_entry_v287a.get("Realisiert P/L"), default=None)
-                                            _uj1_v287a, _uj2_v287a, _uj3_v287a, _uj4_v287a = st.columns(4)
-                                            with _uj1_v287a:
-                                                st.metric("Ticker", _undo_ticker_selected_v287a or "-")
-                                            with _uj2_v287a:
-                                                st.metric("Wieder offene Stück", _undo_shares_selected_v287a)
-                                            with _uj3_v287a:
-                                                st.metric("Entry", "n/a" if _undo_entry_price_v287a is None else f"{_undo_entry_price_v287a:.4f}")
-                                            with _uj4_v287a:
-                                                st.metric("Fehlerhafter Exit", "n/a" if _undo_wrong_exit_v287a is None else f"{_undo_wrong_exit_v287a:.4f}")
-                                            if _undo_realized_v287a is not None:
-                                                st.caption(f"Dieser Journal-Abschluss enthält aktuell {_undo_realized_v287a:+.2f} realisierte P/L und wird beim Rückgängig-Machen aus der Statistik neutralisiert.")
-
-                                            _undo_snapshot_v287a = _undo_entry_v287a.get("Position vorher")
-                                            _undo_has_snapshot_v287a = isinstance(_undo_snapshot_v287a, dict) and bool(_undo_snapshot_v287a)
-                                            if _undo_has_snapshot_v287a:
-                                                st.info("Exakter Positions-Snapshot vorhanden: Entry, Stop, Ziel, Stückzahl, Teilverkäufe, Stop-Historie und Notizen können verlustfrei wiederhergestellt werden.")
-                                            else:
-                                                st.warning(
-                                                    "Legacy-Schließung ohne Positions-Snapshot. Die App rekonstruiert Entry, Stop, Stückzahl und realisierte Teilverkäufe aus Journal/Event-Historie; "
-                                                    "Ziel und weitere Details bitte nach der Wiederherstellung kurz kontrollieren."
-                                                )
-
-                                            _positions_for_undo_v287a = _v244_get_positions(selected_watchlist_name)
-                                            _undo_already_open_v287a = _undo_ticker_selected_v287a in _positions_for_undo_v287a
-                                            if _undo_already_open_v287a:
-                                                st.info(f"{_undo_ticker_selected_v287a} ist bereits als offene Position vorhanden; dieser Abschluss wird deshalb nicht automatisch zurückgespielt.")
-
-                                            _undo_confirm_v287a = st.checkbox(
-                                                f"Ich möchte die Schließung von {_undo_ticker_selected_v287a} wirklich rückgängig machen.",
-                                                key=f"v287a_undo_confirm_{selected_watchlist_name}_{_undo_id_selected_v287a}",
-                                            )
-                                            if st.button(
-                                                "Schließung rückgängig machen",
-                                                type="primary",
-                                                disabled=not _undo_confirm_v287a or _undo_already_open_v287a,
-                                                use_container_width=True,
-                                                key=f"v287a_undo_close_button_{selected_watchlist_name}_{_undo_id_selected_v287a}",
-                                            ):
-                                                _restore_fallback_v287a = {
-                                                    "ticker": _undo_ticker_selected_v287a,
-                                                    "name": str(_undo_entry_v287a.get("Name") or _undo_ticker_selected_v287a),
-                                                }
-                                                try:
-                                                    _event_store_for_undo_v287a = _v2416_load_event_store()
-                                                    _event_rows_for_undo_v287a = list((_event_store_for_undo_v287a or {}).get("events") or [])
-                                                    for _event_v287a in reversed(_event_rows_for_undo_v287a):
-                                                        if str((_event_v287a or {}).get("Ticker") or "").strip().upper() != _undo_ticker_selected_v287a:
-                                                            continue
-                                                        if str((_event_v287a or {}).get("Watchlist") or "") != str(selected_watchlist_name):
-                                                            continue
-                                                        if str((_event_v287a or {}).get("Ereignis") or "") not in {"Position angelegt", "Position gespeichert"}:
-                                                            continue
-                                                        _restore_fallback_v287a.update({
-                                                            "entry": _v230_safe_float((_event_v287a or {}).get("Entry"), default=None),
-                                                            "stop": _v230_safe_float((_event_v287a or {}).get("Stop"), default=None),
-                                                            "initial_stop": _v230_safe_float((_event_v287a or {}).get("Stop"), default=None),
-                                                            "target": _v230_safe_float((_event_v287a or {}).get("Ziel"), default=0.0) or 0.0,
-                                                            "initial_shares": int(_v230_safe_float((_event_v287a or {}).get("Stück"), default=0) or 0),
-                                                            "created_at": str((_event_v287a or {}).get("Zeit") or ""),
-                                                        })
-                                                        break
-                                                except Exception:
-                                                    pass
-                                                try:
-                                                    _live_restore_match_v287a = live_df[live_df["Ticker"].astype(str).str.upper() == _undo_ticker_selected_v287a]
-                                                    if not _live_restore_match_v287a.empty:
-                                                        _restore_live_px_v287a = _v244_row_price(_live_restore_match_v287a.iloc[0].to_dict())
-                                                        if _restore_live_px_v287a is not None:
-                                                            _restore_fallback_v287a["last_price"] = _restore_live_px_v287a
-                                                except Exception:
-                                                    pass
-
-                                                _undo_result_v287a = _v287a_undo_close_position(
-                                                    _positions_for_undo_v287a,
-                                                    watchlist_name=selected_watchlist_name,
-                                                    journal_id=_undo_id_selected_v287a,
-                                                    fallback_position=_restore_fallback_v287a,
-                                                )
-                                                if _undo_result_v287a.get("ok"):
-                                                    _positions_for_undo_v287a = _undo_result_v287a.get("positions", _positions_for_undo_v287a)
-                                                    _v244_save_positions(selected_watchlist_name, _positions_for_undo_v287a)
-                                                    st.session_state["v287a_undo_flash"] = (
-                                                        f"{_undo_ticker_selected_v287a} ist wieder offen. "
-                                                        + ("Exakter Snapshot wiederhergestellt." if _undo_result_v287a.get("exact_snapshot") else "Legacy-Daten rekonstruiert – Position bitte kurz kontrollieren.")
-                                                    )
-                                                    st.rerun()
-                                                else:
-                                                    st.error(_undo_result_v287a.get("error") or "Schließung konnte nicht rückgängig gemacht werden.")
-
-                                csv_v270 = journal_view_v270.drop(columns=["ID"], errors="ignore").to_csv(index=False).encode("utf-8-sig")
-                                jc1, jc2 = st.columns(2)
-                                with jc1:
-                                    st.download_button(
-                                        "Trade-Journal als CSV",
-                                        data=csv_v270,
-                                        file_name=f"trade_journal_{selected_watchlist_name}.csv",
-                                        mime="text/csv",
+                                with _tab_raw_v317:
+                                    jf1, jf2 = st.columns(2)
+                                    with jf1:
+                                        journal_types_v270 = ["Alle"] + sorted(journal_df_v270["Typ"].dropna().astype(str).unique().tolist())
+                                        journal_type_filter_v270 = st.selectbox("Journal-Typ", journal_types_v270, key="v270_journal_type_filter")
+                                    with jf2:
+                                        journal_tickers_v270 = ["Alle"] + sorted(journal_df_v270["Ticker"].dropna().astype(str).unique().tolist())
+                                        journal_ticker_filter_v270 = st.selectbox("Ticker", journal_tickers_v270, key="v270_journal_ticker_filter")
+                                    journal_view_v270 = journal_df_v270.copy()
+                                    if journal_type_filter_v270 != "Alle":
+                                        journal_view_v270 = journal_view_v270[journal_view_v270["Typ"].astype(str) == journal_type_filter_v270]
+                                    if journal_ticker_filter_v270 != "Alle":
+                                        journal_view_v270 = journal_view_v270[journal_view_v270["Ticker"].astype(str) == journal_ticker_filter_v270]
+                                    journal_display_cols_v270 = [
+                                        "Datum", "Ticker", "Name", "Typ", "Kurs", "Stück", "Verbleibend",
+                                        "Realisiert P/L", "Realisiert %", "Realisiert R", "Gesamt P/L", "Gesamt R",
+                                        "Alter Stop", "Neuer Stop", "Notiz", "Erkenntnis", "Details",
+                                        "Broker Quelle", "Broker Result", "Broker Result-Währung",
+                                    ]
+                                    journal_display_cols_v270 = [c for c in journal_display_cols_v270 if c in journal_view_v270.columns]
+                                    st.dataframe(
+                                        journal_view_v270[journal_display_cols_v270].head(500),
+                                        hide_index=True,
                                         use_container_width=True,
+                                        height=min(600, 42 * len(journal_view_v270.head(500)) + 55),
                                     )
-                                with jc2:
-                                    confirm_reset_v270 = st.checkbox("Löschen bestätigen", key="v270_confirm_reset")
-                                    if st.button("Trade-Journal dieser Watchlist löschen", disabled=not confirm_reset_v270, use_container_width=True, key="v270_reset_journal"):
-                                        _v270_reset_trade_journal(selected_watchlist_name)
-                                        st.rerun()
+
+                                    # v28.7a: reversible full-close workflow. A close row is
+                                    # neutralized for P/L statistics and the position is restored.
+                                    _closed_for_undo_v287a = journal_df_v270[journal_df_v270["Typ"].astype(str) == "Position geschlossen"].copy()
+                                    if "Broker Import ID" in _closed_for_undo_v287a.columns:
+                                        _broker_close_mask_v3013 = _closed_for_undo_v287a["Broker Import ID"].fillna("").astype(str).str.strip() != ""
+                                        _broker_closed_count_v3013 = int(_broker_close_mask_v3013.sum())
+                                        _closed_for_undo_v287a = _closed_for_undo_v287a[~_broker_close_mask_v3013].copy()
+                                        if _broker_closed_count_v3013:
+                                            st.caption(
+                                                f"{_broker_closed_count_v3013} Broker-importierte Schließung(en) werden nicht in 'Rückgängig' angeboten. "
+                                                "Korrekturen dafür bitte über einen korrigierten Depot-Export und den Modus 'neu aufbauen' einspielen."
+                                            )
+                                    if not _closed_for_undo_v287a.empty:
+                                        with st.expander("↩️ Versehentliche Schließung rückgängig machen", expanded=False):
+                                            st.caption(
+                                                "Stellt die Position wieder als offen her und neutralisiert die versehentliche Schließung im Journal. "
+                                                "Es wird kein künstlicher Gegentrade erzeugt."
+                                            )
+                                            _undo_options_v287a = {}
+                                            for _, _undo_row_v287a in _closed_for_undo_v287a.head(100).iterrows():
+                                                _undo_id_v287a = str(_undo_row_v287a.get("ID") or "").strip()
+                                                if not _undo_id_v287a:
+                                                    continue
+                                                _undo_ticker_v287a = str(_undo_row_v287a.get("Ticker") or "").strip().upper()
+                                                _undo_name_v287a = str(_undo_row_v287a.get("Name") or _undo_ticker_v287a).strip()
+                                                _undo_date_v287a = str(_undo_row_v287a.get("Datum") or "-")
+                                                _undo_px_v287a = _v230_safe_float(_undo_row_v287a.get("Kurs"), default=None)
+                                                _undo_px_text_v287a = "n/a" if _undo_px_v287a is None else f"{_undo_px_v287a:.4f}"
+                                                _undo_label_v287a = f"{_undo_date_v287a} · {_undo_ticker_v287a} · {_undo_name_v287a} · Exit {_undo_px_text_v287a} · {_undo_id_v287a[-6:]}"
+                                                _undo_options_v287a[_undo_label_v287a] = _undo_id_v287a
+
+                                            if _undo_options_v287a:
+                                                _undo_label_selected_v287a = st.selectbox(
+                                                    "Geschlossene Position auswählen",
+                                                    options=list(_undo_options_v287a.keys()),
+                                                    key=f"v287a_undo_close_select_{selected_watchlist_name}",
+                                                )
+                                                _undo_id_selected_v287a = _undo_options_v287a[_undo_label_selected_v287a]
+                                                _undo_match_v287a = _closed_for_undo_v287a[
+                                                    _closed_for_undo_v287a["ID"].astype(str) == _undo_id_selected_v287a
+                                                ]
+                                                _undo_entry_v287a = _undo_match_v287a.iloc[0].to_dict() if not _undo_match_v287a.empty else {}
+                                                _undo_ticker_selected_v287a = str(_undo_entry_v287a.get("Ticker") or "").strip().upper()
+                                                _undo_shares_selected_v287a = int(_v230_safe_float(_undo_entry_v287a.get("Stück"), default=0) or 0)
+                                                _undo_entry_price_v287a = _v230_safe_float(_undo_entry_v287a.get("Entry"), default=None)
+                                                _undo_wrong_exit_v287a = _v230_safe_float(_undo_entry_v287a.get("Kurs"), default=None)
+                                                _undo_realized_v287a = _v230_safe_float(_undo_entry_v287a.get("Realisiert P/L"), default=None)
+                                                _uj1_v287a, _uj2_v287a, _uj3_v287a, _uj4_v287a = st.columns(4)
+                                                with _uj1_v287a:
+                                                    st.metric("Ticker", _undo_ticker_selected_v287a or "-")
+                                                with _uj2_v287a:
+                                                    st.metric("Wieder offene Stück", _undo_shares_selected_v287a)
+                                                with _uj3_v287a:
+                                                    st.metric("Entry", "n/a" if _undo_entry_price_v287a is None else f"{_undo_entry_price_v287a:.4f}")
+                                                with _uj4_v287a:
+                                                    st.metric("Fehlerhafter Exit", "n/a" if _undo_wrong_exit_v287a is None else f"{_undo_wrong_exit_v287a:.4f}")
+                                                if _undo_realized_v287a is not None:
+                                                    st.caption(f"Dieser Journal-Abschluss enthält aktuell {_undo_realized_v287a:+.2f} realisierte P/L und wird beim Rückgängig-Machen aus der Statistik neutralisiert.")
+
+                                                _undo_snapshot_v287a = _undo_entry_v287a.get("Position vorher")
+                                                _undo_has_snapshot_v287a = isinstance(_undo_snapshot_v287a, dict) and bool(_undo_snapshot_v287a)
+                                                if _undo_has_snapshot_v287a:
+                                                    st.info("Exakter Positions-Snapshot vorhanden: Entry, Stop, Ziel, Stückzahl, Teilverkäufe, Stop-Historie und Notizen können verlustfrei wiederhergestellt werden.")
+                                                else:
+                                                    st.warning(
+                                                        "Legacy-Schließung ohne Positions-Snapshot. Die App rekonstruiert Entry, Stop, Stückzahl und realisierte Teilverkäufe aus Journal/Event-Historie; "
+                                                        "Ziel und weitere Details bitte nach der Wiederherstellung kurz kontrollieren."
+                                                    )
+
+                                                _positions_for_undo_v287a = _v244_get_positions(selected_watchlist_name)
+                                                _undo_already_open_v287a = _undo_ticker_selected_v287a in _positions_for_undo_v287a
+                                                if _undo_already_open_v287a:
+                                                    st.info(f"{_undo_ticker_selected_v287a} ist bereits als offene Position vorhanden; dieser Abschluss wird deshalb nicht automatisch zurückgespielt.")
+
+                                                _undo_confirm_v287a = st.checkbox(
+                                                    f"Ich möchte die Schließung von {_undo_ticker_selected_v287a} wirklich rückgängig machen.",
+                                                    key=f"v287a_undo_confirm_{selected_watchlist_name}_{_undo_id_selected_v287a}",
+                                                )
+                                                if st.button(
+                                                    "Schließung rückgängig machen",
+                                                    type="primary",
+                                                    disabled=not _undo_confirm_v287a or _undo_already_open_v287a,
+                                                    use_container_width=True,
+                                                    key=f"v287a_undo_close_button_{selected_watchlist_name}_{_undo_id_selected_v287a}",
+                                                ):
+                                                    _restore_fallback_v287a = {
+                                                        "ticker": _undo_ticker_selected_v287a,
+                                                        "name": str(_undo_entry_v287a.get("Name") or _undo_ticker_selected_v287a),
+                                                    }
+                                                    try:
+                                                        _event_store_for_undo_v287a = _v2416_load_event_store()
+                                                        _event_rows_for_undo_v287a = list((_event_store_for_undo_v287a or {}).get("events") or [])
+                                                        for _event_v287a in reversed(_event_rows_for_undo_v287a):
+                                                            if str((_event_v287a or {}).get("Ticker") or "").strip().upper() != _undo_ticker_selected_v287a:
+                                                                continue
+                                                            if str((_event_v287a or {}).get("Watchlist") or "") != str(selected_watchlist_name):
+                                                                continue
+                                                            if str((_event_v287a or {}).get("Ereignis") or "") not in {"Position angelegt", "Position gespeichert"}:
+                                                                continue
+                                                            _restore_fallback_v287a.update({
+                                                                "entry": _v230_safe_float((_event_v287a or {}).get("Entry"), default=None),
+                                                                "stop": _v230_safe_float((_event_v287a or {}).get("Stop"), default=None),
+                                                                "initial_stop": _v230_safe_float((_event_v287a or {}).get("Stop"), default=None),
+                                                                "target": _v230_safe_float((_event_v287a or {}).get("Ziel"), default=0.0) or 0.0,
+                                                                "initial_shares": int(_v230_safe_float((_event_v287a or {}).get("Stück"), default=0) or 0),
+                                                                "created_at": str((_event_v287a or {}).get("Zeit") or ""),
+                                                            })
+                                                            break
+                                                    except Exception:
+                                                        pass
+                                                    try:
+                                                        _live_restore_match_v287a = live_df[live_df["Ticker"].astype(str).str.upper() == _undo_ticker_selected_v287a]
+                                                        if not _live_restore_match_v287a.empty:
+                                                            _restore_live_px_v287a = _v244_row_price(_live_restore_match_v287a.iloc[0].to_dict())
+                                                            if _restore_live_px_v287a is not None:
+                                                                _restore_fallback_v287a["last_price"] = _restore_live_px_v287a
+                                                    except Exception:
+                                                        pass
+
+                                                    _undo_result_v287a = _v287a_undo_close_position(
+                                                        _positions_for_undo_v287a,
+                                                        watchlist_name=selected_watchlist_name,
+                                                        journal_id=_undo_id_selected_v287a,
+                                                        fallback_position=_restore_fallback_v287a,
+                                                    )
+                                                    if _undo_result_v287a.get("ok"):
+                                                        _positions_for_undo_v287a = _undo_result_v287a.get("positions", _positions_for_undo_v287a)
+                                                        _v244_save_positions(selected_watchlist_name, _positions_for_undo_v287a)
+                                                        st.session_state["v287a_undo_flash"] = (
+                                                            f"{_undo_ticker_selected_v287a} ist wieder offen. "
+                                                            + ("Exakter Snapshot wiederhergestellt." if _undo_result_v287a.get("exact_snapshot") else "Legacy-Daten rekonstruiert – Position bitte kurz kontrollieren.")
+                                                        )
+                                                        st.rerun()
+                                                    else:
+                                                        st.error(_undo_result_v287a.get("error") or "Schließung konnte nicht rückgängig gemacht werden.")
+
+                                    csv_v270 = journal_view_v270.drop(columns=["ID"], errors="ignore").to_csv(index=False).encode("utf-8-sig")
+                                    jc1, jc2 = st.columns(2)
+                                    with jc1:
+                                        st.download_button(
+                                            "Trade-Journal als CSV",
+                                            data=csv_v270,
+                                            file_name=f"trade_journal_{selected_watchlist_name}.csv",
+                                            mime="text/csv",
+                                            use_container_width=True,
+                                        )
+                                    with jc2:
+                                        confirm_reset_v270 = st.checkbox("Löschen bestätigen", key="v270_confirm_reset")
+                                        if st.button("Trade-Journal dieser Watchlist löschen", disabled=not confirm_reset_v270, use_container_width=True, key="v270_reset_journal"):
+                                            _v270_reset_trade_journal(selected_watchlist_name)
+                                            st.rerun()
 
 
                         elif cockpit_area == "🧾 Historie & Details":

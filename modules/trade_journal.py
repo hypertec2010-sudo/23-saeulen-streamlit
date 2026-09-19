@@ -266,6 +266,7 @@ def _v270_record_journal_entry(
         "Alter Stop": _num(old_stop, None),
         "Neuer Stop": _num(new_stop, None),
         "Realisiert P/L": _num(realized_pnl, None),
+        "Realisiert P/L-Währung": str(position.get("price_currency") or "").strip().upper(),
         "Realisiert %": _num(realized_pct, None),
         "Realisiert R": _num(realized_r, None),
         "Gesamt P/L": _num(total_realized_pnl, None),
@@ -792,9 +793,36 @@ def _v270_journal_summary(df: pd.DataFrame) -> dict:
             "realized_pnl": 0.0,
             "win_rate": None,
             "avg_r": None,
+            "pnl_by_currency": {},
+            "pnl_known_rows": 0,
+            "pnl_total_rows": 0,
+            "pnl_coverage_pct": 0.0,
         }
     work = df.copy()
     exit_rows = work[work["Typ"].isin(["Teilverkauf", "Position geschlossen"])].copy()
+    # Legacy/native P/L remains available for sign/R analytics, but must never be
+    # presented as one monetary total across currencies. Build a currency-aware
+    # monetary view instead. Prefer the broker's Result when it belongs wholly to
+    # the screener execution; for mixed Pie+screener sells use the screener-only
+    # native calculation and its price currency.
+    pnl_by_currency: dict[str, float] = {}
+    known_rows = 0
+    for _, row in exit_rows.iterrows():
+        details = str(row.get("Details") or "")
+        broker_val = pd.to_numeric(pd.Series([row.get("Broker Result")]), errors="coerce").iloc[0]
+        broker_ccy = str(row.get("Broker Result-Währung") or "").strip().upper()
+        native_val = pd.to_numeric(pd.Series([row.get("Realisiert P/L")]), errors="coerce").iloc[0]
+        native_ccy = str(row.get("Realisiert P/L-Währung") or row.get("Broker Preis-Währung") or "").strip().upper()
+        amount = None
+        ccy = ""
+        if pd.notna(broker_val) and broker_ccy and "GEMISCHT" not in details.upper():
+            amount, ccy = float(broker_val), broker_ccy
+        elif pd.notna(native_val) and native_ccy:
+            amount, ccy = float(native_val), native_ccy
+        if amount is not None and ccy:
+            pnl_by_currency[ccy] = float(pnl_by_currency.get(ccy, 0.0) + amount)
+            known_rows += 1
+
     realized_pnl = pd.to_numeric(exit_rows.get("Realisiert P/L"), errors="coerce").fillna(0).sum() if not exit_rows.empty else 0.0
     closed = work[work["Typ"] == "Position geschlossen"].copy()
     total_pnl = pd.to_numeric(closed.get("Gesamt P/L"), errors="coerce") if not closed.empty else pd.Series(dtype=float)
@@ -802,12 +830,17 @@ def _v270_journal_summary(df: pd.DataFrame) -> dict:
     valid_pnl = total_pnl.dropna()
     win_rate = float((valid_pnl > 0).mean() * 100.0) if len(valid_pnl) else None
     avg_r = float(total_r.dropna().mean()) if len(total_r.dropna()) else None
+    total_rows = int(len(exit_rows))
     return {
         "closed_trades": int(len(closed)),
         "partial_exits": int((work["Typ"] == "Teilverkauf").sum()),
         "realized_pnl": float(realized_pnl),
         "win_rate": win_rate,
         "avg_r": avg_r,
+        "pnl_by_currency": pnl_by_currency,
+        "pnl_known_rows": int(known_rows),
+        "pnl_total_rows": total_rows,
+        "pnl_coverage_pct": float(known_rows / total_rows * 100.0) if total_rows else 0.0,
     }
 
 

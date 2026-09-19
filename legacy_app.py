@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.17a"
+APP_VERSION = "v30.18a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -23745,10 +23745,19 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _ov2_v317.metric("Trefferquote", "n/a" if _ov_wr_v317 is None else f"{float(_ov_wr_v317):.1f}%")
                                     _ov_r_v317 = _learn_summary_v290.get("avg_r")
                                     _ov3_v317.metric("Ø R", "n/a" if _ov_r_v317 is None else f"{float(_ov_r_v317):+.2f}R")
-                                    _ov_pf_v317 = _learn_summary_v290.get("profit_factor")
-                                    _ov_pf_txt_v317 = "n/a" if _ov_pf_v317 is None else ("∞" if math.isinf(float(_ov_pf_v317)) else f"{float(_ov_pf_v317):.2f}")
-                                    _ov4_v317.metric("Profit Factor", _ov_pf_txt_v317)
-                                    _ov5_v317.metric("Gesamt P/L", f"{float(_learn_summary_v290.get('total_pnl') or summary_v270.get('realized_pnl') or 0):+,.2f}")
+                                    _pnl_ccy_v318 = dict(summary_v270.get("pnl_by_currency") or {})
+                                    _pnl_cov_v318 = float(summary_v270.get("pnl_coverage_pct") or 0.0)
+                                    _pnl_known_v318 = int(summary_v270.get("pnl_known_rows") or 0)
+                                    _pnl_total_v318 = int(summary_v270.get("pnl_total_rows") or 0)
+                                    _ov4_v317.metric("P/L-Abdeckung", f"{_pnl_cov_v318:.0f}%")
+                                    if len(_pnl_ccy_v318) == 1:
+                                        _ccy_v318, _amt_v318 = next(iter(_pnl_ccy_v318.items()))
+                                        _pnl_head_v318 = f"{float(_amt_v318):+,.2f} {_ccy_v318}"
+                                    elif len(_pnl_ccy_v318) > 1:
+                                        _pnl_head_v318 = "mehrwährig"
+                                    else:
+                                        _pnl_head_v318 = "n/a"
+                                    _ov5_v317.metric("Realisierter P/L", _pnl_head_v318)
                                     _ctx_v317 = float(_learn_summary_v290.get("context_coverage") or 0)
                                     _ov6_v317.metric("Entry-Kontext", f"{_ctx_v317:.0f}%")
 
@@ -23759,6 +23768,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         ("n/a" if _hold_v317 is None else f"{float(_hold_v317):.1f} Tage") +
                                         f" · Teilverkäufe im Journal: {int(summary_v270.get('partial_exits') or 0)}"
                                     )
+                                    if _pnl_ccy_v318:
+                                        _pnl_parts_v318 = " · ".join(f"{float(v):+,.2f} {k}" for k, v in sorted(_pnl_ccy_v318.items()))
+                                        st.caption(f"Währungsgetrennter realisierter P/L: {_pnl_parts_v318} · Geld-P/L zugeordnet: {_pnl_known_v318}/{_pnl_total_v318} Exit-Buchungen.")
+                                    elif _pnl_total_v318:
+                                        st.caption(f"Geld-P/L noch ohne belastbare Währungszuordnung: 0/{_pnl_total_v318} Exit-Buchungen. R und Trefferquote bleiben separat auswertbar.")
 
                                     st.markdown("**Die wichtigsten Aussagen**")
                                     _headline_v317 = []
@@ -23788,7 +23802,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _rr1_v317, _rr2_v317, _rr3_v317, _rr4_v317, _rr5_v317 = st.columns(5)
                                     _rr1_v317.metric("Geschlossen", int(summary_v270.get("closed_trades") or 0))
                                     _rr2_v317.metric("Teilverkäufe", int(summary_v270.get("partial_exits") or 0))
-                                    _rr3_v317.metric("Realisiert P/L", f"{float(summary_v270.get('realized_pnl') or 0):+,.2f}")
+                                    _rr3_v317.metric("Realisierter P/L", _pnl_head_v318)
                                     _rr_wr_v317 = summary_v270.get("win_rate")
                                     _rr4_v317.metric("Trefferquote", "n/a" if _rr_wr_v317 is None else f"{float(_rr_wr_v317):.1f}%")
                                     _rr_r_v317 = summary_v270.get("avg_r")
@@ -23801,8 +23815,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     if isinstance(_manual_tags_v290, pd.DataFrame) and not _manual_tags_v290.empty:
                                         with st.expander("Manuelle Erkenntnisse · wiederkehrende Themen", expanded=False):
                                             st.dataframe(_manual_tags_v290, hide_index=True, use_container_width=True)
+                                    if _pnl_ccy_v318:
+                                        st.caption("P/L nach Währung: " + " · ".join(f"{float(v):+,.2f} {k}" for k, v in sorted(_pnl_ccy_v318.items())) + f" · Abdeckung {_pnl_known_v318}/{_pnl_total_v318} Exit-Buchungen")
+                                    elif _pnl_total_v318:
+                                        st.info("Für die vorhandenen Legacy-Exits fehlt noch eine eindeutige P/L-Währung. Deshalb wird bewusst kein gemeinsamer Geldbetrag angezeigt.")
                                     with st.expander("ℹ️ Was wird hier gezählt?", expanded=False):
-                                        st.write("Nur Journal-Ergebnisse tatsächlich geführter Screener-Positionen. Pie-/externe Brokerbestände sollen durch den Depotimport nicht als Screener-Performance einfließen.")
+                                        st.write("Nur Journal-Ergebnisse tatsächlich geführter Screener-Positionen. Geld-P/L wird nicht mehr über verschiedene Währungen addiert. Bei Broker-Imports wird nach Möglichkeit das Broker-Result mit seiner Originalwährung verwendet; bei gemischten Screener-/Pie-Verkäufen nur der zurechenbare Screener-Anteil in seiner Preiswährung. Pie-/externe Bestände sollen nicht als Screener-Performance einfließen.")
 
                                 with _tab_entry_v317:
                                     st.markdown("##### 🎯 Entry-Qualität")

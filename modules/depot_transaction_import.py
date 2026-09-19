@@ -619,6 +619,7 @@ def _journal_record(*, watchlist_name, ticker, name, typ, date_text, time_text, 
         "Broker Import ID": import_id,
         "Broker Quelle": "Depot-Excel",
         "Broker Preis-Währung": currency,
+        "Realisiert P/L-Währung": currency,
         "Broker Result": broker_result,
         "Broker Result-Währung": broker_result_currency,
     }

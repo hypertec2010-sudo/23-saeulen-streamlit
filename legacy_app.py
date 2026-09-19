@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.18a"
+APP_VERSION = "v30.18b"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -16097,6 +16097,8 @@ _v270_adjust_stop = _trade_journal_module._v270_adjust_stop
 _v270_save_trade_note = _trade_journal_module._v270_save_trade_note
 _v270_journal_entries_dataframe = _trade_journal_module._v270_journal_entries_dataframe
 _v270_journal_summary = _trade_journal_module._v270_journal_summary
+_v3018_currency_backfill_preview = _trade_journal_module._v3018_currency_backfill_preview
+_v3018_apply_currency_backfill = _trade_journal_module._v3018_apply_currency_backfill
 _v270_reset_trade_journal = _trade_journal_module._v270_reset_trade_journal
 
 # v29.0: Trading Journal & Learning Engine (observational only)
@@ -16245,6 +16247,7 @@ def _v3013_render_depot_import(watchlist_name, positions):
             return positions
 
         norm_df = normalized_pkg.get("data")
+        _norm_df_full_v3018b = norm_df.copy() if isinstance(norm_df, pd.DataFrame) else pd.DataFrame()
 
         st.markdown("**Optionaler Mindest-Transaktionswert**")
         _minvol_enabled_v3014a = st.checkbox(
@@ -16387,6 +16390,60 @@ def _v3013_render_depot_import(watchlist_name, positions):
         ] if c in norm_df.columns]
         st.markdown("**Import-Vorschau**")
         st.dataframe(norm_df[preview_cols].head(1000), hide_index=True, use_container_width=True, height=min(500, 34*min(len(norm_df),13)+70))
+
+        with st.expander("🧾 Alte Journal-Währungsdaten nachtragen · sicherer Backfill", expanded=False):
+            st.info(
+                "Dieser Backfill verändert keine Positionen, Stückzahlen, Entry-/Exit-Kurse oder vorhandenen P/L-Beträge. "
+                "Er ergänzt ausschließlich fehlende Broker-ID-, Preiswährungs- und Broker-Result-Metadaten im bestehenden Trade-Journal. "
+                "Automatisch übernommen werden nur eindeutige Zuordnungen; Mehrdeutigkeiten und doppelte Journal-Schließungen bleiben unangetastet."
+            )
+            _bf_pkg_v3018b = _v3018_currency_backfill_preview(watchlist_name, _norm_df_full_v3018b)
+            _bf_sum_v3018b = dict(_bf_pkg_v3018b.get("summary") or {})
+            _bf_table_v3018b = _bf_pkg_v3018b.get("table")
+            _bf1_v3018b, _bf2_v3018b, _bf3_v3018b, _bf4_v3018b = st.columns(4)
+            _bf1_v3018b.metric("Sicher zuordenbar", int(_bf_sum_v3018b.get("safe") or 0))
+            _bf2_v3018b.metric("Konflikte", int(_bf_sum_v3018b.get("conflicts") or 0))
+            _bf3_v3018b.metric("Nicht gefunden", int(_bf_sum_v3018b.get("unmatched") or 0))
+            _bf4_v3018b.metric("Bereits vollständig", int(_bf_sum_v3018b.get("already_complete") or 0))
+            if isinstance(_bf_table_v3018b, pd.DataFrame) and not _bf_table_v3018b.empty:
+                _bf_cols_v3018b = [c for c in [
+                    "Datum", "Ticker", "Typ", "Journal Stück", "Journal Kurs", "Status", "Zuordnung",
+                    "Broker Zeit", "Broker Action", "Broker Stück", "Broker Kurs", "Preis-Währung",
+                    "Broker Result", "Result-Währung"
+                ] if c in _bf_table_v3018b.columns]
+                st.dataframe(_bf_table_v3018b[_bf_cols_v3018b], hide_index=True, use_container_width=True)
+            if int(_bf_sum_v3018b.get("conflicts") or 0) > 0:
+                st.warning(
+                    "Mindestens eine Broker-Ausführung passt zu mehreren Journalzeilen oder ist mehrdeutig. "
+                    "Diese Fälle werden bewusst nicht automatisch verändert. Das kann z. B. auf eine doppelte Schließungsbuchung hinweisen."
+                )
+            _bf_confirm_v3018b = st.checkbox(
+                "Ich möchte nur fehlende Währungs-/Broker-Metadaten der eindeutig zugeordneten Journalzeilen ergänzen.",
+                key=f"v3018b_backfill_confirm_{watchlist_name}",
+            )
+            if st.button(
+                "Währungs-/P&L-Metadaten jetzt nachtragen",
+                disabled=(not _bf_confirm_v3018b or int(_bf_sum_v3018b.get("safe") or 0) <= 0),
+                use_container_width=True,
+                key=f"v3018b_backfill_apply_{watchlist_name}",
+            ):
+                _bf_result_v3018b = _v3018_apply_currency_backfill(watchlist_name, _norm_df_full_v3018b)
+                if _bf_result_v3018b.get("ok"):
+                    st.session_state[f"v3018b_backfill_result_{watchlist_name}"] = {
+                        "updated": int(_bf_result_v3018b.get("updated") or 0),
+                        "filename": upload.name,
+                    }
+                    st.success(f"Backfill abgeschlossen: {int(_bf_result_v3018b.get('updated') or 0)} Journalzeile(n) ergänzt. Positionen und Trade-Beträge wurden nicht verändert.")
+                    st.rerun()
+                else:
+                    st.error("Backfill konnte nicht gespeichert werden. Es wurden keine Positionsdaten verändert.")
+
+        _bf_last_v3018b = st.session_state.get(f"v3018b_backfill_result_{watchlist_name}")
+        if isinstance(_bf_last_v3018b, dict) and _bf_last_v3018b:
+            st.success(
+                f"Letzter Journal-Backfill: {_bf_last_v3018b.get('filename') or '-'} · "
+                f"{int(_bf_last_v3018b.get('updated') or 0)} Journalzeile(n) um Broker-/Währungsmetadaten ergänzt."
+            )
 
         anomalies = plan.get("anomalies")
         if isinstance(anomalies, pd.DataFrame) and not anomalies.empty:

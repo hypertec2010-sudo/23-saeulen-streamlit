@@ -844,6 +844,199 @@ def _v270_journal_summary(df: pd.DataFrame) -> dict:
     }
 
 
+
+def _broker_ticker_key(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if not text:
+        return ""
+    # Common broker exports omit exchange suffixes used by the screener (e.g. SAP.DE -> SAP).
+    return text.split(".", 1)[0]
+
+
+def _v3018_currency_backfill_preview(watchlist_name: str, normalized_broker: pd.DataFrame) -> dict:
+    """Build a conservative, read-only mapping from old journal exits to broker sells.
+
+    Exact Broker Import IDs win. Legacy journal rows without an ID are matched only when
+    ticker (exchange suffix tolerant), execution price and screener quantity identify one
+    unique broker SELL. A broker row that would map to more than one journal row is marked
+    as a conflict and is never auto-applied. No positions or P/L amounts are changed.
+    """
+    broker = normalized_broker.copy() if isinstance(normalized_broker, pd.DataFrame) else pd.DataFrame()
+    store = _v270_load_trade_journal()
+    entries = list(store.get("entries") or [])
+    wl = str(watchlist_name or "Standard")
+    journal_rows = []
+    for idx, raw in enumerate(entries):
+        e = dict(raw or {})
+        if str(e.get("Watchlist") or "") != wl:
+            continue
+        if str(e.get("Typ") or "") not in {"Teilverkauf", "Position geschlossen"}:
+            continue
+        journal_rows.append((idx, e))
+
+    if broker.empty or not journal_rows:
+        return {"table": pd.DataFrame(), "updates": [], "summary": {"safe": 0, "conflicts": 0, "unmatched": len(journal_rows), "already_complete": 0}}
+
+    work = broker.copy()
+    if "Action-Typ" in work.columns:
+        work = work[work["Action-Typ"].astype(str).eq("SELL")].copy()
+    if "Import-Status" in work.columns:
+        work = work[work["Import-Status"].astype(str).eq("OK")].copy()
+    if work.empty:
+        return {"table": pd.DataFrame(), "updates": [], "summary": {"safe": 0, "conflicts": 0, "unmatched": len(journal_rows), "already_complete": 0}}
+
+    records = []
+    for bidx, ser in work.iterrows():
+        r = ser.to_dict()
+        r["__idx"] = bidx
+        r["__ticker_key"] = _broker_ticker_key(r.get("Ticker"))
+        records.append(r)
+    by_import_id = {str(r.get("Import-ID") or ""): r for r in records if str(r.get("Import-ID") or "")}
+
+    proposals = []
+    already_complete = 0
+    for store_idx, e in journal_rows:
+        existing_ccy = str(e.get("Broker Result-Währung") or e.get("Realisiert P/L-Währung") or e.get("Broker Preis-Währung") or "").strip()
+        existing_result = _num(e.get("Broker Result"), None)
+        if existing_ccy and (existing_result is not None or str(e.get("Broker Import ID") or "").strip()):
+            already_complete += 1
+            proposals.append({"store_idx": store_idx, "entry": e, "status": "BEREITS VOLLSTÄNDIG", "match": None, "match_type": ""})
+            continue
+
+        direct_id = str(e.get("Broker Import ID") or "").strip()
+        candidates = []
+        match_type = ""
+        if direct_id and direct_id in by_import_id:
+            candidates = [by_import_id[direct_id]]
+            match_type = "Broker-ID"
+        else:
+            tk = _broker_ticker_key(e.get("Ticker"))
+            qty = _num(e.get("Stück"), None)
+            price = _num(e.get("Kurs"), None)
+            if tk and qty is not None and price is not None:
+                tol_price = max(0.01, abs(float(price)) * 1e-5)
+                exact_qty = []
+                larger_qty = []
+                for r in records:
+                    if r.get("__ticker_key") != tk:
+                        continue
+                    bqty = _num(r.get("Stück"), None)
+                    bprice = _num(r.get("Preis/Aktie"), None)
+                    if bqty is None or bprice is None or abs(float(bprice) - float(price)) > tol_price:
+                        continue
+                    if abs(float(bqty) - float(qty)) <= 1e-6:
+                        exact_qty.append(r)
+                    elif float(bqty) > float(qty) + 1e-6:
+                        larger_qty.append(r)
+                if len(exact_qty) == 1:
+                    candidates = exact_qty
+                    match_type = "Ticker+Preis+Stück"
+                elif len(exact_qty) == 0 and len(larger_qty) == 1:
+                    candidates = larger_qty
+                    match_type = "GEMISCHT · Ticker+Preis"
+                elif len(exact_qty) > 1:
+                    candidates = exact_qty
+                elif len(larger_qty) > 1:
+                    candidates = larger_qty
+
+        if len(candidates) == 1:
+            proposals.append({"store_idx": store_idx, "entry": e, "status": "VORGESCHLAGEN", "match": candidates[0], "match_type": match_type})
+        elif len(candidates) > 1:
+            proposals.append({"store_idx": store_idx, "entry": e, "status": "MEHRDEUTIG", "match": None, "match_type": ""})
+        else:
+            proposals.append({"store_idx": store_idx, "entry": e, "status": "NICHT GEFUNDEN", "match": None, "match_type": ""})
+
+    # One broker execution must never enrich two journal exits. This also exposes duplicate journal closes.
+    usage = {}
+    for p in proposals:
+        r = p.get("match")
+        if r is None:
+            continue
+        bid = str(r.get("Import-ID") or r.get("Broker-ID") or r.get("__idx"))
+        usage.setdefault(bid, []).append(p)
+    for bid, items in usage.items():
+        if len(items) > 1:
+            for p in items:
+                p["status"] = "KONFLIKT · Brokerzeile mehrfach"
+
+    table_rows = []
+    updates = []
+    for p in proposals:
+        e = p["entry"]
+        r = p.get("match") or {}
+        status = p["status"]
+        mixed = str(p.get("match_type") or "").startswith("GEMISCHT")
+        safe = status == "VORGESCHLAGEN"
+        if safe:
+            updates.append({"store_idx": p["store_idx"], "match": r, "mixed": mixed, "match_type": p.get("match_type") or ""})
+        table_rows.append({
+            "Journal-ID": str(e.get("ID") or ""),
+            "Datum": str(e.get("Datum") or ""),
+            "Ticker": str(e.get("Ticker") or ""),
+            "Typ": str(e.get("Typ") or ""),
+            "Journal Stück": _num(e.get("Stück"), None),
+            "Journal Kurs": _num(e.get("Kurs"), None),
+            "Status": status,
+            "Zuordnung": p.get("match_type") or "",
+            "Broker Zeit": str(r.get("Zeit Berlin") or ""),
+            "Broker Action": str(r.get("Action") or ""),
+            "Broker Stück": _num(r.get("Stück"), None),
+            "Broker Kurs": _num(r.get("Preis/Aktie"), None),
+            "Preis-Währung": str(r.get("Preis-Währung") or ""),
+            "Broker Result": _num(r.get("Result"), None),
+            "Result-Währung": str(r.get("Result-Währung") or ""),
+        })
+
+    conflicts = sum(1 for p in proposals if str(p.get("status") or "").startswith("KONFLIKT") or p.get("status") == "MEHRDEUTIG")
+    unmatched = sum(1 for p in proposals if p.get("status") == "NICHT GEFUNDEN")
+    return {
+        "table": pd.DataFrame(table_rows),
+        "updates": updates,
+        "summary": {"safe": len(updates), "conflicts": conflicts, "unmatched": unmatched, "already_complete": already_complete},
+    }
+
+
+def _v3018_apply_currency_backfill(watchlist_name: str, normalized_broker: pd.DataFrame) -> dict:
+    """Persist only missing broker/currency metadata for conservatively matched journal exits."""
+    preview = _v3018_currency_backfill_preview(watchlist_name, normalized_broker)
+    updates = list(preview.get("updates") or [])
+    if not updates:
+        return {"ok": True, "updated": 0, "preview": preview}
+    store = _v270_load_trade_journal()
+    entries = list(store.get("entries") or [])
+    changed = 0
+    stamp = _now().strftime("%d.%m.%Y %H:%M:%S")
+    for item in updates:
+        idx = int(item.get("store_idx"))
+        if idx < 0 or idx >= len(entries):
+            continue
+        e = dict(entries[idx] or {})
+        r = dict(item.get("match") or {})
+        if not str(e.get("Broker Import ID") or "").strip():
+            e["Broker Import ID"] = str(r.get("Import-ID") or "")
+        if not str(e.get("Broker Quelle") or "").strip():
+            e["Broker Quelle"] = "Depot-Excel · Backfill"
+        if not str(e.get("Broker Preis-Währung") or "").strip():
+            e["Broker Preis-Währung"] = str(r.get("Preis-Währung") or "").strip().upper()
+        if not str(e.get("Realisiert P/L-Währung") or "").strip():
+            e["Realisiert P/L-Währung"] = str(r.get("Preis-Währung") or "").strip().upper()
+        if e.get("Broker Result") in (None, "") and _num(r.get("Result"), None) is not None:
+            e["Broker Result"] = float(_num(r.get("Result"), 0.0) or 0.0)
+        if not str(e.get("Broker Result-Währung") or "").strip():
+            e["Broker Result-Währung"] = str(r.get("Result-Währung") or "").strip().upper()
+        e["Broker Backfill am"] = stamp
+        e["Broker Backfill-Zuordnung"] = str(item.get("match_type") or "")
+        if item.get("mixed"):
+            details = str(e.get("Details") or "").strip()
+            marker = "GEMISCHT: Broker-Ausführung enthält zusätzliche externe/Pie-Stücke; Broker-Result wird nicht vollständig dem Screener zugerechnet."
+            if marker not in details:
+                e["Details"] = (details + " " + marker).strip()
+        entries[idx] = e
+        changed += 1
+    store["entries"] = entries[-5000:]
+    ok = bool(_v270_save_trade_journal(store))
+    return {"ok": ok, "updated": changed if ok else 0, "preview": preview}
+
 def _v270_reset_trade_journal(watchlist_name=None) -> None:
     store = _v270_load_trade_journal()
     if not watchlist_name:

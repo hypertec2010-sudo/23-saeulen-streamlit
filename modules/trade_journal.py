@@ -1051,6 +1051,68 @@ def _v3018_apply_currency_backfill(watchlist_name: str, normalized_broker: pd.Da
     ok = bool(_v270_save_trade_journal(store))
     return {"ok": ok, "updated": changed if ok else 0, "preview": preview}
 
+
+def _v3019_set_manual_broker_execution(
+    watchlist_name: str,
+    journal_id: str,
+    *,
+    broker_source: str,
+    broker_result,
+    result_currency: str,
+    price_currency: str = "",
+    note: str = "",
+) -> dict:
+    """Attach broker/execution metadata to an existing exit row without changing the trade itself.
+
+    Intended for manual enrichment of exits executed at brokers that do not have an import adapter.
+    It never changes positions, quantities, exit price, R-multiple or trade status.
+    """
+    jid = str(journal_id or "").strip()
+    wl = str(watchlist_name or "Standard")
+    source = str(broker_source or "").strip()
+    result = _num(broker_result, None)
+    rccy = str(result_currency or "").strip().upper()
+    pccy = str(price_currency or "").strip().upper()
+    if not jid:
+        return {"ok": False, "error": "Journal-ID fehlt."}
+    if not source:
+        return {"ok": False, "error": "Broker angeben."}
+    if result is None:
+        return {"ok": False, "error": "Realisierte Broker-P/L angeben."}
+    if len(rccy) != 3 or not rccy.isalpha():
+        return {"ok": False, "error": "Gültige Ergebniswährung angeben, z. B. EUR oder USD."}
+    if pccy and (len(pccy) != 3 or not pccy.isalpha()):
+        return {"ok": False, "error": "Gültige Kurswährung angeben."}
+
+    store = _v270_load_trade_journal()
+    entries = list(store.get("entries") or [])
+    changed = False
+    for i, raw in enumerate(entries):
+        e = dict(raw or {})
+        if str(e.get("ID") or "") != jid or str(e.get("Watchlist") or "Standard") != wl:
+            continue
+        if str(e.get("Typ") or "") not in {"Teilverkauf", "Position geschlossen"}:
+            return {"ok": False, "error": "Broker-Ausführungsdaten können nur an Exit-Buchungen ergänzt werden."}
+        e["Broker Quelle"] = source
+        e["Broker Result"] = float(result)
+        e["Broker Result-Währung"] = rccy
+        if pccy:
+            e["Broker Preis-Währung"] = pccy
+            if not str(e.get("Realisiert P/L-Währung") or "").strip():
+                e["Realisiert P/L-Währung"] = pccy
+        e["Broker Metadaten-Quelle"] = "manuell"
+        e["Broker Metadaten am"] = _now().strftime("%d.%m.%Y %H:%M:%S")
+        if note:
+            e["Broker Notiz"] = str(note).strip()
+        entries[i] = e
+        changed = True
+        break
+    if not changed:
+        return {"ok": False, "error": "Journal-Eintrag nicht gefunden."}
+    store["entries"] = entries[-5000:]
+    ok = bool(_v270_save_trade_journal(store))
+    return {"ok": ok, "updated": 1 if ok else 0, "error": "" if ok else "Journal konnte nicht gespeichert werden."}
+
 def _v270_reset_trade_journal(watchlist_name=None) -> None:
     store = _v270_load_trade_journal()
     if not watchlist_name:

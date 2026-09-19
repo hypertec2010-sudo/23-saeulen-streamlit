@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.18d"
+APP_VERSION = "v30.19a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -16099,6 +16099,7 @@ _v270_journal_entries_dataframe = _trade_journal_module._v270_journal_entries_da
 _v270_journal_summary = _trade_journal_module._v270_journal_summary
 _v3018_currency_backfill_preview = _trade_journal_module._v3018_currency_backfill_preview
 _v3018_apply_currency_backfill = _trade_journal_module._v3018_apply_currency_backfill
+_v3019_set_manual_broker_execution = _trade_journal_module._v3019_set_manual_broker_execution
 _v270_reset_trade_journal = _trade_journal_module._v270_reset_trade_journal
 
 # v29.0: Trading Journal & Learning Engine (observational only)
@@ -23536,6 +23537,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 partial_date_v270 = st.date_input("Datum", value=today_v270)
                                             partial_note_v270 = st.text_area("Notiz", placeholder="Warum wird reduziert? Setup, Ziel, Risiko ...")
                                             partial_learning_v270 = st.text_area("Erkenntnis", placeholder="Was soll für künftige Trades festgehalten werden?")
+                                            _partial_manual_broker_v3019 = st.checkbox("Broker-Ausführung direkt ergänzen (optional)")
+                                            if _partial_manual_broker_v3019:
+                                                _pb1_v3019, _pb2_v3019, _pb3_v3019 = st.columns(3)
+                                                with _pb1_v3019:
+                                                    _partial_broker_source_v3019 = st.selectbox("Broker", ["Trade Republic", "Trading 212", "Anderer Broker"], key=f"v3019_partial_broker_{manage_ticker_v270}")
+                                                with _pb2_v3019:
+                                                    _partial_broker_result_v3019 = st.number_input("Broker P/L", value=0.0, step=0.01, format="%.2f", key=f"v3019_partial_result_{manage_ticker_v270}")
+                                                with _pb3_v3019:
+                                                    _partial_broker_ccy_v3019 = st.selectbox("P/L-Währung", ["EUR", "USD", "GBP", "CHF", "CAD"], key=f"v3019_partial_ccy_{manage_ticker_v270}")
+                                            else:
+                                                _partial_broker_source_v3019, _partial_broker_result_v3019, _partial_broker_ccy_v3019 = "", None, ""
                                             partial_submit_v270 = st.form_submit_button("Teilverkauf dokumentieren", use_container_width=True)
                                         if partial_submit_v270:
                                             result_v270 = _v270_partial_exit(
@@ -23551,6 +23563,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             if result_v270.get("ok"):
                                                 positions = result_v270.get("positions", positions)
                                                 _v244_save_positions(selected_watchlist_name, positions)
+                                                if _partial_manual_broker_v3019 and isinstance(result_v270.get("entry"), dict):
+                                                    _v3019_set_manual_broker_execution(
+                                                        selected_watchlist_name,
+                                                        str(result_v270["entry"].get("ID") or ""),
+                                                        broker_source=_partial_broker_source_v3019,
+                                                        broker_result=_partial_broker_result_v3019,
+                                                        result_currency=_partial_broker_ccy_v3019,
+                                                    )
                                                 st.success(f"Teilverkauf für {manage_ticker_v270} gespeichert. Verbleibend: {result_v270.get('remaining')} Stück.")
                                                 st.rerun()
                                             else:
@@ -23578,6 +23598,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                     close_reason_v270 = st.selectbox("Grund", ["Manuell geschlossen", "Ziel erreicht", "Stop erreicht", "Signal abgeschwächt", "Zeit-Exit", "Sonstiger Grund"])
                                                 close_note_v270 = st.text_area("Trade-Notiz", placeholder="Ausführung, Marktumfeld, Abweichung vom Plan ...")
                                                 close_learning_v270 = st.text_area("Erkenntnis / Verbesserung", placeholder="Was lief gut, was sollte beim nächsten Trade anders sein?")
+                                                _close_manual_broker_v3019 = st.checkbox("Broker-Ausführung direkt ergänzen (optional)")
+                                                if _close_manual_broker_v3019:
+                                                    _cbm1_v3019, _cbm2_v3019, _cbm3_v3019 = st.columns(3)
+                                                    with _cbm1_v3019:
+                                                        _close_broker_source_v3019 = st.selectbox("Broker", ["Trade Republic", "Trading 212", "Anderer Broker"], key=f"v3019_close_broker_{manage_ticker_v270}")
+                                                    with _cbm2_v3019:
+                                                        _close_broker_result_v3019 = st.number_input("Broker P/L", value=0.0, step=0.01, format="%.2f", key=f"v3019_close_result_{manage_ticker_v270}")
+                                                    with _cbm3_v3019:
+                                                        _close_broker_ccy_v3019 = st.selectbox("P/L-Währung", ["EUR", "USD", "GBP", "CHF", "CAD"], key=f"v3019_close_ccy_{manage_ticker_v270}")
+                                                else:
+                                                    _close_broker_source_v3019, _close_broker_result_v3019, _close_broker_ccy_v3019 = "", None, ""
                                                 close_preview_submit_v287a = st.form_submit_button("Schließung prüfen", use_container_width=True)
                                             if close_preview_submit_v287a:
                                                 if float(close_price_v270 or 0.0) <= 0:
@@ -23591,6 +23622,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                         "reason": close_reason_v270,
                                                         "note": close_note_v270,
                                                         "learning": close_learning_v270,
+                                                        "broker_source": _close_broker_source_v3019,
+                                                        "broker_result": _close_broker_result_v3019,
+                                                        "broker_result_currency": _close_broker_ccy_v3019,
                                                     }
                                                     st.rerun()
                                         else:
@@ -23672,6 +23706,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                     if result_v270.get("ok"):
                                                         positions = result_v270.get("positions", positions)
                                                         _v244_save_positions(selected_watchlist_name, positions)
+                                                        if str(_close_pending_v287a.get("broker_source") or "").strip() and isinstance(result_v270.get("entry"), dict):
+                                                            _v3019_set_manual_broker_execution(
+                                                                selected_watchlist_name,
+                                                                str(result_v270["entry"].get("ID") or ""),
+                                                                broker_source=_close_pending_v287a.get("broker_source") or "",
+                                                                broker_result=_close_pending_v287a.get("broker_result"),
+                                                                result_currency=_close_pending_v287a.get("broker_result_currency") or "",
+                                                            )
                                                         st.session_state.pop(_close_pending_key_v287a, None)
                                                         st.success(f"Position {manage_ticker_v270} geschlossen und im Trade-Journal gespeichert.")
                                                         st.rerun()
@@ -24014,6 +24056,55 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         use_container_width=True,
                                         height=min(600, 42 * len(journal_view_v270.head(500)) + 55),
                                     )
+
+                                    # v30.19a: manual broker enrichment for exits executed outside an import-capable broker.
+                                    _manual_exit_rows_v3019 = journal_df_v270[journal_df_v270["Typ"].astype(str).isin(["Teilverkauf", "Position geschlossen"])].copy()
+                                    if not _manual_exit_rows_v3019.empty:
+                                        with st.expander("🏦 Broker-Ausführung manuell nachtragen", expanded=False):
+                                            st.caption("Für Trade Republic oder andere Broker ohne passenden CSV-Import. Der Trade selbst bleibt unverändert; ergänzt werden nur Broker-Herkunft, realisierte Geld-P/L und Währung.")
+                                            _manual_exit_options_v3019 = {}
+                                            for _, _row_v3019 in _manual_exit_rows_v3019.sort_values("Datum", ascending=False).head(200).iterrows():
+                                                _jid_v3019 = str(_row_v3019.get("ID") or "").strip()
+                                                if not _jid_v3019:
+                                                    continue
+                                                _ticker_v3019 = str(_row_v3019.get("Ticker") or "").strip().upper()
+                                                _date_v3019 = str(_row_v3019.get("Datum") or "-")
+                                                _typ_v3019 = str(_row_v3019.get("Typ") or "Exit")
+                                                _src_v3019 = str(_row_v3019.get("Broker Quelle") or "").strip()
+                                                _label_v3019 = f"{_date_v3019} · {_ticker_v3019} · {_typ_v3019}" + (f" · {_src_v3019}" if _src_v3019 else "")
+                                                _manual_exit_options_v3019[_label_v3019] = _jid_v3019
+                                            _manual_exit_label_v3019 = st.selectbox("Exit auswählen", list(_manual_exit_options_v3019.keys()), key=f"v3019_manual_broker_exit_{selected_watchlist_name}")
+                                            _manual_jid_v3019 = _manual_exit_options_v3019[_manual_exit_label_v3019]
+                                            _manual_match_v3019 = _manual_exit_rows_v3019[_manual_exit_rows_v3019["ID"].astype(str) == _manual_jid_v3019]
+                                            _manual_row_v3019 = _manual_match_v3019.iloc[0].to_dict() if not _manual_match_v3019.empty else {}
+                                            with st.form(f"v3019_manual_broker_form_{selected_watchlist_name}_{_manual_jid_v3019}"):
+                                                _mb1_v3019, _mb2_v3019, _mb3_v3019 = st.columns(3)
+                                                with _mb1_v3019:
+                                                    _broker_source_choice_v3019 = st.selectbox("Broker", ["Trade Republic", "Trading 212", "Anderer Broker"], index=0)
+                                                with _mb2_v3019:
+                                                    _broker_result_v3019 = st.number_input("Realisierte P/L", value=float(_v230_safe_float(_manual_row_v3019.get("Broker Result"), default=0.0) or 0.0), step=0.01, format="%.2f")
+                                                with _mb3_v3019:
+                                                    _result_ccy_existing_v3019 = str(_manual_row_v3019.get("Broker Result-Währung") or "EUR").strip().upper()
+                                                    _ccys_v3019 = ["EUR", "USD", "GBP", "CHF", "CAD"]
+                                                    _result_ccy_v3019 = st.selectbox("P/L-Währung", _ccys_v3019, index=_ccys_v3019.index(_result_ccy_existing_v3019) if _result_ccy_existing_v3019 in _ccys_v3019 else 0)
+                                                _price_ccy_v3019 = st.selectbox("Kurswährung (optional)", ["", "EUR", "USD", "GBP", "GBX", "CHF", "CAD"], index=0)
+                                                _broker_note_v3019 = st.text_input("Notiz (optional)", placeholder="z. B. Trade-Republic-Abrechnung manuell übertragen")
+                                                _manual_submit_v3019 = st.form_submit_button("Brokerdaten speichern", use_container_width=True)
+                                            if _manual_submit_v3019:
+                                                _manual_res_v3019 = _v3019_set_manual_broker_execution(
+                                                    selected_watchlist_name,
+                                                    _manual_jid_v3019,
+                                                    broker_source=_broker_source_choice_v3019,
+                                                    broker_result=_broker_result_v3019,
+                                                    result_currency=_result_ccy_v3019,
+                                                    price_currency=_price_ccy_v3019,
+                                                    note=_broker_note_v3019,
+                                                )
+                                                if _manual_res_v3019.get("ok"):
+                                                    st.success("Broker-Ausführungsdaten gespeichert. Die REAL-P/L wird beim Neuladen neu aggregiert.")
+                                                    st.rerun()
+                                                else:
+                                                    st.error(_manual_res_v3019.get("error") or "Brokerdaten konnten nicht gespeichert werden.")
 
                                     # v28.7a: reversible full-close workflow. A close row is
                                     # neutralized for P/L statistics and the position is restored.

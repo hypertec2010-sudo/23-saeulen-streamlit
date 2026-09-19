@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.18b"
+APP_VERSION = "v30.18c"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -23864,6 +23864,21 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _rr4_v317.metric("Trefferquote", "n/a" if _rr_wr_v317 is None else f"{float(_rr_wr_v317):.1f}%")
                                     _rr_r_v317 = summary_v270.get("avg_r")
                                     _rr5_v317.metric("Ø R geschlossen", "n/a" if _rr_r_v317 is None else f"{float(_rr_r_v317):+.2f}R")
+                                    st.markdown("**P/L nach Währung**")
+                                    if _pnl_ccy_v318:
+                                        _pnl_items_v318 = sorted(_pnl_ccy_v318.items())
+                                        _pnl_cols_v318 = st.columns(min(len(_pnl_items_v318) + 1, 5))
+                                        for _i_v318, (_ccy_v318, _amt_v318) in enumerate(_pnl_items_v318[:4]):
+                                            _pnl_cols_v318[_i_v318].metric(str(_ccy_v318), f"{float(_amt_v318):+,.2f}")
+                                        _cov_idx_v318 = min(len(_pnl_items_v318), 4)
+                                        _pnl_cols_v318[_cov_idx_v318].metric("P/L-Abdeckung", f"{_pnl_known_v318}/{_pnl_total_v318}")
+                                        if len(_pnl_items_v318) > 4:
+                                            st.caption("Weitere Währungen: " + " · ".join(f"{float(v):+,.2f} {k}" for k, v in _pnl_items_v318[4:]))
+                                    elif _pnl_total_v318:
+                                        st.info(f"Noch keine belastbare P/L-Währung zugeordnet · Abdeckung 0/{_pnl_total_v318} Exit-Buchungen.")
+                                    else:
+                                        st.caption("Noch keine Exit-Buchungen mit Geld-P/L vorhanden.")
+
                                     if _insights_v290:
                                         st.markdown("**Aktuelle Lernhinweise**")
                                         for _ins_v317 in _insights_v290:
@@ -23872,10 +23887,6 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     if isinstance(_manual_tags_v290, pd.DataFrame) and not _manual_tags_v290.empty:
                                         with st.expander("Manuelle Erkenntnisse · wiederkehrende Themen", expanded=False):
                                             st.dataframe(_manual_tags_v290, hide_index=True, use_container_width=True)
-                                    if _pnl_ccy_v318:
-                                        st.caption("P/L nach Währung: " + " · ".join(f"{float(v):+,.2f} {k}" for k, v in sorted(_pnl_ccy_v318.items())) + f" · Abdeckung {_pnl_known_v318}/{_pnl_total_v318} Exit-Buchungen")
-                                    elif _pnl_total_v318:
-                                        st.info("Für die vorhandenen Legacy-Exits fehlt noch eine eindeutige P/L-Währung. Deshalb wird bewusst kein gemeinsamer Geldbetrag angezeigt.")
                                     with st.expander("ℹ️ Was wird hier gezählt?", expanded=False):
                                         st.write("Nur Journal-Ergebnisse tatsächlich geführter Screener-Positionen. Geld-P/L wird nicht mehr über verschiedene Währungen addiert. Bei Broker-Imports wird nach Möglichkeit das Broker-Result mit seiner Originalwährung verwendet; bei gemischten Screener-/Pie-Verkäufen nur der zurechenbare Screener-Anteil in seiner Preiswährung. Pie-/externe Bestände sollen nicht als Screener-Performance einfließen.")
 

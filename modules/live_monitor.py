@@ -13,6 +13,10 @@ import streamlit as st
 
 from .live_change_explainer import build_change_explanation
 
+# v30.20c: capability marker for the package UI's deployment self-check.
+# Status history retains immutable __pkg_ fields until rendering/persistence.
+PACKAGE_SNAPSHOT_FIELDS_PRESERVED = True
+
 _CONTEXT = {}
 
 def configure_context(**kwargs):
@@ -2163,10 +2167,13 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             )
         state[key] = current_snapshot
 
-    # Interne Roh-/Sortier-Spalten nicht anzeigen.
-    # v24.1: Hysterese kann __prio temporaer wieder einfuegen; solche
-    # Hilfsspalten duerfen nicht in der Live-Monitor-Tabelle landen.
-    for _internal_col in [c for c in enriched.columns if str(c).startswith("__")]:
+    # Remove ephemeral hysteresis/sort helpers, NOT package snapshot data.
+    # v30.20c: this frame is committed to the Atomic cache and persistent
+    # snapshot, and then consumed by the package planner. Deleting __pkg_ here
+    # erased entry, stop, target, currency and time for EVERY scanned ticker.
+    # Display tables already select public columns / hide internal columns.
+    for _internal_col in [c for c in enriched.columns
+                          if str(c).startswith("__") and not str(c).startswith("__pkg_")]:
         if _internal_col in enriched.columns:
             enriched = enriched.drop(columns=[_internal_col])
     # Signal-Stabilität und Bestätigungen direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.

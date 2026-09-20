@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from . import trading_package as engine
+from . import live_monitor as scan_pipeline
 from .live_screener_snapshot import dataframe_from_payload
 
 
@@ -70,6 +71,45 @@ def collect_marks(storage, current_rows):
 
 def _money(value):
     return f"{float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+
+def _render_snapshot_status(rows):
+    """Explain a missing producer/transport contract before budget evaluation.
+
+    Counts transmitted snapshots, not financially eligible candidates. Missing
+    stops/currency or stale timestamps are still rejected by the package engine.
+    Never synthesize risk fields from another scan or a display-only CRV.
+    """
+    transmitted = sum(
+        bool(engine.text(row.get("__pkg_version")))
+        and engine.timestamp(row.get("__pkg_scan_at")) is not None
+        for row in rows
+    )
+    st.markdown(f"**Paket-Snapshots \u00fcbergeben: {transmitted}/{len(rows)}**")
+    pipeline_ready = getattr(scan_pipeline, "PACKAGE_SNAPSHOT_FIELDS_PRESERVED", False) is True
+    if not pipeline_ready:
+        st.error(
+            "Paketdaten-Anbindung fehlt: Bitte auch modules/live_monitor.py aus dem "
+            "v30.20c-Update ersetzen, die App neu starten und einen neuen vollst\u00e4ndigen "
+            "Atomic-Scan ausf\u00fchren. Der geladene Scan-Baustein erh\u00e4lt die Paketfelder noch nicht."
+        )
+        return False
+    if not transmitted:
+        st.error(
+            "Paketplanung gesperrt: Im geladenen Scan fehlen die Paket-Snapshots. "
+            "Nach diesem Update einmal einen NEUEN vollst\u00e4ndigen Atomic-Scan ausf\u00fchren; "
+            "ein Seiten-Reload oder erneutes Berechnen allein reicht nicht. "
+            "Das ist keine Aussage gegen die Aktien oder dein Budget."
+        )
+        return False
+    if transmitted < len(rows):
+        st.warning(
+            f"Bei {len(rows)-transmitted} Scan-Zeile(n) fehlen Paket-Snapshots. "
+            "Diese Werte bleiben ausgeschlossen. Neuer Vollscan erforderlich; "
+            "die \u00fcbrigen Kandidaten werden regul\u00e4r gepr\u00fcft."
+        )
+    return True
 
 
 def _render_plan_diagnostics(plan, config):
@@ -270,11 +310,10 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
         except Exception:
             st.error("Die Bestandsdaten sind nicht sicher lesbar. Paketplanung bleibt gesperrt; Datenbankverbindung pr\u00fcfen.")
             return
+        snapshots_ready = _render_snapshot_status(rows)
         config = _input_config(prefix, settings)
         rows, marks, excluded, data_confirm = _data_editor(rows, marks, store, prefix)
         acknowledged = st.checkbox("Tradingbestand aller Broker erfasst; Budget, Risikogrenzen und Kosten gepr\u00fcft", key=prefix+"scope_confirm")
-        if not all(r.get("__pkg_version") for r in rows):
-            st.info("Dieser Scan stammt noch aus einer Version ohne Paket-Snapshot. Nach dem Update einmal einen neuen vollst\u00e4ndigen Scan starten.")
         # Optional, explicit FX override. Never silently reuse an undated manual rate.
         requested = sorted({engine.quote_currency(r) for r in rows} | {engine.quote_currency(r) for r in marks.values()})
         for bucket in store.values():
@@ -294,7 +333,7 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
         context_hash = engine.fingerprint({"planner_version": engine.VERSION, "rows": rows, "queue": queue_rows, "store": store, "marks": marks,
                                             "config": config.__dict__, "scan": scan_meta, "exclude": excluded,
                                             "manual": manual_rates, "ack": acknowledged, "dc": data_confirm, "mc": manual_confirm})
-        if st.button("Tradingpaket berechnen", type="primary", disabled=not(acknowledged and data_confirm and manual_confirm), key=prefix+"compute"):
+        if st.button("Tradingpaket berechnen", type="primary", disabled=not(acknowledged and data_confirm and manual_confirm and snapshots_ready), key=prefix+"compute"):
             now = now_provider()
             if config.errors():
                 st.session_state[prefix+"result"] = {"context_hash": context_hash, "ok": False, "errors": config.errors()}
@@ -383,7 +422,9 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
             st.markdown(
                 "**Auswahl:** nur gr\u00fcne Queue-Kandidaten mit aktivem Trigger, ohne harte Gates und mit mindestens mittlerer Decision-Confidence. "
                 "Der endg\u00fcltige Trade-State ist f\u00fcr die Triggerfreigabe ma\u00dfgeblich; Armed/Best\u00e4tigung offen ist nicht aktiv. "
-                "Stops und strukturelle Ziele stammen aus demselben Vollscan wie der Kurs. Kein zus\u00e4tzlicher Aktienkursabruf beim Planen.\n\n"
+                "Stops und strukturelle Ziele stammen aus demselben Vollscan wie der Kurs. Kein zus\u00e4tzlicher Aktienkursabruf beim Planen. "
+                "Die Zahl der \u00fcbergebenen Paket-Snapshots best\u00e4tigt nur die Datenweitergabe, nicht die Vollst\u00e4ndigkeit, "
+                "Aktualit\u00e4t oder Eignung zum Kauf; diese Pr\u00fcfungen folgen gesondert.\n\n"
                 "**St\u00fcckzahl:** ganze Aktien, gleiches anf\u00e4ngliches Kapital-/Risikobudget je Paketplatz, danach Begrenzung durch Einzelgewicht, Branche, Kosten und Bestand. "
                 "Nicht genutzte Kapazit\u00e4t wird nicht zwangsl\u00e4ufig aufgef\u00fcllt. Mindest-CRV gilt am Kauflimit einschlie\u00dflich Kostenpuffer.\n\n"
                 "**Vergleich:** maximal 18 Kandidaten und 5 neue Positionen; standardm\u00e4\u00dfig eine neue Position je Branchengruppe. Die besten Gruppenvertreter bleiben im Suchraum. Eine transparente Planungsheuristik gewichtet den bestehenden Live-Score (65 %), "

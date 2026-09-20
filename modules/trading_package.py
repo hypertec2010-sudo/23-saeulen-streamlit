@@ -1,4 +1,4 @@
-"""v30.20b: deterministic, read-only trading-package planner.
+"""v30.20c: deterministic, read-only trading-package planner.
 
 No orders, invented returns, FX calls, score changes or learning writes.
 Money is converted to one base currency before *any* budget test. Only
@@ -17,7 +17,7 @@ import math
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
-VERSION = "v30.20b"
+VERSION = "v30.20c"
 CURRENCIES = frozenset("EUR USD GBP GBX CHF CAD AUD NZD JPY HKD SGD SEK NOK DKK PLN CZK HUF CNY INR KRW ILS ZAR ZAC BRL MXN TRY RON BGN ISK IDR MYR PHP THB".split())
 BERLIN = ZoneInfo("Europe/Berlin")
 UNKNOWN = "Unbekannt"

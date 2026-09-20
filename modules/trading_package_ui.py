@@ -1,4 +1,4 @@
-"""Compact v30.20a Streamlit adapter. Explanations collapsed; results visible.
+"""Compact v30.20b Streamlit adapter. Explanations collapsed; results visible.
 
 No global mutable per-user state, no callbacks cached across user sessions.
 Storage/FX/entry-context callbacks are supplied by the authenticated app.
@@ -70,6 +70,63 @@ def collect_marks(storage, current_rows):
 
 def _money(value):
     return f"{float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _render_plan_diagnostics(plan, config):
+    if "scan_count" not in plan:
+        return
+    st.markdown("**Paketpr\u00fcfung \u00b7 woran liegt es?**")
+    a, b, c, d = st.columns(4)
+    a.metric("Werte im Scan", str(plan["scan_count"]))
+    b.metric("Gr\u00fcn / Jetzt pr\u00fcfen", str(plan.get("queue_ready_count", 0)))
+    c.metric("Vor Gr\u00f6\u00dfenpr\u00fcfung geeignet", str(plan.get("eligible_count", 0)))
+    count = plan.get("single_feasible_count")
+    d.metric("Einzeln umsetzbar", str(count) if count is not None else "gesperrt",
+             help="Einzelpr\u00fcfung mit dem ganzen verf\u00fcgbaren Budget. Noch keine gemeinsame Paketfreigabe.")
+    st.write(
+        f"Effektives Kaufbudget: {_money(plan.get('effective_budget', 0))} {config.base} \u00b7 "
+        f"Verf\u00fcgbares zus\u00e4tzliches Stop-Risiko: {_money(plan.get('effective_risk', 0))} {config.base} \u00b7 "
+        f"Mindest-CRV nach Kosten: {config.min_crv:.2f}"
+    )
+    summary = plan.get("reason_summary", [])
+    if summary:
+        st.write("H\u00e4ufigste Ausschlussgr\u00fcnde \u00b7 " + plan.get("reason_summary_scope", "Gesamter Scan"))
+        st.dataframe(pd.DataFrame([{k: r[k] for k in ("Grund", "Werte", "Ticker")} for r in summary[:4]]),
+                     hide_index=True, use_container_width=True)
+    st.info("Cash bleibt frei. Datenl\u00fccken zuerst kl\u00e4ren; die Grenzen werden nicht automatisch gelockert.")
+
+
+def _render_candidate_details(plan, config):
+    diagnostics = plan.get("diagnostics", [])
+    if not diagnostics:
+        return
+    with st.expander("Kandidatenpr\u00fcfung \u00b7 Trigger, CRV und Mindestpositionen", expanded=False):
+        st.caption("CRV im Screener kann einen anderen Stop verwenden. F\u00fcr das Paket gelten der gespeicherte Risiko-Stop, das gepufferte Kauflimit und die eingeplanten Kosten. Einzelpr\u00fcfung = gesamtes effektives Budget, nicht Budget geteilt durch Maximalzahl der Positionen.")
+        sizing = {row["Ticker"]: row for row in plan.get("sizing_diagnostics", [])}
+        rejects = {}
+        for row in plan.get("rejected", []):
+            rejects[row["Ticker"]] = row["Grund"]
+        records = []
+        for row in diagnostics:
+            size = sizing.get(row["Ticker"], {})
+            records.append({
+                "Ticker": row["Ticker"], "Queue": row["Queue"], "Trade-State": row["Trade-State"],
+                "Confidence": row["Confidence"], "Kursw\u00e4hrung": row["Kursw\u00e4hrung"],
+                "Scankurs": row["Scankurs"], "Kauflimit": row["Kauflimit"],
+                "Screener-Stop": row["Screener-Stop"], "Ziel": row["Ziel"],
+                "CRV im Screener": row["CRV im Screener"],
+                "CRV am Scankurs (Paket-Stop)": row["CRV am Scankurs (Paket-Stop)"],
+                "CRV am Kauflimit vor Kosten": row["CRV am Kauflimit vor Kosten"],
+                "CRV nach Kosten (Einzelpr\u00fcfung)": size.get("net_crv"),
+                "Mindest-CRV": row["Mindest-CRV"],
+                "Max. St\u00fcck (Einzelpr\u00fcfung)": size.get("max_shares"),
+                "Mindestens St\u00fcck": size.get("min_shares"),
+                "Mindest-Einsatz ("+config.base+")": size.get("minimum_cost"),
+                "Mindest-Risiko ("+config.base+")": size.get("minimum_risk"),
+                "Ergebnis / Grund": rejects.get(row["Ticker"], size.get("Grund", row["Grund"])),
+            })
+        st.dataframe(pd.DataFrame(records), hide_index=True, use_container_width=True)
+        st.caption("Ein Wert kann mehrere Ausschlussgr\u00fcnde haben. Fehlende Daten bleiben leer und werden nicht als Null oder als Freigabe interpretiert.")
 
 
 def _input_config(prefix, settings):
@@ -234,7 +291,7 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
                 manual_confirm = st.checkbox("Diese Umrechnungskurse habe ich f\u00fcr die aktuelle Planung gepr\u00fcft", key=prefix+"fx_confirm")
             else:
                 manual_confirm = True
-        context_hash = engine.fingerprint({"rows": rows, "queue": queue_rows, "store": store, "marks": marks,
+        context_hash = engine.fingerprint({"planner_version": engine.VERSION, "rows": rows, "queue": queue_rows, "store": store, "marks": marks,
                                             "config": config.__dict__, "scan": scan_meta, "exclude": excluded,
                                             "manual": manual_rates, "ack": acknowledged, "dc": data_confirm, "mc": manual_confirm})
         if st.button("Tradingpaket berechnen", type="primary", disabled=not(acknowledged and data_confirm and manual_confirm), key=prefix+"compute"):
@@ -271,6 +328,8 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
         if plan:
             for error in plan.get("errors", []):
                 st.warning(error)
+            if not plan.get("ok"):
+                _render_plan_diagnostics(plan, config)
             if plan.get("ok"):
                 options = list(range(len(plan["alternatives"])))
                 chosen_index = st.selectbox("Paket", options, format_func=lambda i: "Bevorzugter Vorschlag" if i == 0 else f"Alternative {i}", key=prefix+"alternative_"+plan["alternatives"][0]["id"])
@@ -317,11 +376,13 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
                         st.error(str(exc))
             if plan.get("rejected"):
                 with st.expander(f"Nicht aufgenommen / noch zu kl\u00e4ren ({len(plan['rejected'])})", expanded=False):
-                    st.dataframe(pd.DataFrame(plan["rejected"]), hide_index=True, use_container_width=True)
+                    st.dataframe(pd.DataFrame(plan["rejected"])[["Ticker", "Grund"]], hide_index=True, use_container_width=True)
+            _render_candidate_details(plan, config)
         _pending_ui(store, storage, prefix)
         with st.expander("\u2139\ufe0f Methodik & Grenzen", expanded=False):
             st.markdown(
                 "**Auswahl:** nur gr\u00fcne Queue-Kandidaten mit aktivem Trigger, ohne harte Gates und mit mindestens mittlerer Decision-Confidence. "
+                "Der endg\u00fcltige Trade-State ist f\u00fcr die Triggerfreigabe ma\u00dfgeblich; Armed/Best\u00e4tigung offen ist nicht aktiv. "
                 "Stops und strukturelle Ziele stammen aus demselben Vollscan wie der Kurs. Kein zus\u00e4tzlicher Aktienkursabruf beim Planen.\n\n"
                 "**St\u00fcckzahl:** ganze Aktien, gleiches anf\u00e4ngliches Kapital-/Risikobudget je Paketplatz, danach Begrenzung durch Einzelgewicht, Branche, Kosten und Bestand. "
                 "Nicht genutzte Kapazit\u00e4t wird nicht zwangsl\u00e4ufig aufgef\u00fcllt. Mindest-CRV gilt am Kauflimit einschlie\u00dflich Kostenpuffer.\n\n"

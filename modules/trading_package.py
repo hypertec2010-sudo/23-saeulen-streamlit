@@ -1,4 +1,4 @@
-"""v30.20a: deterministic, read-only trading-package planner.
+"""v30.20b: deterministic, read-only trading-package planner.
 
 No orders, invented returns, FX calls, score changes or learning writes.
 Money is converted to one base currency before *any* budget test. Only
@@ -17,7 +17,7 @@ import math
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
-VERSION = "v30.20a"
+VERSION = "v30.20b"
 CURRENCIES = frozenset("EUR USD GBP GBX CHF CAD AUD NZD JPY HKD SGD SEK NOK DKK PLN CZK HUF CNY INR KRW ILS ZAR ZAC BRL MXN TRY RON BGN ISK IDR MYR PHP THB".split())
 BERLIN = ZoneInfo("Europe/Berlin")
 UNKNOWN = "Unbekannt"
@@ -214,24 +214,45 @@ class PlanConfig:
         return errors
 
 
+def _boolean(value: Any) -> bool | None:
+    """Only real booleans, including numpy scalar booleans; never truthy text."""
+    if isinstance(value, bool):
+        return value
+    if hasattr(value, "item"):
+        try:
+            scalar = value.item()
+            if isinstance(scalar, bool):
+                return scalar
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
 def _active(row: Mapping) -> bool:
-    keys = ("__wave_active", "__entry_reached", "__bucket_active")
-    known = [row.get(k) for k in keys if isinstance(row.get(k), bool)]
-    if known:
-        return any(known)
+    """Respect the final state produced by the live state machine.
+
+    The three old flags describe individual alert paths, not every green trend
+    setup. All can be false when the final confirmed state is 'Trigger aktiv'.
+    Conversely, an early true flag must not release an armed/weakened final
+    state. Only legacy rows without a final state use the raw flags.
+    """
     state = text(row.get("Trade-State")).lower()
-    return state in {"trigger aktiv", "kurzfrist-trigger aktiv", "entry-zone erreicht"}
+    if state:
+        return state in {"trigger aktiv", "kurzfrist-trigger aktiv", "entry-zone erreicht"}
+    keys = ("__wave_active", "__entry_reached", "__bucket_active")
+    return any(_boolean(row.get(k)) is True for k in keys)
 
 
 def _hard_gate(row: Mapping) -> bool:
-    if row.get("__entry_hard_gate") is True or row.get("__invalidated") is True:
+    if _boolean(row.get("__entry_hard_gate")) is True or _boolean(row.get("__invalidated")) is True:
         return True
     s = text(row.get("Aktive Einstiegsgates")).lower()
     return s not in {"", "keine", "keine harten einstiegsgates aktiv."}
 
 
 def prepare_candidates(rows: list[dict], queue: list[dict], config: PlanConfig,
-                       rates: Mapping, now: datetime, excluded=()) -> tuple[list[dict], list[dict]]:
+                       rates: Mapping, now: datetime, excluded=(),
+                       diagnostics: list | None = None) -> tuple[list[dict], list[dict]]:
     qmap = {text(r.get("Ticker")).upper(): r for r in queue}
     accepted, rejected, seen = [], [], set()
     excluded = {str(t).upper() for t in excluded}
@@ -240,50 +261,78 @@ def prepare_candidates(rows: list[dict], queue: list[dict], config: PlanConfig,
         tk = text(row.get("Ticker")).upper()
         if not tk:
             continue
-        reasons = []
+        reasons, codes = [], []
+        def reject(code, message):
+            codes.append(code)
+            reasons.append(message)
         q = qmap.get(tk, {})
         if tk in seen:
-            rejected.append({"Ticker": tk, "Grund": "Doppelte Scan-Zeile; Ticker ausgeschlossen."})
+            rejected.append({"Ticker": tk, "Grund": "Doppelte Scan-Zeile; Ticker ausgeschlossen.",
+                             "reason_codes": ["duplicate"]})
             accepted = [c for c in accepted if c["ticker"] != tk]
+            if diagnostics is not None:
+                for diagnostic in diagnostics:
+                    if diagnostic.get("Ticker") == tk:
+                        diagnostic["eligible"] = False
+                        diagnostic["Grund"] = "Doppelte Scan-Zeile; Ticker ausgeschlossen."
             continue
         seen.add(tk)
+        ready = text(q.get("Priorit\u00e4t")) == "\U0001f3af Jetzt pr\u00fcfen" and "\U0001f7e2" in text(row.get("Ampel"))
+        active = _active(row)
         if tk in excluded:
-            reasons.append("Von dir ausgeschlossen")
-        if text(q.get("Priorit\u00e4t")) != "\U0001f3af Jetzt pr\u00fcfen" or "\U0001f7e2" not in text(row.get("Ampel")):
-            reasons.append("Kein freigegebener gr\u00fcner Queue-Kandidat")
+            reject("excluded", "Von dir ausgeschlossen")
+        if not ready:
+            reject("queue", "Kein freigegebener gr\u00fcner Queue-Kandidat")
         if _hard_gate(row):
-            reasons.append("Hartes Einstiegsgate / Invalidierung")
-        if not _active(row):
-            reasons.append("Trigger noch nicht aktiv")
+            reject("gate", "Hartes Einstiegsgate / Invalidierung")
+        if not active:
+            reject("trigger", "Finaler Trigger noch nicht aktiv")
         conf = text(q.get("Decision-Confidence"))
         if conf not in {"Hoch", "Mittel"}:
-            reasons.append("Decision-Confidence nicht ausreichend")
+            reject("confidence", "Decision-Confidence nicht ausreichend")
         if not fresh(row.get("__pkg_scan_at"), now, config.max_age_hours):
-            reasons.append("Paket-Snapshot fehlt/ist veraltet; neuen Vollscan starten")
+            reject("snapshot", "Paket-Snapshot fehlt/ist veraltet; neuen Vollscan starten")
         entry, stop, target = [number(row.get("__pkg_" + k)) for k in ("entry", "stop", "target")]
         price = number(row.get("Kurs"))
         if entry is None or price is None or entry <= 0 or abs(price / entry - 1) > 0.001:
-            reasons.append("Kurs und Risiko-Snapshot passen nicht zusammen")
+            reject("price", "Kurs und Risiko-Snapshot passen nicht zusammen")
         if stop is None or entry is None or not 0 < stop < entry:
-            reasons.append("Kein g\u00fcltiger unver\u00e4nderter Screener-Stop")
+            reject("stop", "Kein g\u00fcltiger unver\u00e4nderter Screener-Stop")
         if target is None or entry is None or target <= entry:
-            reasons.append("Kein erreichbares strukturelles Ziel")
+            reject("target", "Kein erreichbares strukturelles Ziel")
         cur = currency(row.get("__pkg_currency"))
         fx = fx_rate(cur, config.base, rates)
         if fx is None:
-            reasons.append("Kursw\u00e4hrung oder FX-Umrechnung fehlt")
+            reject("fx", "Kursw\u00e4hrung oder FX-Umrechnung fehlt")
         group = group_name(row.get("__pkg_group"))
         if group == UNKNOWN:
-            reasons.append("Branche/Gruppe noch nicht zugeordnet")
+            reject("group", "Branche/Gruppe noch nicht zugeordnet")
         score = number(q.get("Live-Score"))
         if score is None or not 0 <= score <= 100:
-            reasons.append("G\u00fcltiger Live-Score fehlt")
+            reject("score", "G\u00fcltiger Live-Score fehlt")
         limit = entry * (1 + config.entry_buffer_pct / 100) if entry else None
         crv = (target - limit) / (limit - stop) if (limit and stop and target and limit > stop) else None
-        if crv is None or crv < config.min_crv:
-            reasons.append("CRV am gepufferten Kauflimit unterschreitet Mindest-CRV")
+        scan_crv = (target - entry) / (entry - stop) if (entry and stop and target and entry > stop) else None
+        if crv is None:
+            reject("crv_missing", "Paket-CRV wegen fehlender/ung\u00fcltiger Kurs-, Stop- oder Zieldaten nicht berechenbar")
+        elif crv < config.min_crv:
+            reject("crv", f"CRV am Kauflimit vor Kosten {crv:.2f} < Mindest-CRV {config.min_crv:.2f}")
+        diagnostic = {
+            "Ticker": tk, "Queue": text(q.get("Priorit\u00e4t")),
+            "Trade-State": text(row.get("Trade-State")), "Confidence": conf,
+            "queue_ready": ready, "active": active, "eligible": not reasons,
+            "Kursw\u00e4hrung": cur, "Gruppe": group, "Scankurs": entry,
+            "Kauflimit": limit, "Screener-Stop": stop, "Ziel": target,
+            "CRV im Screener": number(row.get("CRV")),
+            "CRV am Scankurs (Paket-Stop)": scan_crv,
+            "CRV am Kauflimit vor Kosten": crv, "Mindest-CRV": config.min_crv,
+            "Grund": " \u00b7 ".join(reasons) or "Vorpr\u00fcfung bestanden",
+            "reason_codes": codes,
+        }
+        if diagnostics is not None:
+            diagnostics.append(diagnostic)
         if reasons:
-            rejected.append({"Ticker": tk, "Grund": " \u00b7 ".join(reasons)})
+            rejected.append({"Ticker": tk, "Grund": diagnostic["Grund"], "reason_codes": codes})
             continue
         merit = 0.65 * (score / 100) + 0.20 * (1.0 if conf == "Hoch" else 0.7) + 0.15 * min(crv, 4) / 4
         accepted.append({
@@ -395,57 +444,126 @@ def portfolio_state(store: Mapping, marks: Mapping[str, Mapping], config: PlanCo
     return out
 
 
+def _size_candidate(c: Mapping, config: PlanConfig, groups: Mapping,
+                    cash_cap: float, risk_cap: float) -> tuple[dict | None, dict]:
+    """Shared sizing and rejection evidence; no looser diagnostic-only path.
+
+    Money, integer sizing, fees and net CRV match v30.20a. The evidence for
+    singleton sizing uses the entire effective budget, not a forced split
+    into the maximum number of positions.
+    """
+    entry_base = c["limit"] * c["fx"]
+    risk_unit = (c["limit"] - c["stop"]) * c["fx"]
+    fee_unit = entry_base * config.variable_fee_pct / 100
+    position_room = config.equity * config.max_position_pct / 100
+    group_room = max(0, config.equity * config.max_group_pct / 100 - groups.get(c["group"], 0))
+    caps = {
+        "budget": (cash_cap - config.fixed_fee) / (entry_base + fee_unit),
+        "risk": (risk_cap - 2 * config.fixed_fee) / (risk_unit + 2 * fee_unit),
+        "position_limit": position_room / entry_base,
+        "group_limit": group_room / entry_base,
+    }
+    qty = math.floor(max(0, min(caps.values())))
+    min_qty = max(1, math.ceil((config.min_order - 1e-8) / entry_base))
+    min_value = min_qty * entry_base
+    min_cost = min_value + config.fixed_fee + min_qty * fee_unit
+    min_risk = min_qty * risk_unit + 2 * (config.fixed_fee + min_qty * fee_unit)
+    evidence = {
+        "Ticker": c["ticker"], "max_shares": qty, "min_shares": min_qty,
+        "minimum_cost": min_cost, "minimum_risk": min_risk,
+        "cash_available": cash_cap, "risk_available": risk_cap,
+        "position_room": position_room, "group_room": group_room,
+        "net_crv": None, "reason_codes": [], "Grund": "",
+    }
+    reasons = []
+    if qty < min_qty:
+        checks = (
+            ("budget", min_cost, cash_cap, "Kaufbudget inkl. Kosten"),
+            ("risk", min_risk, risk_cap, "Stop-Risikobudget inkl. Kosten"),
+            ("position_limit", min_value, position_room, "Einzelpositionslimit"),
+            ("group_limit", min_value, group_room, "freie Branchenkapazit\u00e4t"),
+        )
+        for code, needed, available, label in checks:
+            if needed > available + 1e-8:
+                evidence["reason_codes"].append(code)
+                reasons.append(f"{label}: f\u00fcr mindestens {min_qty} Stk. {needed:.2f} {config.base} n\u00f6tig, {max(0, available):.2f} verf\u00fcgbar")
+        evidence["Grund"] = " \u00b7 ".join(reasons) or "Ganze Mindestposition passt nicht in die Grenzen"
+        if not evidence["reason_codes"]:
+            evidence["reason_codes"] = ["minimum_order"]
+        return None, evidence
+    value = qty * entry_base
+    fee = config.fixed_fee + qty * fee_unit
+    cost = value + fee
+    risk = qty * risk_unit + 2 * fee
+    target_exit_fee = config.fixed_fee + qty * c["target"] * c["fx"] * config.variable_fee_pct / 100
+    potential = qty * (c["target"] - c["limit"]) * c["fx"] - fee - target_exit_fee
+    net_crv = potential / risk if risk > 0 else -1
+    evidence["net_crv"] = net_crv
+    if net_crv + 1e-9 < config.min_crv:
+        evidence["reason_codes"] = ["net_crv"]
+        evidence["Grund"] = f"CRV nach Kosten {net_crv:.2f} < Mindest-CRV {config.min_crv:.2f} (bei {qty} Stk.)"
+        return None, evidence
+    evidence["Grund"] = "Einzeln innerhalb der Grenzen umsetzbar"
+    return {**deepcopy(c), "shares": qty, "value": value, "cost": cost,
+            "risk": risk, "fee_per_side": fee, "net_crv": net_crv}, evidence
+
+
 def _allocate(combo: tuple, config: PlanConfig, portfolio: dict, budget: float, risk_budget: float) -> dict | None:
     n = len(combo)
     if any(sum(c["group"] == group for c in combo) > config.max_per_group for group in {c["group"] for c in combo}):
         return None
-    cash = budget
-    remaining_risk = risk_budget
+    cash, remaining_risk = budget, risk_budget
     groups = dict(portfolio["groups"])
     result = []
     for c in sorted(combo, key=lambda c: (-c["merit"], c["ticker"])):
-        entry_base = c["limit"] * c["fx"]
-        risk_unit = (c["limit"] - c["stop"]) * c["fx"]
-        fee_unit = entry_base * config.variable_fee_pct / 100
-        group_room = max(0, config.equity * config.max_group_pct / 100 - groups.get(c["group"], 0))
-        qty = math.floor(max(0, min(
-            (min(budget / n, cash) - config.fixed_fee) / (entry_base + fee_unit),
-            (min(risk_budget / n, remaining_risk) - 2 * config.fixed_fee) / (risk_unit + 2 * fee_unit),
-            config.equity * config.max_position_pct / 100 / entry_base,
-            group_room / entry_base,
-        )))
-        if qty < 1:
+        item, _ = _size_candidate(c, config, groups, min(budget / n, cash), min(risk_budget / n, remaining_risk))
+        if item is None:
             return None
-        value = qty * entry_base
-        if value + 1e-8 < config.min_order:
-            return None
-        fee = config.fixed_fee + qty * fee_unit
-        cost = value + fee
-        risk = qty * risk_unit + 2 * fee
-        target_exit_fee = config.fixed_fee + qty * c["target"] * c["fx"] * config.variable_fee_pct / 100
-        potential = qty * (c["target"] - c["limit"]) * c["fx"] - fee - target_exit_fee
-        net_crv = potential / risk if risk > 0 else -1
-        if net_crv + 1e-9 < config.min_crv:
-            return None
-        cash -= cost
-        remaining_risk -= risk
-        groups[c["group"]] = groups.get(c["group"], 0) + value
+        cash -= item["cost"]
+        remaining_risk -= item["risk"]
+        groups[c["group"]] = groups.get(c["group"], 0) + item["value"]
         if cash < -1e-6 or remaining_risk < -1e-6:
             return None
-        result.append({**deepcopy(c), "shares": qty, "value": value, "cost": cost,
-                       "risk": risk, "fee_per_side": fee, "net_crv": net_crv})
-    # Concave capital utility avoids simply selecting the top single score.
-    # It is not expected return or a probability, and is never a productive score.
+        result.append(item)
+    # Same bounded planning heuristic as v30.20a, not an expected return.
     merit = sum(c["merit"] * math.sqrt(c["value"] / budget) for c in result)
     merit -= 0.2 * sum((v / config.equity) ** 2 for v in groups.values())
     return {"items": result, "cost": budget - cash, "risk": risk_budget - remaining_risk,
             "cash_left": config.budget - (budget - cash), "groups_after": groups, "utility": merit}
 
 
+_REASON_LABELS = {
+    "queue": "Nicht gr\u00fcn / nicht in Jetzt pr\u00fcfen", "trigger": "Finaler Trigger noch nicht aktiv",
+    "gate": "Hartes Einstiegsgate / Invalidierung", "confidence": "Decision-Confidence zu niedrig",
+    "snapshot": "Paket-Snapshot fehlt oder ist veraltet", "price": "Kursbasis widerspr\u00fcchlich",
+    "stop": "G\u00fcltiger Screener-Stop fehlt", "target": "Strukturelles Ziel fehlt",
+    "fx": "Kursw\u00e4hrung / FX fehlt", "group": "Branche fehlt", "score": "Live-Score fehlt",
+    "crv_missing": "Paket-CRV nicht berechenbar", "crv": "CRV schon vor Kosten unter Mindestwert",
+    "net_crv": "CRV nach Kosten unter Mindestwert", "budget": "Kaufbudget reicht nicht f\u00fcr Mindestposition",
+    "risk": "Stop-Risikobudget reicht nicht f\u00fcr Mindestposition", "position_limit": "Einzelpositionslimit zu knapp",
+    "group_limit": "Branchenkapazit\u00e4t zu knapp", "minimum_order": "Mindestposition nicht darstellbar",
+    "held": "Bereits gehalten / vorgemerkt", "excluded": "Von dir ausgeschlossen", "duplicate": "Doppelte Scan-Zeile",
+}
+
+
+def _rejection_summary(rejected: list[dict], ready_tickers: set | None = None) -> list[dict]:
+    groups = {}
+    for row in rejected:
+        tk = row["Ticker"]
+        if ready_tickers is not None and tk not in ready_tickers:
+            continue
+        for code in row.get("reason_codes", []):
+            groups.setdefault(code, set()).add(tk)
+    return [{"Grund": _REASON_LABELS.get(code, code), "Werte": len(tickers),
+             "Ticker": ", ".join(sorted(tickers)), "code": code}
+            for code, tickers in sorted(groups.items(), key=lambda item: (-len(item[1]), item[0]))]
+
+
 def build_plan(rows: list[dict], queue: list[dict], store: Mapping, marks: Mapping,
                config: PlanConfig, rates: Mapping, *, now: datetime, scan_id: str,
                scan_complete: bool, atomic: bool, excluded=()) -> dict:
-    out = {"ok": False, "errors": config.errors(), "rejected": [], "alternatives": [],
+    out = {"ok": False, "engine_version": VERSION, "errors": config.errors(), "rejected": [], "alternatives": [],
+           "diagnostics": [], "sizing_diagnostics": [], "reason_summary": [],
            "scan_id": scan_id, "created_at": timestamp(now).isoformat(),
            "config": asdict(config), "store_fingerprint": fingerprint(store),
            "rates": dict(rates), "rows_fingerprint": fingerprint(rows)}
@@ -472,15 +590,40 @@ def build_plan(rows: list[dict], queue: list[dict], store: Mapping, marks: Mappi
         out["errors"].append("Kein freies Budget nach Bestand und offenen Vormerkungen.")
     if risk_budget <= 0:
         out["errors"].append("Gesamtes Stop-Risikolimit durch Bestand/Vormerkungen ausgesch\u00f6pft.")
-    candidates, rejected = prepare_candidates(rows, queue, config, rates, now, excluded)
+    candidates, rejected = prepare_candidates(rows, queue, config, rates, now, excluded, out["diagnostics"])
     out["rejected"] = rejected
     pool = []
     for c in candidates:
         if c["ticker"] in portfolio["tickers"]:
-            out["rejected"].append({"Ticker": c["ticker"], "Grund": "Bereits gehalten/vorgemerkt; kein automatischer Nachkauf"})
+            out["rejected"].append({"Ticker": c["ticker"], "Grund": "Bereits gehalten/vorgemerkt; kein automatischer Nachkauf", "reason_codes": ["held"]})
         else:
             pool.append(c)
     out["eligible_count"] = len(pool)
+    out["scan_count"] = len({text(row.get("Ticker")).upper() for row in rows if text(row.get("Ticker"))})
+    ready_tickers = {d["Ticker"] for d in out["diagnostics"] if d["queue_ready"]}
+    out["queue_ready_count"] = len(ready_tickers)
+    out["active_ready_count"] = sum(d["queue_ready"] and d["active"] for d in out["diagnostics"])
+    # Diagnose every eligible row, also outside the bounded combination pool.
+    # Global/portfolio blockers still prohibit all execution and reservations.
+    if not out["errors"]:
+        for candidate in pool:
+            item, diagnostic = _size_candidate(candidate, config, portfolio["groups"], budget, risk_budget)
+            diagnostic["feasible"] = item is not None
+            out["sizing_diagnostics"].append(diagnostic)
+            if item is None:
+                out["rejected"].append({"Ticker": candidate["ticker"], "Grund": diagnostic["Grund"],
+                                        "reason_codes": diagnostic["reason_codes"]})
+        out["single_feasible_count"] = sum(d["feasible"] for d in out["sizing_diagnostics"])
+        # A candidate that cannot be sized alone cannot become feasible with
+        # smaller per-slot budgets and less group room. Eliminate these BEFORE
+        # the bounded search, so expensive high scores cannot displace a
+        # feasible lower-ranked candidate in the same group.
+        feasible_tickers = {d["Ticker"] for d in out["sizing_diagnostics"] if d["feasible"]}
+        pool = [c for c in pool if c["ticker"] in feasible_tickers]
+    else:
+        out["single_feasible_count"] = None
+    out["reason_summary_scope"] = "Jetzt pr\u00fcfen" if ready_tickers else "Gesamter Scan"
+    out["reason_summary"] = _rejection_summary(out["rejected"], ready_tickers if ready_tickers else None)
     # Keep the best representative of every available group before filling
     # the bounded pool by quality; 18 technology names must not hide the first
     # eligible non-technology candidate just below that cutoff.
@@ -512,7 +655,16 @@ def build_plan(rows: list[dict], queue: list[dict], store: Mapping, marks: Mappi
     best = sorted(best, key=lambda p: (-p["utility"], p["risk"], tuple(c["ticker"] for c in p["items"])))[:3]
     out["combinations_checked"] = checked
     if not best:
-        out["errors"].append("Kein passendes Paket innerhalb der Daten-, CRV-, Budget- und Risikogrenzen. Cash bleibt frei.")
+        if out["eligible_count"] == 0:
+            out["errors"].append(
+                f"Kein Paket: {out['queue_ready_count']} gr\u00fcne Queue-Kandidaten, aber keiner besteht die Daten-, Trigger-, CRV- und Bestandspr\u00fcfung."
+            )
+        elif not out.get("single_feasible_count"):
+            out["errors"].append(
+                f"Kein Paket: {out['eligible_count']} Kandidat(en) bestehen die Vorpr\u00fcfung; keiner passt als ganze Mindestposition in Budget, Risiko und Kosten-CRV."
+            )
+        else:
+            out["errors"].append("Im begrenzten Suchraum kein Paket gefunden; Details der Kandidatenpr\u00fcfung beachten.")
         return out
     for plan in best:
         plan["id"] = "PKG-" + fingerprint({"scan": scan_id, "config": asdict(config),

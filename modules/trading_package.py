@@ -1,4 +1,4 @@
-"""v30.20c: deterministic, read-only trading-package planner.
+"""v30.20d: deterministic, read-only trading-package planner.
 
 No orders, invented returns, FX calls, score changes or learning writes.
 Money is converted to one base currency before *any* budget test. Only
@@ -8,7 +8,7 @@ The bounded search is a planning heuristic, not a calibrated return model.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from itertools import combinations
 import hashlib
@@ -17,7 +17,8 @@ import math
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
-VERSION = "v30.20c"
+VERSION = "v30.20d"
+CRV_COMPARISON_LEVELS = (2.0, 1.8, 1.5)
 CURRENCIES = frozenset("EUR USD GBP GBX CHF CAD AUD NZD JPY HKD SGD SEK NOK DKK PLN CZK HUF CNY INR KRW ILS ZAR ZAC BRL MXN TRY RON BGN ISK IDR MYR PHP THB".split())
 BERLIN = ZoneInfo("Europe/Berlin")
 UNKNOWN = "Unbekannt"
@@ -673,6 +674,81 @@ def build_plan(rows: list[dict], queue: list[dict], store: Mapping, marks: Mappi
     out["alternatives"] = best
     out["ok"] = True
     return out
+
+
+def _crv_scenario_summary(plan: Mapping, threshold: float, active_threshold: float) -> dict:
+    """Read-only projection; deliberately contains no executable plan or package ID.
+
+    Counts describe *individual* feasibility before the bounded joint search.
+    A blocked/invalid evaluation is unknown, never a fictitious zero-candidate
+    result. The cash remainder uses effective budget after holdings/reservations.
+    """
+    status = ("package" if plan.get("ok") else
+              "no_package" if "combinations_checked" in plan else "blocked")
+    primary = plan["alternatives"][0] if status == "package" else None
+    evaluated = status != "blocked"
+    fields = ("ticker", "group", "shares", "currency", "limit", "stop", "target",
+              "net_crv", "cost", "risk")
+    items = [{key: deepcopy(item[key]) for key in fields} for item in primary["items"]] if primary else []
+    budget = plan.get("effective_budget")
+    cost = primary["cost"] if primary else (0.0 if evaluated else None)
+    risk = primary["risk"] if primary else (0.0 if evaluated else None)
+    return {
+        "min_crv": threshold,
+        "is_active": math.isclose(threshold, active_threshold, rel_tol=0, abs_tol=1e-10),
+        "status": status,
+        "single_feasible_count": plan.get("single_feasible_count") if evaluated else None,
+        "eligible_count": plan.get("eligible_count"),
+        "feasible_tickers": sorted(d["Ticker"] for d in plan.get("sizing_diagnostics", []) if d.get("feasible")),
+        "items": items,
+        "position_count": len(items) if evaluated else None,
+        "cost": cost,
+        "risk": risk,
+        "cash_left": max(0.0, budget - cost) if evaluated and budget is not None else None,
+        "effective_budget": budget,
+        "effective_risk": plan.get("effective_risk"),
+        "searched_count": plan.get("searched_count"),
+        "combinations_checked": plan.get("combinations_checked"),
+        "displayed_alternatives": len(plan.get("alternatives", [])),
+        "errors": list(plan.get("errors", [])),
+        "reason_summary": deepcopy(plan.get("reason_summary", [])),
+    }
+
+
+def build_plan_with_crv_comparison(rows: list[dict], queue: list[dict], store: Mapping,
+                                   marks: Mapping, config: PlanConfig, rates: Mapping, *,
+                                   now: datetime, scan_id: str, scan_complete: bool,
+                                   atomic: bool, excluded=()) -> dict:
+    """Build the active plan plus a non-actionable 2.00/1.80/1.50 comparison.
+
+    The existing planner is the single source of all calculations and gates.
+    Only min_crv varies, using frozen dataclass copies. All scenarios share
+    input snapshots, FX rates and one evaluation timestamp. No I/O or writes.
+    An exactly matching active threshold is computed only once. A custom
+    active threshold stays custom and is not silently rounded or replaced.
+    """
+    # Isolate from caller-owned mutable data; consume exclusions once so a
+    # generator cannot accidentally apply only to the first calculation.
+    rows, queue, store, marks, rates = deepcopy((rows, queue, store, marks, rates))
+    excluded = tuple(excluded)
+    options = {"now": now, "scan_id": scan_id, "scan_complete": scan_complete,
+               "atomic": atomic, "excluded": excluded}
+    active = build_plan(rows, queue, store, marks, config, rates, **options)
+    # Do not offer a lower-threshold workaround for invalid input parameters.
+    if config.errors():
+        return active
+    comparison = {
+        "read_only": True, "base": config.base, "active_min_crv": config.min_crv,
+        "scan_id": scan_id, "created_at": active["created_at"], "scenarios": [],
+        "input_fingerprint": fingerprint({"rows": rows, "queue": queue, "store": store,
+            "marks": marks, "rates": rates, "config": asdict(config), "options": options}),
+    }
+    for threshold in CRV_COMPARISON_LEVELS:
+        scenario = (active if config.min_crv == threshold else
+                    build_plan(rows, queue, store, marks, replace(config, min_crv=threshold), rates, **options))
+        comparison["scenarios"].append(_crv_scenario_summary(scenario, threshold, config.min_crv))
+    active["crv_comparison"] = comparison
+    return active
 
 
 def build_intentions(plan: Mapping, alternative: int, store: Mapping, *, watchlist: str,

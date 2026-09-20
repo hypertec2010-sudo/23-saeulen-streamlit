@@ -1,4 +1,4 @@
-"""Compact v30.20b Streamlit adapter. Explanations collapsed; results visible.
+"""Compact v30.20d Streamlit adapter. Explanations collapsed; results visible.
 
 No global mutable per-user state, no callbacks cached across user sessions.
 Storage/FX/entry-context callbacks are supplied by the authenticated app.
@@ -169,6 +169,73 @@ def _render_candidate_details(plan, config):
         st.caption("Ein Wert kann mehrere Ausschlussgr\u00fcnde haben. Fehlende Daten bleiben leer und werden nicht als Null oder als Freigabe interpretiert.")
 
 
+def _render_crv_comparison(plan, config):
+    comparison = plan.get("crv_comparison") or {}
+    scenarios = comparison.get("scenarios") or []
+    if not scenarios:
+        return
+    st.markdown("**CRV-Szenarien \u00b7 gleicher Scan, gleiches Budget und Risiko**")
+    active = _money(config.min_crv)
+    st.write(f"Aktive Mindestgrenze: **{active}** \u00b7 Vergleich ohne automatische \u00dcbernahme.")
+    table = []
+    for scenario in scenarios:
+        blocked = scenario["status"] == "blocked"
+        names = " \u00b7 ".join(c["ticker"] for c in scenario["items"])
+        table.append({
+            "Mindest-CRV nach Kosten": _money(scenario["min_crv"]) + (" (aktiv)" if scenario["is_active"] else ""),
+            "Einzeln umsetzbar": str(scenario["single_feasible_count"]) if scenario["single_feasible_count"] is not None else "gesperrt",
+            "Paket": names or ("Pr\u00fcfung gesperrt" if blocked else "Kein Paket"),
+            "Positionen": str(scenario["position_count"]) if scenario["position_count"] is not None else "\u2014",
+            f"Einsatz ({config.base})": _money(scenario["cost"]) if scenario["cost"] is not None else "\u2014",
+            f"Stop-Risiko ({config.base})": _money(scenario["risk"]) if scenario["risk"] is not None else "\u2014",
+            f"Restbudget effektiv ({config.base})": _money(scenario["cash_left"]) if scenario["cash_left"] is not None else "\u2014",
+        })
+    st.dataframe(pd.DataFrame(table), hide_index=True, use_container_width=True)
+    # These are results/action boundaries, not an always-open methodology wall.
+    if not plan.get("ok") and any(s["status"] == "package" for s in scenarios):
+        st.info(
+            "Nur im Vergleich ist ein Paket m\u00f6glich. Deine aktive Grenze bleibt unver\u00e4ndert; "
+            "kein Vergleichspaket ist zur Vormerkung freigegeben."
+        )
+    elif not any(s["status"] == "package" for s in scenarios):
+        st.info("Auch bei den Vergleichsgrenzen wurde kein Paket gefunden. Die konkreten Sperren stehen in den Szenariodetails.")
+    with st.expander("\u2139\ufe0f CRV-Vergleich \u00b7 Kandidaten, Paketdetails & Methodik", expanded=False):
+        st.caption(
+            "Nur die Mindest-CRV-Grenze nach Kosten variiert: 2,00 / 1,80 / 1,50. "
+            "Scan, Best\u00e4nde, Ausschl\u00fcsse, FX, Kosten, Einstiegspuffer und alle anderen Grenzen sind identisch. "
+            "Einzeln umsetzbar bedeutet: Der Kandidat passt alleine in das effektive Budget und Risiko; "
+            "mehrere solche Kandidaten passen nicht zwangsl\u00e4ufig zusammen. "
+            "Gezeigt wird je Grenze der bevorzugte Vorschlag der bestehenden begrenzten Suche, nicht jedes m\u00f6gliche Paket. "
+            "Die Paketgr\u00f6\u00dfe muss bei sinkender Grenze nicht steigen. "
+            "Restbudget effektiv ber\u00fccksichtigt bereits erfasste Best\u00e4nde und Vormerkungen. "
+            "Ein niedrigeres Mindest-CRV ist keine Aussage \u00fcber eine h\u00f6here Gewinnchance."
+        )
+        st.write(
+            "Eine andere Grenze bewusst unter **Grenzen, Kosten & Basisw\u00e4hrung** einstellen "
+            "und danach **Tradingpaket berechnen** anklicken. Erst der neu berechnete aktive "
+            "Vorschlag kann separat best\u00e4tigt und vorgemerkt werden."
+        )
+        st.caption(f"Scan: {comparison['scan_id']} \u00b7 Vergleichsstand: {comparison['created_at']}")
+        for scenario in scenarios:
+            st.markdown(f"**Mindest-CRV {_money(scenario['min_crv'])}**")
+            if scenario["single_feasible_count"] is not None:
+                st.write("Einzeln umsetzbar: " + (", ".join(scenario["feasible_tickers"]) or "keine"))
+            for error in scenario["errors"]:
+                st.write(error)
+            if scenario["items"]:
+                st.dataframe(pd.DataFrame([{
+                    "Ticker": c["ticker"], "Gruppe": c["group"], "St\u00fcck": c["shares"],
+                    "Kursw\u00e4hrung": c["currency"], "Kauflimit (Plan)": c["limit"],
+                    "Screener-Stop": c["stop"], "Ziel": c["target"],
+                    "CRV nach Kosten": round(c["net_crv"], 3),
+                    f"Einsatz ({config.base})": round(c["cost"], 2),
+                    f"Stop-Risiko ({config.base})": round(c["risk"], 2),
+                } for c in scenario["items"]]), hide_index=True, use_container_width=True)
+            if scenario["reason_summary"]:
+                st.dataframe(pd.DataFrame([{k: r[k] for k in ("Grund", "Werte", "Ticker")}
+                    for r in scenario["reason_summary"][:4]]), hide_index=True, use_container_width=True)
+
+
 def _input_config(prefix, settings):
     base_options = ["EUR", "USD", "GBP", "CHF"]
     default_base = engine.currency(settings.get("base_currency"))
@@ -310,6 +377,9 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
         except Exception:
             st.error("Die Bestandsdaten sind nicht sicher lesbar. Paketplanung bleibt gesperrt; Datenbankverbindung pr\u00fcfen.")
             return
+        if not callable(getattr(engine, "build_plan_with_crv_comparison", None)):
+            st.error("CRV-Vergleichsbaustein fehlt: Bitte modules/trading_package.py und modules/trading_package_ui.py aus v30.20d gemeinsam hochladen und die App neu starten.")
+            return
         snapshots_ready = _render_snapshot_status(rows)
         config = _input_config(prefix, settings)
         rows, marks, excluded, data_confirm = _data_editor(rows, marks, store, prefix)
@@ -330,11 +400,19 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
                 manual_confirm = st.checkbox("Diese Umrechnungskurse habe ich f\u00fcr die aktuelle Planung gepr\u00fcft", key=prefix+"fx_confirm")
             else:
                 manual_confirm = True
-        context_hash = engine.fingerprint({"planner_version": engine.VERSION, "rows": rows, "queue": queue_rows, "store": store, "marks": marks,
+        context_now = now_provider()
+        # Expiring (or previously future-dated) snapshots invalidate the cached
+        # comparison as well as the active plan, without fetching new FX data.
+        freshness_times = [r.get("__pkg_scan_at") for r in rows]
+        freshness_times += [r.get("__pkg_scan_at") or r.get("Letztes Update") for r in marks.values()]
+        freshness_times += [pos.get("last_price_at") for bucket in store.values() if isinstance(bucket, Mapping)
+                            for pos in bucket.values() if isinstance(pos, Mapping) and engine.number(pos.get("shares"), 0) > 0]
+        freshness_state = [engine.fresh(ts, context_now, config.max_age_hours) for ts in freshness_times]
+        context_hash = engine.fingerprint({"planner_version": engine.VERSION, "freshness": freshness_state, "rows": rows, "queue": queue_rows, "store": store, "marks": marks,
                                             "config": config.__dict__, "scan": scan_meta, "exclude": excluded,
-                                            "manual": manual_rates, "ack": acknowledged, "dc": data_confirm, "mc": manual_confirm})
+                                            "manual": manual_rates, "manual_enabled": use_manual, "ack": acknowledged, "dc": data_confirm, "mc": manual_confirm})
         if st.button("Tradingpaket berechnen", type="primary", disabled=not(acknowledged and data_confirm and manual_confirm and snapshots_ready), key=prefix+"compute"):
-            now = now_provider()
+            now = context_now
             if config.errors():
                 st.session_state[prefix+"result"] = {"context_hash": context_hash, "ok": False, "errors": config.errors()}
             else:
@@ -352,7 +430,7 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
                 except Exception:
                     rates = {config.base: 1.0}
                     fx_info = {"source": "FX nicht verf\u00fcgbar", "reference_date": ""}
-                plan = engine.build_plan(rows, queue_rows, store, marks, config, rates, now=now,
+                plan = engine.build_plan_with_crv_comparison(rows, queue_rows, store, marks, config, rates, now=now,
                                          scan_id=str((scan_meta or {}).get("run_id") or ""),
                                          scan_complete=bool((scan_meta or {}).get("complete")),
                                          atomic=bool((scan_meta or {}).get("atomic")), excluded=excluded)
@@ -362,9 +440,10 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
                 st.session_state.pop(prefix+"flash", None)
         plan = st.session_state.get(prefix+"result")
         if plan and plan.get("context_hash") != context_hash:
-            st.info("Eingaben, Scan oder Best\u00e4nde haben sich ge\u00e4ndert. Paket neu berechnen.")
+            st.info("Eingaben, Scan oder Best\u00e4nde haben sich ge\u00e4ndert oder der Datenstand ist nicht mehr aktuell. Paket neu berechnen.")
             plan = None
         if plan:
+            _render_crv_comparison(plan, config)
             for error in plan.get("errors", []):
                 st.warning(error)
             if not plan.get("ok"):

@@ -1473,7 +1473,18 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         f"Beobachtungsmodus: Ampel bleibt am Basis-Score."
     )
 
+    # v30.20a: immutable planning fields only. Callback is optional, so an
+    # incomplete deployment cannot interrupt the productive scan.
+    _package_fields_v3020 = {}
+    _package_callback_v3020 = _CONTEXT.get("package_scan_fields")
+    if callable(_package_callback_v3020):
+        try:
+            _package_fields_v3020 = _package_callback_v3020(r, style_name=style_name, price=price)
+        except Exception:
+            _package_fields_v3020 = {}  # fail closed for planning, not for the scanner
+
     return {
+        **_package_fields_v3020,
         "Ampel": status_icon,
         "Status": status,
         "Live-Score": f"{live_score_int}/100",

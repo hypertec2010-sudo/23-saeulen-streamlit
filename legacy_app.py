@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.19a"
+APP_VERSION = "v30.20a"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -14931,6 +14931,13 @@ from modules import depot_transaction_import as _depot_transaction_import_v3013
 from modules import short_term_trader as _short_term_trader_v304
 from modules import commodity_context as _commodity_context_v305
 from modules import portfolio_risk as _portfolio_risk_module
+try:
+    from modules import trading_package as _trading_package_v3020
+    from modules.trading_package_ui import render_trading_package as _render_trading_package_v3020
+except ImportError:
+    # Partial uploads must not take down authentication or the existing scanner.
+    _trading_package_v3020 = None
+    _render_trading_package_v3020 = None
 from modules import validated_engine as _validated_engine_v300
 from modules import rotation_radar as _rotation_radar_v301
 from modules import shadow_performance as _shadow_performance_v287
@@ -17434,8 +17441,17 @@ def _v303g_sync_atomic_marks_into_positions(all_positions, live_df):
         new_store[store_key] = new_positions
     return new_store, changed
 
+# v30.20a: risk fields captured from the SAME full-scan result, without
+# market-data requests or changes to productive scores/gates.
+def _v3020_package_scan_fields(result, style_name="Ausgewogen", price=None):
+    risk = _v230_extract_position_inputs(result, style_name=style_name)
+    return _trading_package_v3020.make_scan_fields(
+        result, risk, price=price, now=get_current_berlin_time()
+    )
+
 # v25.3: Live-Monitor-Modul konfigurieren
 _live_module.configure_context(
+    package_scan_fields=_v3020_package_scan_fields,
     _v210_alert_num=_v210_alert_num,
     _v210_alert_price=_v210_alert_price,
     _v214_monitor_final_release_check=_v214_monitor_final_release_check,
@@ -20690,6 +20706,21 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # Queue validation is strictly observational and must never
                                 # interrupt the productive Live-Screener.
                                 pass
+                            # v30.20a: advisory package selection, never automatic orders.
+                            try:
+                                _render_trading_package_v3020(
+                                    watchlist=selected_watchlist_name,
+                                    frame=_decision_queue_source_v309,
+                                    queue=_queue_snapshot_v3010,
+                                    scan_meta=dict(scan_meta_v2844 or {}),
+                                    storage=_storage_v280,
+                                    fx_resolver=_v303i_resolve_auto_fx,
+                                    capture_context=_v290_capture_entry_context,
+                                    now_provider=get_current_berlin_time,
+                                )
+                            except Exception:
+                                st.warning("Tradingpaket-Planer nicht verfuegbar. Keine Positionen oder Orders automatisch gebucht.")
+
                             _v3010_render_action_queue_learning(selected_watchlist_name)
 
                             for _col in live_display_df.columns:

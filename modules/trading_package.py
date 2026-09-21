@@ -1,4 +1,4 @@
-"""v30.20d: deterministic, read-only trading-package planner.
+"""v30.20f: deterministic, read-only trading-package planner.
 
 No orders, invented returns, FX calls, score changes or learning writes.
 Money is converted to one base currency before *any* budget test. Only
@@ -17,7 +17,8 @@ import math
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
-VERSION = "v30.20d"
+VERSION = "v30.20f"
+CRV_SELECTION_BASIS = "screener"
 CRV_COMPARISON_LEVELS = (2.0, 1.8, 1.5)
 CURRENCIES = frozenset("EUR USD GBP GBX CHF CAD AUD NZD JPY HKD SGD SEK NOK DKK PLN CZK HUF CNY INR KRW ILS ZAR ZAC BRL MXN TRY RON BGN ISK IDR MYR PHP THB".split())
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -182,8 +183,8 @@ class PlanConfig:
     max_total_risk_pct: float = 3.0
     min_crv: float = 2.0
     min_order: float = 100.0
-    fixed_fee: float = 1.0       # per side, base currency; planning input
-    variable_fee_pct: float = 0.15
+    fixed_fee: float = 0.0       # per side, base currency; explicit planning input
+    variable_fee_pct: float = 0.0
     entry_buffer_pct: float = 0.3
     max_age_hours: float = 24.0
     pool_limit: int = 18
@@ -314,17 +315,26 @@ def prepare_candidates(rows: list[dict], queue: list[dict], config: PlanConfig,
         limit = entry * (1 + config.entry_buffer_pct / 100) if entry else None
         crv = (target - limit) / (limit - stop) if (limit and stop and target and limit > stop) else None
         scan_crv = (target - entry) / (entry - stop) if (entry and stop and target and entry > stop) else None
-        if crv is None:
-            reject("crv_missing", "Paket-CRV wegen fehlender/ung\u00fcltiger Kurs-, Stop- oder Zieldaten nicht berechenbar")
-        elif crv < config.min_crv:
-            reject("crv", f"CRV am Kauflimit vor Kosten {crv:.2f} < Mindest-CRV {config.min_crv:.2f}")
+        # Selection uses the SAME displayed Screener CRV from this scan row.
+        # Never invent it from the wider safety stop or from another snapshot.
+        screener_crv = number(row.get("CRV"))
+        if screener_crv is None or screener_crv <= 0:
+            reject("screener_crv_missing", "Screener-CRV fehlt oder ist ungueltig; keine Ersatzberechnung mit Sicherheitsstop")
+        elif screener_crv + 1e-9 < config.min_crv:
+            reject("screener_crv", f"Screener-CRV {screener_crv:.2f} < Mindest-Screener-CRV {config.min_crv:.2f}")
+        # Still require sound execution geometry. A reference ratio never
+        # legitimizes an entry beyond the target or a missing safety stop.
+        if crv is None or not math.isfinite(crv):
+            reject("crv_missing", "CRV am Sicherheitsstop nicht berechenbar; Kurs-, Stop- oder Zieldaten pruefen")
+        if target is not None and limit is not None and target <= limit:
+            reject("target_exhausted", "Kauflimit erreicht/ueberschreitet das Ziel; keinen Einstieg oberhalb des Ziels planen")
         diagnostic = {
             "Ticker": tk, "Queue": text(q.get("Priorit\u00e4t")),
             "Trade-State": text(row.get("Trade-State")), "Confidence": conf,
             "queue_ready": ready, "active": active, "eligible": not reasons,
             "Kursw\u00e4hrung": cur, "Gruppe": group, "Scankurs": entry,
             "Kauflimit": limit, "Screener-Stop": stop, "Ziel": target,
-            "CRV im Screener": number(row.get("CRV")),
+            "CRV im Screener": screener_crv, "CRV-Auswahlbasis": CRV_SELECTION_BASIS,
             "CRV am Scankurs (Paket-Stop)": scan_crv,
             "CRV am Kauflimit vor Kosten": crv, "Mindest-CRV": config.min_crv,
             "Grund": " \u00b7 ".join(reasons) or "Vorpr\u00fcfung bestanden",
@@ -335,11 +345,14 @@ def prepare_candidates(rows: list[dict], queue: list[dict], config: PlanConfig,
         if reasons:
             rejected.append({"Ticker": tk, "Grund": diagnostic["Grund"], "reason_codes": codes})
             continue
-        merit = 0.65 * (score / 100) + 0.20 * (1.0 if conf == "Hoch" else 0.7) + 0.15 * min(crv, 4) / 4
+        merit = 0.65 * (score / 100) + 0.20 * (1.0 if conf == "Hoch" else 0.7) + 0.15 * min(screener_crv, 4) / 4
         accepted.append({
             "ticker": tk, "name": text(row.get("Name")) or tk, "currency": cur,
             "group": group, "entry": entry, "limit": limit, "stop": stop, "target": target,
-            "crv": crv, "fx": fx, "score": score, "confidence": conf,
+            "crv": screener_crv, "screener_crv": screener_crv,
+            "crv_basis": CRV_SELECTION_BASIS, "crv_source": "CRV im aktuellen Screener-Scan",
+            "risk_crv_at_scan": scan_crv, "risk_crv_before_costs": crv,
+            "fx": fx, "score": score, "confidence": conf,
             "merit": merit, "scan_at": row["__pkg_scan_at"],
             "stop_source": text(row.get("__pkg_stop_source")),
             "stop_basis": text(row.get("__pkg_stop_basis")),
@@ -449,7 +462,7 @@ def _size_candidate(c: Mapping, config: PlanConfig, groups: Mapping,
                     cash_cap: float, risk_cap: float) -> tuple[dict | None, dict]:
     """Shared sizing and rejection evidence; no looser diagnostic-only path.
 
-    Money, integer sizing, fees and net CRV match v30.20a. The evidence for
+    Money, integer sizing, fees and risk-stop CRV match v30.20a. The evidence for
     singleton sizing uses the entire effective budget, not a forced split
     into the maximum number of positions.
     """
@@ -500,13 +513,19 @@ def _size_candidate(c: Mapping, config: PlanConfig, groups: Mapping,
     potential = qty * (c["target"] - c["limit"]) * c["fx"] - fee - target_exit_fee
     net_crv = potential / risk if risk > 0 else -1
     evidence["net_crv"] = net_crv
-    if net_crv + 1e-9 < config.min_crv:
-        evidence["reason_codes"] = ["net_crv"]
-        evidence["Grund"] = f"CRV nach Kosten {net_crv:.2f} < Mindest-CRV {config.min_crv:.2f} (bei {qty} Stk.)"
+    evidence["screener_crv"] = c["screener_crv"]
+    evidence["crv_basis"] = CRV_SELECTION_BASIS
+    evidence["potential_after_costs"] = potential
+    # The safety ratio is diagnostic, not a second minimum-CRV filter.
+    # Do not, however, propose a target with no positive reward after costs.
+    if not math.isfinite(potential) or not math.isfinite(net_crv) or potential <= 0:
+        evidence["reason_codes"] = ["target_after_costs"]
+        evidence["Grund"] = f"Zielgewinn nach eingeplanten Kosten nicht positiv (bei {qty} Stk.); Kosten/Ziel pruefen"
         return None, evidence
     evidence["Grund"] = "Einzeln innerhalb der Grenzen umsetzbar"
     return {**deepcopy(c), "shares": qty, "value": value, "cost": cost,
-            "risk": risk, "fee_per_side": fee, "net_crv": net_crv}, evidence
+            "risk": risk, "fee_per_side": fee, "net_crv": net_crv,
+            "potential_after_costs": potential}, evidence
 
 
 def _allocate(combo: tuple, config: PlanConfig, portfolio: dict, budget: float, risk_budget: float) -> dict | None:
@@ -539,8 +558,12 @@ _REASON_LABELS = {
     "snapshot": "Paket-Snapshot fehlt oder ist veraltet", "price": "Kursbasis widerspr\u00fcchlich",
     "stop": "G\u00fcltiger Screener-Stop fehlt", "target": "Strukturelles Ziel fehlt",
     "fx": "Kursw\u00e4hrung / FX fehlt", "group": "Branche fehlt", "score": "Live-Score fehlt",
-    "crv_missing": "Paket-CRV nicht berechenbar", "crv": "CRV schon vor Kosten unter Mindestwert",
-    "net_crv": "CRV nach Kosten unter Mindestwert", "budget": "Kaufbudget reicht nicht f\u00fcr Mindestposition",
+    "crv_missing": "CRV am Sicherheitsstop nicht berechenbar",
+    "screener_crv_missing": "Screener-CRV fehlt oder ist ungueltig",
+    "screener_crv": "Screener-CRV unter Mindestwert",
+    "target_exhausted": "Kauflimit erreicht/ueberschreitet das Ziel",
+    "target_after_costs": "Kein positiver Zielgewinn nach eingeplanten Kosten",
+    "budget": "Kaufbudget reicht nicht f\u00fcr Mindestposition",
     "risk": "Stop-Risikobudget reicht nicht f\u00fcr Mindestposition", "position_limit": "Einzelpositionslimit zu knapp",
     "group_limit": "Branchenkapazit\u00e4t zu knapp", "minimum_order": "Mindestposition nicht darstellbar",
     "held": "Bereits gehalten / vorgemerkt", "excluded": "Von dir ausgeschlossen", "duplicate": "Doppelte Scan-Zeile",
@@ -563,7 +586,7 @@ def _rejection_summary(rejected: list[dict], ready_tickers: set | None = None) -
 def build_plan(rows: list[dict], queue: list[dict], store: Mapping, marks: Mapping,
                config: PlanConfig, rates: Mapping, *, now: datetime, scan_id: str,
                scan_complete: bool, atomic: bool, excluded=()) -> dict:
-    out = {"ok": False, "engine_version": VERSION, "errors": config.errors(), "rejected": [], "alternatives": [],
+    out = {"ok": False, "engine_version": VERSION, "crv_basis": CRV_SELECTION_BASIS, "errors": config.errors(), "rejected": [], "alternatives": [],
            "diagnostics": [], "sizing_diagnostics": [], "reason_summary": [],
            "scan_id": scan_id, "created_at": timestamp(now).isoformat(),
            "config": asdict(config), "store_fingerprint": fingerprint(store),
@@ -662,7 +685,7 @@ def build_plan(rows: list[dict], queue: list[dict], store: Mapping, marks: Mappi
             )
         elif not out.get("single_feasible_count"):
             out["errors"].append(
-                f"Kein Paket: {out['eligible_count']} Kandidat(en) bestehen die Vorpr\u00fcfung; keiner passt als ganze Mindestposition in Budget, Risiko und Kosten-CRV."
+                f"Kein Paket: {out['eligible_count']} Kandidat(en) bestehen die Vorpr\u00fcfung; keiner passt als ganze Mindestposition in Budget, Risiko und Kostendeckung am Ziel."
             )
         else:
             out["errors"].append("Im begrenzten Suchraum kein Paket gefunden; Details der Kandidatenpr\u00fcfung beachten.")
@@ -688,13 +711,13 @@ def _crv_scenario_summary(plan: Mapping, threshold: float, active_threshold: flo
     primary = plan["alternatives"][0] if status == "package" else None
     evaluated = status != "blocked"
     fields = ("ticker", "group", "shares", "currency", "limit", "stop", "target",
-              "net_crv", "cost", "risk")
+              "screener_crv", "crv_basis", "risk_crv_before_costs", "net_crv", "cost", "risk")
     items = [{key: deepcopy(item[key]) for key in fields} for item in primary["items"]] if primary else []
     budget = plan.get("effective_budget")
     cost = primary["cost"] if primary else (0.0 if evaluated else None)
     risk = primary["risk"] if primary else (0.0 if evaluated else None)
     return {
-        "min_crv": threshold,
+        "min_crv": threshold, "crv_basis": CRV_SELECTION_BASIS,
         "is_active": math.isclose(threshold, active_threshold, rel_tol=0, abs_tol=1e-10),
         "status": status,
         "single_feasible_count": plan.get("single_feasible_count") if evaluated else None,
@@ -738,7 +761,7 @@ def build_plan_with_crv_comparison(rows: list[dict], queue: list[dict], store: M
     if config.errors():
         return active
     comparison = {
-        "read_only": True, "base": config.base, "active_min_crv": config.min_crv,
+        "read_only": True, "base": config.base, "active_min_crv": config.min_crv, "crv_basis": CRV_SELECTION_BASIS,
         "scan_id": scan_id, "created_at": active["created_at"], "scenarios": [],
         "input_fingerprint": fingerprint({"rows": rows, "queue": queue, "store": store,
             "marks": marks, "rates": rates, "config": asdict(config), "options": options}),
@@ -756,6 +779,8 @@ def build_intentions(plan: Mapping, alternative: int, store: Mapping, *, watchli
     """Return a copy to save in ONE positions-namespace write. No journal writes."""
     if not plan.get("ok"):
         raise ValueError("Kein freigegebener Paketplan.")
+    if plan.get("engine_version") != VERSION or plan.get("crv_basis") != CRV_SELECTION_BASIS:
+        raise ValueError("Paket stammt aus einer anderen Auswahlversion. Neu berechnen; keine alte Freigabe uebernehmen.")
     if not 0 <= alternative < len(plan.get("alternatives", [])):
         raise ValueError("Paketalternative nicht vorhanden.")
     chosen = plan["alternatives"][alternative]
@@ -780,6 +805,14 @@ def build_intentions(plan: Mapping, alternative: int, store: Mapping, *, watchli
                     "base_currency": conf.base, "fx": c["fx"], "risk_base": c["risk"],
                     "stop": c["stop"], "stop_source": c["stop_source"], "stop_basis": c["stop_basis"],
                     "target": c["target"], "target_source": c["target_source"],
+                    "screener_crv": c["screener_crv"], "crv_selection_basis": CRV_SELECTION_BASIS,
+                    "screener_crv_source": c["crv_source"], "min_screener_crv": conf.min_crv,
+                    "risk_crv_at_scan": c["risk_crv_at_scan"],
+                    "risk_crv_before_costs": c["risk_crv_before_costs"],
+                    "risk_crv_after_costs": c["net_crv"],
+                    "fixed_fee_per_side": conf.fixed_fee,
+                    "variable_fee_pct_per_side": conf.variable_fee_pct,
+                    "entry_buffer_pct": conf.entry_buffer_pct,
                     "valid_until": (timestamp(c["scan_at"]) + timedelta(hours=conf.max_age_hours)).isoformat()}
         context["trading_package"] = metadata
         context["recommended_stop_initial"] = c["stop"]

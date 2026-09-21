@@ -1,4 +1,4 @@
-"""Compact v30.20e Streamlit adapter. Explanations collapsed; results visible.
+"""Compact v30.20f Streamlit adapter. Explanations collapsed; results visible.
 
 No global mutable per-user state, no callbacks cached across user sessions.
 Storage/FX/entry-context callbacks are supplied by the authenticated app.
@@ -16,7 +16,7 @@ from . import trading_package as engine
 from . import live_monitor as scan_pipeline
 from .live_screener_snapshot import dataframe_from_payload
 
-UI_VERSION = "v30.20e"
+UI_VERSION = "v30.20f"
 
 
 def _read_positions(storage):
@@ -94,7 +94,7 @@ def _render_crv_scenario_text(scenario, base):
     label = {"package": "Paket m\u00f6glich", "no_package": "Kein Paket",
              "blocked": "Pr\u00fcfung gesperrt"}.get(status, "Ergebnis nicht verf\u00fcgbar")
     role = "Aktiv" if scenario["is_active"] else "Vergleich"
-    st.markdown(f"**{role} \u00b7 CRV \u2265 {_money(scenario['min_crv'])}: {label}**")
+    st.markdown(f"**{role} \u00b7 Screener-CRV \u2265 {_money(scenario['min_crv'])}: {label}**")
     if status == "blocked":
         st.write("Einzeln umsetzbar: nicht ermittelt \u00b7 keine Paketfreigabe.")
         if scenario.get("errors"):
@@ -113,10 +113,13 @@ def _render_crv_scenario_text(scenario, base):
     parts = []
     for item in items:
         qty = engine.number(item.get("shares"))
-        crv = engine.number(item.get("net_crv"))
+        crv = engine.number(item.get("screener_crv"))
         qty_text = f"{qty:g}" if qty is not None else "nicht ermittelt"
         crv_text = _money(crv) if crv is not None else "nicht ermittelt"
-        parts.append(f"**{_md_literal(item.get('ticker'))}**: {qty_text} St\u00fcck, CRV nach Kosten {crv_text}")
+        risk_crv = engine.number(item.get("net_crv"))
+        risk_text = _money(risk_crv) if risk_crv is not None else "nicht ermittelt"
+        parts.append(f"**{_md_literal(item.get('ticker'))}**: {qty_text} St\u00fcck, "
+                     f"Screener-CRV {crv_text} \u00b7 CRV am Sicherheitsstop inkl. Kosten {risk_text}")
     st.markdown("Vorgeschlagenes Paket \u00b7 " + " \u00b7 ".join(parts))
     position_text = "Position" if len(items) == 1 else "Positionen"
     st.write(f"Einzeln umsetzbar: {count_text} \u00b7 Paket: {len(items)} {position_text}")
@@ -170,7 +173,7 @@ def _render_snapshot_status(rows):
 def _render_plan_diagnostics(plan, config):
     if "scan_count" not in plan:
         return
-    st.markdown(f"**Paketpr\u00fcfung \u00b7 aktive CRV-Grenze {_money(config.min_crv)}**")
+    st.markdown(f"**Paketpr\u00fcfung \u00b7 aktive Screener-CRV-Grenze {_money(config.min_crv)}**")
     a, b, c, d = st.columns(4)
     a.metric("Werte im Scan", str(plan["scan_count"]))
     b.metric("Gr\u00fcn / Jetzt pr\u00fcfen", str(plan.get("queue_ready_count", 0)))
@@ -181,7 +184,7 @@ def _render_plan_diagnostics(plan, config):
     st.write(
         f"Effektives Kaufbudget: {_money(plan.get('effective_budget', 0))} {config.base} \u00b7 "
         f"Verf\u00fcgbares zus\u00e4tzliches Stop-Risiko: {_money(plan.get('effective_risk', 0))} {config.base} \u00b7 "
-        f"Aktives Mindest-CRV nach Kosten: {_money(config.min_crv)}"
+        f"Aktives Mindest-Screener-CRV: {_money(config.min_crv)}"
     )
     summary = plan.get("reason_summary", [])
     if summary:
@@ -191,7 +194,11 @@ def _render_plan_diagnostics(plan, config):
                 f"**{_md_literal(reason['Grund'])} \u00b7 {reason['Werte']} Wert(e):** "
                 f"{_md_literal(reason['Ticker'])}"
             )
-    st.info("Cash bleibt frei. Datenl\u00fccken zuerst kl\u00e4ren; die Grenzen werden nicht automatisch gelockert.")
+    data_codes = {"snapshot", "price", "stop", "target", "fx", "group", "score", "screener_crv_missing", "crv_missing"}
+    if any(reason.get("code") in data_codes for reason in summary):
+        st.info("Cash bleibt frei. Die genannten Datenluecken zuerst klaeren; Grenzen werden nicht automatisch gelockert.")
+    else:
+        st.info("Bei der aktiven Screener-CRV-Grenze und den angezeigten Vorgaben kein Paket. Cash bleibt frei; Grenzen werden nicht automatisch gelockert.")
 
 
 def _render_candidate_details(plan, config):
@@ -199,7 +206,10 @@ def _render_candidate_details(plan, config):
     if not diagnostics:
         return
     with st.expander("Kandidatenpr\u00fcfung \u00b7 Trigger, CRV und Mindestpositionen", expanded=False):
-        st.caption("CRV im Screener kann einen anderen Stop verwenden. F\u00fcr das Paket gelten der gespeicherte Risiko-Stop, das gepufferte Kauflimit und die eingeplanten Kosten. Einzelpr\u00fcfung = gesamtes effektives Budget, nicht Budget geteilt durch Maximalzahl der Positionen.")
+        st.caption("Auswahl und CRV-Rangfolge verwenden den angezeigten Screener-CRV des aktuellen Scans. "
+                   "Stueckzahl und Geldrisiko verwenden unveraendert den Sicherheitsstop, das gepufferte Kauflimit und eingeplante Kosten. "
+                   "Das gesonderte CRV am Sicherheitsstop ist eine Einordnung, keine zweite Mindest-CRV-Sperre. "
+                   "Einzelpruefung = gesamtes effektives Budget, nicht Budget geteilt durch Maximalzahl der Positionen.")
         sizing = {row["Ticker"]: row for row in plan.get("sizing_diagnostics", [])}
         rejects = {}
         for row in plan.get("rejected", []):
@@ -211,12 +221,12 @@ def _render_candidate_details(plan, config):
                 "Ticker": row["Ticker"], "Queue": row["Queue"], "Trade-State": row["Trade-State"],
                 "Confidence": row["Confidence"], "Kursw\u00e4hrung": row["Kursw\u00e4hrung"],
                 "Scankurs": row["Scankurs"], "Kauflimit": row["Kauflimit"],
-                "Screener-Stop": row["Screener-Stop"], "Ziel": row["Ziel"],
-                "CRV im Screener": row["CRV im Screener"],
-                "CRV am Scankurs (Paket-Stop)": row["CRV am Scankurs (Paket-Stop)"],
-                "CRV am Kauflimit vor Kosten": row["CRV am Kauflimit vor Kosten"],
-                "CRV nach Kosten (Einzelpr\u00fcfung)": size.get("net_crv"),
-                "Mindest-CRV": row["Mindest-CRV"],
+                "Sicherheitsstop": row["Screener-Stop"], "Ziel": row["Ziel"],
+                "Screener-CRV (Auswahl)": row["CRV im Screener"],
+                "CRV am Scankurs (Sicherheitsstop)": row["CRV am Scankurs (Paket-Stop)"],
+                "CRV am Kauflimit (Sicherheitsstop)": row["CRV am Kauflimit vor Kosten"],
+                "CRV am Sicherheitsstop inkl. Kosten": size.get("net_crv"),
+                "Mindest-Screener-CRV": row["Mindest-CRV"],
                 "Max. St\u00fcck (Einzelpr\u00fcfung)": size.get("max_shares"),
                 "Mindestens St\u00fcck": size.get("min_shares"),
                 "Mindest-Einsatz ("+config.base+")": size.get("minimum_cost"),
@@ -234,14 +244,14 @@ def _render_crv_comparison(plan, config):
         return
     st.markdown("**CRV-Szenarien \u00b7 gleicher Scan, gleiches Budget und Risiko**")
     active = _money(config.min_crv)
-    st.write(f"Aktive Mindestgrenze: **{active}** \u00b7 Vergleich ohne automatische \u00dcbernahme \u00b7 Textansicht {UI_VERSION}")
+    st.write(f"Aktive Screener-CRV-Mindestgrenze: **{active}** \u00b7 Vergleich ohne automatische \u00dcbernahme \u00b7 Textansicht {UI_VERSION}")
     table = []
     for scenario in scenarios:
         _render_crv_scenario_text(scenario, config.base)
         blocked = scenario["status"] == "blocked"
         names = " \u00b7 ".join(c["ticker"] for c in scenario["items"])
         table.append({
-            "Mindest-CRV nach Kosten": _money(scenario["min_crv"]) + (" (aktiv)" if scenario["is_active"] else ""),
+            "Mindest-Screener-CRV": _money(scenario["min_crv"]) + (" (aktiv)" if scenario["is_active"] else ""),
             "Einzeln umsetzbar": str(scenario["single_feasible_count"]) if scenario["single_feasible_count"] is not None else "gesperrt",
             "Paket": names or ("Pr\u00fcfung gesperrt" if blocked else "Kein Paket"),
             "Positionen": str(scenario["position_count"]) if scenario["position_count"] is not None else "\u2014",
@@ -253,7 +263,7 @@ def _render_crv_comparison(plan, config):
     # These are results/action boundaries, not an always-open methodology wall.
     if not plan.get("ok") and any(s["status"] == "package" for s in scenarios):
         possible = "; ".join(
-            f"CRV {_money(scenario['min_crv'])}: "
+            f"Screener-CRV {_money(scenario['min_crv'])}: "
             + ", ".join(_md_literal(item["ticker"]) for item in scenario["items"])
             for scenario in scenarios if scenario["status"] == "package"
         )
@@ -268,7 +278,7 @@ def _render_crv_comparison(plan, config):
     with st.expander("\u2139\ufe0f CRV-Vergleich \u00b7 Kandidaten, Paketdetails & Methodik", expanded=False):
         st.dataframe(pd.DataFrame(table), hide_index=True, use_container_width=True)
         st.caption(
-            "Nur die Mindest-CRV-Grenze nach Kosten variiert: 2,00 / 1,80 / 1,50. "
+            "Nur die Screener-CRV-Mindestgrenze variiert: 2,00 / 1,80 / 1,50. "
             "Scan, Best\u00e4nde, Ausschl\u00fcsse, FX, Kosten, Einstiegspuffer und alle anderen Grenzen sind identisch. "
             "Einzeln umsetzbar bedeutet: Der Kandidat passt alleine in das effektive Budget und Risiko; "
             "mehrere solche Kandidaten passen nicht zwangsl\u00e4ufig zusammen. "
@@ -284,7 +294,7 @@ def _render_crv_comparison(plan, config):
         )
         st.caption(f"Scan: {comparison['scan_id']} \u00b7 Vergleichsstand: {comparison['created_at']}")
         for scenario in scenarios:
-            st.markdown(f"**Mindest-CRV {_money(scenario['min_crv'])}**")
+            st.markdown(f"**Mindest-Screener-CRV {_money(scenario['min_crv'])}**")
             if scenario["single_feasible_count"] is not None:
                 st.write("Einzeln umsetzbar: " + (", ".join(scenario["feasible_tickers"]) or "keine"))
             for error in scenario["errors"]:
@@ -293,8 +303,9 @@ def _render_crv_comparison(plan, config):
                 st.dataframe(pd.DataFrame([{
                     "Ticker": c["ticker"], "Gruppe": c["group"], "St\u00fcck": c["shares"],
                     "Kursw\u00e4hrung": c["currency"], "Kauflimit (Plan)": c["limit"],
-                    "Screener-Stop": c["stop"], "Ziel": c["target"],
-                    "CRV nach Kosten": round(c["net_crv"], 3),
+                    "Sicherheitsstop": c["stop"], "Ziel": c["target"],
+                    "Screener-CRV (Auswahl)": c["screener_crv"],
+                    "CRV am Sicherheitsstop inkl. Kosten": round(c["net_crv"], 3),
                     f"Einsatz ({config.base})": round(c["cost"], 2),
                     f"Stop-Risiko ({config.base})": round(c["risk"], 2),
                 } for c in scenario["items"]]), hide_index=True, use_container_width=True)
@@ -322,15 +333,19 @@ def _input_config(prefix, settings):
         p, q, r = st.columns(3)
         total = p.number_input("Gesamtes Stop-Risikolimit (%)", min_value=0.1, max_value=100.0, value=3.0, step=0.1, key=prefix+"total",
                                help="Bestand + offene Vormerkungen + neues Paket. Beim Bestand vom aktuellen Kurs bis Stop, nicht nur vom Einstand.")
-        crv = q.number_input("Mindest-CRV inkl. Kostenpuffer", min_value=0.1, max_value=20.0, value=2.0, step=0.1, key=prefix+"crv")
+        crv = q.number_input("Mindest-Screener-CRV", min_value=0.1, max_value=20.0, value=2.0, step=0.1, key=prefix+"crv",
+                             help="Verwendet exakt den CRV aus dem aktuellen Screener-Scan. Sicherheitsstop und Kosten bestimmen weiterhin Stueckzahl und Geldrisiko.")
         order = r.number_input("Mindest-Positionswert", min_value=1.0, value=100.0, step=25.0, key=prefix+"order")
         p, q, r = st.columns(3)
-        fee = p.number_input("Fixkosten pro Orderseite", min_value=0.0, value=1.0, step=0.1, key=prefix+"fee")
-        variable = q.number_input("Variabler Kosten-/FX-Puffer pro Seite (%)", min_value=0.0, max_value=10.0, value=0.15, step=0.05, key=prefix+"variable")
+        fee = p.number_input("Fixkosten pro Orderseite", min_value=0.0, value=0.0, step=0.1, key=prefix+"fee_v3020f")
+        variable = q.number_input("Variabler Kosten-/FX-Puffer pro Seite (%)", min_value=0.0, max_value=10.0, value=0.0, step=0.05, key=prefix+"variable_v3020f")
         buffer = r.number_input("Max. Einstiegspuffer zum Scankurs (%)", min_value=0.0, max_value=5.0, value=0.3, step=0.1, key=prefix+"buffer")
         per_group = st.number_input("Max. neue Positionen je Branchengruppe", min_value=1, max_value=5, value=1, step=1, key=prefix+"per_group")
         age = st.number_input("Maximales Alter des Vollscans (Stunden)", min_value=1.0, max_value=72.0, value=24.0, step=1.0, key=prefix+"age")
         st.caption("Startwerte sind ver\u00e4nderbare Planungsparameter, keine pers\u00f6nliche Risikovorgabe. In dieser Version ganze Aktien; keine automatische Order oder Budgetaussch\u00f6pfung.")
+        st.caption("Seit v30.20f starten die beiden Gebuehrenfelder mit null. Abweichende Brokerkosten bei Bedarf neu eintragen. "
+                   "Null ist eine Planungsannahme, keine Zusage vollstaendiger Kostenfreiheit: Fremdspesen, Steuern und Spread koennen verbleiben. "
+                   "Die Umrechnung von USD nach EUR fuer Budget und Risiko bleibt auch ohne FX-Gebuehr erforderlich.")
     return engine.PlanConfig(equity=equity, budget=budget, new_risk=new_risk, base=base, max_positions=int(n), max_per_group=int(per_group),
                              max_position_pct=single, max_group_pct=group, max_total_risk_pct=total,
                              min_crv=crv, min_order=order, fixed_fee=fee, variable_fee_pct=variable,
@@ -445,10 +460,16 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
             st.error("Die Bestandsdaten sind nicht sicher lesbar. Paketplanung bleibt gesperrt; Datenbankverbindung pr\u00fcfen.")
             return
         if not callable(getattr(engine, "build_plan_with_crv_comparison", None)):
-            st.error("CRV-Vergleichsbaustein fehlt: Bitte modules/trading_package.py und modules/trading_package_ui.py aus v30.20d gemeinsam hochladen und die App neu starten.")
+            st.error("CRV-Vergleichsbaustein fehlt: Bitte beide Planermodule aus v30.20f gemeinsam hochladen und die App neu starten.")
+            return
+        if getattr(engine, "CRV_SELECTION_BASIS", None) != "screener" or engine.VERSION != UI_VERSION:
+            st.error("Planerversionen passen nicht zusammen: modules/trading_package.py und modules/trading_package_ui.py aus v30.20f gemeinsam ersetzen und App neu starten.")
             return
         snapshots_ready = _render_snapshot_status(rows)
         config = _input_config(prefix, settings)
+        st.write("**Auswahl: Screener-CRV \u00b7 Stueckzahl und Geldrisiko: Sicherheitsstop.**")
+        st.write(f"Geplante Gebuehren je Orderseite: {_money(config.fixed_fee)} {config.base} + {_money(config.variable_fee_pct)} %. "
+                 "Abweichende Brokerkosten unter Grenzen, Kosten & Basiswaehrung angeben.")
         rows, marks, excluded, data_confirm = _data_editor(rows, marks, store, prefix)
         acknowledged = st.checkbox("Tradingbestand aller Broker erfasst; Budget, Risikogrenzen und Kosten gepr\u00fcft", key=prefix+"scope_confirm")
         # Optional, explicit FX override. Never silently reuse an undated manual rate.
@@ -511,7 +532,7 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
             plan = None
         if plan:
             _render_crv_comparison(plan, config)
-            st.markdown(f"**Aktives Ergebnis \u00b7 Mindest-CRV {_money(config.min_crv)}**")
+            st.markdown(f"**Aktives Ergebnis \u00b7 Mindest-Screener-CRV {_money(config.min_crv)}**")
             for error in plan.get("errors", []):
                 st.warning(error)
             if not plan.get("ok"):
@@ -528,10 +549,15 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
                 table = []
                 for c in chosen["items"]:
                     table.append({"Ticker": c["ticker"], "Gruppe": c["group"], "St\u00fcck": c["shares"], "Kursw\u00e4hrung": c["currency"],
-                                  "Kauflimit (Plan)": round(c["limit"], 4), "Screener-Stop": round(c["stop"], 4),
-                                  "Ziel": round(c["target"], 4), "CRV inkl. Kosten": round(c["net_crv"], 2),
+                                  "Kauflimit (Plan)": round(c["limit"], 4), "Sicherheitsstop": round(c["stop"], 4),
+                                  "Ziel": round(c["target"], 4), "Screener-CRV (Auswahl)": c["screener_crv"],
+                                  "CRV am Sicherheitsstop inkl. Kosten": round(c["net_crv"], 2),
                                   "Einsatz ("+config.base+")": round(c["cost"], 2), "Stop-Risiko ("+config.base+")": round(c["risk"], 2),
                                   "Grund": f"Trigger aktiv \u00b7 Score {c['score']:.0f} \u00b7 Confidence {c['confidence']}"})
+                for c in chosen["items"]:
+                    st.markdown(f"**{_md_literal(c['ticker'])}**: {c['shares']} Stueck \u00b7 "
+                                f"Screener-CRV {_money(c['screener_crv'])} \u00b7 "
+                                f"CRV am Sicherheitsstop inkl. Kosten {_money(c['net_crv'])}")
                 st.dataframe(pd.DataFrame(table), hide_index=True, use_container_width=True)
                 st.success(f"{len(chosen['items'])} Kandidat(en) passen gemeinsam in die gepr\u00fcften Grenzen. Unverplantes Budget bleibt frei.")
                 st.caption(f"Scan: {plan['scan_id']} \u00b7 FX: {plan.get('fx_info', {}).get('source', '-')} {plan.get('fx_info', {}).get('reference_date', '')}")
@@ -573,9 +599,9 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
                 "Die Zahl der \u00fcbergebenen Paket-Snapshots best\u00e4tigt nur die Datenweitergabe, nicht die Vollst\u00e4ndigkeit, "
                 "Aktualit\u00e4t oder Eignung zum Kauf; diese Pr\u00fcfungen folgen gesondert.\n\n"
                 "**St\u00fcckzahl:** ganze Aktien, gleiches anf\u00e4ngliches Kapital-/Risikobudget je Paketplatz, danach Begrenzung durch Einzelgewicht, Branche, Kosten und Bestand. "
-                "Nicht genutzte Kapazit\u00e4t wird nicht zwangsl\u00e4ufig aufgef\u00fcllt. Mindest-CRV gilt am Kauflimit einschlie\u00dflich Kostenpuffer.\n\n"
+                "Nicht genutzte Kapazit\u00e4t wird nicht zwangsl\u00e4ufig aufgef\u00fcllt. Die Mindestgrenze gilt ausschliesslich fuer den Screener-CRV. Sicherheitsstop, Kauflimit und Kosten bestimmen weiterhin das Geldrisiko; ihr gesondertes CRV ist keine zweite Mindestgrenze. Ein Ziel ohne positiven Gewinn nach Kosten bleibt ausgeschlossen.\n\n"
                 "**Vergleich:** maximal 18 Kandidaten und 5 neue Positionen; standardm\u00e4\u00dfig eine neue Position je Branchengruppe. Die besten Gruppenvertreter bleiben im Suchraum. Eine transparente Planungsheuristik gewichtet den bestehenden Live-Score (65 %), "
-                "Confidence (20 %) und gedeckeltes CRV (15 %); konkave Kapitalgewichtung und ein Konzentrationsabzug bevorzugen passendere Kombinationen. "
+                "Confidence (20 %) und gedeckelten Screener-CRV (15 %); konkave Kapitalgewichtung und ein Konzentrationsabzug bevorzugen passendere Kombinationen. "
                 "Das ist weder eine Gewinnprognose noch ein neuer produktiver Screener-Score.\n\n"
                 "**Diversifikation:** Branchengruppen im erfassten Tradingbestand, keine berechnete Kurskorrelation und keine Aussage \u00fcber dein gesamtes Verm\u00f6gen. "
                 "Pies bleiben ausgeschlossen. Nicht erfasste Brokerbest\u00e4nde fehlen auch in dieser Pr\u00fcfung.\n\n"

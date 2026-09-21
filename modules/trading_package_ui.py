@@ -1,4 +1,4 @@
-"""Compact v30.20d Streamlit adapter. Explanations collapsed; results visible.
+"""Compact v30.20e Streamlit adapter. Explanations collapsed; results visible.
 
 No global mutable per-user state, no callbacks cached across user sessions.
 Storage/FX/entry-context callbacks are supplied by the authenticated app.
@@ -15,6 +15,8 @@ import streamlit as st
 from . import trading_package as engine
 from . import live_monitor as scan_pipeline
 from .live_screener_snapshot import dataframe_from_payload
+
+UI_VERSION = "v30.20e"
 
 
 def _read_positions(storage):
@@ -74,6 +76,59 @@ def _money(value):
 
 
 
+def _md_literal(value):
+    """Show imported labels literally, without allowing Markdown layout changes."""
+    value = " ".join(engine.text(value).split())
+    for character in ("\\", "`", "*", "_", "[", "]", "<", ">", "|"):
+        value = value.replace(character, "\\" + character)
+    return value
+
+
+def _render_crv_scenario_text(scenario, base):
+    """Critical results must not depend on a canvas grid or an open expander.
+
+    This is display only: no recalculation, configuration changes, session writes,
+    storage writes, or conversion of a comparison into a reservable plan.
+    """
+    status = scenario["status"]
+    label = {"package": "Paket m\u00f6glich", "no_package": "Kein Paket",
+             "blocked": "Pr\u00fcfung gesperrt"}.get(status, "Ergebnis nicht verf\u00fcgbar")
+    role = "Aktiv" if scenario["is_active"] else "Vergleich"
+    st.markdown(f"**{role} \u00b7 CRV \u2265 {_money(scenario['min_crv'])}: {label}**")
+    if status == "blocked":
+        st.write("Einzeln umsetzbar: nicht ermittelt \u00b7 keine Paketfreigabe.")
+        if scenario.get("errors"):
+            st.write(_md_literal(scenario["errors"][0]))
+        return
+    count = scenario.get("single_feasible_count")
+    count_text = str(count) if count is not None else "nicht ermittelt"
+    if status != "package":
+        st.write(f"Einzeln umsetzbar: {count_text} \u00b7 kein gemeinsames Paket gefunden.")
+        return
+    items = scenario.get("items") or []
+    if not items:
+        st.warning("Paketdetails fehlen. Bitte neu berechnen; keine Aktien aus der Kandidatenliste als Paket annehmen.")
+        return
+    # Use only the selected package items, not every individually feasible ticker.
+    parts = []
+    for item in items:
+        qty = engine.number(item.get("shares"))
+        crv = engine.number(item.get("net_crv"))
+        qty_text = f"{qty:g}" if qty is not None else "nicht ermittelt"
+        crv_text = _money(crv) if crv is not None else "nicht ermittelt"
+        parts.append(f"**{_md_literal(item.get('ticker'))}**: {qty_text} St\u00fcck, CRV nach Kosten {crv_text}")
+    st.markdown("Vorgeschlagenes Paket \u00b7 " + " \u00b7 ".join(parts))
+    position_text = "Position" if len(items) == 1 else "Positionen"
+    st.write(f"Einzeln umsetzbar: {count_text} \u00b7 Paket: {len(items)} {position_text}")
+    amounts = []
+    for key, name in (("cost", "Einsatz"), ("risk", "Geplantes Stop-Risiko"),
+                      ("cash_left", "Restbudget effektiv")):
+        value = engine.number(scenario.get(key))
+        amounts.append(f"{name}: {_money(value)} {base}" if value is not None
+                       else f"{name}: nicht ermittelt")
+    st.write(" \u00b7 ".join(amounts))
+
+
 def _render_snapshot_status(rows):
     """Explain a missing producer/transport contract before budget evaluation.
 
@@ -115,7 +170,7 @@ def _render_snapshot_status(rows):
 def _render_plan_diagnostics(plan, config):
     if "scan_count" not in plan:
         return
-    st.markdown("**Paketpr\u00fcfung \u00b7 woran liegt es?**")
+    st.markdown(f"**Paketpr\u00fcfung \u00b7 aktive CRV-Grenze {_money(config.min_crv)}**")
     a, b, c, d = st.columns(4)
     a.metric("Werte im Scan", str(plan["scan_count"]))
     b.metric("Gr\u00fcn / Jetzt pr\u00fcfen", str(plan.get("queue_ready_count", 0)))
@@ -126,13 +181,16 @@ def _render_plan_diagnostics(plan, config):
     st.write(
         f"Effektives Kaufbudget: {_money(plan.get('effective_budget', 0))} {config.base} \u00b7 "
         f"Verf\u00fcgbares zus\u00e4tzliches Stop-Risiko: {_money(plan.get('effective_risk', 0))} {config.base} \u00b7 "
-        f"Mindest-CRV nach Kosten: {config.min_crv:.2f}"
+        f"Aktives Mindest-CRV nach Kosten: {_money(config.min_crv)}"
     )
     summary = plan.get("reason_summary", [])
     if summary:
         st.write("H\u00e4ufigste Ausschlussgr\u00fcnde \u00b7 " + plan.get("reason_summary_scope", "Gesamter Scan"))
-        st.dataframe(pd.DataFrame([{k: r[k] for k in ("Grund", "Werte", "Ticker")} for r in summary[:4]]),
-                     hide_index=True, use_container_width=True)
+        for reason in summary[:4]:
+            st.markdown(
+                f"**{_md_literal(reason['Grund'])} \u00b7 {reason['Werte']} Wert(e):** "
+                f"{_md_literal(reason['Ticker'])}"
+            )
     st.info("Cash bleibt frei. Datenl\u00fccken zuerst kl\u00e4ren; die Grenzen werden nicht automatisch gelockert.")
 
 
@@ -176,9 +234,10 @@ def _render_crv_comparison(plan, config):
         return
     st.markdown("**CRV-Szenarien \u00b7 gleicher Scan, gleiches Budget und Risiko**")
     active = _money(config.min_crv)
-    st.write(f"Aktive Mindestgrenze: **{active}** \u00b7 Vergleich ohne automatische \u00dcbernahme.")
+    st.write(f"Aktive Mindestgrenze: **{active}** \u00b7 Vergleich ohne automatische \u00dcbernahme \u00b7 Textansicht {UI_VERSION}")
     table = []
     for scenario in scenarios:
+        _render_crv_scenario_text(scenario, config.base)
         blocked = scenario["status"] == "blocked"
         names = " \u00b7 ".join(c["ticker"] for c in scenario["items"])
         table.append({
@@ -190,16 +249,24 @@ def _render_crv_comparison(plan, config):
             f"Stop-Risiko ({config.base})": _money(scenario["risk"]) if scenario["risk"] is not None else "\u2014",
             f"Restbudget effektiv ({config.base})": _money(scenario["cash_left"]) if scenario["cash_left"] is not None else "\u2014",
         })
-    st.dataframe(pd.DataFrame(table), hide_index=True, use_container_width=True)
+    # The full grid is optional; all decisive results are already visible as text.
     # These are results/action boundaries, not an always-open methodology wall.
     if not plan.get("ok") and any(s["status"] == "package" for s in scenarios):
-        st.info(
-            "Nur im Vergleich ist ein Paket m\u00f6glich. Deine aktive Grenze bleibt unver\u00e4ndert; "
-            "kein Vergleichspaket ist zur Vormerkung freigegeben."
+        possible = "; ".join(
+            f"CRV {_money(scenario['min_crv'])}: "
+            + ", ".join(_md_literal(item["ticker"]) for item in scenario["items"])
+            for scenario in scenarios if scenario["status"] == "package"
         )
+        st.info(
+            f"Nur im Vergleich m\u00f6glich \u2014 {possible}. "
+            f"Deine aktive Grenze bleibt {active}; kein Vergleichspaket ist zur Vormerkung freigegeben."
+        )
+    elif all(s["status"] == "blocked" for s in scenarios):
+        st.info("Alle Vergleichspr\u00fcfungen sind gesperrt. Daten oder Eingaben zuerst kl\u00e4ren; keine Paketfreigabe.")
     elif not any(s["status"] == "package" for s in scenarios):
-        st.info("Auch bei den Vergleichsgrenzen wurde kein Paket gefunden. Die konkreten Sperren stehen in den Szenariodetails.")
+        st.info("Bei keiner Vergleichsgrenze ist ein Paket freigegeben. Die konkreten Sperren stehen in den Szenariodetails.")
     with st.expander("\u2139\ufe0f CRV-Vergleich \u00b7 Kandidaten, Paketdetails & Methodik", expanded=False):
+        st.dataframe(pd.DataFrame(table), hide_index=True, use_container_width=True)
         st.caption(
             "Nur die Mindest-CRV-Grenze nach Kosten variiert: 2,00 / 1,80 / 1,50. "
             "Scan, Best\u00e4nde, Ausschl\u00fcsse, FX, Kosten, Einstiegspuffer und alle anderen Grenzen sind identisch. "
@@ -444,6 +511,7 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
             plan = None
         if plan:
             _render_crv_comparison(plan, config)
+            st.markdown(f"**Aktives Ergebnis \u00b7 Mindest-CRV {_money(config.min_crv)}**")
             for error in plan.get("errors", []):
                 st.warning(error)
             if not plan.get("ok"):

@@ -1,4 +1,4 @@
-"""Compact v30.20f Streamlit adapter. Explanations collapsed; results visible.
+"""Compact v30.20g Streamlit adapter. Explanations collapsed; results visible.
 
 No global mutable per-user state, no callbacks cached across user sessions.
 Storage/FX/entry-context callbacks are supplied by the authenticated app.
@@ -16,7 +16,7 @@ from . import trading_package as engine
 from . import live_monitor as scan_pipeline
 from .live_screener_snapshot import dataframe_from_payload
 
-UI_VERSION = "v30.20f"
+UI_VERSION = "v30.20g"
 
 
 def _read_positions(storage):
@@ -44,6 +44,135 @@ def _save_positions(storage, store):
     if engine.fingerprint(check) != engine.fingerprint(store):
         return False, "Speicherung nicht eindeutig best\u00e4tigt. Positionsspeicher pr\u00fcfen; nicht blind erneut buchen."
     return True, ""
+
+
+# A separate, existing user-scoped namespace. No positions/journal/import writes.
+GROUP_NAMESPACE = "trading_package_group_assignments"
+
+
+def _read_group_assignments(storage):
+    if hasattr(storage, "load_result"):
+        result = storage.load_result(GROUP_NAMESPACE)
+        if not result.ok:
+            raise RuntimeError("Gespeicherte Branchenzuordnungen sind nicht lesbar.")
+        payload = result.data if result.found else None
+    else:
+        payload = storage.load_namespace(GROUP_NAMESPACE, default=None)
+    if getattr(storage, "remote_enabled", False) and getattr(storage, "degraded", False):
+        raise RuntimeError("Branchenzuordnung: Datenbank nicht erreichbar; lokale Kopie nicht als bestaetigt verwenden.")
+    if payload is None:
+        return {"schema_version": 1, "assignments": {}}
+    if not isinstance(payload, Mapping) or payload.get("schema_version") != 1 or not isinstance(payload.get("assignments"), Mapping):
+        raise RuntimeError("Branchenzuordnungen haben ein unerwartetes Format; nichts ueberschreiben.")
+    for ticker, record in payload["assignments"].items():
+        if (not isinstance(ticker, str) or not ticker or ticker != ticker.strip().upper()
+                or not isinstance(record, Mapping)
+                or engine.group_name(record.get("group")) not in engine.GROUP_CHOICES
+                or engine.timestamp(record.get("confirmed_at")) is None):
+            raise RuntimeError("Gespeicherte Branchenzuordnung ungueltig; keine automatische Verwendung.")
+    return deepcopy(payload)
+
+
+def _save_group_assignments(storage, expected, updated):
+    """Explicit form action only. Verify remote outcome, readback and stale UI."""
+    try:
+        if engine.fingerprint(_read_group_assignments(storage)) != engine.fingerprint(expected):
+            return False, "Branchenzuordnungen wurden inzwischen geaendert. Seite neu laden; nichts ueberschrieben."
+        ok = bool(storage.save_namespace(GROUP_NAMESPACE, engine.safe_json(updated)))
+        if getattr(storage, "remote_enabled", False) and getattr(storage, "degraded", False):
+            return False, "Branchenzuordnung nur lokal gespeichert; Datenbankspeicherung NICHT bestaetigt. Verbindung pruefen."
+        if not ok:
+            return False, "Branchenzuordnung konnte nicht gespeichert werden."
+        if engine.fingerprint(_read_group_assignments(storage)) != engine.fingerprint(updated):
+            return False, "Branchenzuordnung nach Speicherung nicht eindeutig bestaetigt. Neu laden und pruefen."
+        return True, ""
+    except (RuntimeError, ValueError, TypeError) as exc:
+        return False, str(exc)
+
+
+def _apply_group_assignments(rows, marks, payload):
+    """Fill only missing sectors, never change prices, currency, CRV or state.
+
+    Explicit current provider data takes precedence over a remembered manual
+    fallback. A changed company name requires a fresh confirmation, rather than
+    silently reusing a symbol assignment for a potentially different security.
+    """
+    assignments = payload.get("assignments") or {}
+    def apply(raw):
+        row = deepcopy(raw)
+        group, source = engine.resolve_group(row)
+        ticker = engine.text(row.get("Ticker")).upper()
+        record = assignments.get(ticker) or {}
+        saved_name = engine.text(record.get("name")).casefold()
+        current_name = engine.text(row.get("Name") or row.get("name")).casefold()
+        name_ok = not saved_name or not current_name or saved_name == current_name
+        if (group == engine.UNKNOWN and record and name_ok
+                and engine.timestamp(record.get("confirmed_at")) is not None
+                and engine.group_name(record.get("group")) in engine.GROUP_CHOICES):
+            group = engine.group_name(record["group"])
+            source = "Manuell bestaetigt: " + engine.text(record.get("confirmed_at"))
+        elif group == engine.UNKNOWN and record and not name_ok:
+            source = "Name gegenueber gespeicherter Zuordnung geaendert; neu bestaetigen"
+        row["__pkg_group"], row["__pkg_group_source"] = group, source
+        return row
+    return [apply(row) for row in rows], {ticker: apply(row) for ticker, row in marks.items()}
+
+
+def _group_assignment_ui(rows, marks, payload, storage, prefix, now_provider):
+    """Explicit dropdown form: no dependence on the canvas-based data editor."""
+    by_ticker = {engine.text(row.get("Ticker")).upper(): row for row in marks.values()}
+    by_ticker.update({engine.text(row.get("Ticker")).upper(): row for row in rows})
+    by_ticker.pop("", None)
+    missing = sorted(ticker for ticker, row in by_ticker.items() if engine.resolve_group(row)[0] == engine.UNKNOWN)
+    known_scan = sum(engine.resolve_group(row)[0] != engine.UNKNOWN for row in rows)
+    st.write(f"**Branchenbasis im Scan: {known_scan}/{len(rows)} zugeordnet.**")
+    if missing:
+        st.warning(f"Branche fehlt bei {len(missing)} Wert(en). Gepruefte Zuordnungen unter 'Branchen zuordnen & merken' ergaenzen; Trigger und CRV bleiben separate Pruefungen.")
+    if not missing and not payload["assignments"]:
+        return
+    with st.expander("Branchen zuordnen & merken", expanded=False):
+        st.caption("Nur dieselbe gepruefte Branchengruppe zusammen zuordnen. Keine automatische Ticker-/Namensheuristik. Gespeicherte Angaben gelten benutzerbezogen als Ersatz bei fehlenden Scandaten; keine Order, keine Aenderung von Kursen, Stops, CRV, Waehrungen oder Journal.")
+        if missing:
+            st.write("Noch offen: " + ", ".join(_md_literal(t) for t in missing))
+            with st.form(prefix+"group_form"):
+                selected = st.multiselect("Werte derselben Branche", missing, key=prefix+"group_tickers")
+                choice = st.selectbox("Gepruefte Branchengruppe", ["Bitte auswaehlen"] + list(engine.GROUP_CHOICES), key=prefix+"group_choice")
+                confirmed = st.checkbox("Die Branchenzuordnung dieser Werte habe ich geprueft", key=prefix+"group_confirm")
+                submitted = st.form_submit_button("Branchenzuordnung speichern")
+            if submitted:
+                if not selected or not confirmed or choice not in engine.GROUP_CHOICES or any(t not in missing for t in selected):
+                    st.error("Werte und Branche auswaehlen und die gepruefte Zuordnung bestaetigen. Nichts gespeichert.")
+                else:
+                    updated = deepcopy(payload)
+                    for ticker in selected:
+                        row = by_ticker[ticker]
+                        updated["assignments"][ticker] = {"group": choice,
+                            "name": engine.text(row.get("Name") or row.get("name")),
+                            "confirmed_at": engine.timestamp(now_provider()).isoformat()}
+                    ok, error = _save_group_assignments(storage, payload, updated)
+                    if ok:
+                        st.session_state[prefix+"result"] = None
+                        st.session_state[prefix+"group_flash"] = f"{len(selected)} Branchenzuordnung(en) gespeichert. Tradingpaket erneut berechnen; noch keine Paketfreigabe."
+                        st.rerun()
+                    else:
+                        st.error(error)
+        saved = payload["assignments"]
+        if saved:
+            for ticker, record in sorted(saved.items()):
+                st.write(f"{_md_literal(ticker)}: {_md_literal(record['group'])} (manuell bestaetigt)")
+            remove = st.multiselect("Gespeicherte Zuordnungen entfernen", sorted(saved), key=prefix+"group_remove")
+            consent = st.checkbox("Ausgewaehlte Branchenzuordnungen entfernen", key=prefix+"group_remove_confirm")
+            if st.button("Branchenzuordnungen entfernen", disabled=not(remove and consent), key=prefix+"group_delete"):
+                updated = deepcopy(payload)
+                for ticker in remove:
+                    updated["assignments"].pop(ticker, None)
+                ok, error = _save_group_assignments(storage, payload, updated)
+                if ok:
+                    st.session_state[prefix+"result"] = None
+                    st.session_state[prefix+"group_flash"] = "Branchenzuordnung(en) entfernt. Tradingpaket neu berechnen."
+                    st.rerun()
+                else:
+                    st.error(error)
 
 
 def collect_marks(storage, current_rows):
@@ -194,6 +323,12 @@ def _render_plan_diagnostics(plan, config):
                 f"**{_md_literal(reason['Grund'])} \u00b7 {reason['Werte']} Wert(e):** "
                 f"{_md_literal(reason['Ticker'])}"
             )
+    group_only = [row["Ticker"] for row in plan.get("diagnostics", [])
+                  if row.get("queue_ready") and set(row.get("reason_codes") or []) == {"group"}]
+    if group_only:
+        st.write("**Nur die Branchenzuordnung fehlt in der Vorpruefung:** " +
+                 ", ".join(_md_literal(t) for t in group_only) +
+                 ". Danach folgen erst Stueckzahl-, Budget- und Risikopruefung; noch keine Kauf- oder Paketfreigabe.")
     data_codes = {"snapshot", "price", "stop", "target", "fx", "group", "score", "screener_crv_missing", "crv_missing"}
     if any(reason.get("code") in data_codes for reason in summary):
         st.info("Cash bleibt frei. Die genannten Datenluecken zuerst klaeren; Grenzen werden nicht automatisch gelockert.")
@@ -220,6 +355,7 @@ def _render_candidate_details(plan, config):
             records.append({
                 "Ticker": row["Ticker"], "Queue": row["Queue"], "Trade-State": row["Trade-State"],
                 "Confidence": row["Confidence"], "Kursw\u00e4hrung": row["Kursw\u00e4hrung"],
+                "Branchengruppe": row.get("Gruppe"), "Branchenquelle": row.get("Branchenquelle"),
                 "Scankurs": row["Scankurs"], "Kauflimit": row["Kauflimit"],
                 "Sicherheitsstop": row["Screener-Stop"], "Ziel": row["Ziel"],
                 "Screener-CRV (Auswahl)": row["CRV im Screener"],
@@ -362,18 +498,16 @@ def _data_editor(rows, marks, store, prefix):
                     positions.setdefault(str(tk).upper(), p)
     records = []
     for tk in sorted(set(pool) | set(positions)):
-        row = marks.get(tk) or pool.get(tk) or {}
+        row = pool.get(tk) or marks.get(tk) or {}
         pos = positions.get(tk, {})
-        group = engine.group_name(row.get("__pkg_group"))
-        if group == engine.UNKNOWN:
-            group = engine.group_name(pos.get("portfolio_group"))
+        group, source = engine.resolve_group(row, pos)
         records.append({"Ticker": tk, "Bezug": "Bestand/Vormerkung" if pos else "Scan",
-                        "Kursw\u00e4hrung": engine.quote_currency(row, pos), "Branchengruppe": group})
-    df = pd.DataFrame(records, columns=["Ticker", "Bezug", "Kursw\u00e4hrung", "Branchengruppe"])
+                        "Kursw\u00e4hrung": engine.quote_currency(row, pos), "Branchengruppe": group, "Branchenquelle": source})
+    df = pd.DataFrame(records, columns=["Ticker", "Bezug", "Kursw\u00e4hrung", "Branchengruppe", "Branchenquelle"])
     with st.expander("Datenbasis & Ausschl\u00fcsse pr\u00fcfen", expanded=False):
         st.caption("Sektor und Kursw\u00e4hrung stammen aus dem Scan bzw. Bestand. Korrekturen gelten NUR f\u00fcr diese Planung; keine historischen Geldwerte werden umgeschrieben. GBX bedeutet britische Pence.")
         edited = st.data_editor(df, hide_index=True, use_container_width=True, num_rows="fixed",
-                                disabled=["Ticker", "Bezug"],
+                                disabled=["Ticker", "Bezug", "Branchenquelle"],
                                 column_config={"Kursw\u00e4hrung": st.column_config.SelectboxColumn(options=[""]+sorted(engine.CURRENCIES))},
                                 key=prefix+"data_"+engine.fingerprint(records)[:10])
         changed = engine.fingerprint(df.to_dict("records")) != engine.fingerprint(edited.to_dict("records"))
@@ -386,11 +520,17 @@ def _data_editor(rows, marks, store, prefix):
         for row in adjusted_rows:
             edit = overrides.get(engine.text(row.get("Ticker")).upper(), {})
             row["__pkg_currency"] = engine.currency(edit.get("Kursw\u00e4hrung"))
-            row["__pkg_group"] = engine.group_name(edit.get("Branchengruppe"))
+            new_group = engine.group_name(edit.get("Branchengruppe"))
+            if new_group != engine.resolve_group(row)[0]:
+                row["__pkg_group_source"] = "Manuell bestaetigt (nur diese Planung)"
+            row["__pkg_group"] = new_group
         for tk, edit in overrides.items():
             row = adjusted_marks.setdefault(tk, {"Ticker": tk})
             row["__pkg_currency"] = engine.currency(edit.get("Kursw\u00e4hrung"))
-            row["__pkg_group"] = engine.group_name(edit.get("Branchengruppe"))
+            new_group = engine.group_name(edit.get("Branchengruppe"))
+            if new_group != engine.resolve_group(row)[0]:
+                row["__pkg_group_source"] = "Manuell bestaetigt (nur diese Planung)"
+            row["__pkg_group"] = new_group
     return adjusted_rows, adjusted_marks, exclude, bool(confirmed)
 
 
@@ -460,11 +600,20 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
             st.error("Die Bestandsdaten sind nicht sicher lesbar. Paketplanung bleibt gesperrt; Datenbankverbindung pr\u00fcfen.")
             return
         if not callable(getattr(engine, "build_plan_with_crv_comparison", None)):
-            st.error("CRV-Vergleichsbaustein fehlt: Bitte beide Planermodule aus v30.20f gemeinsam hochladen und die App neu starten.")
+            st.error("CRV-Vergleichsbaustein fehlt: Bitte beide Planermodule aus v30.20g gemeinsam hochladen und die App neu starten.")
             return
         if getattr(engine, "CRV_SELECTION_BASIS", None) != "screener" or engine.VERSION != UI_VERSION:
-            st.error("Planerversionen passen nicht zusammen: modules/trading_package.py und modules/trading_package_ui.py aus v30.20f gemeinsam ersetzen und App neu starten.")
+            st.error("Planerversionen passen nicht zusammen: modules/trading_package.py und modules/trading_package_ui.py aus v30.20g gemeinsam ersetzen und App neu starten.")
             return
+        try:
+            group_payload = _read_group_assignments(storage)
+            rows, marks = _apply_group_assignments(rows, marks, group_payload)
+        except RuntimeError as exc:
+            st.error(str(exc))
+            return
+        if st.session_state.get(prefix+"group_flash"):
+            st.success(st.session_state[prefix+"group_flash"])
+        _group_assignment_ui(rows, marks, group_payload, storage, prefix, now_provider)
         snapshots_ready = _render_snapshot_status(rows)
         config = _input_config(prefix, settings)
         st.write("**Auswahl: Screener-CRV \u00b7 Stueckzahl und Geldrisiko: Sicherheitsstop.**")
@@ -566,6 +715,7 @@ def render_trading_package(*, watchlist, frame, queue, scan_meta, storage, fx_re
                     st.write(f"Gepr\u00fcfte Kombinationen: {plan.get('combinations_checked', 0)}. Suchraum: {plan.get('searched_count', 0)} von {plan.get('eligible_count', 0)} geeigneten Kandidaten.")
                     st.dataframe(pd.DataFrame([{"Ticker": c["ticker"], "Stop-Quelle": c["stop_source"], "Basis vor ATR": c["stop_basis"],
                                                 "Chart-Invalidierung": c["chart_stop"], "Ziel-Quelle": c["target_source"],
+                                                "Branchenquelle": c.get("group_source", ""),
                                                 "FX in Basisw\u00e4hrung": c["fx"], "Scanzeit": c["scan_at"]} for c in chosen["items"]]), hide_index=True)
                     st.dataframe(pd.DataFrame([{"Gruppe": g, "Wert nach Paket": v, "Anteil Tradingdepot %": 100*v/config.equity}
                                                 for g, v in chosen["groups_after"].items()]), hide_index=True)

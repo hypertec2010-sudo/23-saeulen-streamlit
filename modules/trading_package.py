@@ -1,4 +1,4 @@
-"""v30.20f: deterministic, read-only trading-package planner.
+"""v30.20g: deterministic, read-only trading-package planner.
 
 No orders, invented returns, FX calls, score changes or learning writes.
 Money is converted to one base currency before *any* budget test. Only
@@ -17,7 +17,7 @@ import math
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
-VERSION = "v30.20f"
+VERSION = "v30.20g"
 CRV_SELECTION_BASIS = "screener"
 CRV_COMPARISON_LEVELS = (2.0, 1.8, 1.5)
 CURRENCIES = frozenset("EUR USD GBP GBX CHF CAD AUD NZD JPY HKD SGD SEK NOK DKK PLN CZK HUF CNY INR KRW ILS ZAR ZAC BRL MXN TRY RON BGN ISK IDR MYR PHP THB".split())
@@ -140,16 +140,54 @@ _GROUPS = {
 }
 
 
+# Canonical broad sectors, not a guess based on ticker/name or industry.
+GROUP_CHOICES = tuple(sorted(set(_GROUPS.values())))
+_GROUPS.update({
+    "financial-services": "Finanzen", "consumer-cyclical": "Zyklischer Konsum",
+    "consumer-defensive": "Basiskonsum", "basic-materials": "Rohstoffe",
+    "real-estate": "Immobilien", "communication-services": "Kommunikation",
+})
+
+
 def group_name(value: Any) -> str:
-    s = text(value)
-    if not s or any(x in s.lower() for x in ("unbekannt", "unknown", "sonstige")):
+    if not isinstance(value, str):
         return UNKNOWN
-    return _GROUPS.get(s.lower(), s)
+    s = text(value)
+    if (not s or s.casefold() in {"n.a.", "n.a", "n.v.", "not available", "unavailable", "etf", "index", "fonds/etf", "fonds", "equity", "aktie", "etf / rohstoff-proxy", "nicht verfuegbar", "nicht verf\u00fcgbar", "\u2014", "\u2013"}
+            or any(x in s.casefold() for x in ("unbekannt", "unknown", "sonstige"))):
+        return UNKNOWN
+    return _GROUPS.get(s.casefold(), s)
+
+
+def resolve_group(*objects: Mapping) -> tuple[str, str]:
+    """First *valid* explicit sector, with provenance. Never infer from symbol.
+
+    A truthy placeholder ('-', NaN, 'Unbekannt') must not hide a real sector in
+    info or sector_label. Industry and financialCurrency are intentionally not
+    accepted as a substitute for the broad sector used by concentration limits.
+    """
+    for obj in objects:
+        if not isinstance(obj, Mapping):
+            continue
+        info = obj.get("info") if isinstance(obj.get("info"), Mapping) else {}
+        fields = [(obj, "__pkg_group", text(obj.get("__pkg_group_source")) or "Paket-Snapshot"),
+                  (obj, "portfolio_group", "Gespeicherter Tradingbestand"),
+                  (obj, "sector", "Scan: sector"),
+                  (info, "sector", "Scan: info.sector"),
+                  (obj, "sector_label", "Scan: sector_label"),
+                  (obj, "Sektor", "Scan: Sektor"),
+                  (info, "sectorDisp", "Scan: info.sectorDisp"),
+                  (info, "sectorKey", "Scan: info.sectorKey")]
+        for source, key, origin in fields:
+            group = group_name(source.get(key))
+            if group != UNKNOWN:
+                return group, origin
+    return UNKNOWN, "Keine belastbare Branchenangabe"
 
 
 def make_scan_fields(result: Mapping, risk: Mapping, *, price: Any, now: datetime) -> dict:
     """Called inside the existing full scan, using its existing analysis result."""
-    info = result.get("info") if isinstance(result.get("info"), Mapping) else {}
+    group, group_source = resolve_group(result)
     entry = number(price)
     risk_entry = number(risk.get("entry_default"))
     valid_basis = (entry is not None and entry > 0 and risk_entry is not None and
@@ -164,7 +202,8 @@ def make_scan_fields(result: Mapping, risk: Mapping, *, price: Any, now: datetim
         "__pkg_chart_stop": number(risk.get("chart_invalidation_stop")),
         "__pkg_target_source": text(risk.get("target_source")),
         "__pkg_currency": quote_currency(result),
-        "__pkg_group": group_name(result.get("sector") or info.get("sector")),
+        "__pkg_group": group,
+        "__pkg_group_source": group_source,
         "__pkg_scan_at": timestamp(now).isoformat(),
         "__pkg_data_quality": text(result.get("data_quality")),
     }
@@ -306,7 +345,7 @@ def prepare_candidates(rows: list[dict], queue: list[dict], config: PlanConfig,
         fx = fx_rate(cur, config.base, rates)
         if fx is None:
             reject("fx", "Kursw\u00e4hrung oder FX-Umrechnung fehlt")
-        group = group_name(row.get("__pkg_group"))
+        group, group_source = resolve_group(row)
         if group == UNKNOWN:
             reject("group", "Branche/Gruppe noch nicht zugeordnet")
         score = number(q.get("Live-Score"))
@@ -332,7 +371,7 @@ def prepare_candidates(rows: list[dict], queue: list[dict], config: PlanConfig,
             "Ticker": tk, "Queue": text(q.get("Priorit\u00e4t")),
             "Trade-State": text(row.get("Trade-State")), "Confidence": conf,
             "queue_ready": ready, "active": active, "eligible": not reasons,
-            "Kursw\u00e4hrung": cur, "Gruppe": group, "Scankurs": entry,
+            "Kursw\u00e4hrung": cur, "Gruppe": group, "Branchenquelle": group_source, "Scankurs": entry,
             "Kauflimit": limit, "Screener-Stop": stop, "Ziel": target,
             "CRV im Screener": screener_crv, "CRV-Auswahlbasis": CRV_SELECTION_BASIS,
             "CRV am Scankurs (Paket-Stop)": scan_crv,
@@ -348,7 +387,7 @@ def prepare_candidates(rows: list[dict], queue: list[dict], config: PlanConfig,
         merit = 0.65 * (score / 100) + 0.20 * (1.0 if conf == "Hoch" else 0.7) + 0.15 * min(screener_crv, 4) / 4
         accepted.append({
             "ticker": tk, "name": text(row.get("Name")) or tk, "currency": cur,
-            "group": group, "entry": entry, "limit": limit, "stop": stop, "target": target,
+            "group": group, "group_source": group_source, "entry": entry, "limit": limit, "stop": stop, "target": target,
             "crv": screener_crv, "screener_crv": screener_crv,
             "crv_basis": CRV_SELECTION_BASIS, "crv_source": "CRV im aktuellen Screener-Scan",
             "risk_crv_at_scan": scan_crv, "risk_crv_before_costs": crv,
@@ -432,9 +471,7 @@ def portfolio_state(store: Mapping, marks: Mapping[str, Mapping], config: PlanCo
                     out["errors"].append(f"{tk}: Kursw\u00e4hrung zwischen Bestand und Scan widerspr\u00fcchlich.")
                 cur = marked_cur or stored_cur
             stop = number(pos.get("stop"))
-            group = group_name(mark.get("__pkg_group"))
-            if group == UNKNOWN:
-                group = group_name(pos.get("portfolio_group"))
+            group, _ = resolve_group(mark, pos)
             fx = fx_rate(cur, config.base, rates)
             if qty <= 0 or price is None or price <= 0 or stop is None or stop <= 0 or fx is None or not age_ok or group == UNKNOWN:
                 out["errors"].append(f"{tk}: Bestand/Vormerkung unvollst\u00e4ndig (St\u00fcck, aktueller Kurs, Stop, W\u00e4hrung/FX oder Branche).")
@@ -804,6 +841,7 @@ def build_intentions(plan: Mapping, alternative: int, store: Mapping, *, watchli
                     "limit": c["limit"], "shares": c["shares"], "currency": c["currency"],
                     "base_currency": conf.base, "fx": c["fx"], "risk_base": c["risk"],
                     "stop": c["stop"], "stop_source": c["stop_source"], "stop_basis": c["stop_basis"],
+                    "group": c["group"], "group_source": c.get("group_source", ""),
                     "target": c["target"], "target_source": c["target_source"],
                     "screener_crv": c["screener_crv"], "crv_selection_basis": CRV_SELECTION_BASIS,
                     "screener_crv_source": c["crv_source"], "min_screener_crv": conf.min_crv,

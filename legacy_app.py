@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.21c"
+APP_VERSION = "v30.21d"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -19658,6 +19658,64 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 st.session_state.get("watchlist_cockpit_area_persist_v301b", st.session_state.get("watchlist_cockpit_area_v2413", "📡 Live-Screener"))
             )
             live_screener_active_v271 = active_cockpit_pre_v271 == "📡 Live-Screener"
+
+            # v30.21d: Selektiver Re-Scan auf Basis des letzten vollstaendigen Stands.
+            # Nur die explizit ausgewaehlten Ticker werden erneut beim Provider/Analyzer
+            # angefragt. Unveraenderte Ticker behalten Zeile UND individuelle Scan-Zeit.
+            # Ein fehlgeschlagener Einzel-Refresh ersetzt niemals still eine vorhandene
+            # alte Zeile; der Fehler wird separat gespeichert und angezeigt.
+            selective_live_run_v3021d = False
+            selective_tickers_v3021d = []
+            _partial_grace_active_v3021d = False
+            _partial_grace_raw_v3021d = st.session_state.get("v3021d_partial_refresh_grace_until")
+            if _partial_grace_raw_v3021d:
+                try:
+                    _partial_grace_active_v3021d = datetime.now() < datetime.fromisoformat(str(_partial_grace_raw_v3021d))
+                except Exception:
+                    _partial_grace_active_v3021d = False
+                if not _partial_grace_active_v3021d:
+                    st.session_state.v3021d_partial_refresh_grace_until = ""
+
+            if live_screener_active_v271:
+                with st.expander("⚡ Einzelne Werte neu scannen", expanded=False):
+                    if not cache_ok_v246:
+                        st.info("Zuerst einmal einen vollständigen Live-Scan ausführen. Danach können einzelne Werte gezielt neu gescannt werden.")
+                    else:
+                        _cached_partial_df_v3021d = live_cache_v246.get("live_df", pd.DataFrame())
+                        _partial_status_map_v3021d = {}
+                        if isinstance(_cached_partial_df_v3021d, pd.DataFrame) and not _cached_partial_df_v3021d.empty and "Ticker" in _cached_partial_df_v3021d.columns:
+                            for _, _partial_row_v3021d in _cached_partial_df_v3021d.iterrows():
+                                _partial_ticker_v3021d = str(_partial_row_v3021d.get("Ticker") or "").strip().upper()
+                                if not _partial_ticker_v3021d:
+                                    continue
+                                _partial_status_v3021d = str(_partial_row_v3021d.get("Status") or _partial_row_v3021d.get("Ampel") or "").strip()
+                                _partial_status_map_v3021d[_partial_ticker_v3021d] = _partial_status_v3021d
+
+                        _partial_widget_suffix_v3021d = hashlib.sha1(
+                            f"{selected_watchlist_name}|{monitor_style}|{live_monitor_horizon}".encode("utf-8")
+                        ).hexdigest()[:10]
+                        selective_tickers_v3021d = st.multiselect(
+                            "Ticker für Re-Scan",
+                            options=list(scan_tickers_v2844),
+                            key=f"v3021d_selective_tickers_{_partial_widget_suffix_v3021d}",
+                            format_func=lambda _t: (
+                                f"{_t} · {_partial_status_map_v3021d.get(str(_t).strip().upper(), '')}".rstrip(" ·")
+                            ),
+                            help="Nur die ausgewählten Werte werden neu abgefragt. Alle übrigen behalten ihren letzten vollständigen Scanstand.",
+                        )
+                        if cache_stale_v246:
+                            st.warning("Der vollständige Basisstand ist älter als dein Refresh-Intervall. Ein Re-Scan aktualisiert trotzdem nur die Auswahl; die übrigen Werte bleiben auf ihrem bisherigen Zeitstand.")
+                        if len(selective_tickers_v3021d) > 12:
+                            st.caption("Für größere Auswahlen ist der Vollscan meist providerfreundlicher. Der selektive Re-Scan bleibt trotzdem möglich.")
+                        if st.button(
+                            "Auswahl jetzt neu scannen",
+                            use_container_width=True,
+                            disabled=not bool(selective_tickers_v3021d),
+                            key=f"v3021d_selective_scan_btn_{_partial_widget_suffix_v3021d}",
+                        ):
+                            selective_live_run_v3021d = True
+                            st.session_state.v3021d_last_selective_requested = list(selective_tickers_v3021d)
+
             # Nach einem komplett fehlgeschlagenen Provider-Lauf nicht bei jedem
             # Widget-Rerun sofort erneut 59 Titel abfeuern. Manuell bleibt jederzeit
             # moeglich; Auto wartet 5 Minuten.
@@ -19670,25 +19728,30 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 except Exception:
                     _auto_failure_cooldown_v287b = False
             live_should_scan_v246 = bool(
-                manual_live_run_v246
-                or run_live_monitor
-                or (
-                    live_screener_active_v271
-                    and live_auto_scan_enabled_v2842
-                    and native_refresh_due_v2415
-                    and not reconnect_grace_active_v2842
-                    and not _auto_failure_cooldown_v287b
-                )
-                or (
-                    live_screener_active_v271
-                    and live_auto_scan_enabled_v2842
-                    and not reconnect_grace_active_v2842
-                    and not _auto_failure_cooldown_v287b
-                    and (not cache_ok_v246 or cache_stale_v246)
+                (not selective_live_run_v3021d)
+                and (
+                    manual_live_run_v246
+                    or run_live_monitor
+                    or (
+                        live_screener_active_v271
+                        and live_auto_scan_enabled_v2842
+                        and native_refresh_due_v2415
+                        and not reconnect_grace_active_v2842
+                        and not _auto_failure_cooldown_v287b
+                        and not _partial_grace_active_v3021d
+                    )
+                    or (
+                        live_screener_active_v271
+                        and live_auto_scan_enabled_v2842
+                        and not reconnect_grace_active_v2842
+                        and not _auto_failure_cooldown_v287b
+                        and not _partial_grace_active_v3021d
+                        and (not cache_ok_v246 or cache_stale_v246)
+                    )
                 )
             )
             rotation_radar_active_v301b = active_cockpit_pre_v271 == "🧭 Rotation Radar"
-            show_live_monitor_v246 = bool(live_should_scan_v246 or cache_ok_v246 or rotation_radar_active_v301b)
+            show_live_monitor_v246 = bool(selective_live_run_v3021d or live_should_scan_v246 or cache_ok_v246 or rotation_radar_active_v301b)
 
             # v28.6e6: Die Pause-Meldung darf nicht behaupten, dass ein Stand
             # sichtbar ist, wenn kein kompatibler Snapshot gefunden wurde.
@@ -19704,7 +19767,205 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 if not current_tickers and not rotation_radar_active_v301b:
                     st.info("Diese Watchlist ist leer.")
                 else:
-                    if live_should_scan_v246:
+                    if selective_live_run_v3021d and cache_ok_v246:
+                        # v30.21d: Selektiver Re-Scan. Der letzte vollstaendige Atomic-
+                        # Stand bleibt die Basis; nur erfolgreiche Auswahl-Ticker werden
+                        # zeilenweise ersetzt. Der globale Vollscan-Zeitanker bleibt
+                        # unveraendert, damit ein Teilscan nicht als frischer Vollscan gilt.
+                        _partial_started_v3021d = datetime.now()
+                        _partial_run_id_v3021d = _partial_started_v3021d.strftime("partial-%Y%m%d-%H%M%S")
+                        _partial_selected_v3021d = [
+                            str(_t or "").strip().upper()
+                            for _t in selective_tickers_v3021d
+                            if str(_t or "").strip()
+                        ]
+                        _partial_selected_v3021d = list(dict.fromkeys(_partial_selected_v3021d))
+
+                        with st.spinner(
+                            f"Selektiver Re-Scan: {len(_partial_selected_v3021d)} Wert(e) werden frisch geprüft. "
+                            "Der restliche Watchlist-Stand bleibt unverändert."
+                        ):
+                            try:
+                                _partial_meta_by_ticker_v3021d = {}
+                                try:
+                                    if current_watchlist_df is not None and not current_watchlist_df.empty:
+                                        for _, _partial_meta_row_v3021d in current_watchlist_df.iterrows():
+                                            _partial_tk_v3021d = _v228_norm_watchlist_ticker(_partial_meta_row_v3021d.get("Ticker"))
+                                            if _partial_tk_v3021d and _partial_tk_v3021d not in _partial_meta_by_ticker_v3021d:
+                                                _partial_meta_by_ticker_v3021d[_partial_tk_v3021d] = dict(_partial_meta_row_v3021d)
+                                except Exception:
+                                    _partial_meta_by_ticker_v3021d = {}
+                                try:
+                                    for _partial_tk_v3021d, _partial_meta_v3021d in _v2214_get_start_price_meta_map(selected_watchlist_name).items():
+                                        if not _partial_tk_v3021d:
+                                            continue
+                                        _partial_base_meta_v3021d = _partial_meta_by_ticker_v3021d.get(_partial_tk_v3021d, {})
+                                        _partial_merged_meta_v3021d = dict(_partial_base_meta_v3021d)
+                                        _partial_merged_meta_v3021d.update(dict(_partial_meta_v3021d))
+                                        _partial_meta_by_ticker_v3021d[_partial_tk_v3021d] = _partial_merged_meta_v3021d
+                                except Exception:
+                                    pass
+                                try:
+                                    for _partial_item_v3021d in _v228_pending_for_watchlist(selected_watchlist_name):
+                                        _partial_tk_v3021d = _v228_norm_watchlist_ticker(_partial_item_v3021d.get("Ticker"))
+                                        if _partial_tk_v3021d:
+                                            _partial_base_meta_v3021d = _partial_meta_by_ticker_v3021d.get(_partial_tk_v3021d, {})
+                                            _partial_merged_meta_v3021d = dict(_partial_base_meta_v3021d)
+                                            _partial_merged_meta_v3021d.update(dict(_partial_item_v3021d))
+                                            _partial_meta_by_ticker_v3021d[_partial_tk_v3021d] = _partial_merged_meta_v3021d
+                                except Exception:
+                                    pass
+
+                                _partial_df_v3021d = pd.DataFrame()
+                                _partial_errors_v3021d = pd.DataFrame()
+                                _partial_batches_v3021d = _live_scan_batches.split_batches(_partial_selected_v3021d, 8)
+                                _partial_progress_v3021d = st.progress(0.0)
+                                _partial_progress_text_v3021d = st.empty()
+                                for _partial_batch_no_v3021d, _partial_batch_v3021d in enumerate(_partial_batches_v3021d, start=1):
+                                    _partial_batch_df_v3021d, _partial_batch_errors_v3021d = build_live_watchlist_monitor_v212(
+                                        list(_partial_batch_v3021d),
+                                        style_name=monitor_style,
+                                        max_items=None,
+                                        watchlist_meta_by_ticker=_partial_meta_by_ticker_v3021d,
+                                        live_horizon=live_monitor_horizon,
+                                        analysis_bucket_override=f"selective-v3021d-{int(time.time() // 60)}",
+                                        per_ticker_pause_seconds=0.4,
+                                    )
+                                    _partial_df_v3021d = _live_scan_batches.merge_frames(
+                                        _partial_df_v3021d, _partial_batch_df_v3021d
+                                    )
+                                    _partial_errors_v3021d = _live_scan_batches.merge_frames(
+                                        _partial_errors_v3021d, _partial_batch_errors_v3021d
+                                    )
+                                    _partial_done_v3021d = min(
+                                        len(_partial_selected_v3021d),
+                                        _partial_batch_no_v3021d * 8,
+                                    )
+                                    _partial_progress_v3021d.progress(
+                                        min(1.0, _partial_done_v3021d / max(1, len(_partial_selected_v3021d)))
+                                    )
+                                    _partial_progress_text_v3021d.caption(
+                                        f"Selektiver Re-Scan · {_partial_done_v3021d}/{len(_partial_selected_v3021d)} angefragt"
+                                    )
+
+                                if not _partial_df_v3021d.empty:
+                                    _partial_df_v3021d, live_events_df = apply_live_watchlist_status_history_v220(
+                                        _partial_df_v3021d,
+                                        watchlist_name=selected_watchlist_name,
+                                        style_name=f"{monitor_style} | {live_monitor_horizon}",
+                                    )
+                                else:
+                                    live_events_df = pd.DataFrame()
+
+                                _partial_completed_at_v3021d = datetime.now().isoformat()
+                                if not _partial_df_v3021d.empty:
+                                    _partial_df_v3021d["Scan-Zeit"] = _v305b_format_berlin_timestamp(_partial_completed_at_v3021d)
+                                    _partial_df_v3021d["Scan-Lauf"] = _partial_run_id_v3021d
+
+                                (
+                                    _partial_merged_live_v3021d,
+                                    _partial_merged_errors_v3021d,
+                                    _partial_success_tickers_v3021d,
+                                    _partial_error_tickers_v3021d,
+                                ) = _live_scan_batches.merge_selective_refresh(
+                                    live_cache_v246.get("live_df", pd.DataFrame()),
+                                    live_cache_v246.get("live_errors", pd.DataFrame()),
+                                    _partial_df_v3021d,
+                                    _partial_errors_v3021d,
+                                    _partial_selected_v3021d,
+                                )
+                                _partial_merged_live_v3021d = _live_scan_batches.sort_live_frame(
+                                    _partial_merged_live_v3021d
+                                )
+
+                                _partial_scan_meta_v3021d = dict(live_cache_v246.get("scan_meta") or {})
+                                _partial_scan_meta_v3021d.update({
+                                    "last_partial_refresh_at": _partial_completed_at_v3021d,
+                                    "last_partial_refresh_run_id": _partial_run_id_v3021d,
+                                    "last_partial_refresh_requested": list(_partial_selected_v3021d),
+                                    "last_partial_refresh_success": list(_partial_success_tickers_v3021d),
+                                    "last_partial_refresh_errors": list(_partial_error_tickers_v3021d),
+                                    "last_partial_refresh_duration_seconds": round(max(0.0, (datetime.now() - _partial_started_v3021d).total_seconds()), 1),
+                                    "success_count": len(_partial_merged_live_v3021d) if isinstance(_partial_merged_live_v3021d, pd.DataFrame) else 0,
+                                    "error_count": len(_partial_merged_errors_v3021d) if isinstance(_partial_merged_errors_v3021d, pd.DataFrame) else 0,
+                                    "partial_refresh": True,
+                                    "mixed_freshness": True,
+                                    # Outcome-/Queue-Tracker duerfen einen Teilscan nicht als
+                                    # neuen vollstaendigen Tages-Snapshot protokollieren.
+                                    "fresh_analysis": False,
+                                })
+
+                                _partial_cache_payload_v3021d = {
+                                    "key": live_cache_key_v246,
+                                    # Der globale Vollscan-Anker bleibt absichtlich gleich.
+                                    "ts": str(live_cache_v246.get("ts") or _partial_completed_at_v3021d),
+                                    "live_df": _partial_merged_live_v3021d.copy(),
+                                    "live_errors": _partial_merged_errors_v3021d.copy(),
+                                    "scan_meta": _partial_scan_meta_v3021d,
+                                }
+                                st.session_state["v246_live_monitor_cache"] = _partial_cache_payload_v3021d
+                                live_cache_v246 = _partial_cache_payload_v3021d
+                                try:
+                                    _partial_snapshot_ok_v3021d = _live_screener_snapshot.save_snapshot(
+                                        _storage_v280,
+                                        _partial_cache_payload_v3021d,
+                                        ui_state={
+                                            "mobile_mode": bool(mobile_mode_v2842),
+                                            "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
+                                            "only_active": bool(only_active),
+                                            "refresh_label": str(refresh_label),
+                                            "scan_scope": "Selektiver Re-Scan + letzter Vollstand",
+                                            "scan_complete": True,
+                                            "atomic": True,
+                                            "partial_refresh": True,
+                                        },
+                                        max_snapshots=6,
+                                    )
+                                    _partial_visible_v3021d = dict(_partial_cache_payload_v3021d)
+                                    _partial_visible_v3021d["key"] = live_visible_key_v286e4
+                                    _partial_visible_ok_v3021d = _live_screener_snapshot.save_snapshot(
+                                        _storage_v280,
+                                        _partial_visible_v3021d,
+                                        ui_state={
+                                            "mobile_mode": bool(mobile_mode_v2842),
+                                            "mobile_auto_scan": bool(mobile_auto_scan_v2842) if mobile_mode_v2842 else False,
+                                            "only_active": bool(only_active),
+                                            "refresh_label": str(refresh_label),
+                                            "scan_scope": "Selektiver Re-Scan + letzter Vollstand",
+                                            "scan_complete": True,
+                                            "visible_stand": True,
+                                            "atomic": True,
+                                            "partial_refresh": True,
+                                        },
+                                        max_snapshots=6,
+                                    )
+                                    st.session_state.v2842_snapshot_last_save_ok = bool(
+                                        _partial_snapshot_ok_v3021d or _partial_visible_ok_v3021d
+                                    )
+                                except Exception:
+                                    st.session_state.v2842_snapshot_last_save_ok = False
+
+                                live_df = _partial_merged_live_v3021d.copy()
+                                live_errors = _partial_merged_errors_v3021d.copy()
+                                scan_meta_v2844 = dict(_partial_scan_meta_v3021d)
+                                st.session_state.v3021d_partial_refresh_grace_until = (
+                                    datetime.now() + timedelta(minutes=5)
+                                ).isoformat()
+                                _partial_success_count_v3021d = len(_partial_success_tickers_v3021d)
+                                _partial_error_count_v3021d = len(_partial_error_tickers_v3021d)
+                                st.success(
+                                    f"Selektiver Re-Scan abgeschlossen: {_partial_success_count_v3021d}/{len(_partial_selected_v3021d)} frisch aktualisiert"
+                                    + (f" · {_partial_error_count_v3021d} mit Fehler, alter Stand bleibt sichtbar." if _partial_error_count_v3021d else ".")
+                                )
+                            except Exception as _partial_exc_v3021d:
+                                live_df = live_cache_v246.get("live_df", pd.DataFrame()).copy()
+                                live_errors = live_cache_v246.get("live_errors", pd.DataFrame()).copy()
+                                scan_meta_v2844 = dict(live_cache_v246.get("scan_meta") or {})
+                                st.error(
+                                    "Selektiver Re-Scan konnte nicht übernommen werden. Der letzte vollständige Stand bleibt unverändert sichtbar. "
+                                    f"Fehler: {_partial_exc_v3021d}"
+                                )
+                    elif live_should_scan_v246:
                         # v28.7b: Atomic Complete Scan. Jeder Lauf startet intern bei 0,
                         # verarbeitet ALLE Ticker und committed erst ganz am Ende. Der
                         # bisherige vollstaendige Stand bleibt bis dahin unangetastet.
@@ -20120,7 +20381,21 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _duration_text_v287b = f" · Dauer {float(_duration_display_v287b):.0f} Sek."
                             except Exception:
                                 _duration_text_v287b = ""
-                            _atomic_text_v287b = " · kein Mischstand" if _atomic_display_v287b else ""
+                            _partial_display_v3021d = bool(_display_scan_meta_v2844.get("partial_refresh", False))
+                            if _partial_display_v3021d:
+                                _partial_req_display_v3021d = list(_display_scan_meta_v2844.get("last_partial_refresh_requested") or [])
+                                _partial_ok_display_v3021d = list(_display_scan_meta_v2844.get("last_partial_refresh_success") or [])
+                                _partial_err_display_v3021d = list(_display_scan_meta_v2844.get("last_partial_refresh_errors") or [])
+                                _partial_when_display_v3021d = _display_scan_meta_v2844.get("last_partial_refresh_at")
+                                st.caption(
+                                    f"⚡ Selektiv aktualisiert: {len(_partial_ok_display_v3021d)}/{len(_partial_req_display_v3021d)} frisch"
+                                    + (f" · {len(_partial_err_display_v3021d)} Fehler" if _partial_err_display_v3021d else "")
+                                    + (f" · {_v305b_format_berlin_timestamp(_partial_when_display_v3021d)}" if _partial_when_display_v3021d else "")
+                                    + ". Nicht ausgewählte Zeilen behalten ihre eigene Scan-Zeit."
+                                )
+                                _atomic_text_v287b = " · vollständiger Basisstand + selektive Aktualisierung"
+                            else:
+                                _atomic_text_v287b = " · kein Mischstand" if _atomic_display_v287b else ""
                             st.caption(
                                 f"✅ {_mode_display_v287b}: {_completed_display_v2844}/{_selected_display_v2844} vollständig verarbeitet "
                                 f"· {_success_display_v287b} Ergebnisse · {_error_display_v287b} aktuelle Fehler"
@@ -20169,17 +20444,36 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     except Exception:
                         _live_errors_df = pd.DataFrame()
                     if _live_errors_df is not None and not _live_errors_df.empty:
-                        st.warning(
-                            f"{len(_live_errors_df)} Ticker lieferten in diesem Vollscan keinen aktuellen Analysewert. "
-                            "Sie werden nicht mit alten Zeilen aufgefüllt."
-                        )
+                        if bool((scan_meta_v2844 or {}).get("partial_refresh", False)):
+                            st.warning(
+                                f"{len(_live_errors_df)} Ticker haben im kombinierten Stand einen Fehlerstatus. "
+                                "Bei fehlgeschlagenen selektiven Re-Scans bleibt die ältere Zeile mit ihrer alten Scan-Zeit sichtbar."
+                            )
+                        else:
+                            st.warning(
+                                f"{len(_live_errors_df)} Ticker lieferten in diesem Vollscan keinen aktuellen Analysewert. "
+                                "Sie werden nicht mit alten Zeilen aufgefüllt."
+                            )
                         with st.expander("Aktuelle Scan-Fehlerdetails", expanded=False):
                             st.dataframe(_live_errors_df, hide_index=True, use_container_width=True)
                     # v28.6: Shadow-Historie aus dem vollstaendigen Live-Frame aktualisieren,
                     # bevor ein UI-Filter (nur gruen/gelb) Zeilen ausblendet.
                     try:
+                        _shadow_source_v3021d = live_df
+                        if bool((scan_meta_v2844 or {}).get("partial_refresh", False)) and isinstance(live_df, pd.DataFrame) and not live_df.empty:
+                            _partial_success_set_v3021d = {
+                                str(_t or "").strip().upper()
+                                for _t in ((scan_meta_v2844 or {}).get("last_partial_refresh_success") or [])
+                                if str(_t or "").strip()
+                            }
+                            if _partial_success_set_v3021d and "Ticker" in live_df.columns:
+                                _shadow_source_v3021d = live_df[
+                                    live_df["Ticker"].astype(str).str.strip().str.upper().isin(_partial_success_set_v3021d)
+                                ].copy()
+                            else:
+                                _shadow_source_v3021d = pd.DataFrame()
                         shadow_events_df_v286 = update_shadow_mode_history_v286(
-                            live_df,
+                            _shadow_source_v3021d,
                             watchlist_name=selected_watchlist_name,
                             style_name=f"{monitor_style} | {live_monitor_horizon}",
                         )
@@ -20221,6 +20515,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         _capture_atomic_v306 = bool(
                             _capture_meta_v306.get("complete", False)
                             and _capture_meta_v306.get("atomic", False)
+                            and not _capture_meta_v306.get("partial_refresh", False)
                         )
                         _capture_scan_id_v306 = str(_capture_meta_v306.get("run_id") or "").strip()
                         if not _capture_scan_id_v306 and isinstance(live_df, pd.DataFrame) and not live_df.empty and "Scan-Lauf" in live_df.columns:
@@ -20258,13 +20553,6 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         )
 
                         if cockpit_area == "📡 Live-Screener":
-                            if "Radar-Bucket" in live_df.columns and "Status" in live_df.columns:
-                                override_mask = (live_df["Status"].astype(str) != live_df["Radar-Bucket"].astype(str))
-                                if bool(override_mask.any()):
-                                    st.caption("Hinweis: Status ist die aktuelle Live-Handlungseinstufung. Radar-Bucket zeigt nur die ursprüngliche Radar-Bewertung und kann durch Grade/CRV/Sofortanalyse überstimmt werden.")
-                            st.caption("Volatilität = ATR(14) in % des Kurses. Datenqualität bewertet nur Vollständigkeit/Historie der Marktdaten und verändert den Trading-Score nicht.")
-                            st.caption("Statuswechsel können auch ohne sichtbare Kursbewegung entstehen: Die neue Spalte 'Warum geändert?' vergleicht Score, Trigger, Timing, Konfluenz, Radar-Bucket und harte Gates mit dem vorherigen Scan.")
-                            st.caption(f"{APP_VERSION}: Harvest/Chop nutzt die bestehende Kalibrierung. Vollständige Atomic-Scans werden zusätzlich providerfrei für die 1/3/5T-Outcome-Validierung protokolliert; die klassische TP-/Live-/Shadow-Logik bleibt unverändert.")
                             try:
                                 _scan_chop_vals_v304b = pd.to_numeric(
                                     live_df.get("Scan-Chop", pd.Series(dtype=object)).astype(str).str.extract(r"(\d+(?:\.\d+)?)")[0],
@@ -20565,6 +20853,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 _queue_atomic_v3010 = bool(
                                     _queue_meta_v3010.get("complete", False)
                                     and _queue_meta_v3010.get("atomic", False)
+                                    and not _queue_meta_v3010.get("partial_refresh", False)
                                 )
                                 _queue_scan_id_v3010 = str(_queue_meta_v3010.get("run_id") or "").strip()
                                 if not _queue_scan_id_v3010 and isinstance(_decision_queue_source_v309, pd.DataFrame) and not _decision_queue_source_v309.empty and "Scan-Lauf" in _decision_queue_source_v309.columns:

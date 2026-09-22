@@ -196,3 +196,70 @@ def checkpoint_matches(meta: Any, plan: ScanPlan) -> bool:
         and tuple(str(item).strip().upper() for item in (meta.get("pending_tickers") or []) + (meta.get("completed_tickers") or []))
         != ()
     )
+
+# v30.21d: Merge a provider-light selective re-scan into the last complete
+# watchlist snapshot without pretending that failed refreshes are fresh.
+def merge_selective_refresh(
+    base_live_df: Any,
+    base_errors_df: Any,
+    refreshed_live_df: Any,
+    refreshed_errors_df: Any,
+    selected_tickers: Iterable[Any] | None,
+) -> tuple[pd.DataFrame, pd.DataFrame, tuple[str, ...], tuple[str, ...]]:
+    """Merge fresh selected rows into a complete prior snapshot.
+
+    Successful selected tickers replace their previous live rows. Selected
+    tickers that fail the refresh keep their previous live row (and therefore
+    its old Scan-Zeit) while the new error replaces an older error entry. This
+    keeps the visible baseline usable without mislabelling stale data as fresh.
+    """
+    selected, _ = normalize_tickers(selected_tickers)
+    selected_set = set(selected)
+
+    base_live = base_live_df.copy() if isinstance(base_live_df, pd.DataFrame) else pd.DataFrame(base_live_df or [])
+    base_errors = base_errors_df.copy() if isinstance(base_errors_df, pd.DataFrame) else pd.DataFrame(base_errors_df or [])
+    fresh_live = refreshed_live_df.copy() if isinstance(refreshed_live_df, pd.DataFrame) else pd.DataFrame(refreshed_live_df or [])
+    fresh_errors = refreshed_errors_df.copy() if isinstance(refreshed_errors_df, pd.DataFrame) else pd.DataFrame(refreshed_errors_df or [])
+
+    # Defensive filter: even if a caller accidentally supplies extra provider rows,
+    # a selective refresh may only mutate explicitly requested tickers.
+    if not fresh_live.empty and "Ticker" in fresh_live.columns:
+        fresh_live = fresh_live.loc[
+            fresh_live["Ticker"].astype(str).str.strip().str.upper().isin(selected_set)
+        ].reset_index(drop=True)
+    if not fresh_errors.empty and "Ticker" in fresh_errors.columns:
+        fresh_errors = fresh_errors.loc[
+            fresh_errors["Ticker"].astype(str).str.strip().str.upper().isin(selected_set)
+        ].reset_index(drop=True)
+
+    def _ticker_set(frame: pd.DataFrame) -> set[str]:
+        if frame.empty or "Ticker" not in frame.columns:
+            return set()
+        return {
+            str(value or "").strip().upper()
+            for value in frame["Ticker"].tolist()
+            if str(value or "").strip()
+        }
+
+    success_set = _ticker_set(fresh_live) & selected_set
+    error_set = (_ticker_set(fresh_errors) & selected_set) - success_set
+
+    if not base_live.empty and "Ticker" in base_live.columns and success_set:
+        keep_mask = ~base_live["Ticker"].astype(str).str.strip().str.upper().isin(success_set)
+        base_live = base_live.loc[keep_mask].reset_index(drop=True)
+    merged_live = merge_frames(base_live, fresh_live)
+
+    # A fresh attempt supersedes an earlier error for every requested ticker.
+    if not base_errors.empty and "Ticker" in base_errors.columns and selected_set:
+        keep_error_mask = ~base_errors["Ticker"].astype(str).str.strip().str.upper().isin(selected_set)
+        base_errors = base_errors.loc[keep_error_mask].reset_index(drop=True)
+    if not fresh_errors.empty and "Ticker" in fresh_errors.columns and success_set:
+        fresh_errors = fresh_errors.loc[
+            ~fresh_errors["Ticker"].astype(str).str.strip().str.upper().isin(success_set)
+        ].reset_index(drop=True)
+    merged_errors = merge_frames(base_errors, fresh_errors)
+
+    success_ordered = tuple(ticker for ticker in selected if ticker in success_set)
+    error_ordered = tuple(ticker for ticker in selected if ticker in error_set)
+    return merged_live, merged_errors, success_ordered, error_ordered
+

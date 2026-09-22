@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.21d"
+APP_VERSION = "v30.21e"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -19659,11 +19659,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             )
             live_screener_active_v271 = active_cockpit_pre_v271 == "📡 Live-Screener"
 
-            # v30.21d: Selektiver Re-Scan auf Basis des letzten vollstaendigen Stands.
-            # Nur die explizit ausgewaehlten Ticker werden erneut beim Provider/Analyzer
-            # angefragt. Unveraenderte Ticker behalten Zeile UND individuelle Scan-Zeit.
-            # Ein fehlgeschlagener Einzel-Refresh ersetzt niemals still eine vorhandene
-            # alte Zeile; der Fehler wird separat gespeichert und angezeigt.
+            # v30.21e: Selektiver Re-Scan wird direkt in der sichtbaren Screener-
+            # Tabelle per Checkbox vorbereitet. Ein Klick auf "neu scannen" legt
+            # nur eine Pending-Auswahl in der Session ab; auf dem folgenden Rerun
+            # wird sie hier vor dem Scan-Entscheid konsumiert. Dadurch bleibt die
+            # bestehende v30.21d-Merge-/Fehlerlogik unverändert.
             selective_live_run_v3021d = False
             selective_tickers_v3021d = []
             _partial_grace_active_v3021d = False
@@ -19676,45 +19676,18 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 if not _partial_grace_active_v3021d:
                     st.session_state.v3021d_partial_refresh_grace_until = ""
 
-            if live_screener_active_v271:
-                with st.expander("⚡ Einzelne Werte neu scannen", expanded=False):
-                    if not cache_ok_v246:
-                        st.info("Zuerst einmal einen vollständigen Live-Scan ausführen. Danach können einzelne Werte gezielt neu gescannt werden.")
-                    else:
-                        _cached_partial_df_v3021d = live_cache_v246.get("live_df", pd.DataFrame())
-                        _partial_status_map_v3021d = {}
-                        if isinstance(_cached_partial_df_v3021d, pd.DataFrame) and not _cached_partial_df_v3021d.empty and "Ticker" in _cached_partial_df_v3021d.columns:
-                            for _, _partial_row_v3021d in _cached_partial_df_v3021d.iterrows():
-                                _partial_ticker_v3021d = str(_partial_row_v3021d.get("Ticker") or "").strip().upper()
-                                if not _partial_ticker_v3021d:
-                                    continue
-                                _partial_status_v3021d = str(_partial_row_v3021d.get("Status") or _partial_row_v3021d.get("Ampel") or "").strip()
-                                _partial_status_map_v3021d[_partial_ticker_v3021d] = _partial_status_v3021d
-
-                        _partial_widget_suffix_v3021d = hashlib.sha1(
-                            f"{selected_watchlist_name}|{monitor_style}|{live_monitor_horizon}".encode("utf-8")
-                        ).hexdigest()[:10]
-                        selective_tickers_v3021d = st.multiselect(
-                            "Ticker für Re-Scan",
-                            options=list(scan_tickers_v2844),
-                            key=f"v3021d_selective_tickers_{_partial_widget_suffix_v3021d}",
-                            format_func=lambda _t: (
-                                f"{_t} · {_partial_status_map_v3021d.get(str(_t).strip().upper(), '')}".rstrip(" ·")
-                            ),
-                            help="Nur die ausgewählten Werte werden neu abgefragt. Alle übrigen behalten ihren letzten vollständigen Scanstand.",
-                        )
-                        if cache_stale_v246:
-                            st.warning("Der vollständige Basisstand ist älter als dein Refresh-Intervall. Ein Re-Scan aktualisiert trotzdem nur die Auswahl; die übrigen Werte bleiben auf ihrem bisherigen Zeitstand.")
-                        if len(selective_tickers_v3021d) > 12:
-                            st.caption("Für größere Auswahlen ist der Vollscan meist providerfreundlicher. Der selektive Re-Scan bleibt trotzdem möglich.")
-                        if st.button(
-                            "Auswahl jetzt neu scannen",
-                            use_container_width=True,
-                            disabled=not bool(selective_tickers_v3021d),
-                            key=f"v3021d_selective_scan_btn_{_partial_widget_suffix_v3021d}",
-                        ):
-                            selective_live_run_v3021d = True
-                            st.session_state.v3021d_last_selective_requested = list(selective_tickers_v3021d)
+            _pending_selective_v3021e = st.session_state.pop("v3021e_pending_selective_scan", [])
+            if live_screener_active_v271 and cache_ok_v246 and _pending_selective_v3021e:
+                _allowed_selective_v3021e = {str(_t or "").strip().upper() for _t in scan_tickers_v2844 if str(_t or "").strip()}
+                selective_tickers_v3021d = [
+                    str(_t or "").strip().upper()
+                    for _t in _pending_selective_v3021e
+                    if str(_t or "").strip().upper() in _allowed_selective_v3021e
+                ]
+                selective_tickers_v3021d = list(dict.fromkeys(selective_tickers_v3021d))
+                if selective_tickers_v3021d:
+                    selective_live_run_v3021d = True
+                    st.session_state.v3021d_last_selective_requested = list(selective_tickers_v3021d)
 
             # Nach einem komplett fehlgeschlagenen Provider-Lauf nicht bei jedem
             # Widget-Rerun sofort erneut 59 Titel abfeuern. Manuell bleibt jederzeit
@@ -19951,6 +19924,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 st.session_state.v3021d_partial_refresh_grace_until = (
                                     datetime.now() + timedelta(minutes=5)
                                 ).isoformat()
+                                # Nach dem ausgeführten Re-Scan die Checkbox-Auswahl
+                                # leeren. Der nächste Teilscan startet bewusst mit
+                                # einer neuen Auswahl statt alte Haken mitzuschleppen.
+                                _partial_selection_suffix_v3021e = hashlib.sha1(
+                                    f"{selected_watchlist_name}|{monitor_style}|{live_monitor_horizon}".encode("utf-8")
+                                ).hexdigest()[:10]
+                                st.session_state[f"v3021e_selected_tickers_{_partial_selection_suffix_v3021e}"] = []
+                                st.session_state[f"v3021e_selection_rev_{_partial_selection_suffix_v3021e}"] = int(
+                                    st.session_state.get(f"v3021e_selection_rev_{_partial_selection_suffix_v3021e}", 0)
+                                ) + 1
                                 _partial_success_count_v3021d = len(_partial_success_tickers_v3021d)
                                 _partial_error_count_v3021d = len(_partial_error_tickers_v3021d)
                                 st.success(
@@ -21184,12 +21167,95 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     "Harvest-Score": "Harvest-Ampel",
                                     "Chop-Risk": "Chop / Schwankung",
                                 })
-                                st.dataframe(
-                                    _desktop_live_display_v304a,
+                                # v30.21e: Checkbox-driven selective re-scan directly
+                                # in the existing desktop screener table. The checkbox is
+                                # UI state only and never enters the stored live snapshot.
+                                _partial_widget_suffix_v3021e = hashlib.sha1(
+                                    f"{selected_watchlist_name}|{monitor_style}|{live_monitor_horizon}".encode("utf-8")
+                                ).hexdigest()[:10]
+                                _selection_state_key_v3021e = f"v3021e_selected_tickers_{_partial_widget_suffix_v3021e}"
+                                _selection_rev_key_v3021e = f"v3021e_selection_rev_{_partial_widget_suffix_v3021e}"
+                                _selected_set_v3021e = {
+                                    str(_t or "").strip().upper()
+                                    for _t in (st.session_state.get(_selection_state_key_v3021e) or [])
+                                    if str(_t or "").strip()
+                                }
+                                _visible_tickers_v3021e = {
+                                    str(_t or "").strip().upper()
+                                    for _t in _desktop_live_display_v304a.get("Ticker", pd.Series(dtype=str)).tolist()
+                                    if str(_t or "").strip()
+                                }
+                                _selected_set_v3021e &= _visible_tickers_v3021e
+
+                                _sel_c1_v3021e, _sel_c2_v3021e, _sel_c3_v3021e = st.columns([1.2, 1.0, 2.1])
+                                if _sel_c1_v3021e.button(
+                                    "🟢 Grüne auswählen",
+                                    key=f"v3021e_select_green_{_partial_widget_suffix_v3021e}",
+                                    use_container_width=True,
+                                ):
+                                    _selected_set_v3021e = set(_live_scan_batches.green_tickers(live_display_df))
+                                    st.session_state[_selection_state_key_v3021e] = sorted(_selected_set_v3021e)
+                                    st.session_state[_selection_rev_key_v3021e] = int(st.session_state.get(_selection_rev_key_v3021e, 0)) + 1
+                                    st.rerun()
+                                if _sel_c2_v3021e.button(
+                                    "Auswahl löschen",
+                                    key=f"v3021e_clear_selection_{_partial_widget_suffix_v3021e}",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state[_selection_state_key_v3021e] = []
+                                    st.session_state[_selection_rev_key_v3021e] = int(st.session_state.get(_selection_rev_key_v3021e, 0)) + 1
+                                    st.rerun()
+
+                                _desktop_rescan_editor_v3021e = _desktop_live_display_v304a.copy()
+                                _desktop_rescan_editor_v3021e.insert(
+                                    0,
+                                    "🔄",
+                                    [
+                                        str(_t or "").strip().upper() in _selected_set_v3021e
+                                        for _t in _desktop_rescan_editor_v3021e.get("Ticker", pd.Series(dtype=str)).tolist()
+                                    ],
+                                )
+                                _selection_revision_v3021e = int(st.session_state.get(_selection_rev_key_v3021e, 0))
+                                _edited_live_display_v3021e = st.data_editor(
+                                    _desktop_rescan_editor_v3021e,
                                     hide_index=True,
                                     use_container_width=True,
-                                    height=min(520, 42 * len(_desktop_live_display_v304a) + 55),
+                                    height=min(520, 42 * len(_desktop_rescan_editor_v3021e) + 55),
+                                    disabled=[c for c in _desktop_rescan_editor_v3021e.columns if c != "🔄"],
+                                    column_config={
+                                        "🔄": st.column_config.CheckboxColumn(
+                                            "🔄",
+                                            help="Anhaken = diesen Wert beim nächsten selektiven Re-Scan frisch vom Provider abfragen.",
+                                            default=False,
+                                            width="small",
+                                        )
+                                    },
+                                    key=f"v3021e_live_rescan_editor_{_partial_widget_suffix_v3021e}_{_selection_revision_v3021e}",
                                 )
+                                _selected_tickers_v3021e = list(_live_scan_batches.selected_tickers_from_editor(_edited_live_display_v3021e))
+                                st.session_state[_selection_state_key_v3021e] = list(_selected_tickers_v3021e)
+
+                                _scan_c1_v3021e, _scan_c2_v3021e = st.columns([1.55, 2.45])
+                                if _scan_c1_v3021e.button(
+                                    f"⚡ Ausgewählte neu scannen ({len(_selected_tickers_v3021e)})",
+                                    disabled=not bool(_selected_tickers_v3021e),
+                                    key=f"v3021e_run_selected_{_partial_widget_suffix_v3021e}",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state.v3021e_pending_selective_scan = list(_selected_tickers_v3021e)
+                                    st.rerun()
+                                if cache_stale_v246:
+                                    _scan_c2_v3021e.warning(
+                                        "Der Vollstand ist älter als dein Refresh-Intervall. Nur die angehakten Werte werden aktualisiert; alle übrigen behalten ihren bisherigen Zeitstand."
+                                    )
+                                elif len(_selected_tickers_v3021e) > 12:
+                                    _scan_c2_v3021e.caption(
+                                        "Viele Werte ausgewählt. Ein Vollscan kann providerfreundlicher sein; der Teilscan bleibt möglich."
+                                    )
+                                else:
+                                    _scan_c2_v3021e.caption(
+                                        "Nur angehakte Werte werden neu abgefragt. Nicht ausgewählte Zeilen bleiben unverändert."
+                                    )
                                 _desktop_decision_tickers_v308 = [
                                     str(value).strip()
                                     for value in live_df.get("Ticker", pd.Series(dtype=str)).tolist()

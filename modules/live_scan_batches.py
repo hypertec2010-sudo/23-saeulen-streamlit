@@ -263,3 +263,47 @@ def merge_selective_refresh(
     error_ordered = tuple(ticker for ticker in selected if ticker in error_set)
     return merged_live, merged_errors, success_ordered, error_ordered
 
+
+
+# v30.21e: Selection helpers for checkbox-driven selective re-scans.
+def green_tickers(frame: Any) -> tuple[str, ...]:
+    """Return visible green tickers in stable row order.
+
+    The helper deliberately uses the already rendered/live Ampel state instead
+    of recalculating any trading rule. It is a convenience preselection only.
+    """
+    df = frame.copy() if isinstance(frame, pd.DataFrame) else pd.DataFrame(frame or [])
+    if df.empty or "Ticker" not in df.columns:
+        return ()
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for _, row in df.iterrows():
+        ticker = str(row.get("Ticker") or "").strip().upper()
+        if not ticker or ticker in seen:
+            continue
+        ampel = str(row.get("Ampel") or "").strip().lower()
+        if "🟢" in ampel or "grün" in ampel or "gruen" in ampel:
+            seen.add(ticker)
+            ordered.append(ticker)
+    return tuple(ordered)
+
+
+def selected_tickers_from_editor(frame: Any, selection_column: str = "🔄") -> tuple[str, ...]:
+    """Read checked ticker rows from a Streamlit data-editor result."""
+    df = frame.copy() if isinstance(frame, pd.DataFrame) else pd.DataFrame(frame or [])
+    if df.empty or "Ticker" not in df.columns or selection_column not in df.columns:
+        return ()
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for _, row in df.iterrows():
+        try:
+            checked = bool(row.get(selection_column, False))
+        except Exception:
+            checked = False
+        if not checked:
+            continue
+        ticker = str(row.get("Ticker") or "").strip().upper()
+        if ticker and ticker not in seen:
+            seen.add(ticker)
+            ordered.append(ticker)
+    return tuple(ordered)

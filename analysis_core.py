@@ -3305,6 +3305,42 @@ def analyze_stock(
             ]
             stop_source = "Unter Trendzone / Higher Low"
 
+        # v30.21b: Die strukturelle Setup-Invalidierung separat von ATR-,
+        # Praxis- und Entry-Zonen-Logik erfassen. Diese Marke dient der
+        # Herkunftstransparenz im Risiko-Rechner; die bestehende Screener-
+        # Stop-/CRV-Logik darunter bleibt unveraendert.
+        chart_invalidation_level = np.nan
+        chart_invalidation_source = "-"
+        chart_invalidation_kind = "missing"
+        _chart_candidate = np.nan
+        _chart_source = "-"
+        if setup_type == "Breakout":
+            _chart_candidate = (prev20_high * 0.975) if pd.notna(prev20_high) else np.nan
+            _chart_source = "Unter Breakout-Level (2,5%-Puffer)"
+        elif setup_type == "Breakout-Retest":
+            _chart_candidate = (prev20_high * 0.985) if pd.notna(prev20_high) else np.nan
+            _chart_source = "Unter Retest-/Breakout-Level (1,5%-Puffer)"
+        elif setup_type == "Pullback an MA20":
+            _chart_candidate = (ma20 * 0.985) if pd.notna(ma20) else np.nan
+            _chart_source = "Unter MA20 / Pullback-Struktur (1,5%-Puffer)"
+        elif setup_type == "Pullback an MA50":
+            _chart_candidate = (ma50 * 0.985) if pd.notna(ma50) else np.nan
+            _chart_source = "Unter MA50 / Pullback-Struktur (1,5%-Puffer)"
+        elif setup_type == "Rebound":
+            _chart_candidate = (prev20_low * 0.99) if pd.notna(prev20_low) else np.nan
+            _chart_source = "Unter 20T-Rebound-Tief (1,0%-Puffer)"
+        elif setup_type == "Range-Breakout":
+            _chart_candidate = (prev20_high * 0.985) if pd.notna(prev20_high) else np.nan
+            _chart_source = "Unter Range-Oberkante (1,5%-Puffer)"
+        elif setup_type == "Trendfolge":
+            _chart_candidate = (ma20 * 0.985) if pd.notna(ma20) else np.nan
+            _chart_source = "Unter MA20 / Trendstruktur (1,5%-Puffer)"
+
+        if pd.notna(_chart_candidate) and _chart_candidate > 0 and _chart_candidate < price:
+            chart_invalidation_level = round(float(_chart_candidate), 2)
+            chart_invalidation_source = _chart_source
+            chart_invalidation_kind = "setup_structure"
+
         stop_candidates = [
             x for x in setup_stop_candidates + [generic_atr_stop, generic_struct_stop]
             if pd.notna(x) and x > 0 and x < price
@@ -3464,6 +3500,9 @@ def analyze_stock(
         technical_target_1 = np.nan
         technical_target_2 = np.nan
         stop_source = "-"
+        chart_invalidation_level = np.nan
+        chart_invalidation_source = "-"
+        chart_invalidation_kind = "missing"
         suggested_entry_zone = "-"
         entry_source = "-"
         entry_quality = "-"
@@ -4548,6 +4587,9 @@ def analyze_stock(
         "technical_target_1": technical_target_1,
         "technical_target_2": technical_target_2,
         "stop_source": stop_source,
+        "chart_invalidation_level": chart_invalidation_level,
+        "chart_invalidation_source": chart_invalidation_source,
+        "chart_invalidation_kind": chart_invalidation_kind,
         "suggested_entry_zone": suggested_entry_zone,
         "entry_source": entry_source,
         "entry_quality": entry_quality,

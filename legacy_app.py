@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.20g"
+APP_VERSION = "v30.21b"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -3304,126 +3304,29 @@ def _radar_snapshot_digest(raw_text):
 
 
 def _radar_snapshot_signature(universe, style, max_candidates, custom_text=""):
-    custom_digest = _radar_snapshot_digest(custom_text if str(universe or "") == "Eigene Liste" else "")
-    return f"{universe}|{style}|{max_candidates}|{custom_digest}"
+    from modules.candidate_radar import request_key
+    # Display count intentionally excluded from analytical identity.
+    entries = split_batch_input(custom_text) if universe == "Eigene Liste" else list((get_radar_universe_map().get(universe) or ([],))[0])
+    return request_key(universe, style, entries, APP_VERSION)
 
 
 def load_radar_snapshot(signature):
-    try:
-        if not RADAR_SNAPSHOT_FILE.exists():
-            return {}
-        payload = json.loads(RADAR_SNAPSHOT_FILE.read_text(encoding="utf-8"))
-        return dict(payload.get(str(signature), {}) or {})
-    except Exception:
-        return {}
+    from modules.candidate_radar import load_snapshot
+    return load_snapshot(globals().get("_storage_v280"), signature) or {}
 
 
 def save_radar_snapshot(signature, payload):
-    try:
-        existing = {}
-        if RADAR_SNAPSHOT_FILE.exists():
-            existing = json.loads(RADAR_SNAPSHOT_FILE.read_text(encoding="utf-8"))
-            if not isinstance(existing, dict):
-                existing = {}
-        existing[str(signature)] = payload
-        RADAR_SNAPSHOT_FILE.write_text(json.dumps(existing, ensure_ascii=False), encoding="utf-8")
-        return True
-    except Exception:
+    from modules.candidate_radar import save_snapshot
+    if payload.get("key") != signature:
         return False
+    return save_snapshot(globals().get("_storage_v280"), payload)[0]
 
 
 
 def get_radar_universe_map():
-    us_tech_universe = [
-        "AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CRM", "ADBE", "AMD", "CSCO", "IBM",
-        "QCOM", "TXN", "MU", "INTU", "AMAT", "ADI", "LRCX", "KLAC", "INTC", "PANW",
-        "CRWD", "SNPS", "CDNS", "ANET", "PLTR", "NOW", "ADSK", "TEAM", "ROP", "DELL",
-        "HPQ", "WDAY", "DDOG", "NET", "MDB", "ZS", "OKTA", "HUBS", "SHOP", "SQ",
-        "UBER", "ABNB", "META", "GOOGL", "AMZN", "NFLX", "TSM", "ASML", "ARM", "SMCI",
-        "APH", "FTNT", "MCHP", "NXPI", "MRVL", "ON", "STM", "MPWR", "GFS", "WDC",
-        "STX", "NTAP", "DOCU", "SNOW", "FICO", "TTD", "PINS", "SAP", "PATH", "ESTC",
-        "DT", "APP", "RBLX", "GEN", "AKAM", "ZI", "BILL", "PAYC", "TYL", "MANH",
-        "CYBR", "S", "IOT", "PCOR", "GWRE", "AFRM", "DOCN", "WK", "CFLT", "ENPH",
-        "SEDG", "GLW", "JBL", "FSLR", "COHR", "CIEN", "JNPR", "FFIV", "TER", "ENTG"
-    ]
-    us_basis_universe = [
-        "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "BRK-B", "JPM", "LLY", "V",
-        "XOM", "UNH", "AVGO", "MA", "COST", "WMT", "JNJ", "PG", "HD", "ABBV",
-        "BAC", "KO", "MRK", "PEP", "CVX", "ADBE", "CRM", "NFLX", "AMD", "ORCL",
-        "LIN", "TMO", "MCD", "GE", "CAT", "AMAT", "GS", "AXP", "NOW", "PM"
-    ]
-    europa_quality_universe = [
-        "SAP", "ASML", "NESN.SW", "NOVO-B.CO", "MC.PA", "SU.PA", "AIR.PA", "SIE.DE", "DTE.DE", "ALV.DE",
-        "MUV2.DE", "RMS.PA", "OR.PA", "SAN.PA", "BN.PA", "DG.PA", "EL.PA", "SAF.PA", "CS.PA", "ULVR.L",
-        "AZN.L", "SHEL.L", "REL.L", "LSEG.L", "DGE.L", "GSK.L", "ABBN.SW", "ROG.SW", "SIKA.SW", "UHR.SW",
-        "NOVN.SW", "ZURN.SW", "CFR.SW", "ADYEN.AS", "WKL.AS", "PRX.AS", "HEIA.AS", "CAP.PA", "DSY.PA", "KER.PA",
-        "RACE.MI", "MONC.MI", "UCG.MI", "ISP.MI", "PRY.MI", "ENEL.MI", "IBE.MC", "ITX.MC", "FER.MC", "AMS.MC",
-        "HEI.DE", "IFX.DE", "DB1.DE", "RHM.DE", "RI.PA", "HO.PA", "AI.PA", "KER.PA", "LONN.SW", "HOLN.SW"
-    ]
-    europa_small_mid_quality_universe = [
-        "NEM.DE", "BC8.DE", "COK.DE", "EVD.DE", "AFX.DE", "SIX2.DE", "FPE3.DE", "KRN.DE", "GXI.DE", "JUN3.DE",
-        "G24.DE", "HAG.DE", "EVT.DE", "R3NK.DE", "PNE3.DE", "VAR1.DE", "VOS.DE", "WAF.DE", "DEQ.DE", "NDA.DE",
-        "SOI.PA", "VIRP.PA", "SESL.PA", "IPS.PA", "EKI.PA", "RCO.PA", "UBI.PA", "EDEN.PA", "RXL.PA", "GET.PA",
-        "IMCD.AS", "ASM.AS", "BESI.AS", "ASRNL.AS", "RAND.AS", "WKL.AS", "AD.AS", "FAGR.BR", "ACKB.BR", "SOF.BR",
-        "LIFCO-B.ST", "ADDT-B.ST", "THULE.ST", "MIPS.ST", "NIBE-B.ST", "INDU-C.ST", "VITR.ST", "AAK.ST", "ALFA.ST", "SHB-A.ST",
-        "DEMANT.CO", "GN.CO", "BAVA.CO", "CHEMM.CO", "NETC.CO", "RATO-B.ST", "SALM.OL", "TOM.OL", "KCR.HE", "VALMT.HE",
-        "HUH1V.HE", "KEMIRA.HE", "METSB.HE", "TEL2-B.ST", "INDT.ST", "DIA.MI", "ERG.MI", "BFF.MI", "IP.MI", "REY.MI",
-        "AMP.MC", "VID.MC", "LOG.MC", "CLNX.MC", "ANA.MC", "AUTO.MC", "TLGO.MC", "WISE.L", "LGEN.L", "WEIR.L"
-    ]
-    semiconductor_universe = [
-        "NVDA", "AVGO", "AMD", "QCOM", "TXN", "MU", "ADI", "AMAT", "LRCX", "KLAC",
-        "INTC", "MCHP", "NXPI", "MRVL", "ON", "MPWR", "GFS", "SWKS", "QRVO", "TER",
-        "TSM", "ASML", "ARM", "STM", "ENTG", "COHR", "ONTO", "LSCC", "ALGM", "SLAB",
-        "CRUS", "AMKR", "FORM", "IPGP", "NVMI", "ACLS", "POWI", "WOLF", "MTSI", "RMBS",
-        "CAMT", "SITM", "ASX", "ASM.AS", "BESI.AS"
-    ]
-    us_small_mid_caps_universe = [
-        "APP", "AFRM", "BILL", "CFLT", "CRSP", "CYBR", "DOCN", "DUOL", "ESTC", "FIVN",
-        "FROG", "GLBE", "GWRE", "IOT", "JFROG", "MDB", "MGNI", "NET", "OKTA", "PCOR",
-        "PLTR", "RBLX", "S", "SE", "SNOW", "SOFI", "U", "WIX", "ZI", "ZM",
-        "RKLB", "IONQ", "ASTS", "CELH", "ELF", "ONON", "CAVA", "HIMS", "NU", "PINS",
-        "DASH", "TTD", "ROKU", "ETSY", "CHWY", "DKNG", "HOOD", "ABNB", "UBER", "LYFT",
-        "FSLY", "TASK", "COUR", "ASAN", "MNDY", "BROS", "CVNA", "CROX", "ACLS", "ALGM",
-        "LSCC", "FORM", "SITM", "POWI", "WOLF", "COHR", "IPGP", "CAMT", "MTSI", "NVMI",
-        "INSM", "AXSM", "EXAS", "HALO", "SRPT", "ALKS", "MEDP", "RXRX", "TWST", "NTLA"
-    ]
-    space_stocks_universe = [
-        "RKLB", "ASTS", "LUNR", "RDW", "SPIR", "PL", "BKSY", "SATL", "IRDM", "VSAT",
-        "GSAT", "MAXR", "BA", "LMT", "NOC", "RTX", "GD", "TDY", "HEI", "AJRD"
-    ]
-    quantum_computing_universe = [
-        "IONQ", "RGTI", "QBTS", "QUBT", "ARQQ", "IBM", "GOOGL", "MSFT", "AMZN", "HON",
-        "NVDA", "INTC", "FORM", "TER"
-    ]
-    software_universe = [
-        # Large Cap / Plattform-Software
-        "MSFT", "ORCL", "SAP", "CRM", "NOW", "ADBE", "INTU", "ADSK", "FICO", "TYL",
-        # Cloud, Data, Observability, DevTools
-        "SNOW", "MDB", "DDOG", "NET", "ESTC", "DT", "CFLT", "DOCN", "FROG", "GTLB",
-        # Cybersecurity
-        "PANW", "CRWD", "FTNT", "ZS", "OKTA", "CYBR", "S", "TENB", "VRNS", "QLYS",
-        # SaaS / Business Applications
-        "WDAY", "TEAM", "HUBS", "SHOP", "MNDY", "BILL", "PAYC", "PCOR", "GWRE", "DOCU",
-        # AI-/App-/Data-nahe Software und Plattformen
-        "PLTR", "APP", "TTD", "PATH", "U", "RBLX", "AFRM", "DUOL", "IOT", "MANH"
-    ]
-    emerging_markets_universe = [
-        "EEM", "IEMG", "VWO", "KWEB", "MCHI", "FXI", "INDA", "EWZ", "EWT", "EWY",
-        "EWW", "EIDO", "TUR", "EPOL", "ARGT", "NU", "MELI", "TSM", "BABA", "PDD",
-        "JD", "BIDU", "SE", "GRAB", "TCOM", "NIO", "LI", "XPEV", "VALE", "PBR"
-    ]
-    return {
-        "US Tech": (us_tech_universe, "US Tech Fokus", "Breites Tech- und Plattformuniversum mit rund 95 vordefinierten Werten."),
-        "US Basisliste": (us_basis_universe, "US Basisliste", "Große US-Standardwerte als breiter Startscreen für neue Ideen."),
-        "Europa Qualität & Leader": (europa_quality_universe, "Europa Qualität & Leader", "Breitere Europa-Liste mit Qualitätswerten, Large Caps und führenden Marktpositionen."),
-        "Halbleiter": (semiconductor_universe, "Halbleiter", "Breite Halbleiterliste mit Designern, Ausrüstern, Foundries und Spezialwerten."),
-        "US Small & Mid Caps": (us_small_mid_caps_universe, "US Small & Mid Caps", "Breiteres US-Universum aus Small- und Mid-Caps mit Fokus auf Liquidität, Wachstum und frühere Radar-Chancen."),
-        "Europa Small & Mid Caps Qualität": (europa_small_mid_quality_universe, "Europa Small & Mid Caps Qualität", "Breiteres Europa-Universum aus Small- und Mid-Caps mit Qualitäts- und Leader-Fokus."),
-        "Space Aktien": (space_stocks_universe, "Space Aktien", "Raumfahrt-, Satelliten- und Aerospace-nahe Titel; spekulativeres Themenuniversum mit hoher Volatilität."),
-        "Quantencomputer": (quantum_computing_universe, "Quantencomputer", "Quantum-Computing-Pure-Plays und große Technologieanbieter mit Quantum-Exposure; stark thematisch und teils volatil."),
-        "Software": (software_universe, "Software", "Software-, SaaS-, Cloud-, Cybersecurity- und Datenplattform-Werte als eigener Radar-Schwerpunkt."),
-        "Emerging Markets": (emerging_markets_universe, "Emerging Markets", "EM-ETFs und große liquide Emerging-Markets-Werte als Makro-/Länder- und Wachstumsscreen."),
-    }
+    # v30.21a: isolated, versioned discovery catalogue; no changes to trading lists.
+    from modules.radar_universe import get_universe_map
+    return get_universe_map()
 
 
 def get_radar_snapshot_jobs():
@@ -5895,74 +5798,35 @@ def compute_radar_style_sort_shared(row, result_map, style_name):
     return radar_professional_sort_score(row, result_map, style_name)
 
 
+def _v3021_run_radar_scan(*, universe, style, entries, source="manual", progress=None):
+    from modules.candidate_radar import run_scan
+    return run_scan(
+        universe=universe, style=style, entries=entries, analyze=analyze_stock,
+        decide=build_professional_radar_decision_v18,
+        entry_package=build_radar_entry_rr_package_v182,
+        resolver=resolve_input_to_ticker, model_version=APP_VERSION,
+        source=source, progress=progress,
+    )
+
+
 def run_radar_snapshot_job(job):
+    from modules.candidate_radar import save_snapshot
     try:
-        universe = str(job.get("universe", "") or "").strip()
-        style_name = str(job.get("style", "Leader") or "Leader").strip()
-        max_candidates = int(job.get("max_candidates", 15) or 15)
-        custom_text = str(job.get("custom_text", "") or "")
-        universe_map = get_radar_universe_map()
-        if universe == "Eigene Liste":
-            raw_entries = split_batch_input(custom_text)
-        else:
-            raw_entries = list((universe_map.get(universe) or ([], "", ""))[0])
-        if not raw_entries:
-            return False, "Keine Radar-Kandidaten im Job definiert", {"analyzed_count": 0}
-        resolved_entries = []
-        resolution_rows = []
-        for entry in raw_entries:
-            fallback = entry if looks_like_real_ticker(entry) else None
-            resolved = resolve_input_to_ticker(entry, fallback=fallback)
-            resolution_rows.append({"Eingabe": entry, "Aufgelöst zu": resolved if resolved else "Nicht gefunden"})
-            if resolved and resolved not in resolved_entries:
-                resolved_entries.append(resolved)
-        if not resolved_entries:
-            return False, "Keine auflösbaren Kandidaten", {"analyzed_count": 0, "resolution_rows": resolution_rows}
-        results = []
-        errors = []
-        for tkr in resolved_entries:
-            try:
-                results.append(analyze_stock(ticker=tkr, horizon="Swing (1-4 Wochen)", depot=10000, risk_pct=1.0, override=0.0, buy_in_override=0.0, smart_money_default=True, strict_mode=True))
-            except Exception as e:
-                errors.append((tkr, str(e)))
-        if not results:
-            return False, "Keine auswertbaren Ergebnisse", {"analyzed_count": 0, "resolution_rows": resolution_rows, "errors": errors}
-        radar_df = build_ranking_table(results)
-        result_map = {str(r.get("ticker", "")): r for r in results}
-        radar_v18_map = {str(r.get("ticker", "")): build_professional_radar_decision_v18(r, style_name) for r in results}
-        radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_reason_professional_v18(r, style_name) for r in results})
-        radar_df["Radar-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("score") for k, v in radar_v18_map.items()})
-        radar_df["Radar-Grade"] = radar_df["Ticker"].astype(str).map({k: v.get("grade") for k, v in radar_v18_map.items()})
-        radar_df["Radar-Bucket"] = radar_df["Ticker"].astype(str).map({k: v.get("bucket") for k, v in radar_v18_map.items()})
-        radar_df["Radar-Subscores"] = radar_df["Ticker"].astype(str).map({k: v.get("subscores_text") for k, v in radar_v18_map.items()})
-        radar_df["Radar-Gate"] = radar_df["Ticker"].astype(str).map({k: v.get("gate_reasons") for k, v in radar_v18_map.items()})
-        radar_df["Heute-Relevanz"] = radar_df["Ticker"].astype(str).map({k: v.get("why_today") for k, v in radar_v18_map.items()})
-        radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({k: v.get("priority") for k, v in radar_v18_map.items()})
-        radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({k: v.get("next_step") for k, v in radar_v18_map.items()})
-        radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({k: v.get("brake") for k, v in radar_v18_map.items()})
-        radar_df["Wave-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_score") for k, v in radar_v18_map.items()})
-        radar_df["Wave-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_label") for k, v in radar_v18_map.items()})
-        radar_df["Wann aktiv?"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_trigger") for k, v in radar_v18_map.items()})
-        radar_df["Ziel bei Bestätigung"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_target_zone") for k, v in radar_v18_map.items()})
-        radar_df["__style_sort"] = radar_df.apply(lambda row: compute_radar_style_sort_shared(row, result_map, style_name), axis=1)
-        signature = _radar_snapshot_signature(universe, style_name, max_candidates, custom_text)
-        payload = {
-            "radar_display_rows": radar_df.to_dict("records"),
-            "radar_errors": errors,
-            "radar_resolution_rows": resolution_rows,
-            "radar_universe": universe,
-            "radar_screening_style": style_name,
-            "radar_max_candidates": max_candidates,
-            "radar_input_signature": signature,
-            "radar_generated_at": get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
-            "radar_source": str(job.get("source", "auto_run") or "auto_run"),
-            "radar_job_id": str(job.get("job_id", "manual_job")),
-            "radar_run_at": str(job.get("run_at", job.get("slot_group", "")) or ""),
-        }
-        save_radar_snapshot(signature, payload)
-        return True, f"Snapshot gespeichert ({len(results)} Werte analysiert)", {"analyzed_count": len(results), "errors": errors, "resolution_rows": resolution_rows, "signature": signature}
-    except Exception as e:
-        return False, str(e), {"analyzed_count": 0}
+        universe = str(job.get("universe", ""))
+        style = str(job.get("style", "Leader"))
+        entries = split_batch_input(job.get("custom_text", "")) if universe == "Eigene Liste" else list((get_radar_universe_map().get(universe) or ([],))[0])
+        payload = _v3021_run_radar_scan(universe=universe, style=style, entries=entries,
+                                       source=str(job.get("source", "auto_run")))
+        if not payload["rows"]:
+            return False, "Keine Aktie auswertbar; vorheriger Radar-Snapshot bleibt erhalten.", {"analyzed_count": 0, "errors": payload["errors"]}
+        ok, message = save_snapshot(globals().get("_storage_v280"), payload)
+        if ok:
+            owner = str(getattr(globals().get("_storage_v280"), "user_id", ""))
+            st.session_state["radar_v3021_result_" + owner + "_" + payload["key"]] = payload
+        return ok, message, {"analyzed_count": len(payload["rows"]), "errors": payload["errors"],
+                              "resolution_rows": payload["resolution"], "signature": payload["key"]}
+    except Exception as exc:
+        return False, "Radar-Job fehlgeschlagen (" + type(exc).__name__ + ")", {"analyzed_count": 0}
 
 
 
@@ -15732,9 +15596,9 @@ def _v3015a_valid_long_stop(value, reference_price):
 def _v3015a_extract_chart_invalidation(result, reference_price):
     """Ermittelt eine numerische Chart-Invalidierung mit nachvollziehbarer Quelle.
 
-    Prioritaet hat ein explizites Swing-/Higher-Low-Level. Danach folgen die
-    naechste bestaetigte Supportzone, explizite Supportfelder und die Unterkante
-    der Entry-/Reclaim-Zone. Textbeschreibungen werden bewusst nicht nach einer
+    Prioritaet hat eine explizite setup-spezifische Strukturmarke, danach ein
+    Swing-/Higher-Low-Level sowie bestaetigte Supportmarken. Die Unterkante der
+    Entry-/Reclaim-Zone ist bewusst keine Invalidierung. Textbeschreibungen werden nicht nach einer
     beliebigen Zahl durchsucht, damit z. B. Prozentwerte nicht als Kursniveau
     fehlinterpretiert werden.
     """
@@ -15742,6 +15606,17 @@ def _v3015a_extract_chart_invalidation(result, reference_price):
     reference_price = _v230_safe_float(reference_price, default=None)
     if reference_price is None or reference_price <= 0:
         return {"stop": None, "source": "Keine gueltige Referenz", "kind": "missing"}
+
+    # v30.21b: Wenn die zentrale Analyse eine explizite setup-spezifische
+    # Strukturmarke liefert, hat sie Vorrang. Die Entry-Zone ist bewusst keine
+    # Invalidierung mehr und wird deshalb nicht als Stop-Ersatz interpretiert.
+    explicit_stop = _v3015a_valid_long_stop(result.get("chart_invalidation_level"), reference_price)
+    if explicit_stop is not None:
+        return {
+            "stop": explicit_stop,
+            "source": str(result.get("chart_invalidation_source") or "Strukturelle Setup-Invalidierung"),
+            "kind": str(result.get("chart_invalidation_kind") or "setup_structure"),
+        }
 
     wave = result.get("wave_structure_pkg") if isinstance(result.get("wave_structure_pkg"), dict) else {}
     wave_stop = _v3015a_valid_long_stop(wave.get("wave_invalidation_price"), reference_price)
@@ -15783,20 +15658,21 @@ def _v3015a_extract_chart_invalidation(result, reference_price):
         if support_stop is not None:
             return {"stop": support_stop, "source": label, "kind": "support"}
 
-    entry_zone = result.get("suggested_entry_zone")
-    try:
-        entry_low, _entry_high = _parse_entry_zone_bounds_v1524_12(entry_zone)
-    except Exception:
-        entry_low = None
-    entry_stop = _v3015a_valid_long_stop(entry_low, reference_price)
-    if entry_stop is not None:
-        return {"stop": entry_stop, "source": "Unterkante Entry-/Reclaim-Zone", "kind": "entry_zone"}
-
     return {
         "stop": None,
-        "source": "Keine belastbare numerische Chart-Invalidierung",
+        "source": "Keine belastbare strukturelle Setup-Invalidierung",
         "kind": "missing",
     }
+
+
+def _v3021b_structure_level_label(kind):
+    """Praezise UI-Bezeichnung fuer die tatsaechlich gefundene Strukturmarke."""
+    kind = str(kind or "").strip().lower()
+    if kind in {"setup_structure", "wave"}:
+        return "Setup-Invalidierung"
+    if kind in {"support_zone", "support"}:
+        return "Supportmarke"
+    return "Setup-Invalidierung"
 
 
 def _v3015a_resolve_pre_atr_stop(chart_stop, reference_price, chart_source=None):
@@ -15940,6 +15816,7 @@ def _v230_extract_position_inputs(result, style_name="Ausgewogen"):
     base["legacy_technical_stop"] = legacy_stop
     base["chart_invalidation_stop"] = basis_pkg.get("chart_stop")
     base["chart_invalidation_source"] = basis_pkg.get("chart_source")
+    base["chart_invalidation_kind"] = chart_pkg.get("kind")
     base["fallback_stop"] = basis_pkg.get("fallback_stop")
     base["pre_atr_stop"] = basis_pkg.get("base_stop")
     base["pre_atr_stop_source"] = basis_pkg.get("base_source")
@@ -22167,7 +22044,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     )
                                     st.caption(
                                         f"Live-Kurs {_v230_price_text(risk_inputs.get('price'))} · Entry-Zone {risk_inputs.get('entry_zone') or '-'} · "
-                                        f"Chart-Invalidierung {_v230_price_text(risk_inputs.get('chart_invalidation_stop'))} · "
+                                        f"{_v3021b_structure_level_label(risk_inputs.get('chart_invalidation_kind'))} {_v230_price_text(risk_inputs.get('chart_invalidation_stop'))} · "
                                         f"3,5%-Fallback {_v230_price_text(risk_inputs.get('fallback_stop'))} · "
                                         f"Risiko-Stop {_v230_price_text(risk_inputs.get('stop'))} · "
                                         f"Ziel {_v230_price_text(risk_inputs.get('target'))} ({risk_inputs.get('target_source') or '-'})"
@@ -22264,7 +22141,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _chart_delta_v3015a = None
                                         if _chart_stop_v3015a is not None and entry_input > 0 and _chart_stop_v3015a < entry_input:
                                             _chart_delta_v3015a = f"-{(entry_input-_chart_stop_v3015a)/entry_input*100:.1f}%"
-                                        st.metric("Chart-Invalidierung", _v230_price_text(_chart_stop_v3015a), delta=_chart_delta_v3015a)
+                                        st.metric(
+                                            _v3021b_structure_level_label(risk_inputs.get("chart_invalidation_kind")),
+                                            _v230_price_text(_chart_stop_v3015a),
+                                            delta=_chart_delta_v3015a,
+                                        )
                                     with sg2_v3015:
                                         _fallback_delta_v3015a = None
                                         if _fallback_stop_v3015a is not None and entry_input > 0:
@@ -22279,11 +22160,25 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _rec_delta_v3015 = None if _rec_dist_v3015 is None else f"-{_rec_dist_v3015:.1f}%"
                                         st.metric("Empfohlener Risiko-Stop", _v230_price_text(_rec_stop_v3015), delta=_rec_delta_v3015)
 
-                                    st.caption(
-                                        f"Chartquelle: {_entry_basis_v3015a.get('chart_source') or '-'} · "
-                                        f"Verwendete Basis vor ATR: {_entry_basis_v3015a.get('base_source') or '-'} "
-                                        f"({_v230_price_text(_basis_stop_v3015a)})."
-                                    )
+                                    with st.expander("ℹ️ Stop-Herkunft & Methodik", expanded=False):
+                                        st.caption(
+                                            f"Strukturquelle: {_entry_basis_v3015a.get('chart_source') or '-'} · "
+                                            f"Verwendete Basis vor ATR: {_entry_basis_v3015a.get('base_source') or '-'} "
+                                            f"({_v230_price_text(_basis_stop_v3015a)})."
+                                        )
+                                        st.caption(
+                                            "Die Unterkante der Entry-Zone wird nicht als Setup-Invalidierung verwendet. "
+                                            "Fehlt eine belastbare Strukturmarke, dient der klar gekennzeichnete 3,5%-Fallback als Ersatzbasis."
+                                        )
+                                        if _atr_pct_v3015 is not None:
+                                            st.caption(
+                                                f"ATR(14): {_atr_pct_v3015:.1f}% des Kurses · Mindestpuffer: "
+                                                f"{(_guard_dist_v3015 or 0):.1f}% ({(_atr_mult_v3015 or 0):.1f} ATR). "
+                                                "Der Rechner nimmt den weiter entfernten Wert aus Stop-Basis und ATR-Schutz; das Risikobudget bleibt unverändert."
+                                            )
+                                        else:
+                                            st.caption("Kein belastbarer ATR-Wert verfügbar; der Risiko-Rechner verwendet die ausgewiesene Stop-Basis vor ATR unverändert.")
+
                                     if st.button("Empfohlenen Risiko-Stop übernehmen", use_container_width=True, key=risk_stop_btn_key_v3015):
                                         if _rec_stop_v3015 is not None:
                                             st.session_state["v3015a_pending_stop_override"] = {
@@ -22292,22 +22187,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             }
                                             st.rerun()
 
-                                    if _atr_pct_v3015 is not None:
-                                        st.caption(
-                                            f"ATR(14): {_atr_pct_v3015:.1f}% des Kurses · Mindestpuffer: "
-                                            f"{(_guard_dist_v3015 or 0):.1f}% ({(_atr_mult_v3015 or 0):.1f} ATR). "
-                                            "Der Rechner nimmt den weiter entfernten Wert aus Stop-Basis und ATR-Schutz; das Risikobudget bleibt unverändert."
-                                        )
-                                    else:
-                                        st.caption("Kein belastbarer ATR-Wert verfügbar; der Risiko-Rechner verwendet die ausgewiesene Stop-Basis vor ATR unverändert.")
-
                                     if _chart_stop_v3015a is None:
                                         st.warning(
-                                            "Keine belastbare numerische Chart-Invalidierung gefunden. Der als 3,5%-Fallback gekennzeichnete Mindestabstand dient nur als Ersatzbasis und ist keine Chartmarke."
+                                            "Keine belastbare strukturelle Setup-Invalidierung gefunden. Der 3,5%-Fallback dient nur als Ersatzbasis und ist keine Chartmarke."
                                         )
                                     elif _entry_basis_v3015a.get("base_kind") == "fallback":
                                         st.info(
-                                            "Die Chart-Invalidierung liegt näher als 3,5% am Entry. Vor dem ATR-Vergleich greift deshalb der defensivere 3,5%-Mindestabstand."
+                                            "Die erkannte Strukturmarke liegt näher als 3,5% am Entry. Vor dem ATR-Vergleich greift deshalb der defensivere 3,5%-Mindestabstand."
                                         )
 
                                     if _entry_stop_plan_v3015.get("atr_guard_capped"):
@@ -24368,984 +24254,21 @@ if workspace_mode:
             unsafe_allow_html=True,
         )
     elif workspace_mode == "Kandidaten-Radar":
-        st.markdown(
-            """
-            <div class="mobile-form-card" style="border-left:5px solid #3b82f6;">
-                <div class="mobile-form-title">Kandidaten-Radar</div>
-                <div class="mobile-form-sub">
-                    Kandidaten vorsortieren und anschließend gezielt analysieren.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        # v30.21a: one pipeline for explicit scan, stored results and snapshot jobs.
+        try:
+            from modules.candidate_radar_ui import render_candidate_radar
+            from modules.candidate_radar import RADAR_VERSION as _radar_version_v3021
+            if _radar_version_v3021 != "v30.21a":
+                raise ImportError("Mixed Radar deployment")
+        except ImportError:
+            st.error("Radar-Update unvollstaendig. legacy_app.py sowie candidate_radar.py, candidate_radar_ui.py und radar_universe.py gemeinsam hochladen.")
+            st.stop()
+        render_candidate_radar(
+            st, storage=_storage_v280, scan=_v3021_run_radar_scan,
+            catalog_loader=_v303a_load_watchlist_catalog, watchlists_loader=load_watchlists_df,
+            positions_loader=_v245_load_all_positions, queue_watchlist=queue_entries_to_watchlist_v228,
+            model_version=APP_VERSION,
         )
-
-        radar_universe_map = get_radar_universe_map()
-
-        rc1, rc2, rc3, rc4 = st.columns([1.3, 1.0, 0.7, 1.0])
-        with rc1:
-            radar_universe_options = ["US Tech", "US Basisliste", "Europa Qualität & Leader", "Europa Small & Mid Caps Qualität", "Halbleiter", "US Small & Mid Caps", "Space Aktien", "Quantencomputer", "Software", "Emerging Markets", "Eigene Liste"]
-            radar_universe_current = st.session_state.radar_universe if st.session_state.radar_universe in radar_universe_options else ("Europa Qualität & Leader" if st.session_state.radar_universe == "Europa Qualität" else "US Tech")
-            radar_universe = st.selectbox(
-                "Universum",
-                options=radar_universe_options,
-                index=radar_universe_options.index(radar_universe_current),
-                key="radar_universe_widget"
-            )
-            st.session_state.radar_universe = radar_universe
-        with rc2:
-            style_options = ["Leader", "Charttechnik", "Turnaround", "Ausgewogen"]
-            radar_screening_style = st.selectbox(
-                "Screening-Stil",
-                options=style_options,
-                index=style_options.index(st.session_state.radar_screening_style if st.session_state.radar_screening_style in style_options else "Leader"),
-                key="radar_screening_style_widget"
-            )
-            st.session_state.radar_screening_style = radar_screening_style
-        with rc3:
-            # v16.0.7: neuer Widget-Key, damit alte Streamlit-Session-Werte (z. B. 15)
-            # nicht weiter als scheinbarer Standard erhalten bleiben. Der sichtbare Default ist 10.
-            radar_max_options = [5, 10, 15, 20]
-            radar_max_candidates = st.selectbox(
-                "Max. Kandidaten",
-                options=radar_max_options,
-                index=radar_max_options.index(10),
-                key="radar_max_candidates_widget_v1607",
-                help="Standard: 10. Du kannst die Anzahl bei Bedarf manuell erhöhen oder reduzieren."
-            )
-            st.session_state.radar_max_candidates = radar_max_candidates
-        with rc4:
-            st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-            run_candidate_radar = st.button("Kandidaten-Radar starten", use_container_width=True, type="primary", key="run_candidate_radar_btn")
-            if run_candidate_radar:
-                st.session_state.radar_requested = True
-
-        from modules import radar_view as _radar_view
-        _radar_view.render_style_info(st, st.session_state.radar_screening_style)
-        radar_score_badge = _radar_view.radar_score_badge
-        radar_trigger_badge = _radar_view.radar_trigger_badge
-
-        def radar_priority_badge(value):
-            raw = str(value).strip()
-            s = raw.lower()
-            if s == 'hoch':
-                return f"🟢 {raw}"
-            if s == 'mittel':
-                return f"🟡 {raw}"
-            if s == 'niedrig':
-                return f"🔴 {raw}"
-            return raw if raw else '-'
-
-        if st.session_state.radar_universe == "Eigene Liste":
-            radar_custom_input = st.text_area(
-                "Eigene Kandidatenliste",
-                value=st.session_state.radar_custom_input,
-                placeholder="Ein Wert pro Zeile oder durch Komma trennen, z. B.\nAAPL\nNVDA\nASML\nSAP",
-                key="radar_custom_input_widget"
-            ).strip()
-            st.session_state.radar_custom_input = radar_custom_input
-        elif st.session_state.radar_universe in radar_universe_map:
-            active_universe, active_label, active_desc = radar_universe_map[st.session_state.radar_universe]
-            st.markdown(
-                f"""
-                <div class="section-card">
-                    <div class="premium-title">Aktives Start-Universum</div>
-                    <div class="premium-value">{active_label}</div>
-                    <div class="premium-sub">
-                        {len(active_universe)} vordefinierte Werte werden mit der bestehenden Analyse-Engine gescannt und anschließend nach Trigger-Nähe, Einstiegsqualität und Investment-Attraktivität sortiert. {active_desc}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.caption("Beispielwerte: " + ", ".join(active_universe[:12]) + " …")
-        else:
-            st.info("Bitte wähle ein Radar-Universum oder nutze eine eigene Liste.")
-
-        st.markdown(
-            """
-            <div class="section-card">
-                <div class="premium-title">Radar Professional v21.1</div>
-                <div class="premium-value">Vordefinierte Listen oder Eigene Liste → Professional Funnel → Beste heutige Chancen</div>
-                <div class="premium-sub">
-                    Die bestehende Analyse-Logik wird auf dein Universum angewendet. v21.1 priorisiert nach Professional Funnel, Stil-Fit, CRV, Entry-Nähe, Gates und Heute-Relevanz; zusätzlich ist die Multi-Timeframe-Struktur Weekly/Daily/Hourly aktiv.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-        radar_input_signature = _radar_snapshot_signature(
-            st.session_state.radar_universe,
-            st.session_state.radar_screening_style,
-            st.session_state.radar_max_candidates,
-            st.session_state.radar_custom_input if st.session_state.radar_universe == "Eigene Liste" else "",
-        )
-        radar_payload = st.session_state.get("radar_last_payload") or {}
-        radar_payload_matches = (
-            radar_payload.get("radar_input_signature") == radar_input_signature
-        )
-        if not radar_payload_matches:
-            radar_snapshot_payload = load_radar_snapshot(radar_input_signature)
-            if radar_snapshot_payload:
-                radar_payload = radar_snapshot_payload
-                radar_payload_matches = True
-        radar_should_show = bool(st.session_state.get("radar_requested", False) or radar_payload_matches)
-
-        if radar_should_show:
-            radar_should_run_analysis = bool(st.session_state.get("radar_requested", False))
-
-            if radar_should_run_analysis:
-                st.session_state.radar_requested = False
-                if st.session_state.radar_universe == "Eigene Liste":
-                    radar_entries = split_batch_input(st.session_state.radar_custom_input)
-                    radar_resolution_rows = []
-                    if not radar_entries:
-                        st.warning("Bitte gib mindestens einen Ticker oder Firmennamen für den Radar-Lauf ein.")
-                        resolved_radar_entries = []
-                    else:
-                        resolved_radar_entries = []
-                        for entry in radar_entries:
-                            resolved = resolve_input_to_ticker(entry, fallback=None)
-                            radar_resolution_rows.append({
-                                "Eingabe": entry,
-                                "Aufgelöst zu": resolved if resolved else "Nicht gefunden"
-                            })
-                            if resolved and resolved not in resolved_radar_entries:
-                                resolved_radar_entries.append(resolved)
-                elif st.session_state.radar_universe in radar_universe_map:
-                    resolved_radar_entries = list(radar_universe_map[st.session_state.radar_universe][0])
-                    radar_resolution_rows = [{"Eingabe": tkr, "Aufgelöst zu": tkr} for tkr in resolved_radar_entries]
-                else:
-                    resolved_radar_entries = []
-                    radar_resolution_rows = []
-                    st.warning("Bitte wähle ein gültiges Radar-Universum oder nutze eine eigene Liste.")
-
-                radar_results = []
-                radar_errors = []
-
-                if not resolved_radar_entries:
-                    if st.session_state.radar_universe == "Eigene Liste":
-                        st.error("Keine der Eingaben konnte in einen auswertbaren Ticker aufgelöst werden.")
-                else:
-                    radar_progress = st.progress(0)
-                    radar_status = st.empty()
-                    for i, tkr in enumerate(resolved_radar_entries, start=1):
-                        radar_status.info(f"Radar analysiert {tkr} ({i}/{len(resolved_radar_entries)}) ...")
-                        try:
-                            radar_result = analyze_stock(
-                                ticker=tkr,
-                                horizon="Swing (1-4 Wochen)",
-                                depot=10000,
-                                risk_pct=1.0,
-                                override=0.0,
-                                buy_in_override=0.0,
-                                smart_money_default=True,
-                                strict_mode=True
-                            )
-                            radar_results.append(radar_result)
-                        except Exception as e:
-                            radar_errors.append((tkr, str(e)))
-                        radar_progress.progress(i / len(resolved_radar_entries))
-                    radar_progress.empty()
-                    radar_status.empty()
-
-                    if radar_results:
-                        st.session_state.radar_last_payload = {
-                            "radar_results": radar_results,
-                            "radar_errors": radar_errors,
-                            "radar_resolution_rows": radar_resolution_rows,
-                            "radar_universe": st.session_state.radar_universe,
-                            "radar_screening_style": st.session_state.radar_screening_style,
-                            "radar_max_candidates": st.session_state.radar_max_candidates,
-                            "radar_input_signature": radar_input_signature,
-                            "radar_generated_at": get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
-                            "radar_source": "live",
-                        }
-                        radar_payload = st.session_state.radar_last_payload
-                        radar_payload_matches = True
-                    else:
-                        st.error("Der Radar-Lauf hat keine belastbaren Kandidaten geliefert.")
-            else:
-                radar_results = list(radar_payload.get("radar_results", []) or [])
-                radar_errors = list(radar_payload.get("radar_errors", []) or [])
-                radar_resolution_rows = list(radar_payload.get("radar_resolution_rows", []) or [])
-                radar_prebuilt_rows = list(radar_payload.get("radar_display_rows", []) or [])
-                resolved_radar_entries = [str(r.get("ticker", "") or "").strip() for r in radar_results if str(r.get("ticker", "") or "").strip()]
-                if not resolved_radar_entries and radar_prebuilt_rows:
-                    resolved_radar_entries = [str(r.get("Ticker", "") or "").strip() for r in radar_prebuilt_rows if str(r.get("Ticker", "") or "").strip()]
-
-            if radar_payload_matches and (radar_results or radar_payload.get("radar_display_rows")):
-                radar_prebuilt_rows = list(radar_payload.get("radar_display_rows", []) or [])
-                radar_generated_at = str(radar_payload.get("radar_generated_at", "") or "").strip()
-                radar_source = str(radar_payload.get("radar_source", "snapshot") or "snapshot").strip()
-                if radar_generated_at:
-                    source_label = "vorgefertigter Stand" if radar_source == "snapshot" else "letzter Radar-Lauf"
-                    st.info(f"Zeige {source_label} vom {radar_generated_at} (Berlin). Für neue Daten bitte bewusst neu starten.")
-                trigger_rank_map = {
-                    "Aktiv": 5,
-                    "Jetzt prüfbar": 5,
-                    "Nahe dran": 4,
-                    "Fast prüfbar": 4,
-                    "Frühe Beobachtung": 3,
-                    "Früh interessant": 3,
-                    "Beobachten": 2,
-                    "Weiter beobachten": 2,
-                    "Passiv": 1,
-                    "Aktuell kein Fokus": 1,
-                    "Warten": 0,
-                    "Noch warten": 0,
-                }
-
-                def build_radar_reason(r):
-                    style_name_local = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
-                    trigger = str(r.get("trigger_status", "") or "").strip()
-                    setup_type_local = str(r.get("setup_type", "") or "").strip()
-                    entry_quality_local = str(r.get("entry_quality", "") or "").strip().lower()
-                    investment_case_local = float(r.get("investment_case_score", np.nan)) if pd.notna(r.get("investment_case_score", np.nan)) else np.nan
-                    trading_case_local = float(r.get("trading_case_score", np.nan)) if pd.notna(r.get("trading_case_score", np.nan)) else np.nan
-                    leadership_local = str(r.get("leadership_status", "") or "").strip()
-                    top_red_flag_local = str(r.get("top_red_flag", "") or "").strip()
-                    market_regime_local = str((r.get("market_info", {}) or {}).get("regime", "") or "").strip().upper()
-                    catalyst_local = pd.to_numeric(r.get("catalyst_score", np.nan), errors="coerce")
-                    short_term_local = pd.to_numeric(r.get("short_term_score", np.nan), errors="coerce")
-                    tb_local = pd.to_numeric(r.get("tb_score_100", np.nan), errors="coerce")
-                    exit_local = pd.to_numeric(r.get("exit_score", np.nan), errors="coerce")
-
-                    if style_name_local == "Turnaround":
-                        if setup_type_local == "Rebound":
-                            return "Frühe technische Drehung mit Rebound-Charakter"
-                        if setup_type_local == "Breakout-Retest":
-                            return "Rückeroberung läuft, Bestätigung über Retest möglich"
-                        if setup_type_local in {"Pullback an MA20", "Pullback an MA50"}:
-                            return f"Frischer Stabilisierungsversuch nahe {setup_type_local.split()[-1]}"
-                        if pd.notna(catalyst_local) and catalyst_local >= 70:
-                            return "Katalysator verbessert das Turnaround-Fenster"
-                        if pd.notna(short_term_local) and short_term_local >= 60 and pd.notna(tb_local) and tb_local >= 58:
-                            return "Kurzfristbild dreht, obwohl der Titel noch nicht voll bestätigt ist"
-                        if trigger in {"Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"}:
-                            return "Noch zu früh, aber erste Drehansätze werden sichtbar"
-                        return "Frühe technische Drehung mit noch fragiler Bestätigung"
-
-                    if style_name_local == "Leader":
-                        if leadership_local == "Leader" and trigger in {"Aktiv", "Jetzt prüfbar"}:
-                            return "Leader mit bestätigter Stärke und direkt prüfbarem Einstieg"
-                        if leadership_local == "Leader":
-                            return "Leader mit bestätigter Stärke"
-                        if setup_type_local in {"Breakout", "Range-Breakout"} and trigger in {"Aktiv", "Jetzt prüfbar"}:
-                            return "Breakout-Leader mit sauberer Struktur"
-                        if setup_type_local in {"Trendfolge", "Pullback an MA20", "Pullback an MA50"}:
-                            return "Trendführer mit stabiler Fortsetzungsstruktur"
-                        if pd.notna(trading_case_local) and trading_case_local >= 70:
-                            return "Bestätigtes Setup, Einstieg jetzt konkret prüfbar"
-                        if pd.notna(investment_case_local) and investment_case_local >= 75:
-                            return "Starker Qualitäts- und Leadership-Kandidat"
-                        return "Konstruktiver Leader-Kandidat mit bestätigter Stärke"
-
-                    if trigger in {"Aktiv", "Jetzt prüfbar"} and pd.notna(trading_case_local) and trading_case_local >= 70:
-                        return "Gutes Gesamtbild mit direkt prüfbarem Einstieg"
-                    if trigger in {"Nahe dran", "Fast prüfbar"}:
-                        return "Ausgewogener Kandidat, Timing fast vollständig"
-                    if pd.notna(investment_case_local) and investment_case_local >= 75 and pd.notna(trading_case_local) and trading_case_local < 65:
-                        return "Starker Investment-Case, Timing zieht noch nicht ganz mit"
-                    if setup_type_local in {"Pullback an MA20", "Pullback an MA50"}:
-                        return f"Qualitätswert im konstruktiven {setup_type_local}"
-                    if leadership_local == "Leader":
-                        return "Leader mit brauchbarem Gesamtbild"
-                    if market_regime_local == "NEGATIV":
-                        return "Guter Wert, aber das Marktumfeld bremst aktuell"
-                    if top_red_flag_local and top_red_flag_local != "-":
-                        return f"Interessant, aber gebremst durch: {shorten_text(top_red_flag_local, 44)}"
-                    return "Ausgewogener Kandidat mit brauchbarem Gesamtbild"
-
-                if radar_prebuilt_rows:
-                    radar_df = pd.DataFrame(radar_prebuilt_rows)
-                    radar_result_map = {str(r.get("ticker", "")): r for r in radar_results} if radar_results else {}
-                else:
-                    radar_df = build_ranking_table(radar_results)
-                    radar_reason_map = {str(r.get("ticker", "")): radar_reason_professional_v18(r, str(st.session_state.get("radar_screening_style", "Leader") or "Leader")) for r in radar_results}
-                    radar_result_map = {str(r.get("ticker", "")): r for r in radar_results}
-                    radar_df["Warum heute auffällig"] = radar_df["Ticker"].astype(str).map(radar_reason_map)
-                    _radar_style_for_cols = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
-                    _radar_v18_map = {str(r.get("ticker", "")): build_professional_radar_decision_v18(r, _radar_style_for_cols) for r in radar_results}
-                    radar_df["Radar-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("score") for k, v in _radar_v18_map.items()})
-                    radar_df["Radar-Grade"] = radar_df["Ticker"].astype(str).map({k: v.get("grade") for k, v in _radar_v18_map.items()})
-                    radar_df["Radar-Bucket"] = radar_df["Ticker"].astype(str).map({k: v.get("bucket") for k, v in _radar_v18_map.items()})
-                    radar_df["Radar-Subscores"] = radar_df["Ticker"].astype(str).map({k: v.get("subscores_text") for k, v in _radar_v18_map.items()})
-                    radar_df["Radar-Gate"] = radar_df["Ticker"].astype(str).map({k: v.get("gate_reasons") for k, v in _radar_v18_map.items()})
-                    radar_df["Heute-Relevanz"] = radar_df["Ticker"].astype(str).map({k: v.get("why_today") for k, v in _radar_v18_map.items()})
-                    radar_df["Radar-CRV"] = radar_df["Ticker"].astype(str).map({k: v.get("crv") if v.get("crv") is not None else "n/a" for k, v in _radar_v18_map.items()})
-                    radar_df["Entry-Abstand"] = radar_df["Ticker"].astype(str).map({k: v.get("entry_distance_text") for k, v in _radar_v18_map.items()})
-                    radar_df["Entry-Qualität"] = radar_df["Ticker"].astype(str).map({k: v.get("entry_quality_text") for k, v in _radar_v18_map.items()})
-                    radar_df["Risk/Reward"] = radar_df["Ticker"].astype(str).map({k: v.get("risk_reward_text") for k, v in _radar_v18_map.items()})
-                    radar_df["Setup-Reife"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_setup_maturity(r) for r in radar_results})
-                    radar_df["Radar-Priorität"] = radar_df["Ticker"].astype(str).map({k: v.get("priority") for k, v in _radar_v18_map.items()})
-                    radar_df["Nächster Schritt"] = radar_df["Ticker"].astype(str).map({k: v.get("next_step") for k, v in _radar_v18_map.items()})
-                    radar_df["Was bremst"] = radar_df["Ticker"].astype(str).map({k: v.get("brake") for k, v in _radar_v18_map.items()})
-                    radar_df["Wave-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_score") for k, v in _radar_v18_map.items()})
-                    radar_df["Wave-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_label") for k, v in _radar_v18_map.items()})
-                    radar_df["MTF-Score"] = radar_df["Ticker"].astype(str).map({k: v.get("mtf_score") for k, v in _radar_v18_map.items()})
-                    radar_df["MTF-Impact"] = radar_df["Ticker"].astype(str).map({k: v.get("mtf_label") for k, v in _radar_v18_map.items()})
-                    radar_df["Setup-Alert"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): setup_alert_summary_v210(r, _radar_style_for_cols) for r in radar_results})
-                    radar_df["Wann aktiv?"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_trigger") for k, v in _radar_v18_map.items()})
-                    radar_df["Ziel bei Bestätigung"] = radar_df["Ticker"].astype(str).map({k: v.get("wave_target_zone") for k, v in _radar_v18_map.items()})
-                    radar_df["Chart-Impuls"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("label", "-") for r in radar_results})
-                    radar_df["Chart-Score"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("score", 0) for r in radar_results})
-                    radar_df["Chart-Trigger"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("trigger", "-") for r in radar_results})
-                    radar_df["Chart-Bremse"] = radar_df["Ticker"].astype(str).map({str(r.get("ticker", "")): radar_chart_impulse_pack(r).get("brake", "-") for r in radar_results})
-                    radar_df["__trigger_sort"] = radar_df.get("Trigger-Status", pd.Series(dtype=str)).map(trigger_rank_map).fillna(0)
-
-                def compute_radar_style_sort(row):
-                    style_name = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
-                    return radar_professional_sort_score(row, radar_result_map, style_name)
-
-
-                if "__style_sort" not in radar_df.columns or radar_df["__style_sort"].isna().all():
-                    radar_df["__style_sort"] = radar_df.apply(compute_radar_style_sort, axis=1)
-
-                # v15.21: professionelle Radar-Spalten auch für gespeicherte Snapshots nachbefuellen.
-                _radar_style_for_cols = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
-                for _col_name in ["Setup-Reife", "Radar-Priorität", "Nächster Schritt", "Was bremst"]:
-                    if _col_name not in radar_df.columns:
-                        radar_df[_col_name] = "-"
-                if radar_result_map:
-                    radar_df["Setup-Reife"] = radar_df.apply(lambda _row: radar_setup_maturity(radar_result_map.get(str(_row.get("Ticker", "")), {})) if str(_row.get("Setup-Reife", "")) in {"", "-", "nan"} else _row.get("Setup-Reife"), axis=1)
-                    radar_df["Radar-Priorität"] = radar_df.apply(lambda _row: radar_priority_label(radar_result_map.get(str(_row.get("Ticker", "")), {}), _radar_style_for_cols) if str(_row.get("Radar-Priorität", "")) in {"", "-", "nan"} else _row.get("Radar-Priorität"), axis=1)
-                    radar_df["Nächster Schritt"] = radar_df.apply(lambda _row: radar_next_step(radar_result_map.get(str(_row.get("Ticker", "")), {})) if str(_row.get("Nächster Schritt", "")) in {"", "-", "nan"} else _row.get("Nächster Schritt"), axis=1)
-                    radar_df["Was bremst"] = radar_df.apply(lambda _row: radar_brake_reason(radar_result_map.get(str(_row.get("Ticker", "")), {})) if str(_row.get("Was bremst", "")) in {"", "-", "nan"} else _row.get("Was bremst"), axis=1)
-
-                # v17.2: Charttechnik-Spalten auch fuer gespeicherte Snapshots nachfuellen.
-                for _col_name in ["Chart-Impuls", "Chart-Score", "Chart-Trigger", "Chart-Bremse"]:
-                    if _col_name not in radar_df.columns:
-                        radar_df[_col_name] = "-"
-                if radar_result_map:
-                    radar_df["Chart-Impuls"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("label", "-") if str(_row.get("Chart-Impuls", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Impuls"), axis=1)
-                    radar_df["Chart-Score"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("score", 0) if str(_row.get("Chart-Score", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Score"), axis=1)
-                    radar_df["Chart-Trigger"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("trigger", "-") if str(_row.get("Chart-Trigger", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Trigger"), axis=1)
-                    radar_df["Chart-Bremse"] = radar_df.apply(lambda _row: radar_chart_impulse_pack(radar_result_map.get(str(_row.get("Ticker", "")), {})).get("brake", "-") if str(_row.get("Chart-Bremse", "")).lower() in {"", "-", "nan", "none"} else _row.get("Chart-Bremse"), axis=1)
-
-                # v21.1: Professional-Funnel-, Wave- und MTF-Spalten fuer gespeicherte Snapshots nachfuellen.
-                for _col_name in ["Radar-Score", "Radar-Grade", "Radar-Bucket", "Radar-Subscores", "Radar-Gate", "Heute-Relevanz", "Radar-CRV", "Entry-Abstand", "Entry-Qualität", "Risk/Reward", "Stil-Fit", "Wave-Score", "Wave-Impact", "MTF-Score", "MTF-Impact", "Setup-Alert", "Wann aktiv?", "Ziel bei Bestätigung", "Top-Chance-Rang"]:
-                    if _col_name not in radar_df.columns:
-                        radar_df[_col_name] = "-"
-                if radar_result_map:
-                    _radar_v18_style = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
-                    def _radar_v18_for_row(_row):
-                        return build_professional_radar_decision_v18(radar_result_map.get(str(_row.get("Ticker", "")), {}), _radar_v18_style)
-                    radar_df["Radar-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("score", _row.get("Radar-Score", "-")), axis=1)
-                    radar_df["Radar-Grade"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("grade", _row.get("Radar-Grade", "-")), axis=1)
-                    radar_df["Radar-Bucket"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("bucket", _row.get("Radar-Bucket", "-")), axis=1)
-                    radar_df["Radar-Subscores"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("subscores_text", _row.get("Radar-Subscores", "-")), axis=1)
-                    radar_df["Radar-Gate"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("gate_reasons", _row.get("Radar-Gate", "-")), axis=1)
-                    radar_df["Heute-Relevanz"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("why_today", _row.get("Heute-Relevanz", "-")), axis=1)
-                    radar_df["Radar-CRV"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("crv", "n/a"), axis=1)
-                    radar_df["Entry-Abstand"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("entry_distance_text", _row.get("Entry-Abstand", "-")), axis=1)
-                    radar_df["Entry-Qualität"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("entry_quality_text", _row.get("Entry-Qualität", "-")), axis=1)
-                    radar_df["Risk/Reward"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("risk_reward_text", _row.get("Risk/Reward", "-")), axis=1)
-                    radar_df["Stil-Fit"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("style_fit_label", _row.get("Stil-Fit", "-")), axis=1)
-                    radar_df["Wave-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_score", _row.get("Wave-Score", "-")), axis=1)
-                    radar_df["Wave-Impact"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_label", _row.get("Wave-Impact", "-")), axis=1)
-                    radar_df["MTF-Score"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("mtf_score", _row.get("MTF-Score", "-")), axis=1)
-                    radar_df["MTF-Impact"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("mtf_label", _row.get("MTF-Impact", "-")), axis=1)
-                    radar_df["Setup-Alert"] = radar_df.apply(lambda _row: setup_alert_summary_v210(radar_result_map.get(str(_row.get("Ticker", "")), {}), _radar_v18_style), axis=1)
-                    radar_df["Wann aktiv?"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_trigger", _row.get("Wann aktiv?", "-")), axis=1)
-                    radar_df["Ziel bei Bestätigung"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("wave_target_zone", _row.get("Ziel bei Bestätigung", "-")), axis=1)
-                    radar_df["Top-Chance-Rang"] = radar_df.apply(lambda _row: _radar_v18_for_row(_row).get("top_chance_rank", _row.get("Top-Chance-Rang", "-")), axis=1)
-
-                # v15.23.7: Firmenname im Radar robust nachfuellen.
-                # Bei gespeicherten Snapshots oder Ticker-Fallbacks stand sonst in `Name` oft nur erneut der Ticker.
-                if "Name" not in radar_df.columns:
-                    radar_df["Name"] = "-"
-                if radar_result_map and not radar_df.empty:
-                    def _radar_name_fix_v15237(_row):
-                        _ticker = str(_row.get("Ticker", "") or "").strip()
-                        _current = str(_row.get("Name", "") or "").strip()
-                        _norm = _current.upper()
-                        _root = _ticker.upper().split(".")[0] if _ticker else ""
-                        if (not _current) or _current.lower() in {"-", "nan", "none", "null"} or _norm in {_ticker.upper(), _root}:
-                            return radar_company_display_name_v15237(radar_result_map.get(_ticker, {}), _ticker, 28)
-                        return shorten_text(_current, 28)
-                    radar_df["Name"] = radar_df.apply(_radar_name_fix_v15237, axis=1)
-
-                if not radar_prebuilt_rows and not radar_df.empty:
-                    radar_snapshot_payload = {
-                        "radar_display_rows": radar_df.to_dict("records"),
-                        "radar_errors": radar_errors,
-                        "radar_resolution_rows": radar_resolution_rows,
-                        "radar_universe": st.session_state.radar_universe,
-                        "radar_screening_style": st.session_state.radar_screening_style,
-                        "radar_max_candidates": st.session_state.radar_max_candidates,
-                        "radar_input_signature": radar_input_signature,
-                        "radar_generated_at": get_current_berlin_time().strftime("%d.%m.%Y %H:%M"),
-                        "radar_source": "snapshot",
-                    }
-                    st.session_state.radar_last_payload = radar_snapshot_payload
-                    radar_payload = radar_snapshot_payload
-                    save_radar_snapshot(radar_input_signature, radar_snapshot_payload)
-
-                st.markdown("### Kandidaten nach Reifegrad")
-                st.caption("Professional Radar plus Multi-Timeframe-Struktur ist aktiv. Grade bleibt Qualitätsnote; Top-Chancen bleiben streng gefiltert; Weekly/Daily/Hourly-Kontext ergänzt Wave, CRV und Entry.")
-
-                sort_col1, sort_col2 = st.columns([1.4, 1.0])
-                with sort_col1:
-                    radar_sort_display = st.selectbox(
-                        "Sortieren nach",
-                        options=[
-                            "Radar-Score",
-                            "Charttechnik-Score",
-                            "Investment-Attraktivität",
-                            "Einstieg jetzt attraktiv?",
-                            "Radar-Priorität",
-                            "Setup-Reife",
-                            "Setup-Priorität",
-                            "Trigger-Stufe",
-                            "Ticker",
-                        ],
-                        index=0,
-                        key="radar_sort_display_widget"
-                    )
-                with sort_col2:
-                    radar_sort_order = st.selectbox(
-                        "Sortierreihenfolge",
-                        options=["Absteigend", "Aufsteigend"],
-                        index=0,
-                        key="radar_sort_order_widget"
-                    )
-
-                radar_sort_key_map = {
-                    "Radar-Score": "__style_sort",
-                    "Charttechnik-Score": "Chart-Score",
-                    "Investment-Attraktivität": "Investment-Attraktivität",
-                    "Einstieg jetzt attraktiv?": "Einstieg jetzt attraktiv?",
-                    "Radar-Priorität": "__priority_sort",
-                    "Setup-Reife": "__maturity_sort",
-                    "Setup-Priorität": "Setup-Priorität",
-                    "Trigger-Stufe": "__trigger_sort",
-                    "Ticker": "Ticker",
-                }
-                radar_user_sort_col = radar_sort_key_map.get(radar_sort_display, "__style_sort")
-                radar_user_sort_ascending = (radar_sort_order == "Aufsteigend")
-
-                radar_df["__priority_sort"] = radar_df.get("Radar-Priorität", pd.Series([""] * len(radar_df))).astype(str).str.lower().map({"hoch": 3, "mittel": 2, "niedrig": 1}).fillna(0)
-                radar_df["__maturity_sort"] = radar_df.get("Setup-Reife", pd.Series([""] * len(radar_df))).astype(str).str.lower().map({"prüfbar": 4, "pruefbar": 4, "nahe dran": 3, "aufbauen": 2, "früh": 1, "frueh": 1}).fillna(0)
-                trigger_series = radar_df["Trigger-Status"].astype(str).fillna("") if "Trigger-Status" in radar_df.columns else pd.Series([""] * len(radar_df))
-                entry_series = pd.to_numeric(radar_df["Einstieg jetzt attraktiv?"], errors="coerce") if "Einstieg jetzt attraktiv?" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
-                invest_series = pd.to_numeric(radar_df["Investment-Attraktivität"], errors="coerce") if "Investment-Attraktivität" in radar_df.columns else pd.Series([np.nan] * len(radar_df))
-
-                # v15.20.5: Pandas-Series-Masken muessen elementweise mit | kombiniert werden.
-                # Python `or` erzeugt sonst "truth value of a Series is ambiguous" im Kandidaten-Radar.
-                mask_now = (
-                    trigger_series.isin(["Aktiv", "Jetzt prüfbar"])
-                    | (entry_series >= 75)
-                )
-                mask_near = (
-                    trigger_series.isin(["Nahe dran", "Fast prüfbar", "Frühe Beobachtung", "Früh interessant"])
-                    | ((entry_series >= 58) & (invest_series >= 60) & ~mask_now)
-                )
-                mask_later = ~(mask_now | mask_near)
-
-                def sort_section_df(df_section):
-                    if df_section is None or df_section.empty:
-                        return df_section
-                    sort_cols = []
-                    sort_orders = []
-                    if radar_user_sort_col in df_section.columns:
-                        sort_cols.append(radar_user_sort_col)
-                        sort_orders.append(radar_user_sort_ascending)
-                    if radar_user_sort_col != "__style_sort" and "__style_sort" in df_section.columns:
-                        sort_cols.append("__style_sort")
-                        sort_orders.append(False)
-                    if radar_user_sort_col != "__trigger_sort" and "__trigger_sort" in df_section.columns:
-                        sort_cols.append("__trigger_sort")
-                        sort_orders.append(False)
-                    if "Ticker" in df_section.columns and "Ticker" not in sort_cols:
-                        sort_cols.append("Ticker")
-                        sort_orders.append(True)
-                    return df_section.sort_values(by=sort_cols, ascending=sort_orders).reset_index(drop=True)
-
-                radar_now_df = sort_section_df(radar_df[mask_now].copy())
-                radar_near_df = sort_section_df(radar_df[mask_near].copy())
-                radar_later_df = sort_section_df(radar_df[mask_later].copy())
-
-                # v17.9: Radar nicht nur ranken, sondern handlungsorientiert clustern.
-                # Die Cluster bestimmen NICHT die Einzelanalyse, sondern ordnen die Radar-Auswahl nutzbarer ein:
-                # jetzt pruefbar, nahe am Trigger, starke Watchlist, Pullback/ueberdehnt, Warnsignale.
-                def _radar_text_series(_col):
-                    if _col in radar_df.columns:
-                        return radar_df[_col].fillna("").astype(str).str.lower()
-                    return pd.Series([""] * len(radar_df), index=radar_df.index)
-
-                _radar_risk_txt = _radar_text_series("Radar-Risiko")
-                _radar_prio_txt = _radar_text_series("Radar-Priorität")
-                _radar_step_txt = _radar_text_series("Nächster Schritt")
-                _radar_brake_txt = _radar_text_series("Was bremst") + " " + _radar_text_series("Chart-Bremse") + " " + _radar_text_series("Top Red Flag")
-                _radar_trigger_txt = _radar_text_series("Trigger-Status")
-                _radar_maturity_txt = _radar_text_series("Setup-Reife")
-                _chart_impulse_txt = _radar_text_series("Chart-Impuls")
-                _chart_score_num = pd.to_numeric(radar_df["Chart-Score"], errors="coerce") if "Chart-Score" in radar_df.columns else pd.Series([np.nan] * len(radar_df), index=radar_df.index)
-                _style_score_num = pd.to_numeric(radar_df.get("__style_sort", pd.Series([np.nan] * len(radar_df), index=radar_df.index)), errors="coerce")
-
-                _warn_words = r"warn|failed|exhaust|climax|wide|loose|fomo kritisch|riskant|red flag|exit|distribution|bruch|meiden"
-                _pullback_words = r"pullback|ruecksetzer|rücksetzer|nicht hinterherlaufen|überdehnt|ueberdehnt|zu weit|gedehnt|base abwarten|neue base"
-
-                radar_warn_mask = (
-                    _radar_risk_txt.str.contains("hoch|kritisch", regex=True)
-                    | _radar_prio_txt.eq("niedrig")
-                    | _radar_brake_txt.str.contains(_warn_words, regex=True)
-                    | _radar_step_txt.str.contains("risiko zuerst|nicht hinterherlaufen|meiden", regex=True)
-                )
-                radar_pullback_mask = (
-                    ~radar_warn_mask
-                    & (
-                        _radar_step_txt.str.contains(_pullback_words, regex=True)
-                        | _chart_impulse_txt.str.contains("überdehnt|ueberdehnt|fortgeschritten", regex=True)
-                        | _radar_brake_txt.str.contains("fomo|entry|stretch|überdehnt|ueberdehnt", regex=True)
-                    )
-                )
-                radar_now_mask = (
-                    ~radar_warn_mask
-                    & ~radar_pullback_mask
-                    & (
-                        _radar_trigger_txt.isin(["aktiv", "jetzt prüfbar", "jetzt pruefbar"])
-                        | (entry_series >= 75)
-                        | (_radar_maturity_txt.isin(["prüfbar", "pruefbar"]) & (_radar_prio_txt.eq("hoch") | (_chart_score_num >= 70)))
-                    )
-                )
-                radar_near_mask = (
-                    ~radar_warn_mask
-                    & ~radar_pullback_mask
-                    & ~radar_now_mask
-                    & (
-                        _radar_trigger_txt.isin(["nahe dran", "fast prüfbar", "fast pruefbar", "frühe beobachtung", "fruehe beobachtung", "früh interessant", "frueh interessant"])
-                        | _radar_maturity_txt.isin(["nahe dran", "aufbauen"])
-                        | ((entry_series >= 58) & (invest_series >= 60))
-                        | (_chart_score_num >= 58)
-                    )
-                )
-                radar_watchlist_mask = (
-                    ~radar_warn_mask
-                    & ~radar_pullback_mask
-                    & ~radar_now_mask
-                    & ~radar_near_mask
-                    & (
-                        _radar_prio_txt.isin(["hoch", "mittel"])
-                        | (invest_series >= 70)
-                        | (_style_score_num >= 60)
-                    )
-                )
-
-                radar_df["Radar-Gruppe"] = "Später beobachten"
-                radar_df.loc[radar_watchlist_mask, "Radar-Gruppe"] = "Starke Watchlist"
-                radar_df.loc[radar_pullback_mask, "Radar-Gruppe"] = "Pullback bevorzugt / nicht hinterherlaufen"
-                radar_df.loc[radar_warn_mask, "Radar-Gruppe"] = "Warnsignale / meiden"
-                radar_df.loc[radar_near_mask, "Radar-Gruppe"] = "Nahe am Trigger"
-                radar_df.loc[radar_now_mask, "Radar-Gruppe"] = "Jetzt prüfbar"
-
-                # v18.1: Wenn der Professional Funnel einen Bucket liefert, ist er die primaere Cluster-Quelle.
-                if "Radar-Bucket" in radar_df.columns:
-                    _bucket_series = radar_df["Radar-Bucket"].fillna("").astype(str)
-                    _valid_buckets = {
-                        "Jetzt prüfbar",
-                        "Nahe am Trigger",
-                        "Starke Watchlist",
-                        "Pullback bevorzugt / nicht hinterherlaufen",
-                        "Warnsignale / meiden",
-                        "Später beobachten",
-                    }
-                    radar_df["Radar-Gruppe"] = _bucket_series.where(_bucket_series.isin(_valid_buckets), radar_df["Radar-Gruppe"])
-                    radar_now_mask = radar_df["Radar-Gruppe"].eq("Jetzt prüfbar")
-                    radar_near_mask = radar_df["Radar-Gruppe"].eq("Nahe am Trigger")
-                    radar_watchlist_mask = radar_df["Radar-Gruppe"].eq("Starke Watchlist")
-                    radar_pullback_mask = radar_df["Radar-Gruppe"].eq("Pullback bevorzugt / nicht hinterherlaufen")
-                    radar_warn_mask = radar_df["Radar-Gruppe"].eq("Warnsignale / meiden")
-
-                radar_now_df = sort_section_df(radar_df[radar_now_mask].copy())
-                radar_near_df = sort_section_df(radar_df[radar_near_mask].copy())
-                radar_watchlist_df = sort_section_df(radar_df[radar_watchlist_mask].copy())
-                radar_pullback_df = sort_section_df(radar_df[radar_pullback_mask].copy())
-                radar_warn_df = sort_section_df(radar_df[radar_warn_mask].copy())
-                radar_later_df = sort_section_df(radar_df[~(radar_now_mask | radar_near_mask | radar_watchlist_mask | radar_pullback_mask | radar_warn_mask)].copy())
-
-                def radar_score_badge(value):
-                    try:
-                        num = float(str(value).replace('%', '').replace(',', '.').strip())
-                    except Exception:
-                        return str(value) if str(value).strip() else '-'
-                    if num >= 75:
-                        return f"🟢 {int(round(num))}"
-                    if num >= 55:
-                        return f"🟡 {int(round(num))}"
-                    return f"🔴 {int(round(num))}"
-
-                def radar_trigger_badge(value):
-                    raw = str(value).strip()
-                    s = raw.lower()
-                    if s in {"aktiv", "jetzt prüfbar"}:
-                        return f"🟢 {raw}"
-                    if s in {"nahe dran", "fast prüfbar"}:
-                        return f"🟡 {raw}"
-                    if s in {"frühe beobachtung", "früh interessant", "beobachten", "weiter beobachten"}:
-                        return f"🟠 {raw}"
-                    if s in {"passiv", "aktuell kein fokus", "warten", "noch warten"}:
-                        return f"🔴 {raw}"
-                    return raw if raw else '-'
-
-                def radar_priority_badge(value):
-                    raw = str(value).strip()
-                    s = raw.lower()
-                    if s == 'hoch':
-                        return f"🟢 {raw}"
-                    if s == 'mittel':
-                        return f"🟡 {raw}"
-                    if s == 'niedrig':
-                        return f"🔴 {raw}"
-                    return raw if raw else '-'
-
-                # v15.23.8: Name-Anzeige auch im gerenderten Abschnitt robust machen.
-                # Der Abschnitt "Jetzt spannend" kann aus sortierten/gesplitteten Frames kommen,
-                # in denen Name noch den Ticker-Fallback enthaelt. Direkt beim Rendern erneut pruefen.
-                def _radar_render_name_v15238(_row):
-                    _ticker = str(_row.get("Ticker", "") or "").strip()
-                    _current = str(_row.get("Name", "") or "").strip()
-                    _ticker_norm = _ticker.upper()
-                    _root = _ticker_norm.split(".")[0] if _ticker_norm else ""
-                    if (not _current) or _current.lower() in {"-", "nan", "none", "null"} or _current.upper() in {_ticker_norm, _root}:
-                        return radar_company_display_name_v15237(radar_result_map.get(_ticker, {}), _ticker, 30)
-                    return shorten_text(_current, 30)
-
-                if str(st.session_state.get("radar_screening_style", "")) == "Charttechnik":
-                    section_specs = [
-                        ("Jetzt prüfbar", "Charttechnische Impulse mit aktivem oder sehr nah prüfbarem Trigger.", radar_now_df),
-                        ("Nahe am Trigger", "Technisch interessante Kandidaten, bei denen nur noch Bestätigung/Reclaim/Pivot fehlt.", radar_near_df),
-                        ("Starke Watchlist", "Gute technische Ausgangslage, aber noch nicht am operativen Trigger.", radar_watchlist_df),
-                        ("Pullback bevorzugt / nicht hinterherlaufen", "Konstruktiv, aber aktuell eher Rücksetzer, neue Base oder bessere Entry-Zone abwarten.", radar_pullback_df),
-                        ("Warnsignale / meiden", "Technisch auffällig, aber Risiko-, FOMO-, Exhaustion- oder Failed-Breakout-Hinweise bremsen.", radar_warn_df),
-                        ("Später beobachten", "Noch zu früh oder aktuell ohne klaren technischen Impuls.", radar_later_df),
-                    ]
-                else:
-                    section_specs = [
-                        ("Jetzt prüfbar", "Aktive oder direkt prüfbare Kandidaten mit brauchbarer Einstiegsreife.", radar_now_df),
-                        ("Nahe am Trigger", "Interessante Kandidaten, bei denen Timing oder Bestätigung noch einen Schritt brauchen.", radar_near_df),
-                        ("Starke Watchlist", "Qualitativ oder technisch interessant, aber noch nicht unmittelbar am Trigger.", radar_watchlist_df),
-                        ("Pullback bevorzugt / nicht hinterherlaufen", "Gute Setups, bei denen der Preis aktuell nicht ideal ist oder ein Rücksetzer sinnvoller wirkt.", radar_pullback_df),
-                        ("Warnsignale / meiden", "Kandidaten mit erhöhtem Risiko, FOMO, schwacher Struktur oder klaren Bremsfaktoren.", radar_warn_df),
-                        ("Später beobachten", "Gute Werte für die engere Watchlist, aber noch nicht reif für einen direkten Einstieg.", radar_later_df),
-                    ]
-
-                radar_limit = int(st.session_state.radar_max_candidates)
-                remaining_slots = radar_limit
-                limited_section_specs = []
-                section_display_frames = []
-                for _title, _caption, _df in section_specs:
-                    if _df is None or _df.empty or remaining_slots <= 0:
-                        limited_df = _df.iloc[0:0].copy() if _df is not None else _df
-                    else:
-                        limited_df = _df.head(remaining_slots).copy()
-                        remaining_slots -= len(limited_df)
-                    limited_section_specs.append((_title, _caption, limited_df))
-                    if limited_df is not None and not limited_df.empty:
-                        section_display_frames.append(limited_df)
-                if section_display_frames:
-                    radar_display_df = pd.concat(section_display_frames, ignore_index=True).drop_duplicates(subset=["Ticker"], keep="first")
-                else:
-                    radar_display_df = pd.DataFrame(columns=radar_df.columns)
-
-                radar_top_tickers = radar_display_df["Ticker"].astype(str).tolist() if "Ticker" in radar_display_df.columns else []
-                radar_default_selected = []
-                radar_selection_signature = f"{st.session_state.radar_universe}|{st.session_state.radar_screening_style}|{st.session_state.radar_max_candidates}|" + "|".join(radar_top_tickers)
-
-                if st.session_state.get("radar_selection_signature") != radar_selection_signature:
-                    st.session_state.radar_selection_signature = radar_selection_signature
-                    st.session_state.radar_selected_tickers = radar_default_selected.copy()
-                    for _ticker in radar_top_tickers:
-                        st.session_state[f"radar_pick_{_ticker}"] = _ticker in radar_default_selected
-
-                selected_radar_tickers = []
-
-                # v18.5: Top-Chancen-Box mit hartem Qualitätsfilter.
-                if radar_display_df is not None and not radar_display_df.empty:
-                    _top_box_df = radar_display_df.copy()
-                    if "Top-Chance-Rang" not in _top_box_df.columns:
-                        _top_box_df["Top-Chance-Rang"] = pd.to_numeric(_top_box_df.get("Radar-Score", 0), errors="coerce").fillna(0)
-                    _top_box_df["__top_rank"] = pd.to_numeric(_top_box_df["Top-Chance-Rang"], errors="coerce").fillna(0)
-                    _top_box_df["__score"] = pd.to_numeric(_top_box_df.get("Radar-Score", 0), errors="coerce").fillna(0)
-                    _top_box_df["__crv"] = pd.to_numeric(_top_box_df.get("Radar-CRV", np.nan), errors="coerce")
-                    _top_box_df["__grade"] = _top_box_df.get("Radar-Grade", "").astype(str).str.upper().str.strip()
-                    _top_box_df["__bucket"] = _top_box_df.get("Radar-Bucket", _top_box_df.get("Radar-Gruppe", "")).astype(str)
-                    _top_box_df["__gate"] = _top_box_df.get("Radar-Gate", "").astype(str).str.lower()
-                    _top_box_df["__entry"] = _top_box_df.get("Entry-Abstand", "").astype(str).str.lower().str.strip()
-
-                    _strict_grade_ok = _top_box_df["__grade"].isin(["A", "B"]) | ((_top_box_df["__grade"] == "C") & (_top_box_df["__crv"] >= 1.5))
-                    _strict_bucket_ok = _top_box_df["__bucket"].isin(["Jetzt prüfbar", "Nahe am Trigger"])
-                    _strict_crv_ok = _top_box_df["__crv"].notna() & (_top_box_df["__crv"] >= 1.2)
-                    _strict_entry_ok = ~_top_box_df["__entry"].isin(["", "-", "n/a", "nan", "none"])
-                    _strict_gate_ok = _top_box_df["__gate"].isin(["", "keine harten gates", "keine harten gate"])
-                    _strict_score_ok = _top_box_df["__score"] >= 62
-                    _strict_no_watchlist = ~_top_box_df["__bucket"].isin(["Starke Watchlist", "Später beobachten", "Pullback bevorzugt / nicht hinterherlaufen", "Warnsignale / meiden"])
-
-                    _top_box_strict_df = _top_box_df[
-                        _strict_grade_ok
-                        & _strict_bucket_ok
-                        & _strict_crv_ok
-                        & _strict_entry_ok
-                        & _strict_gate_ok
-                        & _strict_score_ok
-                        & _strict_no_watchlist
-                    ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
-
-                    st.markdown("### Beste heutige Chancen")
-                    st.caption("Hier werden nur echte heutige Chancen gezeigt: Grade A/B oder starkes C, aktiver/naher Bucket, CRV vorhanden, Entry vorhanden und keine harten Gates.")
-                    if not _top_box_strict_df.empty:
-                        _cols = st.columns(len(_top_box_strict_df))
-                        for _idx, (_, _top_row) in enumerate(_top_box_strict_df.iterrows()):
-                            _ticker = str(_top_row.get("Ticker", "-") or "-")
-                            _name = _radar_render_name_v15238(_top_row)
-                            _score = _top_row.get("Radar-Score", "-")
-                            _grade = str(_top_row.get("Radar-Grade", "-") or "-")
-                            _bucket = str(_top_row.get("Radar-Bucket", _top_row.get("Radar-Gruppe", "-")) or "-")
-                            _crv = str(_top_row.get("Radar-CRV", "n/a") or "n/a")
-                            _entry = str(_top_row.get("Entry-Abstand", "-") or "-")
-                            _why = shorten_text(str(_top_row.get("Heute-Relevanz", _top_row.get("Warum heute auffällig", "-")) or "-"), 95)
-                            _next = shorten_text(str(_top_row.get("Nächster Schritt", "-") or "-"), 105)
-                            _wave = shorten_text(str(_top_row.get("Wave-Impact", "-") or "-"), 70)
-                            _cols[_idx].markdown(
-                                f"""
-                                <div class="section-card" style="border-left:5px solid #22c55e; min-height:220px;">
-                                    <div class="premium-title">#{_idx + 1} · {_ticker}</div>
-                                    <div class="premium-value">{_name}</div>
-                                    <div class="premium-sub"><b>{_grade}</b> · Radar {radar_score_badge(_score)} · CRV {_crv}</div>
-                                    <div class="premium-sub"><b>{_bucket}</b><br>Entry: {_entry}</div>
-                                    <div class="premium-sub">{_why}</div>
-                                    <div class="premium-sub"><b>Wave:</b> {_wave}</div>
-                                    <div class="premium-sub"><b>Nächster Schritt:</b> {_next}</div>
-                                </div>
-                                """,
-                                unsafe_allow_html=True,
-                            )
-                    else:
-                        st.markdown(
-                            '<div class="empty-state"><div class="empty-state-title">Keine sauberen heutigen Chancen gefunden</div><div class="empty-state-text">Der Radar erzwingt keine Top 3 mehr. Werte mit Grade D/E, rotem Radar, CRV n/a, CRV unter 1.2, Entry n/a oder Watchlist-/Pullback-Bucket werden hier bewusst ausgeblendet.</div></div>',
-                            unsafe_allow_html=True,
-                        )
-                        _watch_box_df = _top_box_df[
-                            _top_box_df["__bucket"].isin(["Starke Watchlist", "Nahe am Trigger", "Später beobachten"])
-                            & ~_top_box_df["__bucket"].str.startswith("Warnsignale", na=False)
-                        ].sort_values(["__top_rank", "__score"], ascending=[False, False]).head(3)
-                        if not _watch_box_df.empty:
-                            st.markdown("#### Beste Watchlist-Kandidaten")
-                            st.caption("Diese Werte sind interessant, aber noch keine sauberen heutigen Chancen, weil Entry, CRV, Gate oder Trigger fehlen.")
-                            st.dataframe(
-                                _watch_box_df[[c for c in ["Ticker", "Name", "Radar-Grade", "Radar-Score", "Radar-Bucket", "Radar-CRV", "Entry-Abstand", "Nächster Schritt"] if c in _watch_box_df.columns]],
-                                use_container_width=True,
-                                hide_index=True,
-                            )
-
-                st.markdown("### Radar-Auswahl")
-                st.caption("Werte direkt links in den Zeilen markieren. Standardmäßig ist zunächst nichts vorausgewählt; die Auswahl startet keine neue Radar-Analyse.")
-
-                for section_title, section_caption, section_df in limited_section_specs:
-                    st.markdown(f"#### {section_title}")
-                    st.caption(section_caption)
-                    if section_df is None or section_df.empty:
-                        st.markdown(
-                            '<div class="empty-state"><div class="empty-state-title">Aktuell keine Werte in dieser Stufe</div><div class="empty-state-text">Die momentane Radar-Auswahl liefert in diesem Reifegrad gerade keine Kandidaten.</div></div>',
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        _radar_is_chart_style = str(st.session_state.get("radar_screening_style", "")) == "Charttechnik"
-                        if _radar_is_chart_style:
-                            header_cols = st.columns([0.55, 0.75, 1.45, 1.15, 0.85, 0.65, 1.25, 1.65, 2.15, 1.75])
-                            headers = ["Auswahl", "Ticker", "Name", "Chart-Impuls", "Radar", "Grade", "Bucket", "Chart-Trigger", "Nächster Schritt", "Gate/Bremse"]
-                        else:
-                            header_cols = st.columns([0.55, 0.75, 1.45, 0.85, 0.55, 1.25, 0.8, 1.05, 1.25, 1.0, 2.25, 1.85, 1.65])
-                            headers = ["Auswahl", "Ticker", "Name", "Radar", "Grade", "Bucket", "CRV", "Entry", "Heute", "Trigger", "Nächster Schritt", "Gate/Bremse", "Subscores"]
-                        for _col, _hdr in zip(header_cols, headers):
-                            _col.markdown(f"**{_hdr}**")
-
-                        for _row_idx, _row in section_df.reset_index(drop=True).iterrows():
-                            _ticker = str(_row.get("Ticker", "")).strip()
-                            if not _ticker:
-                                continue
-                            # v18.6: Streamlit requires widget keys to be unique within one render.
-                            # The same ticker can appear in multiple Radar sections (e.g. Watchlist and Top boxes),
-                            # so the checkbox widget key must include the section and row position.
-                            checkbox_state_key = f"radar_pick_{_ticker}"
-                            checkbox_widget_key = f"radar_pick_{_ticker}_{abs(hash(str(section_title))) % 100000}_{_row_idx}"
-                            if checkbox_state_key not in st.session_state:
-                                st.session_state[checkbox_state_key] = _ticker in st.session_state.get("radar_selected_tickers", radar_default_selected.copy())
-
-                            if _radar_is_chart_style:
-                                row_cols = st.columns([0.55, 0.75, 1.45, 1.15, 0.85, 0.65, 1.25, 1.65, 2.15, 1.75])
-                            else:
-                                row_cols = st.columns([0.55, 0.75, 1.45, 0.85, 0.55, 1.25, 0.8, 1.05, 1.25, 1.0, 2.25, 1.85, 1.65])
-                            is_selected = row_cols[0].checkbox(
-                                "",
-                                value=bool(st.session_state.get(checkbox_state_key, False)),
-                                key=checkbox_widget_key,
-                                label_visibility="collapsed"
-                            )
-                            st.session_state[checkbox_state_key] = bool(is_selected)
-                            if is_selected and _ticker not in selected_radar_tickers:
-                                selected_radar_tickers.append(_ticker)
-
-                            row_cols[1].write(_ticker)
-                            row_cols[2].write(_radar_render_name_v15238(_row))
-                            if _radar_is_chart_style:
-                                row_cols[3].write(str(_row.get("Chart-Impuls", "-")))
-                                row_cols[4].write(radar_score_badge(_row.get("Radar-Score", _row.get("Chart-Score", "-"))))
-                                row_cols[5].write(str(_row.get("Radar-Grade", "-")))
-                                row_cols[6].write(str(_row.get("Radar-Bucket", _row.get("Radar-Gruppe", "-"))))
-                                row_cols[7].write(str(_row.get("Chart-Trigger", "-")))
-                                row_cols[8].write(str(_row.get("Nächster Schritt", "-")))
-                                row_cols[9].write(str(_row.get("Radar-Gate", _row.get("Chart-Bremse", _row.get("Was bremst", "-")))))
-                            else:
-                                row_cols[3].write(radar_score_badge(_row.get("Radar-Score", _row.get("__style_sort", "-"))))
-                                row_cols[4].write(str(_row.get("Radar-Grade", "-")))
-                                row_cols[5].write(str(_row.get("Radar-Bucket", _row.get("Radar-Gruppe", "-"))))
-                                row_cols[6].write(str(_row.get("Radar-CRV", "n/a")))
-                                row_cols[7].write(str(_row.get("Entry-Abstand", "-")))
-                                row_cols[8].write(str(_row.get("Heute-Relevanz", _row.get("Warum heute auffällig", "-"))))
-                                row_cols[9].write(radar_trigger_badge(_row.get("Trigger-Status", "-")))
-                                row_cols[10].write(str(_row.get("Nächster Schritt", "-")))
-                                row_cols[11].write(str(_row.get("Radar-Gate", _row.get("Was bremst", _row.get("Top Red Flag", "-")))))
-                                row_cols[12].write(str(_row.get("Radar-Subscores", "-")))
-
-                        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-                seen_selected = set()
-                selected_radar_tickers = [t for t in radar_top_tickers if t in selected_radar_tickers and not (t in seen_selected or seen_selected.add(t))]
-                st.session_state.radar_selected_tickers = selected_radar_tickers
-                st.caption(f"Aktuell markiert: {len(selected_radar_tickers)} Werte")
-
-                if radar_resolution_rows and st.session_state.radar_universe == "Eigene Liste":
-                    with st.expander("Aufgelöste Radar-Eingaben", expanded=False):
-                        st.dataframe(pd.DataFrame(radar_resolution_rows), hide_index=True, use_container_width=True)
-
-                if radar_errors:
-                    with st.expander("Nicht analysierbare Radar-Werte", expanded=False):
-                        st.dataframe(pd.DataFrame(radar_errors, columns=["Ticker", "Fehler"]), hide_index=True, use_container_width=True)
-
-                # v21.1: Setup-Alerts aus Radar-Bedingungen anzeigen.
-                if radar_result_map:
-                    _alert_style_v210 = str(st.session_state.get("radar_screening_style", "Leader") or "Leader")
-                    setup_alerts_df_v210 = build_setup_alerts_table_v210(list(radar_result_map.values()), style_name=_alert_style_v210, limit=30)
-                    st.markdown(f"### Setup-Alerts · {APP_VERSION}")
-                    st.caption("Konservative Vorschau: Diese Alerts werden aus Entry, Wave-Trigger, Bucket, CRV und Invalidierung berechnet. Es wird noch nichts automatisch versendet.")
-                    if setup_alerts_df_v210.empty:
-                        st.info("Aktuell keine handlungsrelevanten Setup-Alerts. Warn-/Gate-/Watchlist-Hinweise werden bewusst nicht als Alerts angezeigt.")
-                    else:
-                        _alert_show_cols = [c for c in ["Priorität", "Alert-Typ", "Ticker", "Name", "Kurs", "Grade", "Bucket", "CRV", "Nachricht", "Nächste Handlung"] if c in setup_alerts_df_v210.columns]
-                        st.dataframe(setup_alerts_df_v210[_alert_show_cols], hide_index=True, use_container_width=True)
-                        with st.expander("Alert-Details / Status-Keys", expanded=False):
-                            st.dataframe(setup_alerts_df_v210, hide_index=True, use_container_width=True)
-
-                radar_batch_text = "\n".join(selected_radar_tickers)
-
-                st.markdown("### Radar-Ergebnisse direkt nutzen")
-                st.caption("Auswahl direkt links in den Radar-Zeilen treffen. Nur markierte Werte werden übernommen.")
-                st.caption("Die aktuellen Radar-Kandidaten lassen sich direkt in die Sofortanalyse übernehmen oder in eine frei wählbare Watchlist schreiben.")
-                # v30.3a: auch der Radar nutzt den echten Watchlist-Katalog, damit leere
-                # Ziel-Watchlists nicht aus der Auswahl verschwinden.
-                radar_catalog_df, radar_catalog_err_v303a = _v303a_load_watchlist_catalog()
-                if radar_catalog_err_v303a and radar_catalog_df.empty:
-                    st.warning(f"Watchlisten konnten für den Radar nicht geladen werden: {radar_catalog_err_v303a}")
-
-                radar_watchlist_options = []
-                radar_watchlist_label_map = {}
-                for _, _row in radar_catalog_df.iterrows():
-                    _wl_name = str(_row.get("Watchlist_Name", "") or "").strip()
-                    _wl_type = _v303a_normalize_watchlist_type(_row.get("Watchlist_Type", "Watchlist"))
-                    if _wl_name:
-                        _label = f"{_wl_name} - {_wl_type}"
-                        radar_watchlist_options.append(_label)
-                        radar_watchlist_label_map[_label] = (_wl_name, _wl_type)
-
-                default_radar_watchlist_label = None
-                current_selected_watchlist_name = str(st.session_state.get("selected_watchlist_name", "") or "").strip()
-                current_selected_watchlist_type = _v303a_normalize_watchlist_type(
-                    st.session_state.get("selected_watchlist_type", "Watchlist")
-                )
-                if current_selected_watchlist_name:
-                    candidate_label = f"{current_selected_watchlist_name} - {current_selected_watchlist_type}"
-                    if candidate_label in radar_watchlist_options:
-                        default_radar_watchlist_label = candidate_label
-                if default_radar_watchlist_label is None and radar_watchlist_options:
-                    default_radar_watchlist_label = radar_watchlist_options[0]
-
-                if radar_watchlist_options:
-                    radar_target_watchlist_label = st.selectbox(
-                        "Ziel-Watchlist für Radar-Kandidaten",
-                        options=radar_watchlist_options,
-                        index=radar_watchlist_options.index(default_radar_watchlist_label) if default_radar_watchlist_label in radar_watchlist_options else 0,
-                        key="radar_target_watchlist_widget"
-                    )
-                    selected_watchlist_name_for_radar, selected_watchlist_type_for_radar = radar_watchlist_label_map.get(
-                        radar_target_watchlist_label,
-                        ("", "Watchlist")
-                    )
-                    st.caption(f"Aktuelles Ziel: {selected_watchlist_name_for_radar} ({selected_watchlist_type_for_radar})")
-                else:
-                    selected_watchlist_name_for_radar, selected_watchlist_type_for_radar = "", "Watchlist"
-                    st.markdown(
-                        '<div class="empty-state"><div class="empty-state-title">Noch keine Watchlist vorhanden</div><div class="empty-state-text">Lege zuerst eine Watchlist oder Positions-Watchlist an. Danach kannst du Radar-Kandidaten direkt dorthin übernehmen.</div></div>',
-                        unsafe_allow_html=True,
-                    )
-
-                ra1, ra2 = st.columns(2)
-                with ra1:
-                    if st.button("Ausgewählte Kandidaten in Sofortanalyse laden", use_container_width=True, key="radar_load_into_analysis_btn"):
-                        if selected_radar_tickers:
-                            st.session_state.batch_input = radar_batch_text
-                            st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
-                            st.session_state.analysis_mode_run = "Mehrere Aktien vergleichen"
-                            st.session_state.workspace_mode = "Sofortanalyse"
-                            st.success(f"{len(selected_radar_tickers)} ausgewählte Radar-Kandidaten wurden in die Sofortanalyse übernommen.")
-                            st.rerun()
-                        elif radar_top_tickers:
-                            st.info("Bitte wähle zuerst mindestens einen Radar-Kandidaten aus.")
-                        else:
-                            st.info("Es sind keine Radar-Kandidaten zum Übernehmen vorhanden.")
-                with ra2:
-                    add_label = (
-                        f"Ausgewählte Kandidaten zu {selected_watchlist_name_for_radar} hinzufügen"
-                        if selected_watchlist_name_for_radar else
-                        "Ausgewählte Kandidaten zur Watchlist hinzufügen"
-                    )
-                    if st.button(add_label, use_container_width=True, key="radar_add_to_watchlist_btn"):
-                        if not radar_top_tickers:
-                            st.info("Es sind keine Radar-Kandidaten zum Hinzufügen vorhanden.")
-                        elif not selected_radar_tickers:
-                            st.info("Bitte wähle zuerst mindestens einen Radar-Kandidaten aus.")
-                        elif not selected_watchlist_name_for_radar:
-                            st.info("Bitte lege zuerst eine Watchlist an oder wähle eine Ziel-Watchlist aus.")
-                        else:
-                            # v22.8: Radar-Kandidaten nur vormerken und gesammelt speichern,
-                            # damit Google-Sheets-Quota nicht bei mehreren Klicks erreicht wird.
-                            existing_for_radar = []
-                            try:
-                                _rdf, _rerr = load_watchlists_df()
-                                if _rerr is None and _rdf is not None and not _rdf.empty:
-                                    _mask = _rdf["Watchlist_Name"].astype(str).str.strip().str.lower() == str(selected_watchlist_name_for_radar).strip().lower()
-                                    existing_for_radar = _rdf.loc[_mask, "Ticker"].astype(str).str.upper().tolist()
-                            except Exception:
-                                existing_for_radar = []
-                            ok, msg = queue_entries_to_watchlist_v228(
-                                selected_watchlist_name_for_radar,
-                                selected_watchlist_type_for_radar,
-                                selected_radar_tickers,
-                                source="Kandidaten-Radar",
-                                check_frequency=st.session_state.get("selected_watchlist_check_frequency", "4x täglich"),
-                                existing_tickers=existing_for_radar,
-                            )
-                            if ok:
-                                st.success(msg)
-                                st.info("Die Kandidaten sind vorgemerkt. Speichere sie gebuendelt im Watchlisten-Bereich.")
-                            else:
-                                st.error(msg)
-            elif not radar_should_run_analysis:
-                st.info("Bitte für das aktuell gewählte Universum den Button „Kandidaten-Radar starten“ drücken.")
-
         st.stop()
 
     else:

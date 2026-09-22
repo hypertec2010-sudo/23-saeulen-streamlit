@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.21b"
+APP_VERSION = "v30.21c"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -21967,10 +21967,15 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                                 # v24.6: Risiko-Basis je Ticker cachen. Die Auswahl im Rechner
                                 # darf nicht immer wieder eine komplette Einzelanalyse starten.
-                                risk_cache_key_v246 = f"{selected_calc_ticker}|{monitor_style}|Swing (1-4 Wochen)|riskstop_v3015a"
+                                risk_cache_key_v246 = f"{selected_calc_ticker}|{monitor_style}|Swing (1-4 Wochen)|riskstop|{APP_VERSION}"
                                 risk_cache_store_v246 = st.session_state.get("v246_risk_basis_cache", {})
-                                if risk_cache_key_v246 in risk_cache_store_v246:
-                                    risk_inputs = dict(risk_cache_store_v246.get(risk_cache_key_v246) or {})
+                                _cached_risk_v3021c = dict(risk_cache_store_v246.get(risk_cache_key_v246) or {}) if risk_cache_key_v246 in risk_cache_store_v246 else {}
+                                _cache_has_structure_v3021c = all(
+                                    key in _cached_risk_v3021c
+                                    for key in ("chart_invalidation_stop", "chart_invalidation_source", "chart_invalidation_kind")
+                                )
+                                if _cached_risk_v3021c and _cache_has_structure_v3021c:
+                                    risk_inputs = _cached_risk_v3021c
                                     risk_error = None
                                 else:
                                     with st.spinner(f"Risiko-Basis für {selected_calc_ticker} wird berechnet ..."):

@@ -2975,10 +2975,15 @@ def analyze_stock(
     else:
         rs_score = 100 if ret63 > 12 else (78 if ret63 > 4 else (55 if ret63 > -5 else 22))
 
-    kb = sum([s3 >= 65, s4 >= 65, s5 >= 65, s6 >= 65])
+    # v30.21i: The setup gate uses the existing graduated trend-quality
+    # score instead of the legacy binary MA-stack score (s3). The legacy s3
+    # output remains available for backwards-compatible diagnostics/display,
+    # but no longer drives setup validity or setup scoring.
+    setup_trend_score = trend_quality_score
+    kb = sum([setup_trend_score >= 65, s4 >= 65, s5 >= 65, s6 >= 65])
 
     setup_raw = (
-        s3 * (0.22 * style_adj["trend"])
+        setup_trend_score * (0.22 * style_adj["trend"])
         + s4 * (0.24 * style_adj["momentum"])
         + s5 * 0.18
         + s6 * 0.10
@@ -3181,7 +3186,7 @@ def analyze_stock(
 
     setup_confidence = round(clamp(
         setup_base_score * 0.38
-        + s3 * 0.22
+        + setup_trend_score * 0.22
         + s4 * 0.22
         + min(kb / 4 * 100, 100) * 0.10
         + (85 if market_info["regime"] == "POSITIV" else 60 if market_info["regime"] == "NEUTRAL" else 35) * 0.08
@@ -3439,7 +3444,7 @@ def analyze_stock(
 
         setup_confidence = round(clamp(
             (88 if setup_type in {"Breakout", "Pullback im Aufwärtstrend", "Trendfolge"} else 72 if setup_type in {"Rebound im Aufwärtstrend"} else 35) * 0.35
-            + s3 * 0.20
+            + setup_trend_score * 0.20
             + s4 * 0.20
             + min(kb / 4 * 100, 100) * 0.15
             + (100 if entry_quality == "gut" else 60 if entry_quality == "abwarten" else 45) * 0.10
@@ -4516,6 +4521,7 @@ def analyze_stock(
         "sector_trend_text": sector_trend_text,
         "industry_trend_text": industry_trend_text,
         "trend_quality_score": trend_quality_score,
+        "setup_trend_score": setup_trend_score,
         "ma20_slope": ma20_slope,
         "ma50_slope": ma50_slope,
         "ma200_slope": ma200_slope,

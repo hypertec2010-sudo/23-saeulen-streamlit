@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.21h"
+APP_VERSION = "v30.21i"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -21750,7 +21750,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                                     _tech_counts_v3021h = []
                                     for _label_v3021h, _col_v3021h in [
-                                        ("Trend", "__diag_setup_s3"),
+                                        ("Trendqualität", "__diag_setup_s3"),
                                         ("Momentum", "__diag_setup_s4"),
                                         ("Volumen/Nachfrage", "__diag_setup_s5"),
                                         ("Volatilität", "__diag_setup_s6"),

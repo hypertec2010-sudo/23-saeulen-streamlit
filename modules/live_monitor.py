@@ -1604,7 +1604,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "__setup_market_regime": _setup_market_regime_v3021h,
         "__setup_market_ok": bool(_setup_market_regime_v3021h != "NEGATIV"),
         "__setup_earnings_block": _setup_earnings_block_v3021h,
-        "__setup_s3": _v210_alert_num(r.get("s3"), default=None),
+        # v30.21i: Mirror the actual graduated trend component used by the
+        # central setup gate. Fall back to legacy s3 for older cached analyses.
+        "__setup_s3": _v210_alert_num(r.get("setup_trend_score"), default=_v210_alert_num(r.get("trend_quality_score"), default=_v210_alert_num(r.get("s3"), default=None))),
         "__setup_s4": _v210_alert_num(r.get("s4"), default=None),
         "__setup_s5": _v210_alert_num(r.get("s5"), default=None),
         "__setup_s6": _v210_alert_num(r.get("s6"), default=None),

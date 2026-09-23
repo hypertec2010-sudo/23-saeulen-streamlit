@@ -17392,14 +17392,14 @@ render_pending_watchlist_adds_v228 = _watchlist_module.render_pending_watchlist_
 # ---------- Main App Flow ----------
 logo_path = Path("a_logo_for_the_capital_hill_score_model_is_promi.png")
 
-top1, top2 = st.columns([0.72, 2.28])
+top1, top2 = st.columns([0.48, 2.52])
 with top1:
     if logo_path.exists():
-        st.image(str(logo_path), use_container_width=True)
+        st.image(str(logo_path), width=120)
         st.markdown(
             f"""
             <div style="text-align:left; margin-top:6px; margin-bottom:6px;">
-                <span class="model-pill">Release {APP_VERSION} - Premium Dashboard</span>
+                <span class="model-pill">Release {APP_VERSION}</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -17409,7 +17409,7 @@ with top1:
         st.markdown(
             f"""
             <div style="text-align:left; margin-top:6px; margin-bottom:6px;">
-                <span class="model-pill">Release {APP_VERSION} - Premium Dashboard</span>
+                <span class="model-pill">Release {APP_VERSION}</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -19098,47 +19098,48 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             else:
                                 st.error(msg)
 
-            act1, act2, act3 = st.columns(3)
-            with act1:
-                if st.button("Watchlist in Analyse laden", use_container_width=True, key="load_watchlist_into_analysis"):
-                    joined = "\n".join(current_tickers)
-                    st.session_state.batch_input = joined
-                    st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
-                    st.success(f"Watchlist '{selected_watchlist_name}' wurde in die Analyse geladen.")
-            with act2:
-                if st.button("Watchlist jetzt analysieren", use_container_width=True, key="run_watchlist_now"):
-                    joined = "\n".join(current_tickers)
-                    if joined.strip():
+                # v30.21l: seltene Watchlist-Aktionen bleiben im bestehenden Pflegebereich.
+                act1, act2, act3 = st.columns(3)
+                with act1:
+                    if st.button("In Analyse laden", use_container_width=True, key="load_watchlist_into_analysis"):
+                        joined = "\n".join(current_tickers)
                         st.session_state.batch_input = joined
                         st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
-                        st.session_state.analysis_mode_run = "Mehrere Aktien vergleichen"
-                        st.session_state.analysis_requested = True
-                        st.session_state.run_selected_watchlist_name = selected_watchlist_name
-                        st.session_state.run_selected_watchlist_type = selected_watchlist_type
-                        st.session_state.send_watchlist_alerts_after_run = False
-                        st.success(f"Watchlist '{selected_watchlist_name}' wird jetzt analysiert.")
-                    else:
-                        st.info("In dieser Watchlist sind noch keine Ticker.")
-            with act3:
-                if st.button("Watchlist analysieren + Telegram", use_container_width=True, key="run_watchlist_telegram"):
-                    joined = "\n".join(current_tickers)
-                    if joined.strip():
-                        st.session_state.batch_input = joined
-                        st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
-                        st.session_state.analysis_mode_run = "Mehrere Aktien vergleichen"
-                        st.session_state.analysis_requested = True
-                        st.session_state.run_selected_watchlist_name = selected_watchlist_name
-                        st.session_state.run_selected_watchlist_type = selected_watchlist_type
-                        st.session_state.send_watchlist_alerts_after_run = True
-                        st.success(f"Watchlist '{selected_watchlist_name}' wird jetzt analysiert und danach werden Telegram-Alerts geprüft.")
-                    else:
-                        st.info("In dieser Watchlist sind noch keine Ticker.")
-
+                        st.session_state["v3021l_live_work_area"] = "🔎 Einzelanalyse"
+                        st.success(f"Watchlist '{selected_watchlist_name}' wurde in die Analyse geladen.")
+                with act2:
+                    if st.button("Watchlist analysieren", use_container_width=True, key="run_watchlist_now"):
+                        joined = "\n".join(current_tickers)
+                        if joined.strip():
+                            st.session_state.batch_input = joined
+                            st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
+                            st.session_state.analysis_mode_run = "Mehrere Aktien vergleichen"
+                            st.session_state.analysis_requested = True
+                            st.session_state.run_selected_watchlist_name = selected_watchlist_name
+                            st.session_state.run_selected_watchlist_type = selected_watchlist_type
+                            st.session_state.send_watchlist_alerts_after_run = False
+                            st.session_state["v3021l_live_work_area"] = "🔎 Einzelanalyse"
+                            st.success(f"Watchlist '{selected_watchlist_name}' wird jetzt analysiert.")
+                        else:
+                            st.info("In dieser Watchlist sind noch keine Ticker.")
+                with act3:
+                    if st.button("Analyse + Telegram", use_container_width=True, key="run_watchlist_telegram"):
+                        joined = "\n".join(current_tickers)
+                        if joined.strip():
+                            st.session_state.batch_input = joined
+                            st.session_state.analysis_mode = "Mehrere Aktien vergleichen"
+                            st.session_state.analysis_mode_run = "Mehrere Aktien vergleichen"
+                            st.session_state.analysis_requested = True
+                            st.session_state.run_selected_watchlist_name = selected_watchlist_name
+                            st.session_state.run_selected_watchlist_type = selected_watchlist_type
+                            st.session_state.send_watchlist_alerts_after_run = True
+                            st.session_state["v3021l_live_work_area"] = "🔎 Einzelanalyse"
+                            st.success(f"Watchlist '{selected_watchlist_name}' wird jetzt analysiert und danach werden Telegram-Alerts geprüft.")
+                        else:
+                            st.info("In dieser Watchlist sind noch keine Ticker.")
 
             # ---------- v22.1: Live-Watchlist / Trigger-Monitor ----------
-            st.markdown(f"### Live-Watchlist / Trading-Cockpit · {APP_VERSION}")
-            st.caption("Prüft die ausgewählte Watchlist, solange die App geöffnet ist. Auto-Refresh aktualisiert den Live-Screener nativ in festen Abständen. Status ist die Live-Einstufung; Live-Score zeigt die Stärke innerhalb der Ampel; Seit Aufnahme zeigt Performance-Kontext, ist aber kein automatisches Kaufsignal; Radar-Bucket ist nur die ursprüngliche Radar-Vorbewertung. Der Live-Monitor nutzt dauerhaft den Prüfstil Charttechnik; der Zeithorizont kann explizit auf kurzfristiges Trading oder Swing gestellt werden.")
-            st.caption(f"Scan-Logik {APP_VERSION}: Der Live-Screener veröffentlicht nur vollständig abgeschlossene Vollscans. Interne Batches dienen ausschließlich dem Provider-Schutz und werden nie als Teilstand gespeichert oder angezeigt. Ein manueller Vollscan erzwingt einen frischen Analyse-Lauf mit Drosselung und Retry-Schutz.")
+            st.markdown(f"### Live-Watchlist · {APP_VERSION}")
             # v30.1b: Cockpit-Navigation wird ausserhalb des Live-Cache-Renderpfads
             # gehalten. Der Rotation Radar ist ein eigenstaendiger Arbeitsbereich und
             # darf nicht verschwinden bzw. auf Live-Screener zurueckfallen, nur weil
@@ -19196,12 +19197,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         st.session_state.v2844_live_scan_scope_widget = _saved_scope_v2844
                 st.session_state.v2842_live_mobile_preferences_loaded = True
 
-            mobile_mode_v2842 = st.checkbox(
-                "📱 Mobile-Modus",
-                value=bool(st.session_state.get("v2842_mobile_mode_widget", False)),
-                key="v2842_mobile_mode_widget",
-                help="Kompakte Karten, größere Bedienelemente und Snapshot-First-Wiederherstellung nach Display-Pausen.",
-            )
+            with st.expander("⚙️ Darstellung", expanded=False):
+                mobile_mode_v2842 = st.checkbox(
+                    "📱 Mobile-Modus",
+                    value=bool(st.session_state.get("v2842_mobile_mode_widget", False)),
+                    key="v2842_mobile_mode_widget",
+                    help="Kompakte Karten, größere Bedienelemente und Snapshot-First-Wiederherstellung nach Display-Pausen.",
+                )
+                st.caption("Mobile-Modus nur bei Bedarf aktivieren; Desktop bleibt die kompakte Standardansicht.")
             st.session_state.v2842_live_mobile_mode = bool(mobile_mode_v2842)
 
             if mobile_mode_v2842:
@@ -19216,7 +19219,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     "Auto-Scan im Mobile-Modus",
                     value=bool(st.session_state.get("v2842_mobile_auto_scan_widget", False)),
                     key="v2842_mobile_auto_scan_widget",
-                    help="Aus: Scan nur über 'Jetzt vollständig aktualisieren'. An: Auto-Vollscan läuft nur bei aktiver Browser-Sitzung.",
+                    help="Aus: Scan nur über 'Vollscan starten'. An: Auto-Vollscan läuft nur bei aktiver Browser-Sitzung.",
                 )
                 refresh_options = ["15 Minuten", "30 Minuten", "60 Minuten"]
                 current_refresh = st.session_state.get("live_watchlist_refresh_interval", "30 Minuten")
@@ -19298,7 +19301,27 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             cockpit_area = _v301b_valid_cockpit_area(cockpit_area)
             st.session_state[_cockpit_persist_key_v301b] = cockpit_area
             st.session_state[_legacy_cockpit_key_v301b] = cockpit_area
-            st.caption("Nur der gewählte Arbeitsbereich wird ausgeführt; Rotation Radar bleibt unabhängig vom Live-Screener-Cache erreichbar.")
+
+            # v30.21l: compact daily sub-navigation for the Live-Screener.
+            _live_view_options_v3021l = [
+                "📡 Live-Screener",
+                "📦 Tradingpaket",
+                "🔎 Einzelanalyse",
+                "🧪 Diagnose",
+            ]
+            _live_view_key_v3021l = "v3021l_live_work_area"
+            if st.session_state.get(_live_view_key_v3021l) not in _live_view_options_v3021l:
+                st.session_state[_live_view_key_v3021l] = _live_view_options_v3021l[0]
+            if cockpit_area == "📡 Live-Screener":
+                _live_view_v3021l = st.radio(
+                    "Live-Arbeitsbereich",
+                    _live_view_options_v3021l,
+                    horizontal=not bool(mobile_mode_v2842),
+                    key=_live_view_key_v3021l,
+                    label_visibility="collapsed",
+                )
+            else:
+                _live_view_v3021l = st.session_state.get(_live_view_key_v3021l, _live_view_options_v3021l[0])
 
             # v28.7b: Atomic Complete Scan. Der Live-Screener arbeitet immer die
             # komplette eindeutige Watchlist ab. Interne Batches bleiben reine
@@ -19309,18 +19332,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             scan_plan_v2844 = _live_scan_batches.build_scan_plan(current_tickers, scan_scope_label_v2844)
             scan_tickers_v2844 = list(scan_plan_v2844.selected_tickers)
             st.caption(
-                "Vollscan-Modus: Jeder Lauf verarbeitet alle eindeutigen Watchlist-Werte. "
-                "Ein neuer Stand wird erst nach Abschluss des gesamten Laufs übernommen."
+                f"{scan_plan_v2844.source_count} Watchlist-Werte · {len(scan_plan_v2844.unique_tickers)} eindeutig · Vollscan immer vollständig"
             )
-            if mobile_mode_v2842:
-                _scan_count_row_v287b = st.columns(2)
-                _scan_count_row_v287b[0].metric("Watchlist", scan_plan_v2844.source_count)
-                _scan_count_row_v287b[1].metric("Vollscan", len(scan_plan_v2844.selected_tickers))
-            else:
-                _scan_count_cols_v287b = st.columns(3)
-                _scan_count_cols_v287b[0].metric("Watchlist", scan_plan_v2844.source_count)
-                _scan_count_cols_v287b[1].metric("Eindeutig", len(scan_plan_v2844.unique_tickers))
-                _scan_count_cols_v287b[2].metric("Vollscan", len(scan_plan_v2844.selected_tickers))
             if scan_plan_v2844.duplicate_tickers:
                 st.caption(
                     f"{len(scan_plan_v2844.duplicate_tickers)} doppelte Watchlist-Einträge werden nur einmal analysiert."
@@ -19359,7 +19372,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             else:
                 lm_run1, lm_run2 = st.columns([1.0, 2.0])
             with lm_run1:
-                if st.button("Jetzt vollständig aktualisieren", use_container_width=True, key="run_live_watchlist_monitor_now"):
+                if st.button("Vollscan starten", use_container_width=True, key="run_live_watchlist_monitor_now"):
                     run_live_monitor = True
                     manual_live_run_v246 = True
                     st.session_state.live_watchlist_last_manual_run = datetime.now().isoformat()
@@ -19387,7 +19400,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             st.query_params["live_horizon"] = live_horizon_param
                         except Exception:
                             pass
-                    st.info(f"Live-Monitor aktiv: automatische Prüfung alle {refresh_label}, solange der Bereich Live-Screener geöffnet und die Browser-Sitzung verbunden ist.")
+                    st.caption(f"Auto-Scan: alle {refresh_label} · nur bei geöffneter Live-Screener-Sitzung")
 
                     # v28.3.2: Stabiler Heartbeat statt eines einzigen langen
                     # Fragment-Intervalls. Das Fragment wacht jede Minute auf und
@@ -19489,7 +19502,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     _native_live_screener_refresh_v2832()
                 else:
                     if live_monitor_enabled and mobile_mode_v2842 and not mobile_auto_scan_v2842:
-                        st.info("📱 Mobile Auto-Scan pausiert. Ein neuer Vollscan startet nur über 'Jetzt vollständig aktualisieren'.")
+                        st.info("📱 Mobile Auto-Scan pausiert. Ein neuer Vollscan startet nur über 'Vollscan starten'.")
                     st.session_state.v2832_native_refresh_schedule_key = ""
                     st.session_state.v2832_native_refresh_trigger_ts = ""
                     # Wenn der Monitor ausgeschaltet wird, URL-Refreshmarker nur im
@@ -19729,9 +19742,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             # v28.6e6: Die Pause-Meldung darf nicht behaupten, dass ein Stand
             # sichtbar ist, wenn kein kompatibler Snapshot gefunden wurde.
             if live_screener_active_v271 and _auto_failure_cooldown_v287b and not manual_live_run_v246:
-                st.warning("Auto-Vollscan nach einem fehlgeschlagenen Lauf 5 Minuten pausiert. 'Jetzt vollständig aktualisieren' bleibt jederzeit möglich.")
+                st.warning("Auto-Vollscan nach einem fehlgeschlagenen Lauf 5 Minuten pausiert. 'Vollscan starten' bleibt jederzeit möglich.")
             if live_screener_active_v271 and not live_should_scan_v246 and not cache_ok_v246:
-                st.warning("Kein gespeicherter Live-Stand verfügbar. Bitte einmal 'Jetzt vollständig aktualisieren' ausführen; danach bleibt der letzte Stand auch bei pausiertem Auto-Scan sichtbar.")
+                st.warning("Kein gespeicherter Live-Stand verfügbar. Bitte einmal 'Vollscan starten' ausführen; danach bleibt der letzte Stand auch bei pausiertem Auto-Scan sichtbar.")
             elif live_screener_active_v271 and not live_should_scan_v246 and cache_ok_v246:
                 if bool(st.session_state.get("v286e4_restored_from_visible", False)):
                     st.caption("🟢 Letzter sichtbarer Live-Stand wiederhergestellt. Auto-Scan bleibt pausiert.")
@@ -20342,7 +20355,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             _age_icon_v287b = "🟢" if _cache_age_sec_v287b < refresh_minutes_v246 * 60 else "🟡"
                             st.caption(
                                 f"{_age_icon_v287b} Letzter vollständig abgeschlossener Live-Stand (Berlin): {cache_ts_txt_v246} "
-                                f"· Alter {_cache_age_min_v287b} Min. · neuer Stand nur per Auto-Vollscan oder 'Jetzt vollständig aktualisieren'."
+                                f"· Alter {_cache_age_min_v287b} Min. · neuer Stand nur per Auto-Vollscan oder 'Vollscan starten'."
                             )
                         except Exception:
                             st.caption("Letzter vollständig abgeschlossener Live-Stand geladen.")
@@ -20379,15 +20392,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 _atomic_text_v287b = " · vollständiger Basisstand + selektive Aktualisierung"
                             else:
                                 _atomic_text_v287b = " · kein Mischstand" if _atomic_display_v287b else ""
-                            st.caption(
-                                f"✅ {_mode_display_v287b}: {_completed_display_v2844}/{_selected_display_v2844} vollständig verarbeitet "
-                                f"· {_success_display_v287b} Ergebnisse · {_error_display_v287b} aktuelle Fehler"
-                                f"{_duration_text_v287b}{_atomic_text_v287b}."
-                            )
+                            if st.session_state.get("v3021l_live_work_area") == "🧪 Diagnose":
+                                st.caption(
+                                    f"✅ {_mode_display_v287b}: {_completed_display_v2844}/{_selected_display_v2844} vollständig verarbeitet "
+                                    f"· {_success_display_v287b} Ergebnisse · {_error_display_v287b} aktuelle Fehler"
+                                    f"{_duration_text_v287b}{_atomic_text_v287b}."
+                                )
                         else:
                             st.warning(
                                 "Dieser Cache ist kein vollständig abgeschlossener Atomic-Scan und wird nicht als neuer Live-Stand verwendet. "
-                                "Bitte 'Jetzt vollständig aktualisieren' ausführen."
+                                "Bitte 'Vollscan starten' ausführen."
                             )
 
                     # v30.1a: Name-Hardening auch fuer bereits gespeicherte Atomic-Snapshots.
@@ -20536,20 +20550,80 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         )
 
                         if cockpit_area == "📡 Live-Screener":
+                            # v30.21l: sub-navigation is rendered above the scan controls.
+                            _live_view_v3021l = st.session_state.get(
+                                "v3021l_live_work_area", "📡 Live-Screener"
+                            )
+
+                            _summary_frame_v3021l = (
+                                _decision_queue_source_v309
+                                if isinstance(_decision_queue_source_v309, pd.DataFrame) and not _decision_queue_source_v309.empty
+                                else live_df
+                            )
+                            _green_v3021l = int((_summary_frame_v3021l.get("Ampel", pd.Series(dtype=str)).astype(str) == "🟢").sum())
+                            _yellow_v3021l = int((_summary_frame_v3021l.get("Ampel", pd.Series(dtype=str)).astype(str) == "🟡").sum())
+                            _red_v3021l = int((_summary_frame_v3021l.get("Ampel", pd.Series(dtype=str)).astype(str) == "🔴").sum())
+                            _changed_v3021l = 0
+                            if "Änderung" in _summary_frame_v3021l.columns:
+                                _changed_v3021l = int(_summary_frame_v3021l["Änderung"].astype(str).isin(["Neu", "Verbessert", "Verschlechtert", "Geändert"]).sum())
+                            _score_mean_v3021l = None
+                            if "Live-Score" in _summary_frame_v3021l.columns:
+                                try:
+                                    _score_vals_v3021l = _summary_frame_v3021l["Live-Score"].astype(str).str.extract(r"(\d+)")[0].dropna().astype(float)
+                                    if not _score_vals_v3021l.empty:
+                                        _score_mean_v3021l = float(_score_vals_v3021l.mean())
+                                except Exception:
+                                    _score_mean_v3021l = None
+                            _score_part_v3021l = "" if _score_mean_v3021l is None else f" · Score Ø {_score_mean_v3021l:.0f}/100"
+                            st.markdown(
+                                f"**{len(_summary_frame_v3021l)} Werte** · 🟢 {_green_v3021l} · 🟡 {_yellow_v3021l} · 🔴 {_red_v3021l} "
+                                f"· {_changed_v3021l} Statuswechsel{_score_part_v3021l}"
+                            )
+
+                            # Market-time and stale-data notices stay compact and visible in all four views.
                             try:
-                                _scan_chop_vals_v304b = pd.to_numeric(
-                                    live_df.get("Scan-Chop", pd.Series(dtype=object)).astype(str).str.extract(r"(\d+(?:\.\d+)?)")[0],
-                                    errors="coerce",
-                                ).dropna()
-                                if not _scan_chop_vals_v304b.empty:
-                                    _scan_chop_now_v304b = float(_scan_chop_vals_v304b.iloc[0])
-                                    _scan_chop_icon_v304b = "\U0001f7e0" if _scan_chop_now_v304b >= 70 else ("\U0001f7e1" if _scan_chop_now_v304b >= 55 else "\U0001f7e2")
-                                    st.caption(
-                                        f"{_scan_chop_icon_v304b} Scan-Chop {_scan_chop_now_v304b:.0f}/100 · "
-                                        "querschnittlicher Schwankungs-/Breitenkontext des aktuellen Atomic-Vollscans; keine Zusatzabfrage."
+                                _now_berlin_v3021l = _v305b_berlin_now()
+                                _now_ny_v3021l = _now_berlin_v3021l.astimezone(ZoneInfo("America/New_York"))
+                                _ny_minutes_v3021l = int(_now_ny_v3021l.hour) * 60 + int(_now_ny_v3021l.minute)
+                                if int(_now_ny_v3021l.weekday()) < 5 and _ny_minutes_v3021l < (9 * 60 + 30):
+                                    _open_ny_v3021l = _now_ny_v3021l.replace(hour=9, minute=30, second=0, microsecond=0)
+                                    _open_berlin_v3021l = _open_ny_v3021l.astimezone(ZoneInfo("Europe/Berlin"))
+                                    st.info(
+                                        f"🇺🇸 US-Kernhandel noch geschlossen · Eröffnung {_open_berlin_v3021l.strftime('%H:%M')} Berliner Zeit. "
+                                        "US-Signale können bis dahin noch auf der letzten abgeschlossenen Tageskerze beruhen."
                                     )
                             except Exception:
                                 pass
+
+                            try:
+                                if "__diag_setup_data_date" in _summary_frame_v3021l.columns and len(_summary_frame_v3021l) > 0:
+                                    _raw_dates_v3021l = _summary_frame_v3021l["__diag_setup_data_date"].astype(str).str.strip()
+                                    _parsed_dates_v3021l = pd.to_datetime(_raw_dates_v3021l, errors="coerce").dt.date
+                                    _valid_dates_v3021l = _parsed_dates_v3021l.dropna()
+                                    if not _valid_dates_v3021l.empty:
+                                        _today_v3021l = _v305b_berlin_now().date()
+                                        _old_v3021l = int((_valid_dates_v3021l < _today_v3021l).sum())
+                                        if _old_v3021l / max(1, len(_valid_dates_v3021l)) >= 0.50:
+                                            _date_counts_v3021l = _valid_dates_v3021l.value_counts()
+                                            _date_text_v3021l = " · ".join(
+                                                f"{d.strftime('%d.%m.%Y')}: {int(n)}" for d, n in _date_counts_v3021l.head(3).items()
+                                            )
+                                            st.warning(f"Datenstand: {_old_v3021l}/{len(_valid_dates_v3021l)} Werte noch älter · {_date_text_v3021l}")
+                            except Exception:
+                                pass
+
+                            if _live_view_v3021l in {"📡 Live-Screener", "🧪 Diagnose"}:
+                                try:
+                                    _scan_chop_vals_v304b = pd.to_numeric(
+                                        live_df.get("Scan-Chop", pd.Series(dtype=object)).astype(str).str.extract(r"(\d+(?:\.\d+)?)")[0],
+                                        errors="coerce",
+                                    ).dropna()
+                                    if not _scan_chop_vals_v304b.empty:
+                                        _scan_chop_now_v304b = float(_scan_chop_vals_v304b.iloc[0])
+                                        _scan_chop_icon_v304b = "\U0001f7e0" if _scan_chop_now_v304b >= 70 else ("\U0001f7e1" if _scan_chop_now_v304b >= 55 else "\U0001f7e2")
+                                        st.caption(f"{_scan_chop_icon_v304b} Scan-Chop {_scan_chop_now_v304b:.0f}/100")
+                                except Exception:
+                                    pass
                             # v24.3: Lesbare operative Haupttabelle.
                             # Ticker/Name stehen direkt vorne; lange Diagnose- und Handlungstexte
                             # bleiben im Detail-Expander. Dadurch muss man nicht horizontal
@@ -20830,7 +20904,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     )
                                 return queue
 
-                            _queue_snapshot_v3010 = _v309_render_action_queue(_decision_queue_source_v309)
+                            # v30.21l: Queue is still calculated/captured, but no longer rendered
+                            # as a second large table. Priority and confidence are merged into
+                            # the main screener table below.
+                            _queue_snapshot_v3010 = _v309_build_action_queue(_decision_queue_source_v309)
+                            if _live_view_v3021l == "📡 Live-Screener" and isinstance(_queue_snapshot_v3010, pd.DataFrame) and not _queue_snapshot_v3010.empty:
+                                _q_counts_v3021l = _queue_snapshot_v3010["Priorität"].value_counts().to_dict()
+                                st.caption(
+                                    f"🎯 {int(_q_counts_v3021l.get('🎯 Jetzt prüfen', 0))} jetzt prüfen · "
+                                    f"👀 {int(_q_counts_v3021l.get('👀 Beobachten', 0))} beobachten · "
+                                    f"⛔ {int(_q_counts_v3021l.get('⛔ Blockiert', 0))} blockiert"
+                                )
                             try:
                                 _queue_meta_v3010 = dict(scan_meta_v2844 or {})
                                 _queue_atomic_v3010 = bool(
@@ -20855,1110 +20939,1124 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # Queue validation is strictly observational and must never
                                 # interrupt the productive Live-Screener.
                                 pass
-                            # v30.20a: advisory package selection, never automatic orders.
-                            try:
-                                _render_trading_package_v3020(
-                                    watchlist=selected_watchlist_name,
-                                    frame=_decision_queue_source_v309,
-                                    queue=_queue_snapshot_v3010,
-                                    scan_meta=dict(scan_meta_v2844 or {}),
-                                    storage=_storage_v280,
-                                    fx_resolver=_v303i_resolve_auto_fx,
-                                    capture_context=_v290_capture_entry_context,
-                                    now_provider=get_current_berlin_time,
-                                )
-                            except Exception:
-                                st.warning("Tradingpaket-Planer nicht verfuegbar. Keine Positionen oder Orders automatisch gebucht.")
-
-                            _v3010_render_action_queue_learning(selected_watchlist_name)
-
-                            for _col in live_display_df.columns:
-                                live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)
-                            if "Trader-Ziel" in live_display_df.columns:
-                                live_display_df["Trader-Ziel"] = live_display_df["Trader-Ziel"].apply(_v304a_trader_target_badge)
-                            if "Harvest-Score" in live_display_df.columns:
-                                live_display_df["Harvest-Score"] = live_display_df["Harvest-Score"].apply(_v304a_harvest_badge)
-                            for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24, "Warum geändert?": 96}.items():
-                                if _col in live_display_df.columns:
-                                    live_display_df[_col] = live_display_df[_col].apply(lambda x, m=_max: _v243_clip_cell(x, m))
-
-                            if mobile_mode_v2842:
-                                st.markdown(
-                                    """
-                                    <style>
-                                    div[data-testid="stVerticalBlock"] .v2842-mobile-card {
-                                        border: 1px solid rgba(128,128,128,.28);
-                                        border-radius: 14px;
-                                        padding: 13px 14px;
-                                        margin: 0 0 10px 0;
-                                    }
-                                    .v2842-mobile-head {display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
-                                    .v2842-mobile-title {font-size:1.05rem;font-weight:750;line-height:1.25;}
-                                    .v2842-mobile-name {opacity:.72;font-size:.86rem;margin-top:2px;}
-                                    .v2842-mobile-score {font-weight:750;white-space:nowrap;}
-                                    .v304a-trader-strip {display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;margin-top:10px;padding:9px 10px;border:1px solid rgba(96,165,250,.28);border-radius:11px;background:rgba(30,64,175,.08);}
-                                    .v304a-trader-strip.hot {border-color:rgba(251,146,60,.48);background:rgba(154,52,18,.10);}
-                                    .v304a-trader-strip.warm {border-color:rgba(250,204,21,.42);background:rgba(133,77,14,.09);}
-                                    .v304a-trader-strip .v304a-trader-value {font-weight:800;line-height:1.25;}
-                                    .v304a-trader-wide {grid-column:1 / -1;}
-                                    .v2842-mobile-grid {display:grid;grid-template-columns:1fr 1fr;gap:7px 14px;margin-top:11px;font-size:.9rem;}
-                                    .v2842-mobile-label {opacity:.68;font-size:.76rem;display:block;}
-                                    .v2842-mobile-status {margin-top:10px;font-weight:650;line-height:1.35;}
-                                    .v2843-mobile-reason {margin-top:9px;padding-top:8px;border-top:1px solid rgba(128,128,128,.20);font-size:.84rem;line-height:1.4;opacity:.88;}
-                                    .v2843-mobile-reason-label {font-size:.74rem;opacity:.68;display:block;margin-bottom:2px;}
-                                    @media (max-width: 520px) {
-                                        .v2842-mobile-grid {grid-template-columns:1fr 1fr;gap:8px 10px;}
-                                    }
-                                    </style>
-                                    """,
-                                    unsafe_allow_html=True,
-                                )
-                                for _, _mobile_row_v2842 in live_display_df.iterrows():
-                                    _ampel_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ampel")))
-                                    _ticker_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ticker")))
-                                    _name_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Name"), 40))
-                                    _score_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Live-Score")))
-                                    _ctx_adj_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Anpassung")))
-                                    _engine_score_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Score")))
-                                    _guarded_engine_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Guarded Engine-Score")))
-                                    _shadow_ampel_v286 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Shadow-Ampel")))
-                                    _shadow_delta_v286 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Shadow-Abweichung")))
-                                    _engine_rec_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Empfehlung")))
-                                    _ctx_conf_v285a2 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Verlässlichkeit")))
-                                    _price_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kurs")))
-                                    _trader_target_text_v304a = _v243_clean_cell(_mobile_row_v2842.get("Trader-Ziel"))
-                                    if _trader_target_text_v304a.startswith("⚡ "):
-                                        _trader_target_text_v304a = _trader_target_text_v304a[2:].strip()
-                                    _trader_target_v304 = html.escape(_trader_target_text_v304a)
-                                    _harvest_v304 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Harvest-Score")))
-                                    _trader_mode_v304 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trader-Modus"), 64))
-                                    _chop_v304b = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Chop-Risk")))
-                                    _harvest_num_v304a = _v304a_harvest_num(_mobile_row_v2842.get("Harvest-Score"))
-                                    _trader_strip_class_v304a = "hot" if (_harvest_num_v304a is not None and _harvest_num_v304a >= 75) else ("warm" if (_harvest_num_v304a is not None and _harvest_num_v304a >= 60) else "")
-                                    _vol_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilität")))
-                                    _dq_v2845d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Datenqualität")))
-                                    _rs_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Relative Stärke")))
-                                    _rsdyn_v285b = html.escape(_v243_clean_cell(_mobile_row_v2842.get("RS-Dynamik")))
-                                    _bench_v286e = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Benchmark")))
-                                    _volreg_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilitätsregime")))
-                                    _market_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Marktregime")))
-                                    _why_score_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum dieser Score?"))
-                                    # v28.6e6: Robuster Explainability-Fallback fuer alte/teilweise
-                                    # Snapshots. Wenn das zusammengesetzte Feld fehlt, wird die
-                                    # Erklaerung aus den ohnehin vorhandenen Treibern/Bremsen gebaut.
-                                    if _why_score_full_v2847 in {"", "-"}:
-                                        _why_driver_v286e3 = _v243_clean_cell(_mobile_row_v2842.get("Score-Treiber"))
-                                        _why_brake_v286e3 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
-                                        _why_parts_v286e3 = []
-                                        if _why_driver_v286e3 not in {"", "-"}:
-                                            _why_parts_v286e3.append("Treiber: " + _why_driver_v286e3)
-                                        if _why_brake_v286e3 not in {"", "-"}:
-                                            _why_parts_v286e3.append("Bremsen: " + _why_brake_v286e3)
-                                        _why_score_full_v2847 = ". ".join(_why_parts_v286e3)
-                                    _takeaway_v305c, _next_action_v305c, _takeaway_tone_v305c = _v305c_live_takeaway(_mobile_row_v2842)
-                                    _why_score_card_v286e3 = (
-                                        '<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Was sehe ich?</span>'
-                                        + html.escape(_v243_clip_cell(_takeaway_v305c, 210)) + '</div>'
+                            # v30.20a/v30.21l: advisory package selection only in its own view.
+                            if _live_view_v3021l == "📦 Tradingpaket":
+                                try:
+                                    _render_trading_package_v3020(
+                                        watchlist=selected_watchlist_name,
+                                        frame=_decision_queue_source_v309,
+                                        queue=_queue_snapshot_v3010,
+                                        scan_meta=dict(scan_meta_v2844 or {}),
+                                        storage=_storage_v280,
+                                        fx_resolver=_v303i_resolve_auto_fx,
+                                        capture_context=_v290_capture_entry_context,
+                                        now_provider=get_current_berlin_time,
                                     )
-                                    _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
-                                    _status_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Status"), 52))
-                                    _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV")))
-                                    _distance_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Entry-Abstand")))
-                                    _change_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Änderung")))
-                                    _why_changed_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum geändert?"))
-                                    _change_full_v305c = _v243_clean_cell(_mobile_row_v2842.get("Änderung"))
-                                    _why_changed_v2843 = html.escape(_v243_clip_cell(_why_changed_full_v2847, 135))
-                                    _has_real_change_v305c = _change_full_v305c not in {"", "-", "Unverändert", "Unveraendert"}
-                                    _why_block_v2843 = "" if (not _has_real_change_v305c or _why_changed_v2843 in {"", "-"}) else f'<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Was hat sich geändert?</span>{_why_changed_v2843}</div>'
+                                except Exception:
+                                    st.warning("Tradingpaket-Planer nicht verfügbar. Keine Positionen oder Orders automatisch gebucht.")
+
+                            # v30.21l: integrate Decision Queue into the screener instead of
+                            # rendering a second large queue table. This is display-only.
+                            if isinstance(_queue_snapshot_v3010, pd.DataFrame) and not _queue_snapshot_v3010.empty and "Ticker" in live_display_df.columns:
+                                try:
+                                    _queue_norm_v3021l = _queue_snapshot_v3010.copy()
+                                    _queue_norm_v3021l["Ticker"] = _queue_norm_v3021l["Ticker"].astype(str).str.strip().str.upper()
+                                    _queue_by_ticker_v3021l = _queue_norm_v3021l.drop_duplicates("Ticker").set_index("Ticker")
+                                    _ticker_key_series_v3021l = live_display_df["Ticker"].astype(str).str.strip().str.upper()
+                                    live_display_df["Priorität"] = _ticker_key_series_v3021l.map(_queue_by_ticker_v3021l["Priorität"]).fillna("👀 Beobachten")
+                                    live_display_df["Decision-Confidence"] = _ticker_key_series_v3021l.map(_queue_by_ticker_v3021l["Decision-Confidence"]).fillna("-")
+                                except Exception:
+                                    pass
+
+                            if _live_view_v3021l == "📡 Live-Screener":
+                                for _col in live_display_df.columns:
+                                    live_display_df[_col] = live_display_df[_col].apply(_v243_clean_cell)
+                                if "Trader-Ziel" in live_display_df.columns:
+                                    live_display_df["Trader-Ziel"] = live_display_df["Trader-Ziel"].apply(_v304a_trader_target_badge)
+                                if "Harvest-Score" in live_display_df.columns:
+                                    live_display_df["Harvest-Score"] = live_display_df["Harvest-Score"].apply(_v304a_harvest_badge)
+                                for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24, "Warum geändert?": 96}.items():
+                                    if _col in live_display_df.columns:
+                                        live_display_df[_col] = live_display_df[_col].apply(lambda x, m=_max: _v243_clip_cell(x, m))
+
+                                if mobile_mode_v2842:
                                     st.markdown(
-                                        f"""
-                                        <div class="v2842-mobile-card">
-                                          <div class="v2842-mobile-head">
-                                            <div>
-                                              <div class="v2842-mobile-title">{_ampel_v2842} {_ticker_v2842}</div>
-                                              <div class="v2842-mobile-name">{_name_v2842}</div>
-                                            </div>
-                                            <div class="v2842-mobile-score">{_score_v2842}</div>
-                                          </div>
-                                          <div class="v304a-trader-strip {_trader_strip_class_v304a}">
-                                            <div><span class="v2842-mobile-label">⚡ Trader-Ziel</span><span class="v304a-trader-value">{_trader_target_v304}</span></div>
-                                            <div><span class="v2842-mobile-label">Harvest-Ampel</span><span class="v304a-trader-value">{_harvest_v304}</span></div>
-                                            <div class="v304a-trader-wide"><span class="v2842-mobile-label">Trader-Modus · Chop</span><span class="v304a-trader-value">{_trader_mode_v304} · {_chop_v304b}</span></div>
-                                          </div>
-                                          <div class="v2842-mobile-grid">
-                                            <div><span class="v2842-mobile-label">Kurs</span>{_price_v2842}</div>
-                                            <div><span class="v2842-mobile-label">Volatilität</span>{_vol_v2842}</div>
-                                            <div><span class="v2842-mobile-label">Datenqualität</span>{_dq_v2845d}</div>
-                                            <div><span class="v2842-mobile-label">Relative Stärke</span>{_rs_v2847}</div>
-                                            <div><span class="v2842-mobile-label">RS-Dynamik</span>{_rsdyn_v285b}</div>
-                                            <div><span class="v2842-mobile-label">Benchmark</span>{_bench_v286e}</div>
-                                            <div><span class="v2842-mobile-label">Volatilitätsregime</span>{_volreg_v2847}</div>
-                                            <div><span class="v2842-mobile-label">Marktregime</span>{_market_v2847}</div>
-                                            <div><span class="v2842-mobile-label">Engine (Test)</span>{_score_v2842} → {_engine_score_v285a} ({_ctx_adj_v285a})</div>
-                                            <div><span class="v2842-mobile-label">Guarded Engine</span>{_guarded_engine_v285d} · {_engine_rec_v285d}</div>
-                                            <div><span class="v2842-mobile-label">Shadow</span>{_ampel_v2842} → {_shadow_ampel_v286} · {_shadow_delta_v286}</div>
-                                            <div><span class="v2842-mobile-label">Kontext-Confidence</span>{_ctx_conf_v285a2}</div>
-                                            <div><span class="v2842-mobile-label">Trade-State</span>{_state_v2842}</div>
-                                            <div><span class="v2842-mobile-label">CRV</span>{_crv_v2842}</div>
-                                            <div><span class="v2842-mobile-label">Entry-Abstand</span>{_distance_v2842}</div>
-                                            <div><span class="v2842-mobile-label">Änderung</span>{_change_v2842}</div>
-                                          </div>
-                                          <div class="v2842-mobile-status">{_status_v2842}</div>
-                                          {_why_score_card_v286e3}
-                                          {_why_block_v2843}
-                                        </div>
+                                        """
+                                        <style>
+                                        div[data-testid="stVerticalBlock"] .v2842-mobile-card {
+                                            border: 1px solid rgba(128,128,128,.28);
+                                            border-radius: 14px;
+                                            padding: 13px 14px;
+                                            margin: 0 0 10px 0;
+                                        }
+                                        .v2842-mobile-head {display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
+                                        .v2842-mobile-title {font-size:1.05rem;font-weight:750;line-height:1.25;}
+                                        .v2842-mobile-name {opacity:.72;font-size:.86rem;margin-top:2px;}
+                                        .v2842-mobile-score {font-weight:750;white-space:nowrap;}
+                                        .v304a-trader-strip {display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;margin-top:10px;padding:9px 10px;border:1px solid rgba(96,165,250,.28);border-radius:11px;background:rgba(30,64,175,.08);}
+                                        .v304a-trader-strip.hot {border-color:rgba(251,146,60,.48);background:rgba(154,52,18,.10);}
+                                        .v304a-trader-strip.warm {border-color:rgba(250,204,21,.42);background:rgba(133,77,14,.09);}
+                                        .v304a-trader-strip .v304a-trader-value {font-weight:800;line-height:1.25;}
+                                        .v304a-trader-wide {grid-column:1 / -1;}
+                                        .v2842-mobile-grid {display:grid;grid-template-columns:1fr 1fr;gap:7px 14px;margin-top:11px;font-size:.9rem;}
+                                        .v2842-mobile-label {opacity:.68;font-size:.76rem;display:block;}
+                                        .v2842-mobile-status {margin-top:10px;font-weight:650;line-height:1.35;}
+                                        .v2843-mobile-reason {margin-top:9px;padding-top:8px;border-top:1px solid rgba(128,128,128,.20);font-size:.84rem;line-height:1.4;opacity:.88;}
+                                        .v2843-mobile-reason-label {font-size:.74rem;opacity:.68;display:block;margin-bottom:2px;}
+                                        @media (max-width: 520px) {
+                                            .v2842-mobile-grid {grid-template-columns:1fr 1fr;gap:8px 10px;}
+                                        }
+                                        </style>
                                         """,
                                         unsafe_allow_html=True,
                                     )
-                                    _ticker_key_v2847 = re.sub(r"[^A-Za-z0-9_-]+", "_", _v243_clean_cell(_mobile_row_v2842.get("Ticker")))
-                                    if _why_score_full_v2847 not in {"", "-"}:
-                                        with st.expander(f"Details · {_v243_clean_cell(_mobile_row_v2842.get('Ticker'))} · Entscheidungs-Zusammenfassung", expanded=False):
-                                            st.markdown("**Was sehe ich?**")
-                                            if _takeaway_tone_v305c == "warning":
-                                                st.warning(_takeaway_v305c)
-                                            elif _takeaway_tone_v305c == "success":
-                                                st.success(_takeaway_v305c)
-                                            else:
-                                                st.info(_takeaway_v305c)
-                                            st.markdown(f"**Nächste Handlung:** {_next_action_v305c}")
-                                            _live_conf_v308, _live_evidence_v308, _live_limits_v308 = _v308_live_decision_confidence(_mobile_row_v2842)
-                                            _v308_render_confidence_strip(
-                                                confidence=_live_conf_v308,
-                                                evidence=_live_evidence_v308,
-                                                freshness=_v308a_row_freshness(_mobile_row_v2842),
-                                                limitations=_live_limits_v308,
-                                            )
-
-                                            if _has_real_change_v305c and _why_changed_full_v2847 not in {"", "-"}:
-                                                st.markdown("**Was hat sich geändert?**")
-                                                st.write(_why_changed_full_v2847)
-
-                                            _driver_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Treiber"))
-                                            _brake_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
-                                            st.markdown("**Warum?**")
-                                            if _driver_full_v2847 not in {"", "-"}:
-                                                st.write(f"Treiber: {_driver_full_v2847}")
-                                            if _brake_full_v2847 not in {"", "-"}:
-                                                st.write(f"Bremse: {_brake_full_v2847}")
-
-                                            _gates_full_v286c = _v243_clean_cell(_mobile_row_v2842.get("Aktive Einstiegsgates"))
-                                            _gate_details_full_v286c = _v243_clean_cell(_mobile_row_v2842.get("Gate-Details"))
-                                            if _gates_full_v286c not in {"", "-"} and not ("keine" in _gates_full_v286c.lower() and "gate" in _gates_full_v286c.lower()):
-                                                st.markdown(f"**Aktives Einstiegsgate:** {_gates_full_v286c}")
-                                                if _gate_details_full_v286c not in {"", "-"}:
-                                                    for _gate_detail_item_v286c in str(_gate_details_full_v286c).split(" | "):
-                                                        if str(_gate_detail_item_v286c).strip():
-                                                            st.write("• " + str(_gate_detail_item_v286c).strip())
-
-                                            if st.checkbox("Berechnungsdetails anzeigen", key=f"v305c_context_{_ticker_key_v2847}"):
-                                                _engine_full_v285a = _v243_clean_cell(_mobile_row_v2842.get("Engine-Erklärung"))
-                                                if _engine_full_v285a not in {"", "-"}:
-                                                    st.markdown("**Engine 2.0 – Beobachtungsmodus**")
-                                                    st.write(_engine_full_v285a)
-                                                _rs_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("RS-Details"))
-                                                _rsdyn_detail_v285b = _v243_clean_cell(_mobile_row_v2842.get("RS-Dynamik Details"))
-                                                _vol_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Volatilitäts-Details"))
-                                                _market_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Marktregime-Details"))
-                                                st.markdown("**Technische Berechnungsbasis**")
-                                                if _rs_detail_v2848 not in {"", "-"}: st.write(_rs_detail_v2848)
-                                                if _rsdyn_detail_v285b not in {"", "-"}: st.write(_rsdyn_detail_v285b)
-                                                if _vol_detail_v2848 not in {"", "-"}: st.write(_vol_detail_v2848)
-                                                if _market_detail_v2848 not in {"", "-"}: st.write(_market_detail_v2848)
-
-                                _mobile_detail_tickers_v2842 = [
-                                    str(value).strip()
-                                    for value in live_df.get("Ticker", pd.Series(dtype=str)).tolist()
-                                    if str(value).strip()
-                                ]
-                                if _mobile_detail_tickers_v2842:
-                                    with st.expander("Ticker-Details", expanded=False):
-                                        _mobile_detail_ticker_v2842 = st.selectbox(
-                                            "Ticker auswählen",
-                                            options=_mobile_detail_tickers_v2842,
-                                            key="v2842_mobile_detail_ticker",
+                                    for _, _mobile_row_v2842 in live_display_df.iterrows():
+                                        _ampel_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ampel")))
+                                        _ticker_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ticker")))
+                                        _name_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Name"), 40))
+                                        _score_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Live-Score")))
+                                        _ctx_adj_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Anpassung")))
+                                        _engine_score_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Score")))
+                                        _guarded_engine_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Guarded Engine-Score")))
+                                        _shadow_ampel_v286 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Shadow-Ampel")))
+                                        _shadow_delta_v286 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Shadow-Abweichung")))
+                                        _engine_rec_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Empfehlung")))
+                                        _ctx_conf_v285a2 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Verlässlichkeit")))
+                                        _price_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kurs")))
+                                        _trader_target_text_v304a = _v243_clean_cell(_mobile_row_v2842.get("Trader-Ziel"))
+                                        if _trader_target_text_v304a.startswith("⚡ "):
+                                            _trader_target_text_v304a = _trader_target_text_v304a[2:].strip()
+                                        _trader_target_v304 = html.escape(_trader_target_text_v304a)
+                                        _harvest_v304 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Harvest-Score")))
+                                        _trader_mode_v304 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trader-Modus"), 64))
+                                        _chop_v304b = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Chop-Risk")))
+                                        _harvest_num_v304a = _v304a_harvest_num(_mobile_row_v2842.get("Harvest-Score"))
+                                        _trader_strip_class_v304a = "hot" if (_harvest_num_v304a is not None and _harvest_num_v304a >= 75) else ("warm" if (_harvest_num_v304a is not None and _harvest_num_v304a >= 60) else "")
+                                        _vol_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilität")))
+                                        _dq_v2845d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Datenqualität")))
+                                        _rs_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Relative Stärke")))
+                                        _rsdyn_v285b = html.escape(_v243_clean_cell(_mobile_row_v2842.get("RS-Dynamik")))
+                                        _bench_v286e = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Benchmark")))
+                                        _volreg_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Volatilitätsregime")))
+                                        _market_v2847 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Marktregime")))
+                                        _why_score_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum dieser Score?"))
+                                        # v28.6e6: Robuster Explainability-Fallback fuer alte/teilweise
+                                        # Snapshots. Wenn das zusammengesetzte Feld fehlt, wird die
+                                        # Erklaerung aus den ohnehin vorhandenen Treibern/Bremsen gebaut.
+                                        if _why_score_full_v2847 in {"", "-"}:
+                                            _why_driver_v286e3 = _v243_clean_cell(_mobile_row_v2842.get("Score-Treiber"))
+                                            _why_brake_v286e3 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
+                                            _why_parts_v286e3 = []
+                                            if _why_driver_v286e3 not in {"", "-"}:
+                                                _why_parts_v286e3.append("Treiber: " + _why_driver_v286e3)
+                                            if _why_brake_v286e3 not in {"", "-"}:
+                                                _why_parts_v286e3.append("Bremsen: " + _why_brake_v286e3)
+                                            _why_score_full_v2847 = ". ".join(_why_parts_v286e3)
+                                        _takeaway_v305c, _next_action_v305c, _takeaway_tone_v305c = _v305c_live_takeaway(_mobile_row_v2842)
+                                        _why_score_card_v286e3 = (
+                                            '<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Was sehe ich?</span>'
+                                            + html.escape(_v243_clip_cell(_takeaway_v305c, 210)) + '</div>'
                                         )
-                                        _mobile_detail_match_v2842 = live_df[
-                                            live_df["Ticker"].astype(str) == str(_mobile_detail_ticker_v2842)
-                                        ]
-                                        if not _mobile_detail_match_v2842.empty:
-                                            _mobile_detail_row_v2842 = _mobile_detail_match_v2842.iloc[0].to_dict()
-                                            _detail_name_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Name"))
-                                            _detail_ticker_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Ticker"))
-                                            _detail_price_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Kurs"))
-                                            _detail_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Live-Score"))
-                                            _detail_ampel_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Ampel"))
-                                            _detail_dq_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Datenqualität"))
-                                            st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
-                                            st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
-                                            st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · RS-Dynamik: {_v243_clean_cell(_mobile_detail_row_v2842.get('RS-Dynamik'))} · Benchmark: {_v243_clean_cell(_mobile_detail_row_v2842.get('Benchmark'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
-                                            st.info(
-                                                f"⚡ Trader-Ziel {_v243_clean_cell(_mobile_detail_row_v2842.get('Trader-Ziel'))} · "
-                                                f"Harvest {_v304a_harvest_badge(_mobile_detail_row_v2842.get('Harvest-Score'))} · "
-                                                f"Chop {_v243_clean_cell(_mobile_detail_row_v2842.get('Chop-Risk'))} · "
-                                                f"{_v243_clean_cell(_mobile_detail_row_v2842.get('Trader-Modus'))}"
-                                            )
-                                            st.caption(f"Engine 2.0 (Shadow): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · Live {_detail_ampel_v2846} → Shadow {_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Ampel'))} ({_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Abweichung'))}) · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
-                                            _detail_gates_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Aktive Einstiegsgates"))
-                                            _detail_gate_text_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Gate-Details"))
-                                            _detail_gates_low_v308a = str(_detail_gates_v286c or "").lower()
-                                            _detail_has_gate_v308a = (
-                                                _detail_gates_v286c not in {"", "-"}
-                                                and not ("keine" in _detail_gates_low_v308a and "gate" in _detail_gates_low_v308a)
-                                            )
-                                            if _detail_has_gate_v308a:
-                                                st.warning(f"Aktive Einstiegsgates: {_detail_gates_v286c}")
-                                                with st.expander("Einstiegsgates im Detail", expanded=True):
-                                                    for _gate_item_v286c in str(_detail_gate_text_v286c).split(" | "):
-                                                        if str(_gate_item_v286c).strip():
-                                                            st.write("• " + str(_gate_item_v286c).strip())
-                                            with st.expander("Trading Context · Berechnung anzeigen", expanded=False):
-                                                st.markdown("**Relative Stärke**")
-                                                st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Details")))
-                                                st.markdown("**RS-Dynamik 21T/63T**")
-                                                st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Dynamik Details")))
-                                                st.markdown("**Benchmark-Diagnose**")
-                                                st.write(f"Primärbenchmark: {_v243_clean_cell(_mobile_detail_row_v2842.get('Primärbenchmark'))}")
-                                                st.write(f"Status: {_v243_clean_cell(_mobile_detail_row_v2842.get('Primärbenchmark-Status'))}")
-                                                st.write(f"Fallback-Grund: {_v243_clean_cell(_mobile_detail_row_v2842.get('Benchmark-Fallback-Grund'))}")
-                                                st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Benchmark-Diagnose")))
-                                                st.markdown("**Volatilität**")
-                                                st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Volatilitäts-Details")))
-                                                st.markdown("**Marktregime**")
-                                                st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Marktregime-Details")))
-                                                st.caption("Die Context-/Shadow-Werte laufen parallel; die produktive Live-Ampel bleibt unverändert.")
-                                            _detail_takeaway_v305c, _detail_action_v305c, _detail_tone_v305c = _v305c_live_takeaway(_mobile_detail_row_v2842)
-                                            if _detail_tone_v305c == "warning":
-                                                st.warning(f"Was sehe ich: {_detail_takeaway_v305c}")
-                                            elif _detail_tone_v305c == "success":
-                                                st.success(f"Was sehe ich: {_detail_takeaway_v305c}")
-                                            else:
-                                                st.info(f"Was sehe ich: {_detail_takeaway_v305c}")
-                                            st.caption(f"Nächste Handlung: {_detail_action_v305c}")
-                                            _detail_conf_v308, _detail_evidence_v308, _detail_limits_v308 = _v308_live_decision_confidence(_mobile_detail_row_v2842)
-                                            _v308_render_confidence_strip(
-                                                confidence=_detail_conf_v308,
-                                                evidence=_detail_evidence_v308,
-                                                freshness=_v308a_row_freshness(_mobile_detail_row_v2842),
-                                                limitations=_detail_limits_v308,
-                                            )
-                                            _mobile_detail_df_v2842 = pd.DataFrame(
-                                                [
-                                                    {
-                                                        "Feld": str(key),
-                                                        "Wert": (
-                                                            _v305b_format_berlin_timestamp(value)
-                                                            if str(key) == "Scan-Zeit" else _v243_clean_cell(value)
-                                                        ),
-                                                    }
-                                                    for key, value in _mobile_detail_row_v2842.items()
-                                                    if not str(key).startswith("__")
-                                                ]
-                                            )
-                                            st.dataframe(
-                                                _mobile_detail_df_v2842,
-                                                hide_index=True,
-                                                use_container_width=True,
-                                            )
-                            else:
-                                # v30.4a: Header nur im Desktop-Display umbenennen. Keine
-                                # Abhaengigkeit von Streamlit column_config notwendig.
-                                _desktop_live_display_v304a = live_display_df.rename(columns={
-                                    "Trader-Ziel": "⚡ Trader-Ziel",
-                                    "Harvest-Score": "Harvest-Ampel",
-                                    "Chop-Risk": "Chop / Schwankung",
-                                })
-                                # v30.21e: Checkbox-driven selective re-scan directly
-                                # in the existing desktop screener table. The checkbox is
-                                # UI state only and never enters the stored live snapshot.
-                                _partial_widget_suffix_v3021e = hashlib.sha1(
-                                    f"{selected_watchlist_name}|{monitor_style}|{live_monitor_horizon}".encode("utf-8")
-                                ).hexdigest()[:10]
-                                _selection_state_key_v3021e = f"v3021e_selected_tickers_{_partial_widget_suffix_v3021e}"
-                                _selection_rev_key_v3021e = f"v3021e_selection_rev_{_partial_widget_suffix_v3021e}"
-                                _selected_set_v3021e = {
-                                    str(_t or "").strip().upper()
-                                    for _t in (st.session_state.get(_selection_state_key_v3021e) or [])
-                                    if str(_t or "").strip()
-                                }
-                                _visible_tickers_v3021e = {
-                                    str(_t or "").strip().upper()
-                                    for _t in _desktop_live_display_v304a.get("Ticker", pd.Series(dtype=str)).tolist()
-                                    if str(_t or "").strip()
-                                }
-                                _selected_set_v3021e &= _visible_tickers_v3021e
-
-                                _sel_c1_v3021e, _sel_c2_v3021e, _sel_c3_v3021e = st.columns([1.2, 1.0, 2.1])
-                                if _sel_c1_v3021e.button(
-                                    "🟢 Grüne auswählen",
-                                    key=f"v3021e_select_green_{_partial_widget_suffix_v3021e}",
-                                    use_container_width=True,
-                                ):
-                                    _selected_set_v3021e = set(_live_scan_batches.green_tickers(live_display_df))
-                                    st.session_state[_selection_state_key_v3021e] = sorted(_selected_set_v3021e)
-                                    st.session_state[_selection_rev_key_v3021e] = int(st.session_state.get(_selection_rev_key_v3021e, 0)) + 1
-                                    st.rerun()
-                                if _sel_c2_v3021e.button(
-                                    "Auswahl löschen",
-                                    key=f"v3021e_clear_selection_{_partial_widget_suffix_v3021e}",
-                                    use_container_width=True,
-                                ):
-                                    st.session_state[_selection_state_key_v3021e] = []
-                                    st.session_state[_selection_rev_key_v3021e] = int(st.session_state.get(_selection_rev_key_v3021e, 0)) + 1
-                                    st.rerun()
-
-                                _desktop_rescan_editor_v3021e = _desktop_live_display_v304a.copy()
-                                _desktop_rescan_editor_v3021e.insert(
-                                    0,
-                                    "🔄",
-                                    [
-                                        str(_t or "").strip().upper() in _selected_set_v3021e
-                                        for _t in _desktop_rescan_editor_v3021e.get("Ticker", pd.Series(dtype=str)).tolist()
-                                    ],
-                                )
-                                _selection_revision_v3021e = int(st.session_state.get(_selection_rev_key_v3021e, 0))
-                                _edited_live_display_v3021e = st.data_editor(
-                                    _desktop_rescan_editor_v3021e,
-                                    hide_index=True,
-                                    use_container_width=True,
-                                    height=min(520, 42 * len(_desktop_rescan_editor_v3021e) + 55),
-                                    disabled=[c for c in _desktop_rescan_editor_v3021e.columns if c != "🔄"],
-                                    column_config={
-                                        "🔄": st.column_config.CheckboxColumn(
-                                            "🔄",
-                                            help="Anhaken = diesen Wert beim nächsten selektiven Re-Scan frisch vom Provider abfragen.",
-                                            default=False,
-                                            width="small",
+                                        _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
+                                        _status_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Status"), 52))
+                                        _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV")))
+                                        _distance_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Entry-Abstand")))
+                                        _change_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Änderung")))
+                                        _why_changed_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum geändert?"))
+                                        _change_full_v305c = _v243_clean_cell(_mobile_row_v2842.get("Änderung"))
+                                        _why_changed_v2843 = html.escape(_v243_clip_cell(_why_changed_full_v2847, 135))
+                                        _has_real_change_v305c = _change_full_v305c not in {"", "-", "Unverändert", "Unveraendert"}
+                                        _why_block_v2843 = "" if (not _has_real_change_v305c or _why_changed_v2843 in {"", "-"}) else f'<div class="v2843-mobile-reason"><span class="v2843-mobile-reason-label">Was hat sich geändert?</span>{_why_changed_v2843}</div>'
+                                        st.markdown(
+                                            f"""
+                                            <div class="v2842-mobile-card">
+                                              <div class="v2842-mobile-head">
+                                                <div>
+                                                  <div class="v2842-mobile-title">{_ampel_v2842} {_ticker_v2842}</div>
+                                                  <div class="v2842-mobile-name">{_name_v2842}</div>
+                                                </div>
+                                                <div class="v2842-mobile-score">{_score_v2842}</div>
+                                              </div>
+                                              <div class="v304a-trader-strip {_trader_strip_class_v304a}">
+                                                <div><span class="v2842-mobile-label">⚡ Trader-Ziel</span><span class="v304a-trader-value">{_trader_target_v304}</span></div>
+                                                <div><span class="v2842-mobile-label">Harvest-Ampel</span><span class="v304a-trader-value">{_harvest_v304}</span></div>
+                                                <div class="v304a-trader-wide"><span class="v2842-mobile-label">Trader-Modus · Chop</span><span class="v304a-trader-value">{_trader_mode_v304} · {_chop_v304b}</span></div>
+                                              </div>
+                                              <div class="v2842-mobile-grid">
+                                                <div><span class="v2842-mobile-label">Kurs</span>{_price_v2842}</div>
+                                                <div><span class="v2842-mobile-label">Volatilität</span>{_vol_v2842}</div>
+                                                <div><span class="v2842-mobile-label">Datenqualität</span>{_dq_v2845d}</div>
+                                                <div><span class="v2842-mobile-label">Relative Stärke</span>{_rs_v2847}</div>
+                                                <div><span class="v2842-mobile-label">RS-Dynamik</span>{_rsdyn_v285b}</div>
+                                                <div><span class="v2842-mobile-label">Benchmark</span>{_bench_v286e}</div>
+                                                <div><span class="v2842-mobile-label">Volatilitätsregime</span>{_volreg_v2847}</div>
+                                                <div><span class="v2842-mobile-label">Marktregime</span>{_market_v2847}</div>
+                                                <div><span class="v2842-mobile-label">Engine (Test)</span>{_score_v2842} → {_engine_score_v285a} ({_ctx_adj_v285a})</div>
+                                                <div><span class="v2842-mobile-label">Guarded Engine</span>{_guarded_engine_v285d} · {_engine_rec_v285d}</div>
+                                                <div><span class="v2842-mobile-label">Shadow</span>{_ampel_v2842} → {_shadow_ampel_v286} · {_shadow_delta_v286}</div>
+                                                <div><span class="v2842-mobile-label">Kontext-Confidence</span>{_ctx_conf_v285a2}</div>
+                                                <div><span class="v2842-mobile-label">Trade-State</span>{_state_v2842}</div>
+                                                <div><span class="v2842-mobile-label">CRV</span>{_crv_v2842}</div>
+                                                <div><span class="v2842-mobile-label">Entry-Abstand</span>{_distance_v2842}</div>
+                                                <div><span class="v2842-mobile-label">Änderung</span>{_change_v2842}</div>
+                                              </div>
+                                              <div class="v2842-mobile-status">{_status_v2842}</div>
+                                              {_why_score_card_v286e3}
+                                              {_why_block_v2843}
+                                            </div>
+                                            """,
+                                            unsafe_allow_html=True,
                                         )
-                                    },
-                                    key=f"v3021e_live_rescan_editor_{_partial_widget_suffix_v3021e}_{_selection_revision_v3021e}",
-                                )
-                                _selected_tickers_v3021e = list(_live_scan_batches.selected_tickers_from_editor(_edited_live_display_v3021e))
-                                st.session_state[_selection_state_key_v3021e] = list(_selected_tickers_v3021e)
+                                        _ticker_key_v2847 = re.sub(r"[^A-Za-z0-9_-]+", "_", _v243_clean_cell(_mobile_row_v2842.get("Ticker")))
+                                        if _why_score_full_v2847 not in {"", "-"}:
+                                            with st.expander(f"Details · {_v243_clean_cell(_mobile_row_v2842.get('Ticker'))} · Entscheidungs-Zusammenfassung", expanded=False):
+                                                st.markdown("**Was sehe ich?**")
+                                                if _takeaway_tone_v305c == "warning":
+                                                    st.warning(_takeaway_v305c)
+                                                elif _takeaway_tone_v305c == "success":
+                                                    st.success(_takeaway_v305c)
+                                                else:
+                                                    st.info(_takeaway_v305c)
+                                                st.markdown(f"**Nächste Handlung:** {_next_action_v305c}")
+                                                _live_conf_v308, _live_evidence_v308, _live_limits_v308 = _v308_live_decision_confidence(_mobile_row_v2842)
+                                                _v308_render_confidence_strip(
+                                                    confidence=_live_conf_v308,
+                                                    evidence=_live_evidence_v308,
+                                                    freshness=_v308a_row_freshness(_mobile_row_v2842),
+                                                    limitations=_live_limits_v308,
+                                                )
 
-                                _scan_c1_v3021e, _scan_c2_v3021e = st.columns([1.55, 2.45])
-                                if _scan_c1_v3021e.button(
-                                    f"⚡ Ausgewählte neu scannen ({len(_selected_tickers_v3021e)})",
-                                    disabled=not bool(_selected_tickers_v3021e),
-                                    key=f"v3021e_run_selected_{_partial_widget_suffix_v3021e}",
-                                    use_container_width=True,
-                                ):
-                                    st.session_state.v3021e_pending_selective_scan = list(_selected_tickers_v3021e)
-                                    st.rerun()
-                                if cache_stale_v246:
-                                    _scan_c2_v3021e.warning(
-                                        "Der Vollstand ist älter als dein Refresh-Intervall. Nur die angehakten Werte werden aktualisiert; alle übrigen behalten ihren bisherigen Zeitstand."
-                                    )
-                                elif len(_selected_tickers_v3021e) > 12:
-                                    _scan_c2_v3021e.caption(
-                                        "Viele Werte ausgewählt. Ein Vollscan kann providerfreundlicher sein; der Teilscan bleibt möglich."
-                                    )
+                                                if _has_real_change_v305c and _why_changed_full_v2847 not in {"", "-"}:
+                                                    st.markdown("**Was hat sich geändert?**")
+                                                    st.write(_why_changed_full_v2847)
+
+                                                _driver_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Treiber"))
+                                                _brake_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Score-Bremsen"))
+                                                st.markdown("**Warum?**")
+                                                if _driver_full_v2847 not in {"", "-"}:
+                                                    st.write(f"Treiber: {_driver_full_v2847}")
+                                                if _brake_full_v2847 not in {"", "-"}:
+                                                    st.write(f"Bremse: {_brake_full_v2847}")
+
+                                                _gates_full_v286c = _v243_clean_cell(_mobile_row_v2842.get("Aktive Einstiegsgates"))
+                                                _gate_details_full_v286c = _v243_clean_cell(_mobile_row_v2842.get("Gate-Details"))
+                                                if _gates_full_v286c not in {"", "-"} and not ("keine" in _gates_full_v286c.lower() and "gate" in _gates_full_v286c.lower()):
+                                                    st.markdown(f"**Aktives Einstiegsgate:** {_gates_full_v286c}")
+                                                    if _gate_details_full_v286c not in {"", "-"}:
+                                                        for _gate_detail_item_v286c in str(_gate_details_full_v286c).split(" | "):
+                                                            if str(_gate_detail_item_v286c).strip():
+                                                                st.write("• " + str(_gate_detail_item_v286c).strip())
+
+                                                if st.checkbox("Berechnungsdetails anzeigen", key=f"v305c_context_{_ticker_key_v2847}"):
+                                                    _engine_full_v285a = _v243_clean_cell(_mobile_row_v2842.get("Engine-Erklärung"))
+                                                    if _engine_full_v285a not in {"", "-"}:
+                                                        st.markdown("**Engine 2.0 – Beobachtungsmodus**")
+                                                        st.write(_engine_full_v285a)
+                                                    _rs_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("RS-Details"))
+                                                    _rsdyn_detail_v285b = _v243_clean_cell(_mobile_row_v2842.get("RS-Dynamik Details"))
+                                                    _vol_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Volatilitäts-Details"))
+                                                    _market_detail_v2848 = _v243_clean_cell(_mobile_row_v2842.get("Marktregime-Details"))
+                                                    st.markdown("**Technische Berechnungsbasis**")
+                                                    if _rs_detail_v2848 not in {"", "-"}: st.write(_rs_detail_v2848)
+                                                    if _rsdyn_detail_v285b not in {"", "-"}: st.write(_rsdyn_detail_v285b)
+                                                    if _vol_detail_v2848 not in {"", "-"}: st.write(_vol_detail_v2848)
+                                                    if _market_detail_v2848 not in {"", "-"}: st.write(_market_detail_v2848)
+
+                                    _mobile_detail_tickers_v2842 = [
+                                        str(value).strip()
+                                        for value in live_df.get("Ticker", pd.Series(dtype=str)).tolist()
+                                        if str(value).strip()
+                                    ]
+                                    if _mobile_detail_tickers_v2842:
+                                        with st.expander("Ticker-Details", expanded=False):
+                                            _mobile_detail_ticker_v2842 = st.selectbox(
+                                                "Ticker auswählen",
+                                                options=_mobile_detail_tickers_v2842,
+                                                key="v2842_mobile_detail_ticker",
+                                            )
+                                            _mobile_detail_match_v2842 = live_df[
+                                                live_df["Ticker"].astype(str) == str(_mobile_detail_ticker_v2842)
+                                            ]
+                                            if not _mobile_detail_match_v2842.empty:
+                                                _mobile_detail_row_v2842 = _mobile_detail_match_v2842.iloc[0].to_dict()
+                                                _detail_name_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Name"))
+                                                _detail_ticker_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Ticker"))
+                                                _detail_price_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Kurs"))
+                                                _detail_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Live-Score"))
+                                                _detail_ampel_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Ampel"))
+                                                _detail_dq_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Datenqualität"))
+                                                st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
+                                                st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
+                                                st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · RS-Dynamik: {_v243_clean_cell(_mobile_detail_row_v2842.get('RS-Dynamik'))} · Benchmark: {_v243_clean_cell(_mobile_detail_row_v2842.get('Benchmark'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
+                                                st.info(
+                                                    f"⚡ Trader-Ziel {_v243_clean_cell(_mobile_detail_row_v2842.get('Trader-Ziel'))} · "
+                                                    f"Harvest {_v304a_harvest_badge(_mobile_detail_row_v2842.get('Harvest-Score'))} · "
+                                                    f"Chop {_v243_clean_cell(_mobile_detail_row_v2842.get('Chop-Risk'))} · "
+                                                    f"{_v243_clean_cell(_mobile_detail_row_v2842.get('Trader-Modus'))}"
+                                                )
+                                                st.caption(f"Engine 2.0 (Shadow): Basis {_detail_score_v2846} · Kontext {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Anpassung'))} · Roh-Engine {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Score'))} · Guarded {_v243_clean_cell(_mobile_detail_row_v2842.get('Guarded Engine-Score'))} · Live {_detail_ampel_v2846} → Shadow {_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Ampel'))} ({_v243_clean_cell(_mobile_detail_row_v2842.get('Shadow-Abweichung'))}) · {_v243_clean_cell(_mobile_detail_row_v2842.get('Engine-Empfehlung'))} · Kontext-Confidence {_v243_clean_cell(_mobile_detail_row_v2842.get('Kontext-Verlässlichkeit'))}")
+                                                _detail_gates_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Aktive Einstiegsgates"))
+                                                _detail_gate_text_v286c = _v243_clean_cell(_mobile_detail_row_v2842.get("Gate-Details"))
+                                                _detail_gates_low_v308a = str(_detail_gates_v286c or "").lower()
+                                                _detail_has_gate_v308a = (
+                                                    _detail_gates_v286c not in {"", "-"}
+                                                    and not ("keine" in _detail_gates_low_v308a and "gate" in _detail_gates_low_v308a)
+                                                )
+                                                if _detail_has_gate_v308a:
+                                                    st.warning(f"Aktive Einstiegsgates: {_detail_gates_v286c}")
+                                                    with st.expander("Einstiegsgates im Detail", expanded=True):
+                                                        for _gate_item_v286c in str(_detail_gate_text_v286c).split(" | "):
+                                                            if str(_gate_item_v286c).strip():
+                                                                st.write("• " + str(_gate_item_v286c).strip())
+                                                with st.expander("Trading Context · Berechnung anzeigen", expanded=False):
+                                                    st.markdown("**Relative Stärke**")
+                                                    st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Details")))
+                                                    st.markdown("**RS-Dynamik 21T/63T**")
+                                                    st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("RS-Dynamik Details")))
+                                                    st.markdown("**Benchmark-Diagnose**")
+                                                    st.write(f"Primärbenchmark: {_v243_clean_cell(_mobile_detail_row_v2842.get('Primärbenchmark'))}")
+                                                    st.write(f"Status: {_v243_clean_cell(_mobile_detail_row_v2842.get('Primärbenchmark-Status'))}")
+                                                    st.write(f"Fallback-Grund: {_v243_clean_cell(_mobile_detail_row_v2842.get('Benchmark-Fallback-Grund'))}")
+                                                    st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Benchmark-Diagnose")))
+                                                    st.markdown("**Volatilität**")
+                                                    st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Volatilitäts-Details")))
+                                                    st.markdown("**Marktregime**")
+                                                    st.write(_v243_clean_cell(_mobile_detail_row_v2842.get("Marktregime-Details")))
+                                                    st.caption("Die Context-/Shadow-Werte laufen parallel; die produktive Live-Ampel bleibt unverändert.")
+                                                _detail_takeaway_v305c, _detail_action_v305c, _detail_tone_v305c = _v305c_live_takeaway(_mobile_detail_row_v2842)
+                                                if _detail_tone_v305c == "warning":
+                                                    st.warning(f"Was sehe ich: {_detail_takeaway_v305c}")
+                                                elif _detail_tone_v305c == "success":
+                                                    st.success(f"Was sehe ich: {_detail_takeaway_v305c}")
+                                                else:
+                                                    st.info(f"Was sehe ich: {_detail_takeaway_v305c}")
+                                                st.caption(f"Nächste Handlung: {_detail_action_v305c}")
+                                                _detail_conf_v308, _detail_evidence_v308, _detail_limits_v308 = _v308_live_decision_confidence(_mobile_detail_row_v2842)
+                                                _v308_render_confidence_strip(
+                                                    confidence=_detail_conf_v308,
+                                                    evidence=_detail_evidence_v308,
+                                                    freshness=_v308a_row_freshness(_mobile_detail_row_v2842),
+                                                    limitations=_detail_limits_v308,
+                                                )
+                                                _mobile_detail_df_v2842 = pd.DataFrame(
+                                                    [
+                                                        {
+                                                            "Feld": str(key),
+                                                            "Wert": (
+                                                                _v305b_format_berlin_timestamp(value)
+                                                                if str(key) == "Scan-Zeit" else _v243_clean_cell(value)
+                                                            ),
+                                                        }
+                                                        for key, value in _mobile_detail_row_v2842.items()
+                                                        if not str(key).startswith("__")
+                                                    ]
+                                                )
+                                                st.dataframe(
+                                                    _mobile_detail_df_v2842,
+                                                    hide_index=True,
+                                                    use_container_width=True,
+                                                )
                                 else:
-                                    _scan_c2_v3021e.caption(
-                                        "Nur angehakte Werte werden neu abgefragt. Nicht ausgewählte Zeilen bleiben unverändert."
+                                    # v30.4a: Header nur im Desktop-Display umbenennen. Keine
+                                    # Abhaengigkeit von Streamlit column_config notwendig.
+                                    _desktop_live_display_v304a = live_display_df.rename(columns={
+                                        "Trader-Ziel": "⚡ Trader-Ziel",
+                                        "Harvest-Score": "Harvest-Ampel",
+                                        "Chop-Risk": "Chop / Schwankung",
+                                    })
+                                    # v30.21l: compact daily table. Full diagnostics remain in the
+                                    # Diagnose view, so the main screener no longer carries dozens
+                                    # of rarely used columns.
+                                    _compact_cols_v3021l = [
+                                        "Ampel", "Ticker", "Name", "Live-Score", "Priorität",
+                                        "Decision-Confidence", "Kurs", "CRV", "Entry-Abstand",
+                                        "Status", "Harvest-Ampel",
+                                    ]
+                                    _compact_cols_v3021l = [c for c in _compact_cols_v3021l if c in _desktop_live_display_v304a.columns]
+                                    if _compact_cols_v3021l:
+                                        _desktop_live_display_v304a = _desktop_live_display_v304a[_compact_cols_v3021l].copy()
+
+                                    _live_filter_v3021l = st.radio(
+                                        "Screener-Filter",
+                                        ["Alle", "🟢 Grün", "🟡 Gelb", "🔴 Rot", "🎯 Jetzt prüfen"],
+                                        horizontal=True,
+                                        key="v3021l_live_table_filter",
+                                        label_visibility="collapsed",
                                     )
-                                _desktop_decision_tickers_v308 = [
-                                    str(value).strip()
-                                    for value in live_df.get("Ticker", pd.Series(dtype=str)).tolist()
-                                    if str(value).strip()
-                                ]
-                                if _desktop_decision_tickers_v308:
-                                    with st.expander("Entscheidungs-Zusammenfassung · Ticker", expanded=False):
-                                        _desktop_decision_ticker_v308 = st.selectbox(
-                                            "Ticker für Entscheidungs-Zusammenfassung",
-                                            options=_desktop_decision_tickers_v308,
-                                            key="v308_desktop_decision_ticker",
-                                        )
-                                        _desktop_decision_match_v308 = live_df[
-                                            live_df["Ticker"].astype(str) == str(_desktop_decision_ticker_v308)
-                                        ]
-                                        if not _desktop_decision_match_v308.empty:
-                                            _desktop_decision_row_v308 = _desktop_decision_match_v308.iloc[0].to_dict()
-                                            _desktop_seeing_v308, _desktop_action_v308, _desktop_tone_v308 = _v305c_live_takeaway(_desktop_decision_row_v308)
-                                            _desktop_change_state_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Änderung"))
-                                            _desktop_changed_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Warum geändert?"))
-                                            if _desktop_change_state_v308 in {"", "-", "Unverändert", "Unveraendert"}:
-                                                _desktop_changed_v308 = "-"
-                                            _desktop_drivers_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Score-Treiber"))
-                                            _desktop_brakes_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Score-Bremsen"))
-                                            _desktop_why_parts_v308 = []
-                                            if _desktop_drivers_v308 not in {"", "-"}:
-                                                _desktop_why_parts_v308.append("Treiber: " + _desktop_drivers_v308)
-                                            if _desktop_brakes_v308 not in {"", "-"}:
-                                                _desktop_why_parts_v308.append("Bremse: " + _desktop_brakes_v308)
-                                            _desktop_conf_v308, _desktop_evidence_v308, _desktop_limits_v308 = _v308_live_decision_confidence(_desktop_decision_row_v308)
-                                            _v307_render_decision_summary(
-                                                seeing=_desktop_seeing_v308,
-                                                action=_desktop_action_v308,
-                                                why=" · ".join(_desktop_why_parts_v308) if _desktop_why_parts_v308 else "-",
-                                                changed=_desktop_changed_v308,
-                                                tone=_desktop_tone_v308,
-                                                title=f"{_desktop_decision_ticker_v308} · Entscheidungs-Zusammenfassung",
-                                                confidence=_desktop_conf_v308,
-                                                evidence=_desktop_evidence_v308,
-                                                freshness=_v308a_row_freshness(_desktop_decision_row_v308),
-                                                limitations=_desktop_limits_v308,
+                                    if _live_filter_v3021l == "🟢 Grün" and "Ampel" in _desktop_live_display_v304a.columns:
+                                        _desktop_live_display_v304a = _desktop_live_display_v304a[_desktop_live_display_v304a["Ampel"].astype(str) == "🟢"].reset_index(drop=True)
+                                    elif _live_filter_v3021l == "🟡 Gelb" and "Ampel" in _desktop_live_display_v304a.columns:
+                                        _desktop_live_display_v304a = _desktop_live_display_v304a[_desktop_live_display_v304a["Ampel"].astype(str) == "🟡"].reset_index(drop=True)
+                                    elif _live_filter_v3021l == "🔴 Rot" and "Ampel" in _desktop_live_display_v304a.columns:
+                                        _desktop_live_display_v304a = _desktop_live_display_v304a[_desktop_live_display_v304a["Ampel"].astype(str) == "🔴"].reset_index(drop=True)
+                                    elif _live_filter_v3021l == "🎯 Jetzt prüfen" and "Priorität" in _desktop_live_display_v304a.columns:
+                                        _desktop_live_display_v304a = _desktop_live_display_v304a[_desktop_live_display_v304a["Priorität"].astype(str) == "🎯 Jetzt prüfen"].reset_index(drop=True)
+
+                                    # v30.21e: Checkbox-driven selective re-scan directly
+                                    # in the existing desktop screener table. The checkbox is
+                                    # UI state only and never enters the stored live snapshot.
+                                    _partial_widget_suffix_v3021e = hashlib.sha1(
+                                        f"{selected_watchlist_name}|{monitor_style}|{live_monitor_horizon}".encode("utf-8")
+                                    ).hexdigest()[:10]
+                                    _selection_state_key_v3021e = f"v3021e_selected_tickers_{_partial_widget_suffix_v3021e}"
+                                    _selection_rev_key_v3021e = f"v3021e_selection_rev_{_partial_widget_suffix_v3021e}"
+                                    _selected_set_v3021e = {
+                                        str(_t or "").strip().upper()
+                                        for _t in (st.session_state.get(_selection_state_key_v3021e) or [])
+                                        if str(_t or "").strip()
+                                    }
+                                    _visible_tickers_v3021e = {
+                                        str(_t or "").strip().upper()
+                                        for _t in _desktop_live_display_v304a.get("Ticker", pd.Series(dtype=str)).tolist()
+                                        if str(_t or "").strip()
+                                    }
+                                    _selected_set_v3021e &= _visible_tickers_v3021e
+
+                                    _sel_c1_v3021e, _sel_c2_v3021e, _sel_c3_v3021e = st.columns([1.2, 1.0, 2.1])
+                                    if _sel_c1_v3021e.button(
+                                        "🟢 Grüne auswählen",
+                                        key=f"v3021e_select_green_{_partial_widget_suffix_v3021e}",
+                                        use_container_width=True,
+                                    ):
+                                        _selected_set_v3021e = set(_live_scan_batches.green_tickers(_desktop_live_display_v304a))
+                                        st.session_state[_selection_state_key_v3021e] = sorted(_selected_set_v3021e)
+                                        st.session_state[_selection_rev_key_v3021e] = int(st.session_state.get(_selection_rev_key_v3021e, 0)) + 1
+                                        st.rerun()
+                                    if _sel_c2_v3021e.button(
+                                        "Auswahl löschen",
+                                        key=f"v3021e_clear_selection_{_partial_widget_suffix_v3021e}",
+                                        use_container_width=True,
+                                    ):
+                                        st.session_state[_selection_state_key_v3021e] = []
+                                        st.session_state[_selection_rev_key_v3021e] = int(st.session_state.get(_selection_rev_key_v3021e, 0)) + 1
+                                        st.rerun()
+
+                                    _desktop_rescan_editor_v3021e = _desktop_live_display_v304a.copy()
+                                    _desktop_rescan_editor_v3021e.insert(
+                                        0,
+                                        "🔄",
+                                        [
+                                            str(_t or "").strip().upper() in _selected_set_v3021e
+                                            for _t in _desktop_rescan_editor_v3021e.get("Ticker", pd.Series(dtype=str)).tolist()
+                                        ],
+                                    )
+                                    _selection_revision_v3021e = int(st.session_state.get(_selection_rev_key_v3021e, 0))
+                                    _edited_live_display_v3021e = st.data_editor(
+                                        _desktop_rescan_editor_v3021e,
+                                        hide_index=True,
+                                        use_container_width=True,
+                                        height=min(520, 42 * len(_desktop_rescan_editor_v3021e) + 55),
+                                        disabled=[c for c in _desktop_rescan_editor_v3021e.columns if c != "🔄"],
+                                        column_config={
+                                            "🔄": st.column_config.CheckboxColumn(
+                                                "🔄",
+                                                help="Anhaken = diesen Wert beim nächsten selektiven Re-Scan frisch vom Provider abfragen.",
+                                                default=False,
+                                                width="small",
                                             )
-                                with st.expander("Live-Monitor Details / vollständige Diagnosetabelle", expanded=False):
-                                    detail_df = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
-                                    if "Scan-Zeit" in detail_df.columns:
+                                        },
+                                        key=f"v3021e_live_rescan_editor_{_partial_widget_suffix_v3021e}_{_selection_revision_v3021e}",
+                                    )
+                                    _selected_tickers_v3021e = list(_live_scan_batches.selected_tickers_from_editor(_edited_live_display_v3021e))
+                                    st.session_state[_selection_state_key_v3021e] = list(_selected_tickers_v3021e)
+
+                                    _scan_c1_v3021e, _scan_c2_v3021e = st.columns([1.55, 2.45])
+                                    if _scan_c1_v3021e.button(
+                                        f"⚡ Ausgewählte neu scannen ({len(_selected_tickers_v3021e)})",
+                                        disabled=not bool(_selected_tickers_v3021e),
+                                        key=f"v3021e_run_selected_{_partial_widget_suffix_v3021e}",
+                                        use_container_width=True,
+                                    ):
+                                        st.session_state.v3021e_pending_selective_scan = list(_selected_tickers_v3021e)
+                                        st.rerun()
+                                    if cache_stale_v246:
+                                        _scan_c2_v3021e.warning(
+                                            "Der Vollstand ist älter als dein Refresh-Intervall. Nur die angehakten Werte werden aktualisiert; alle übrigen behalten ihren bisherigen Zeitstand."
+                                        )
+                                    elif len(_selected_tickers_v3021e) > 12:
+                                        _scan_c2_v3021e.caption(
+                                            "Viele Werte ausgewählt. Ein Vollscan kann providerfreundlicher sein; der Teilscan bleibt möglich."
+                                        )
+                                    else:
+                                        _scan_c2_v3021e.caption(
+                                            "Nur angehakte Werte werden neu abgefragt. Nicht ausgewählte Zeilen bleiben unverändert."
+                                        )
+                                    _desktop_decision_tickers_v308 = [
+                                        str(value).strip()
+                                        for value in live_df.get("Ticker", pd.Series(dtype=str)).tolist()
+                                        if str(value).strip()
+                                    ]
+                                    if _desktop_decision_tickers_v308:
+                                        with st.expander("Entscheidungs-Zusammenfassung · Ticker", expanded=False):
+                                            _desktop_decision_ticker_v308 = st.selectbox(
+                                                "Ticker für Entscheidungs-Zusammenfassung",
+                                                options=_desktop_decision_tickers_v308,
+                                                key="v308_desktop_decision_ticker",
+                                            )
+                                            _desktop_decision_match_v308 = live_df[
+                                                live_df["Ticker"].astype(str) == str(_desktop_decision_ticker_v308)
+                                            ]
+                                            if not _desktop_decision_match_v308.empty:
+                                                _desktop_decision_row_v308 = _desktop_decision_match_v308.iloc[0].to_dict()
+                                                _desktop_seeing_v308, _desktop_action_v308, _desktop_tone_v308 = _v305c_live_takeaway(_desktop_decision_row_v308)
+                                                _desktop_change_state_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Änderung"))
+                                                _desktop_changed_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Warum geändert?"))
+                                                if _desktop_change_state_v308 in {"", "-", "Unverändert", "Unveraendert"}:
+                                                    _desktop_changed_v308 = "-"
+                                                _desktop_drivers_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Score-Treiber"))
+                                                _desktop_brakes_v308 = _v243_clean_cell(_desktop_decision_row_v308.get("Score-Bremsen"))
+                                                _desktop_why_parts_v308 = []
+                                                if _desktop_drivers_v308 not in {"", "-"}:
+                                                    _desktop_why_parts_v308.append("Treiber: " + _desktop_drivers_v308)
+                                                if _desktop_brakes_v308 not in {"", "-"}:
+                                                    _desktop_why_parts_v308.append("Bremse: " + _desktop_brakes_v308)
+                                                _desktop_conf_v308, _desktop_evidence_v308, _desktop_limits_v308 = _v308_live_decision_confidence(_desktop_decision_row_v308)
+                                                _v307_render_decision_summary(
+                                                    seeing=_desktop_seeing_v308,
+                                                    action=_desktop_action_v308,
+                                                    why=" · ".join(_desktop_why_parts_v308) if _desktop_why_parts_v308 else "-",
+                                                    changed=_desktop_changed_v308,
+                                                    tone=_desktop_tone_v308,
+                                                    title=f"{_desktop_decision_ticker_v308} · Entscheidungs-Zusammenfassung",
+                                                    confidence=_desktop_conf_v308,
+                                                    evidence=_desktop_evidence_v308,
+                                                    freshness=_v308a_row_freshness(_desktop_decision_row_v308),
+                                                    limitations=_desktop_limits_v308,
+                                                )
+                            if _live_view_v3021l == "🧪 Diagnose":
+                                st.markdown("#### 🧪 Diagnose & Lernen")
+                                _diag_tech_v3021l, _diag_shadow_v3021l, _diag_cal_v3021l, _diag_raw_v3021l = st.tabs(
+                                    ["Technik", "Shadow & Lernen", "Kalibrierung", "Rohdaten"]
+                                )
+                                with _diag_shadow_v3021l:
+                                    # v28.6: Shadow Mode Zusammenfassung + deduplizierte Historie.
+                                    if "Shadow-Abweichung" in live_df.columns:
                                         try:
-                                            detail_df["Scan-Zeit"] = detail_df["Scan-Zeit"].apply(_v305b_format_berlin_timestamp)
+                                            _shadow_diff_v286 = live_df[live_df["Shadow-Abweichung"].astype(str) != "Gleich"].copy()
+                                        except Exception:
+                                            _shadow_diff_v286 = pd.DataFrame()
+                                        if _shadow_diff_v286.empty:
+                                            st.caption("Shadow Mode: aktuell keine Abweichung zwischen Live- und Engine-Ampel.")
+                                        else:
+                                            st.caption(f"Shadow Mode: {len(_shadow_diff_v286)} aktuelle Abweichung(en) · produktive Live-Ampel bleibt unverändert.")
+                                    # v28.6a: Shadow Validation Dashboard. Rein analytisch,
+                                    # keinerlei Einfluss auf Live-Ampel oder Engine-Guardrails.
+                                    if isinstance(shadow_events_df_v286, pd.DataFrame) and not shadow_events_df_v286.empty:
+                                        _shadow_summary_v286a, _shadow_episodes_v286a, _shadow_current_v286a = build_shadow_validation_v286a(
+                                            shadow_events_df_v286, live_df
+                                        )
+                                        with st.expander("Shadow Validation Dashboard", expanded=False):
+                                            st.caption("Vergleicht produktive Live-Ampel und virtuelle Engine-Ampel. Kursauswertung basiert auf dem Kurs beim Shadow-Ereignis und dem aktuellen bzw. nächsten gespeicherten Zustandsereignis.")
+                                            _sc1, _sc2, _sc3, _sc4 = st.columns(4)
+                                            _sc1.metric("Shadow-Episoden", int(_shadow_summary_v286a.get("episodes", 0) or 0))
+                                            _sc2.metric("Aktuell offen", int(_shadow_summary_v286a.get("open", 0) or 0))
+                                            _sc3.metric("Aufwertungen", int(_shadow_summary_v286a.get("up", 0) or 0))
+                                            _sc4.metric("Abwertungen", int(_shadow_summary_v286a.get("down", 0) or 0))
+                                            _sr1, _sr2, _sr3 = st.columns(3)
+                                            _avg_ret_v286a = _shadow_summary_v286a.get("avg_return")
+                                            _up_ret_v286a = _shadow_summary_v286a.get("up_avg_return")
+                                            _down_ret_v286a = _shadow_summary_v286a.get("down_avg_return")
+                                            _sr1.metric("Ø Kurs seit Event", "n/a" if _avg_ret_v286a is None else f"{_avg_ret_v286a:+.2f}%")
+                                            _sr2.metric("Ø nach Aufwertung", "n/a" if _up_ret_v286a is None else f"{_up_ret_v286a:+.2f}%")
+                                            _sr3.metric("Ø nach Abwertung", "n/a" if _down_ret_v286a is None else f"{_down_ret_v286a:+.2f}%")
+                                            if isinstance(_shadow_current_v286a, pd.DataFrame) and not _shadow_current_v286a.empty:
+                                                st.markdown("**Aktuelle Live-vs-Shadow-Abweichungen**")
+                                                st.dataframe(_shadow_current_v286a, hide_index=True, use_container_width=True, height=min(420, 38 * len(_shadow_current_v286a) + 55))
+                                            if isinstance(_shadow_episodes_v286a, pd.DataFrame) and not _shadow_episodes_v286a.empty:
+                                                st.markdown("**Shadow-Episoden / Verlauf**")
+                                                st.dataframe(_shadow_episodes_v286a.tail(150).iloc[::-1].reset_index(drop=True), hide_index=True, use_container_width=True, height=min(520, 38 * len(_shadow_episodes_v286a) + 55))
+                                        # v28.7: Forward-Performance-Tracking. Keine automatische
+                                        # Provider-Abfrage bei Auto-Refresh; Aktualisierung nur explizit
+                                        # im Dashboard, um Yahoo-Rate-Limits nicht erneut zu provozieren.
+                                        with st.expander(f"Shadow Performance Tracking · {APP_VERSION}", expanded=False):
+                                            st.caption("Misst die reale Kursentwicklung nach Shadow-Ereignissen nach 1T / 3T / 5T / 10T / 20T. Die produktive Live-Ampel bleibt unverändert.")
+                                            _perf_events_v287 = _shadow_performance_v287.sync_events(shadow_events_df_v286)
+                                            _pc1, _pc2 = st.columns([1.0, 2.0])
+                                            with _pc1:
+                                                _refresh_perf_v287 = st.button("Performance aktualisieren", key="v287_refresh_shadow_performance")
+                                            with _pc2:
+                                                st.caption("Kursdaten werden nur über diesen Button nachgeladen – nicht bei jedem Auto-Scan.")
+                                            if _refresh_perf_v287:
+                                                with st.spinner("Forward-Performance wird aktualisiert ..."):
+                                                    _perf_events_v287 = _shadow_performance_v287.refresh_forward_returns(_perf_events_v287, _market_provider_v2845a)
+                                            _perf_summary_v287, _perf_detail_v287 = _shadow_performance_v287.build_dashboard(_perf_events_v287)
+                                            if _perf_summary_v287.empty:
+                                                st.info("Noch keine auswertbaren Shadow-Ereignisse vorhanden. Die Historie wird ab jetzt gesammelt.")
+                                            else:
+                                                st.markdown("**Forward Performance nach Shadow-Richtung**")
+                                                st.dataframe(_perf_summary_v287, hide_index=True, use_container_width=True)
+                                                st.markdown("**Einzelereignisse**")
+                                                st.dataframe(_perf_detail_v287.tail(200).iloc[::-1].reset_index(drop=True), hide_index=True, use_container_width=True, height=min(520, 38 * len(_perf_detail_v287) + 55))
+
+                                with _diag_tech_v3021l:
+                                    green_count = int(_green_v3021l)
+
+                                    # v30.21g: Read-only diagnosis for unusual 0-green states.
+                                    # Diagnostic inputs are explicit aliases preserved by live_monitor
+                                    # after status-history processing. Missing aliases mean an older
+                                    # cached scan; they must never be interpreted as a real zero.
+                                    if green_count == 0 and isinstance(live_df, pd.DataFrame) and not live_df.empty:
+                                        _diag_total_v3021g = int(len(live_df))
+
+                                        def _diag_bool_count_v3021g(_col):
+                                            try:
+                                                if _col not in live_df.columns:
+                                                    return None
+                                                _vals = live_df[_col]
+                                                if _vals.isna().all():
+                                                    return None
+                                                return int(_vals.fillna(False).astype(bool).sum())
+                                            except Exception:
+                                                return None
+
+                                        def _diag_num_count_v3021g(_col, _threshold):
+                                            try:
+                                                if _col not in live_df.columns:
+                                                    return None
+                                                _vals = pd.to_numeric(live_df[_col], errors="coerce")
+                                                if not _vals.notna().any():
+                                                    return None
+                                                return int((_vals >= float(_threshold)).fillna(False).sum())
+                                            except Exception:
+                                                return None
+
+                                        _release_n_v3021g = _diag_bool_count_v3021g("__diag_final_release_ok")
+                                        _hard_gate_n_v3021g = _diag_bool_count_v3021g("__diag_entry_hard_gate")
+                                        _invalid_n_v3021g = _diag_bool_count_v3021g("__diag_invalidated")
+
+                                        _trigger_cols_v3021g = [
+                                            "__diag_bucket_active",
+                                            "__diag_entry_reached",
+                                            "__diag_wave_active",
+                                        ]
+                                        _trigger_present_v3021g = [c for c in _trigger_cols_v3021g if c in live_df.columns]
+                                        _trigger_n_v3021g = None
+                                        if _trigger_present_v3021g:
+                                            try:
+                                                _trigger_mask_v3021g = pd.Series(False, index=live_df.index)
+                                                for _tc_v3021g in _trigger_present_v3021g:
+                                                    _trigger_mask_v3021g = _trigger_mask_v3021g | live_df[_tc_v3021g].fillna(False).astype(bool)
+                                                _trigger_n_v3021g = int(_trigger_mask_v3021g.sum())
+                                            except Exception:
+                                                _trigger_n_v3021g = None
+
+                                        _timing_n_v3021g = _diag_num_count_v3021g("__diag_timing_component", 70)
+                                        _conf_n_v3021g = _diag_num_count_v3021g("__diag_conf_component", 65)
+
+                                        # Grade can contain suffixes such as A-/B+. Count by leading
+                                        # letter instead of exact string equality.
+                                        _grade_n_v3021g = None
+                                        try:
+                                            if "Grade" in live_df.columns:
+                                                _grade_letters_v3021g = live_df["Grade"].astype(str).str.strip().str.upper().str.extract(r"^([A-Z])")[0]
+                                                if _grade_letters_v3021g.notna().any():
+                                                    _grade_n_v3021g = int(_grade_letters_v3021g.isin(["A", "B", "C"]).sum())
+                                        except Exception:
+                                            _grade_n_v3021g = None
+
+                                        # CRV can be numeric, use decimal comma, or carry small labels.
+                                        _crv_n_v3021g = None
+                                        try:
+                                            if "CRV" in live_df.columns:
+                                                _crv_text_v3021g = live_df["CRV"].astype(str).str.replace(",", ".", regex=False)
+                                                _crv_num_v3021g = pd.to_numeric(
+                                                    _crv_text_v3021g.str.extract(r"([-+]?\d+(?:\.\d+)?)")[0],
+                                                    errors="coerce",
+                                                )
+                                                if _crv_num_v3021g.notna().any():
+                                                    _crv_n_v3021g = int((_crv_num_v3021g >= 1.5).fillna(False).sum())
+                                        except Exception:
+                                            _crv_n_v3021g = None
+
+                                        _diag_has_snapshot_v3021g = any(
+                                            x is not None
+                                            for x in [
+                                                _release_n_v3021g, _trigger_n_v3021g, _timing_n_v3021g,
+                                                _conf_n_v3021g, _hard_gate_n_v3021g, _invalid_n_v3021g,
+                                            ]
+                                        )
+                                        st.warning(
+                                            "Aktuell 0 grüne Live-Signale. Die folgende Diagnose erklärt den aktuellen Scan "
+                                            "und verändert keine Trading-Regel."
+                                        )
+                                        if not _diag_has_snapshot_v3021g:
+                                            st.info(
+                                                "Dieser angezeigte Stand stammt noch aus einem Scan ohne v30.21g-Diagnosefelder. "
+                                                "Bitte einmal einen vollständigen Scan starten; fehlende Diagnosewerte werden nicht als 0 gewertet."
+                                            )
+
+                                        def _diag_metric_text_v3021g(_value):
+                                            return f"{_value}/{_diag_total_v3021g}" if _value is not None else "n/a"
+
+                                        _dg1_v3021g, _dg2_v3021g, _dg3_v3021g, _dg4_v3021g = st.columns(4)
+                                        _dg1_v3021g.metric("Finale Freigabe", _diag_metric_text_v3021g(_release_n_v3021g))
+                                        _dg2_v3021g.metric("Aktiver Trigger", _diag_metric_text_v3021g(_trigger_n_v3021g))
+                                        _dg3_v3021g.metric("Timing ≥ 70", _diag_metric_text_v3021g(_timing_n_v3021g))
+                                        _dg4_v3021g.metric("Konfluenz ≥ 65", _diag_metric_text_v3021g(_conf_n_v3021g))
+                                        _dg5_v3021g, _dg6_v3021g, _dg7_v3021g, _dg8_v3021g = st.columns(4)
+                                        _dg5_v3021g.metric("Grade A-C", _diag_metric_text_v3021g(_grade_n_v3021g))
+                                        _dg6_v3021g.metric("CRV ≥ 1,50", _diag_metric_text_v3021g(_crv_n_v3021g))
+                                        _dg7_v3021g.metric("Harte Einstiegsgates", _diag_metric_text_v3021g(_hard_gate_n_v3021g))
+                                        _dg8_v3021g.metric("Invalidiert", _diag_metric_text_v3021g(_invalid_n_v3021g))
+
+                                        _blocker_rows_v3021g = []
+                                        _blocker_map_v3021g = {}
+                                        if "__diag_final_blockers" in live_df.columns:
+                                            for _, _br_v3021g in live_df.iterrows():
+                                                _ticker_v3021g = str(_br_v3021g.get("Ticker") or "-").strip().upper()
+                                                _raw_block_v3021g = str(_br_v3021g.get("__diag_final_blockers") or "").strip()
+                                                if not _raw_block_v3021g or _raw_block_v3021g.lower() in {"nan", "none", "-"}:
+                                                    continue
+                                                for _part_v3021g in [x.strip() for x in _raw_block_v3021g.split(";") if x.strip()]:
+                                                    _blocker_map_v3021g.setdefault(_part_v3021g, []).append(_ticker_v3021g)
+                                        if _hard_gate_n_v3021g:
+                                            _gate_tickers_v3021g = []
+                                            if "__diag_entry_hard_gate" in live_df.columns:
+                                                for _, _gr_v3021g in live_df.iterrows():
+                                                    try:
+                                                        if bool(_gr_v3021g.get("__diag_entry_hard_gate")):
+                                                            _gate_tickers_v3021g.append(str(_gr_v3021g.get("Ticker") or "-").strip().upper())
+                                                    except Exception:
+                                                        pass
+                                            if _gate_tickers_v3021g:
+                                                _blocker_map_v3021g.setdefault("Hartes Einstiegsgate aktiv", []).extend(_gate_tickers_v3021g)
+
+                                        for _reason_v3021g, _ticks_v3021g in sorted(_blocker_map_v3021g.items(), key=lambda kv: (-len(set(kv[1])), kv[0]))[:6]:
+                                            _uniq_ticks_v3021g = sorted(set(_ticks_v3021g))
+                                            _blocker_rows_v3021g.append({
+                                                "Häufigster Blocker": _reason_v3021g,
+                                                "Anzahl": len(_uniq_ticks_v3021g),
+                                                "Ticker": ", ".join(_uniq_ticks_v3021g[:12]) + (" …" if len(_uniq_ticks_v3021g) > 12 else ""),
+                                            })
+                                        if _blocker_rows_v3021g:
+                                            st.markdown("**Häufigste Ursachen im aktuellen Scan**")
+                                            for _brow_v3021g in _blocker_rows_v3021g:
+                                                st.write(f"**{_brow_v3021g['Häufigster Blocker']} · {_brow_v3021g['Anzahl']} Wert(e):** {_brow_v3021g['Ticker']}")
+
+                                        # v30.21h: Decompose the central valid_trade_setup gate.
+                                        # This is intentionally diagnostic-only: the exact existing
+                                        # thresholds from analysis_core are mirrored, not changed.
+                                        _setup_valid_n_v3021h = _diag_bool_count_v3021g("__diag_setup_valid_flag")
+                                        _setup_invest_n_v3021h = _diag_num_count_v3021g("__diag_setup_investment", 60)
+                                        _setup_adj_n_v3021h = _diag_num_count_v3021g("__diag_setup_adj", 55)
+                                        _setup_kb_n_v3021h = _diag_num_count_v3021g("__diag_setup_kb", 2)
+                                        _setup_type_n_v3021h = _diag_bool_count_v3021g("__diag_setup_type_valid")
+                                        _setup_market_n_v3021h = _diag_bool_count_v3021g("__diag_setup_market_ok")
+                                        _earnings_clear_n_v3021h = None
+                                        if "__diag_setup_earnings_block" in live_df.columns:
+                                            try:
+                                                _eb_v3021h = live_df["__diag_setup_earnings_block"]
+                                                if not _eb_v3021h.isna().all():
+                                                    _earnings_clear_n_v3021h = int((~_eb_v3021h.fillna(False).astype(bool)).sum())
+                                            except Exception:
+                                                _earnings_clear_n_v3021h = None
+
+                                        if any(v is not None for v in [
+                                            _setup_valid_n_v3021h, _setup_invest_n_v3021h, _setup_adj_n_v3021h,
+                                            _setup_kb_n_v3021h, _setup_type_n_v3021h, _setup_market_n_v3021h,
+                                            _earnings_clear_n_v3021h,
+                                        ]):
+                                            st.markdown("**Warum ist das zentrale Trade-Setup valide oder nicht?**")
+                                            _sg1_v3021h, _sg2_v3021h, _sg3_v3021h, _sg4_v3021h = st.columns(4)
+                                            _sg1_v3021h.metric("Valides Setup", _diag_metric_text_v3021g(_setup_valid_n_v3021h))
+                                            _sg2_v3021h.metric("Investment ≥ 60", _diag_metric_text_v3021g(_setup_invest_n_v3021h))
+                                            _sg3_v3021h.metric("Setup-Score ≥ 55", _diag_metric_text_v3021g(_setup_adj_n_v3021h))
+                                            _sg4_v3021h.metric("Technikbausteine ≥ 2", _diag_metric_text_v3021g(_setup_kb_n_v3021h))
+                                            _sg5_v3021h, _sg6_v3021h, _sg7_v3021h = st.columns(3)
+                                            _sg5_v3021h.metric("Setup-Typ erkannt", _diag_metric_text_v3021g(_setup_type_n_v3021h))
+                                            _sg6_v3021h.metric("Marktregime nicht negativ", _diag_metric_text_v3021g(_setup_market_n_v3021h))
+                                            _sg7_v3021h.metric("Kein Earnings-Veto <7T", _diag_metric_text_v3021g(_earnings_clear_n_v3021h))
+
+                                            _tech_counts_v3021h = []
+                                            for _label_v3021h, _col_v3021h in [
+                                                ("Trendqualität", "__diag_setup_s3"),
+                                                ("Momentum", "__diag_setup_s4"),
+                                                ("Volumen/Nachfrage", "__diag_setup_s5"),
+                                                ("Volatilität", "__diag_setup_s6"),
+                                            ]:
+                                                _cnt_v3021h = _diag_num_count_v3021g(_col_v3021h, 65)
+                                                if _cnt_v3021h is not None:
+                                                    _tech_counts_v3021h.append(f"{_label_v3021h} ≥65: {_cnt_v3021h}/{_diag_total_v3021g}")
+                                            if _tech_counts_v3021h:
+                                                st.caption("Technikbausteine · " + " · ".join(_tech_counts_v3021h))
+
+                                            _regime_parts_v3021h = []
+                                            if "__diag_setup_market_regime" in live_df.columns:
+                                                try:
+                                                    _reg_v3021h = live_df["__diag_setup_market_regime"].astype(str).str.strip().str.upper()
+                                                    _reg_v3021h = _reg_v3021h[~_reg_v3021h.isin(["", "N/A", "NAN", "NONE", "-"])]
+                                                    if not _reg_v3021h.empty:
+                                                        _vc_v3021h = _reg_v3021h.value_counts()
+                                                        _regime_parts_v3021h = [f"{k}: {int(v)}" for k, v in _vc_v3021h.items()]
+                                                except Exception:
+                                                    _regime_parts_v3021h = []
+                                            if _regime_parts_v3021h:
+                                                st.caption("Marktregime im Scan · " + " · ".join(_regime_parts_v3021h))
+
+                                            if "__diag_setup_data_date" in live_df.columns:
+                                                try:
+                                                    _dates_v3021h = live_df["__diag_setup_data_date"].astype(str).str.strip()
+                                                    _dates_v3021h = _dates_v3021h[~_dates_v3021h.isin(["", "n/a", "nan", "None", "-"])]
+                                                    if not _dates_v3021h.empty:
+                                                        _date_vc_v3021h = _dates_v3021h.value_counts()
+                                                        _date_txt_v3021h = " · ".join([f"{k}: {int(v)}" for k, v in _date_vc_v3021h.head(4).items()])
+                                                        st.caption("Kursdaten-Stichtag · " + _date_txt_v3021h)
+                                                except Exception:
+                                                    pass
+
+                                        _prev_green_rows_v3021g = []
+                                        if "Vorher" in live_df.columns:
+                                            for _, _pr_v3021g in live_df.iterrows():
+                                                _prev_v3021g = str(_pr_v3021g.get("Vorher") or "").strip()
+                                                _curr_v3021g = str(_pr_v3021g.get("Ampel") or "").strip()
+                                                if _prev_v3021g.startswith("🟢") and _curr_v3021g != "🟢":
+                                                    _prev_green_rows_v3021g.append({
+                                                        "Ticker": str(_pr_v3021g.get("Ticker") or "-").strip().upper(),
+                                                        "Jetzt": f"{_curr_v3021g} {str(_pr_v3021g.get('Status') or '').strip()}",
+                                                        "Warum": str(_pr_v3021g.get("Warum geändert?") or _pr_v3021g.get("Grund") or "-").strip(),
+                                                        "Blocker": str(_pr_v3021g.get("__diag_final_blockers") or "-").strip(),
+                                                    })
+                                        if _prev_green_rows_v3021g:
+                                            st.markdown(f"**Vorher grün, im aktuellen Scan nicht mehr grün · {len(_prev_green_rows_v3021g)}**")
+                                            with st.expander("Betroffene Werte & konkrete Änderung", expanded=False):
+                                                st.dataframe(pd.DataFrame(_prev_green_rows_v3021g), hide_index=True, use_container_width=True)
+
+                                        with st.expander("ℹ️ Diagnose lesen", expanded=False):
+                                            st.caption(
+                                                "Finale Freigabe fasst die bestehende Sofortanalyse zusammen. Aktiver Trigger zählt Jetzt-prüfbar-, Entry-Zonen- oder Wave-Trigger. "
+                                                "Timing/Konfluenz zeigen die bereits berechneten internen Komponenten. Die Diagnose ändert keine Schwelle und erzeugt kein Signal."
+                                            )
+
+                                    # v30.21k: Always-available technical comparison. Previously the
+                                    # v30.21j block lived inside the 0-green diagnosis and vanished
+                                    # as soon as green signals returned. This expander is read-only.
+                                    if isinstance(live_df, pd.DataFrame) and not live_df.empty:
+                                        def _v3021k_num_count(_col, _threshold=65):
+                                            try:
+                                                if _col not in live_df.columns:
+                                                    return None
+                                                _vals = pd.to_numeric(live_df[_col], errors="coerce")
+                                                if not _vals.notna().any():
+                                                    return None
+                                                return int((_vals >= float(_threshold)).fillna(False).sum())
+                                            except Exception:
+                                                return None
+
+                                        _total_v3021k = int(len(live_df))
+                                        _trend_prod_v3021k = _v3021k_num_count("__diag_setup_s3")
+                                        _trend_legacy_v3021k = _v3021k_num_count("__diag_setup_legacy_s3")
+                                        _vol_prod_v3021k = _v3021k_num_count("__diag_setup_s5")
+                                        _vol_modern_v3021k = _v3021k_num_count("__diag_setup_shadow_volume")
+                                        _vola_prod_v3021k = _v3021k_num_count("__diag_setup_s6")
+                                        _vola_modern_v3021k = _v3021k_num_count("__diag_setup_shadow_volatility")
+                                        _kb_prod_v3021k = _v3021k_num_count("__diag_setup_kb", 2)
+                                        _kb_shadow_v3021k = _v3021k_num_count("__diag_setup_shadow_kb", 2)
+
+                                        if any(v is not None for v in [
+                                            _trend_prod_v3021k, _trend_legacy_v3021k, _vol_modern_v3021k,
+                                            _vola_modern_v3021k, _kb_shadow_v3021k,
+                                        ]):
+                                            with st.expander("🧪 Diagnose / Technikvergleich", expanded=False):
+                                                st.caption(
+                                                    "Nur Vergleich · keine Tradingwirkung. Produktive Regeln werden hier weder geändert noch neu berechnet."
+                                                )
+                                                _tc1_v3021k, _tc2_v3021k, _tc3_v3021k = st.columns(3)
+                                                _tc1_v3021k.metric(
+                                                    "Trendqualität ≥65",
+                                                    "n/a" if _trend_prod_v3021k is None else f"{_trend_prod_v3021k}/{_total_v3021k}",
+                                                    None if _trend_prod_v3021k is None or _trend_legacy_v3021k is None else f"{_trend_prod_v3021k - _trend_legacy_v3021k:+d} vs. alte Trendregel",
+                                                )
+                                                _tc2_v3021k.metric(
+                                                    "Volumen modern ≥65",
+                                                    "n/a" if _vol_modern_v3021k is None else f"{_vol_modern_v3021k}/{_total_v3021k}",
+                                                    None if _vol_prod_v3021k is None or _vol_modern_v3021k is None else f"{_vol_modern_v3021k - _vol_prod_v3021k:+d} vs. produktiv",
+                                                )
+                                                _tc3_v3021k.metric(
+                                                    "Vola-Kontraktion ≥65",
+                                                    "n/a" if _vola_modern_v3021k is None else f"{_vola_modern_v3021k}/{_total_v3021k}",
+                                                    None if _vola_prod_v3021k is None or _vola_modern_v3021k is None else f"{_vola_modern_v3021k - _vola_prod_v3021k:+d} vs. produktiv",
+                                                )
+                                                _tc4_v3021k, _tc5_v3021k, _tc6_v3021k = st.columns(3)
+                                                _tc4_v3021k.metric(
+                                                    "Alte Trendregel ≥65",
+                                                    "n/a" if _trend_legacy_v3021k is None else f"{_trend_legacy_v3021k}/{_total_v3021k}",
+                                                )
+                                                _tc5_v3021k.metric(
+                                                    "Produktiv Technik ≥2",
+                                                    "n/a" if _kb_prod_v3021k is None else f"{_kb_prod_v3021k}/{_total_v3021k}",
+                                                )
+                                                _tc6_v3021k.metric(
+                                                    "Modern-Shadow Technik ≥2",
+                                                    "n/a" if _kb_shadow_v3021k is None else f"{_kb_shadow_v3021k}/{_total_v3021k}",
+                                                    None if _kb_prod_v3021k is None or _kb_shadow_v3021k is None else f"{_kb_shadow_v3021k - _kb_prod_v3021k:+d} vs. produktiv",
+                                                )
+
+                                                if "__diag_setup_data_date" in live_df.columns:
+                                                    try:
+                                                        _dates_v3021k = live_df["__diag_setup_data_date"].astype(str).str.strip()
+                                                        _dates_v3021k = _dates_v3021k[~_dates_v3021k.isin(["", "n/a", "nan", "None", "-"])]
+                                                        if not _dates_v3021k.empty:
+                                                            _dvc_v3021k = _dates_v3021k.value_counts()
+                                                            st.caption(
+                                                                "Kursdaten-Stichtag · " + " · ".join(
+                                                                    f"{k}: {int(v)}" for k, v in _dvc_v3021k.head(4).items()
+                                                                )
+                                                            )
+                                                    except Exception:
+                                                        pass
+
+                                                _diff_rows_v3021k = []
+                                                _needed_cols_v3021k = [
+                                                    "__diag_setup_s3", "__diag_setup_legacy_s3",
+                                                    "__diag_setup_s5", "__diag_setup_shadow_volume",
+                                                    "__diag_setup_s6", "__diag_setup_shadow_volatility",
+                                                ]
+                                                if all(c in live_df.columns for c in _needed_cols_v3021k):
+                                                    try:
+                                                        for _, _rr_v3021k in live_df.iterrows():
+                                                            _new_tr_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_s3"), errors="coerce")
+                                                            _old_tr_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_legacy_s3"), errors="coerce")
+                                                            _pv_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_s5"), errors="coerce")
+                                                            _mv_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_shadow_volume"), errors="coerce")
+                                                            _pa_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_s6"), errors="coerce")
+                                                            _ma_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_shadow_volatility"), errors="coerce")
+                                                            if any(pd.notna(x) and abs(float(x) - float(y)) >= 10 for x, y in [
+                                                                (_new_tr_v3021k, _old_tr_v3021k), (_mv_v3021k, _pv_v3021k), (_ma_v3021k, _pa_v3021k)
+                                                            ] if pd.notna(y)):
+                                                                _diff_rows_v3021k.append({
+                                                                    "Ticker": str(_rr_v3021k.get("Ticker") or "-").strip().upper(),
+                                                                    "Trend alt": _old_tr_v3021k,
+                                                                    "Trend neu": _new_tr_v3021k,
+                                                                    "Volumen alt": _pv_v3021k,
+                                                                    "Volumen modern": _mv_v3021k,
+                                                                    "Vola alt": _pa_v3021k,
+                                                                    "Vola modern": _ma_v3021k,
+                                                                })
+                                                    except Exception:
+                                                        _diff_rows_v3021k = []
+                                                if _diff_rows_v3021k:
+                                                    with st.expander("Differenzen nach Ticker", expanded=False):
+                                                        st.dataframe(pd.DataFrame(_diff_rows_v3021k), hide_index=True, use_container_width=True)
+
+                                with _diag_cal_v3021l:
+                                    st.caption("Kalibrierung und Release-Gates bleiben rein beobachtend; keine produktive Schwelle wird automatisch geändert.")
+                                    _v3010_render_action_queue_learning(selected_watchlist_name)
+                                    if isinstance(shadow_events_df_v286, pd.DataFrame) and not shadow_events_df_v286.empty:
+                                        # v28.8: Event-basierte Engine-Kalibrierung. Es werden nur
+                                        # tatsaechlich gespeicherte Shadow-Ereignisse gegen ihre
+                                        # spaetere Kursentwicklung getestet. Keine Schwelle und kein
+                                        # produktiver Score wird hier automatisch veraendert.
+                                        with st.expander(f"Engine Calibration & Backtest · {APP_VERSION}", expanded=False):
+                                            st.caption("Kalibriert die Shadow-Engine gegen echte Forward-Returns. Positiver Shadow-Edge bedeutet: Aufwertungen stiegen bzw. Abwertungen fielen. Das ist ein Event-Backtest der gespeicherten Signale, keine nachträgliche Rekonstruktion historischer Scores.")
+                                            if not isinstance(_perf_events_v287, pd.DataFrame) or _perf_events_v287.empty:
+                                                st.info("Noch keine Shadow-Ereignisse für die Kalibrierung vorhanden.")
+                                            else:
+                                                _h_opts_v288 = [1, 3, 5, 10, 20]
+                                                _default_h_v288 = _shadow_performance_v287.best_mature_horizon(_perf_events_v287, minimum=5, default=5)
+                                                if st.session_state.get("v288_calibration_horizon") not in _h_opts_v288:
+                                                    st.session_state["v288_calibration_horizon"] = _default_h_v288
+                                                _cal_h_v288 = st.selectbox(
+                                                    "Kalibrierungshorizont",
+                                                    options=_h_opts_v288,
+                                                    format_func=lambda x: f"{x}T",
+                                                    key="v288_calibration_horizon",
+                                                    help="Alle Segmenttabellen darunter verwenden denselben Forward-Horizont.",
+                                                )
+                                                _cal_v288 = _shadow_performance_v287.build_calibration(_perf_events_v287, horizon=_cal_h_v288)
+                                                _ov_v288 = _cal_v288.get("overview", {}) or {}
+                                                _eval_n_v288 = int(_ov_v288.get("events_evaluable", 0) or 0)
+                                                if _eval_n_v288 <= 0:
+                                                    st.info("Für diesen Horizont sind noch keine Forward-Returns auswertbar. Im Bereich Shadow Performance zuerst 'Performance aktualisieren' verwenden oder einen kürzeren Horizont wählen.")
+                                                _cm1, _cm2, _cm3, _cm4 = st.columns(4)
+                                                _cm1.metric("Auswertbare Episoden", _eval_n_v288)
+                                                _hit_v288 = _ov_v288.get("hit_rate")
+                                                _edge_v288 = _ov_v288.get("avg_edge")
+                                                _cm2.metric("Shadow-Trefferquote", "n/a" if _hit_v288 is None else f"{float(_hit_v288) * 100:.0f}%")
+                                                _cm3.metric("Ø Shadow-Edge", "n/a" if _edge_v288 is None else f"{float(_edge_v288):+.2f}%")
+                                                _cm4.metric("Stichprobe", str(_ov_v288.get("sample") or "Zu klein"))
+                                                _raw_n_v288 = int(_ov_v288.get("events_raw", 0) or 0)
+                                                _episode_n_v288 = int(_ov_v288.get("events_total", 0) or 0)
+                                                st.caption(f"Kalibrierungsbasis: {_raw_n_v288} Shadow-Zustandsereignisse -> {_episode_n_v288} Divergenz-Episoden. Mehrere Score-Aenderungen innerhalb derselben laufenden Divergenz werden nicht mehrfach als unabhängige Stichprobe gezählt.")
+                                                _cx1, _cx2, _cx3, _cx4 = st.columns(4)
+                                                _mfe_v288 = _ov_v288.get("avg_mfe")
+                                                _mae_v288 = _ov_v288.get("avg_mae")
+                                                _cx1.metric("Aufwertungen", int(_ov_v288.get("up", 0) or 0))
+                                                _cx2.metric("Abwertungen", int(_ov_v288.get("down", 0) or 0))
+                                                _cx3.metric("Ø MFE", "n/a" if _mfe_v288 is None else f"{float(_mfe_v288):+.2f}%")
+                                                _cx4.metric("Ø MAE", "n/a" if _mae_v288 is None else f"{float(_mae_v288):+.2f}%")
+                                                st.caption("MFE = beste Bewegung in Shadow-Richtung; MAE = stärkste Gegenbewegung gegen die Shadow-Richtung innerhalb des gewählten Horizonts.")
+
+                                                _hz_v288 = _cal_v288.get("horizons")
+                                                if isinstance(_hz_v288, pd.DataFrame) and not _hz_v288.empty:
+                                                    st.markdown("**1T / 3T / 5T / 10T / 20T Vergleich**")
+                                                    st.dataframe(_hz_v288, hide_index=True, use_container_width=True)
+
+                                                _tab_score_v288, _tab_guard_v288, _tab_context_v288, _tab_rec_v288 = st.tabs([
+                                                    "Score-Bänder", "Guardrails", "RS & Regime", "Kalibrierungsurteil"
+                                                ])
+                                                with _tab_score_v288:
+                                                    _score_v288 = _cal_v288.get("score_bands")
+                                                    if isinstance(_score_v288, pd.DataFrame) and not _score_v288.empty:
+                                                        st.caption("Prüft die aktuellen Shadow-Grenzen: Rot <28, Weiß 28-54, Gelb 55-71, Grün ab 72.")
+                                                        st.dataframe(_score_v288, hide_index=True, use_container_width=True)
+                                                    else:
+                                                        st.info("Noch nicht genügend Events mit Guarded Engine-Score für diese Auswertung.")
+                                                with _tab_guard_v288:
+                                                    _guard_seg_v288 = _cal_v288.get("guardrails")
+                                                    _guard_bt_v288 = _cal_v288.get("guardrail_backtest")
+                                                    if isinstance(_guard_seg_v288, pd.DataFrame) and not _guard_seg_v288.empty:
+                                                        st.markdown("**Performance nach Guardrail-Segment**")
+                                                        st.dataframe(_guard_seg_v288, hide_index=True, use_container_width=True)
+                                                    if isinstance(_guard_bt_v288, pd.DataFrame) and not _guard_bt_v288.empty:
+                                                        st.markdown("**Guardrail-Backtest: hat die Score-Bremse defensiv geholfen?**")
+                                                        st.dataframe(_guard_bt_v288, hide_index=True, use_container_width=True)
+                                                    if (not isinstance(_guard_seg_v288, pd.DataFrame) or _guard_seg_v288.empty) and (not isinstance(_guard_bt_v288, pd.DataFrame) or _guard_bt_v288.empty):
+                                                        st.info("Guardrail-Metadaten werden ab v28.8 vollständig mit jedem neuen Shadow-Ereignis gespeichert. Alte Events bleiben bewusst als 'Daten fehlen' markiert.")
+                                                with _tab_context_v288:
+                                                    for _title_v288, _key_v288 in [("RS-Dynamik", "rs"), ("Marktregime", "market"), ("Volatilitätsregime", "volatility")]:
+                                                        _tbl_v288 = _cal_v288.get(_key_v288)
+                                                        st.markdown(f"**{_title_v288}**")
+                                                        if isinstance(_tbl_v288, pd.DataFrame) and not _tbl_v288.empty:
+                                                            st.dataframe(_tbl_v288, hide_index=True, use_container_width=True)
+                                                        else:
+                                                            st.caption("Noch keine ausreichenden Metadaten in den gespeicherten Events.")
+                                                with _tab_rec_v288:
+                                                    _rec_v288 = _cal_v288.get("recommendations")
+                                                    if isinstance(_rec_v288, pd.DataFrame) and not _rec_v288.empty:
+                                                        st.markdown("**Kalibrierungsdiagnose**")
+                                                        st.dataframe(_rec_v288, hide_index=True, use_container_width=True)
+                                                    _coverage_v288 = _cal_v288.get("coverage")
+                                                    if isinstance(_coverage_v288, pd.DataFrame) and not _coverage_v288.empty:
+                                                        st.markdown("**Datenabdeckung**")
+                                                        st.dataframe(_coverage_v288, hide_index=True, use_container_width=True)
+                                                    st.warning("v28.8 arbeitet ausschließlich im Beobachtungsmodus. Selbst ein positives Kalibrierungsurteil ändert weder Live-Ampel noch Score-Schwellen automatisch.")
+
+                                        # v30.0: Controlled Cutover. This release gate is read-only:
+                                        # it decides whether individual engine components have enough
+                                        # real evidence for a future A/B cutover, but never switches the
+                                        # productive Live-Ampel automatically.
+                                        with st.expander(f"Validated Trading Engine / Controlled Cutover · {APP_VERSION}", expanded=False):
+                                            st.caption(
+                                                "Release-Gate für den Übergang von Shadow zu produktiver Engine. Bewertet Stichprobe, Forward-Edge, "
+                                                "Auf-/Abwertungen, Horizont-Stabilität, Guardrails, Regime-Abdeckung sowie reale Trade-/Portfolio-Evidenz. "
+                                                "Ein grünes Urteil ist nur eine Freigabe für einen späteren kontrollierten A/B-Cutover – kein automatisches Umschalten."
+                                            )
+                                            try:
+                                                _journal_all_v300 = _v270_journal_entries_dataframe()
+                                                _events_all_v300 = _v2416_events_dataframe()
+                                                _learning_all_v300 = _v290_build_learning_package(_journal_all_v300, _events_all_v300)
+                                                _learning_summary_v300 = _learning_all_v300.get("summary") or {}
+                                                _exit_detail_v300 = _learning_all_v300.get("exit_detail")
+                                            except Exception:
+                                                _learning_summary_v300 = {}
+                                                _exit_detail_v300 = pd.DataFrame()
+                                            try:
+                                                _portfolio_settings_v300 = _v291_load_portfolio_settings() or {}
+                                            except Exception:
+                                                _portfolio_settings_v300 = {}
+
+                                            _cutover_v300 = _validated_engine_v300.build_cutover_report(
+                                                _perf_events_v287,
+                                                learning_summary=_learning_summary_v300,
+                                                exit_detail=_exit_detail_v300,
+                                                portfolio_settings=_portfolio_settings_v300,
+                                            )
+                                            _ov_v300 = _cutover_v300.get("overview") or {}
+                                            st.markdown(
+                                                f"## {_ov_v300.get('status','⚪')} · {_ov_v300.get('verdict','Noch keine Freigabe')}"
+                                            )
+                                            _v300m1, _v300m2, _v300m3, _v300m4 = st.columns(4)
+                                            _v300m1.metric("Validation Score", f"{float(_ov_v300.get('validation_score') or 0):.0f}/100")
+                                            _v300m2.metric("Primärhorizont", f"{int(_ov_v300.get('primary_horizon') or 5)}T")
+                                            _v300m3.metric("Auswertbare Episoden", int(_ov_v300.get("evaluable") or 0))
+                                            _v300m4.metric(
+                                                "Harte Gates",
+                                                f"{int(_ov_v300.get('hard_passed') or 0)}/{int(_ov_v300.get('hard_total') or 0)}",
+                                            )
+                                            _v300s1, _v300s2, _v300s3 = st.columns(3)
+                                            _hit_v300 = _ov_v300.get("hit_rate")
+                                            _edge_v300 = _ov_v300.get("avg_edge")
+                                            _median_v300 = _ov_v300.get("median_edge")
+                                            _v300s1.metric("Trefferquote", "n/a" if _hit_v300 is None else f"{float(_hit_v300)*100:.1f}%")
+                                            _v300s2.metric("Ø Shadow-Edge", "n/a" if _edge_v300 is None else f"{float(_edge_v300):+.2f}%")
+                                            _v300s3.metric("Median Edge", "n/a" if _median_v300 is None else f"{float(_median_v300):+.2f}%")
+                                            st.info(f"Produktiver Modus bleibt: {_ov_v300.get('productive_mode','Live-Ampel')}.")
+
+                                            if bool(_ov_v300.get("cutover_candidate")):
+                                                st.success(_ov_v300.get("next_action") or "Kontrollierter Cutover-Kandidat. Keine automatische Umschaltung.")
+                                            else:
+                                                _blockers_v300 = list(_ov_v300.get("blockers") or [])
+                                                st.warning(_ov_v300.get("next_action") or "Noch keine Cutover-Freigabe.")
+                                                if _blockers_v300:
+                                                    st.caption("Noch blockierend: " + " · ".join(_blockers_v300))
+
+                                            _gates_v300 = _cutover_v300.get("gates")
+                                            if isinstance(_gates_v300, pd.DataFrame) and not _gates_v300.empty:
+                                                st.markdown("**Release-Gates**")
+                                                st.dataframe(_gates_v300, hide_index=True, use_container_width=True)
+
+                                            _components_v300 = _cutover_v300.get("components")
+                                            if isinstance(_components_v300, pd.DataFrame) and not _components_v300.empty:
+                                                st.markdown("**Freigabe-Matrix nach Engine-Baustein**")
+                                                st.dataframe(_components_v300, hide_index=True, use_container_width=True)
+
+                                            _v300tab_h, _v300tab_r = st.tabs(["Horizont-Stabilität", "Regime-Stabilität"])
+                                            with _v300tab_h:
+                                                _horizon_v300 = _cutover_v300.get("horizons")
+                                                if isinstance(_horizon_v300, pd.DataFrame) and not _horizon_v300.empty:
+                                                    st.dataframe(_horizon_v300, hide_index=True, use_container_width=True)
+                                                else:
+                                                    st.info("Noch keine auswertbaren Forward-Horizonte.")
+                                            with _v300tab_r:
+                                                _market_v300 = _cutover_v300.get("market_regimes")
+                                                _vol_v300 = _cutover_v300.get("volatility_regimes")
+                                                st.markdown("**Marktregime**")
+                                                if isinstance(_market_v300, pd.DataFrame) and not _market_v300.empty:
+                                                    st.dataframe(_market_v300, hide_index=True, use_container_width=True)
+                                                else:
+                                                    st.caption("Noch keine belastbare Marktregime-Abdeckung.")
+                                                st.markdown("**Volatilitätsregime**")
+                                                if isinstance(_vol_v300, pd.DataFrame) and not _vol_v300.empty:
+                                                    st.dataframe(_vol_v300, hide_index=True, use_container_width=True)
+                                                else:
+                                                    st.caption("Noch keine belastbare Volatilitätsregime-Abdeckung.")
+
+                                            st.caption(
+                                                f"{APP_VERSION} verändert keine Live-/Shadow-Schwellen, Gewichte, Positionen oder Orders. "
+                                                "Der Validation Score ist nur Orientierung; ein Voll-Cutover bleibt gesperrt, solange auch nur ein hartes Release-Gate offen ist."
+                                            )
+
+                                    else:
+                                        st.info("Noch keine Shadow-Ereignisse für Kalibrierung und Cutover-Auswertung vorhanden.")
+
+                                with _diag_raw_v3021l:
+                                    st.caption("Rohhistorie und vollständiger Live-Stand für Fehlersuche und Detailprüfung.")
+                                    if isinstance(shadow_events_df_v286, pd.DataFrame) and not shadow_events_df_v286.empty:
+                                        with st.expander("Shadow-Mode Rohhistorie", expanded=False):
+                                            st.caption("Nur echte Zustandsänderungen werden gespeichert; identische Auto-Refreshes erzeugen keine Duplikate.")
+                                            _shadow_hist_show_v286 = shadow_events_df_v286.tail(100).iloc[::-1].reset_index(drop=True)
+                                            st.dataframe(_shadow_hist_show_v286, hide_index=True, use_container_width=True, height=min(520, 38 * len(_shadow_hist_show_v286) + 55))
+
+                                    st.markdown("**Vollständiger Live-Stand**")
+                                    _detail_df_v3021l = live_df.drop(columns=[c for c in live_df.columns if str(c).startswith("__")], errors="ignore").copy()
+                                    if "Scan-Zeit" in _detail_df_v3021l.columns:
+                                        try:
+                                            _detail_df_v3021l["Scan-Zeit"] = _detail_df_v3021l["Scan-Zeit"].apply(_v305b_format_berlin_timestamp)
                                         except Exception:
                                             pass
                                     try:
-                                        detail_df = detail_df.applymap(lambda x: "-" if "column index out of bounds" in str(x).lower() else x)
+                                        _detail_df_v3021l = _detail_df_v3021l.applymap(
+                                            lambda x: "-" if "column index out of bounds" in str(x).lower() else x
+                                        )
                                     except Exception:
                                         pass
-                                    st.dataframe(detail_df, hide_index=True, use_container_width=True, height=min(560, 42 * len(detail_df) + 55))
-                            # v28.6: Shadow Mode Zusammenfassung + deduplizierte Historie.
-                            if "Shadow-Abweichung" in live_df.columns:
-                                try:
-                                    _shadow_diff_v286 = live_df[live_df["Shadow-Abweichung"].astype(str) != "Gleich"].copy()
-                                except Exception:
-                                    _shadow_diff_v286 = pd.DataFrame()
-                                if _shadow_diff_v286.empty:
-                                    st.caption("Shadow Mode: aktuell keine Abweichung zwischen Live- und Engine-Ampel.")
-                                else:
-                                    st.caption(f"Shadow Mode: {len(_shadow_diff_v286)} aktuelle Abweichung(en) · produktive Live-Ampel bleibt unverändert.")
-                            # v28.6a: Shadow Validation Dashboard. Rein analytisch,
-                            # keinerlei Einfluss auf Live-Ampel oder Engine-Guardrails.
-                            if isinstance(shadow_events_df_v286, pd.DataFrame) and not shadow_events_df_v286.empty:
-                                _shadow_summary_v286a, _shadow_episodes_v286a, _shadow_current_v286a = build_shadow_validation_v286a(
-                                    shadow_events_df_v286, live_df
-                                )
-                                with st.expander("Shadow Validation Dashboard", expanded=False):
-                                    st.caption("Vergleicht produktive Live-Ampel und virtuelle Engine-Ampel. Kursauswertung basiert auf dem Kurs beim Shadow-Ereignis und dem aktuellen bzw. nächsten gespeicherten Zustandsereignis.")
-                                    _sc1, _sc2, _sc3, _sc4 = st.columns(4)
-                                    _sc1.metric("Shadow-Episoden", int(_shadow_summary_v286a.get("episodes", 0) or 0))
-                                    _sc2.metric("Aktuell offen", int(_shadow_summary_v286a.get("open", 0) or 0))
-                                    _sc3.metric("Aufwertungen", int(_shadow_summary_v286a.get("up", 0) or 0))
-                                    _sc4.metric("Abwertungen", int(_shadow_summary_v286a.get("down", 0) or 0))
-                                    _sr1, _sr2, _sr3 = st.columns(3)
-                                    _avg_ret_v286a = _shadow_summary_v286a.get("avg_return")
-                                    _up_ret_v286a = _shadow_summary_v286a.get("up_avg_return")
-                                    _down_ret_v286a = _shadow_summary_v286a.get("down_avg_return")
-                                    _sr1.metric("Ø Kurs seit Event", "n/a" if _avg_ret_v286a is None else f"{_avg_ret_v286a:+.2f}%")
-                                    _sr2.metric("Ø nach Aufwertung", "n/a" if _up_ret_v286a is None else f"{_up_ret_v286a:+.2f}%")
-                                    _sr3.metric("Ø nach Abwertung", "n/a" if _down_ret_v286a is None else f"{_down_ret_v286a:+.2f}%")
-                                    if isinstance(_shadow_current_v286a, pd.DataFrame) and not _shadow_current_v286a.empty:
-                                        st.markdown("**Aktuelle Live-vs-Shadow-Abweichungen**")
-                                        st.dataframe(_shadow_current_v286a, hide_index=True, use_container_width=True, height=min(420, 38 * len(_shadow_current_v286a) + 55))
-                                    if isinstance(_shadow_episodes_v286a, pd.DataFrame) and not _shadow_episodes_v286a.empty:
-                                        st.markdown("**Shadow-Episoden / Verlauf**")
-                                        st.dataframe(_shadow_episodes_v286a.tail(150).iloc[::-1].reset_index(drop=True), hide_index=True, use_container_width=True, height=min(520, 38 * len(_shadow_episodes_v286a) + 55))
-                                # v28.7: Forward-Performance-Tracking. Keine automatische
-                                # Provider-Abfrage bei Auto-Refresh; Aktualisierung nur explizit
-                                # im Dashboard, um Yahoo-Rate-Limits nicht erneut zu provozieren.
-                                with st.expander(f"Shadow Performance Tracking · {APP_VERSION}", expanded=False):
-                                    st.caption("Misst die reale Kursentwicklung nach Shadow-Ereignissen nach 1T / 3T / 5T / 10T / 20T. Die produktive Live-Ampel bleibt unverändert.")
-                                    _perf_events_v287 = _shadow_performance_v287.sync_events(shadow_events_df_v286)
-                                    _pc1, _pc2 = st.columns([1.0, 2.0])
-                                    with _pc1:
-                                        _refresh_perf_v287 = st.button("Performance aktualisieren", key="v287_refresh_shadow_performance")
-                                    with _pc2:
-                                        st.caption("Kursdaten werden nur über diesen Button nachgeladen – nicht bei jedem Auto-Scan.")
-                                    if _refresh_perf_v287:
-                                        with st.spinner("Forward-Performance wird aktualisiert ..."):
-                                            _perf_events_v287 = _shadow_performance_v287.refresh_forward_returns(_perf_events_v287, _market_provider_v2845a)
-                                    _perf_summary_v287, _perf_detail_v287 = _shadow_performance_v287.build_dashboard(_perf_events_v287)
-                                    if _perf_summary_v287.empty:
-                                        st.info("Noch keine auswertbaren Shadow-Ereignisse vorhanden. Die Historie wird ab jetzt gesammelt.")
-                                    else:
-                                        st.markdown("**Forward Performance nach Shadow-Richtung**")
-                                        st.dataframe(_perf_summary_v287, hide_index=True, use_container_width=True)
-                                        st.markdown("**Einzelereignisse**")
-                                        st.dataframe(_perf_detail_v287.tail(200).iloc[::-1].reset_index(drop=True), hide_index=True, use_container_width=True, height=min(520, 38 * len(_perf_detail_v287) + 55))
-
-                                # v28.8: Event-basierte Engine-Kalibrierung. Es werden nur
-                                # tatsaechlich gespeicherte Shadow-Ereignisse gegen ihre
-                                # spaetere Kursentwicklung getestet. Keine Schwelle und kein
-                                # produktiver Score wird hier automatisch veraendert.
-                                with st.expander(f"Engine Calibration & Backtest · {APP_VERSION}", expanded=False):
-                                    st.caption("Kalibriert die Shadow-Engine gegen echte Forward-Returns. Positiver Shadow-Edge bedeutet: Aufwertungen stiegen bzw. Abwertungen fielen. Das ist ein Event-Backtest der gespeicherten Signale, keine nachträgliche Rekonstruktion historischer Scores.")
-                                    if not isinstance(_perf_events_v287, pd.DataFrame) or _perf_events_v287.empty:
-                                        st.info("Noch keine Shadow-Ereignisse für die Kalibrierung vorhanden.")
-                                    else:
-                                        _h_opts_v288 = [1, 3, 5, 10, 20]
-                                        _default_h_v288 = _shadow_performance_v287.best_mature_horizon(_perf_events_v287, minimum=5, default=5)
-                                        if st.session_state.get("v288_calibration_horizon") not in _h_opts_v288:
-                                            st.session_state["v288_calibration_horizon"] = _default_h_v288
-                                        _cal_h_v288 = st.selectbox(
-                                            "Kalibrierungshorizont",
-                                            options=_h_opts_v288,
-                                            format_func=lambda x: f"{x}T",
-                                            key="v288_calibration_horizon",
-                                            help="Alle Segmenttabellen darunter verwenden denselben Forward-Horizont.",
-                                        )
-                                        _cal_v288 = _shadow_performance_v287.build_calibration(_perf_events_v287, horizon=_cal_h_v288)
-                                        _ov_v288 = _cal_v288.get("overview", {}) or {}
-                                        _eval_n_v288 = int(_ov_v288.get("events_evaluable", 0) or 0)
-                                        if _eval_n_v288 <= 0:
-                                            st.info("Für diesen Horizont sind noch keine Forward-Returns auswertbar. Im Bereich Shadow Performance zuerst 'Performance aktualisieren' verwenden oder einen kürzeren Horizont wählen.")
-                                        _cm1, _cm2, _cm3, _cm4 = st.columns(4)
-                                        _cm1.metric("Auswertbare Episoden", _eval_n_v288)
-                                        _hit_v288 = _ov_v288.get("hit_rate")
-                                        _edge_v288 = _ov_v288.get("avg_edge")
-                                        _cm2.metric("Shadow-Trefferquote", "n/a" if _hit_v288 is None else f"{float(_hit_v288) * 100:.0f}%")
-                                        _cm3.metric("Ø Shadow-Edge", "n/a" if _edge_v288 is None else f"{float(_edge_v288):+.2f}%")
-                                        _cm4.metric("Stichprobe", str(_ov_v288.get("sample") or "Zu klein"))
-                                        _raw_n_v288 = int(_ov_v288.get("events_raw", 0) or 0)
-                                        _episode_n_v288 = int(_ov_v288.get("events_total", 0) or 0)
-                                        st.caption(f"Kalibrierungsbasis: {_raw_n_v288} Shadow-Zustandsereignisse -> {_episode_n_v288} Divergenz-Episoden. Mehrere Score-Aenderungen innerhalb derselben laufenden Divergenz werden nicht mehrfach als unabhängige Stichprobe gezählt.")
-                                        _cx1, _cx2, _cx3, _cx4 = st.columns(4)
-                                        _mfe_v288 = _ov_v288.get("avg_mfe")
-                                        _mae_v288 = _ov_v288.get("avg_mae")
-                                        _cx1.metric("Aufwertungen", int(_ov_v288.get("up", 0) or 0))
-                                        _cx2.metric("Abwertungen", int(_ov_v288.get("down", 0) or 0))
-                                        _cx3.metric("Ø MFE", "n/a" if _mfe_v288 is None else f"{float(_mfe_v288):+.2f}%")
-                                        _cx4.metric("Ø MAE", "n/a" if _mae_v288 is None else f"{float(_mae_v288):+.2f}%")
-                                        st.caption("MFE = beste Bewegung in Shadow-Richtung; MAE = stärkste Gegenbewegung gegen die Shadow-Richtung innerhalb des gewählten Horizonts.")
-
-                                        _hz_v288 = _cal_v288.get("horizons")
-                                        if isinstance(_hz_v288, pd.DataFrame) and not _hz_v288.empty:
-                                            st.markdown("**1T / 3T / 5T / 10T / 20T Vergleich**")
-                                            st.dataframe(_hz_v288, hide_index=True, use_container_width=True)
-
-                                        _tab_score_v288, _tab_guard_v288, _tab_context_v288, _tab_rec_v288 = st.tabs([
-                                            "Score-Bänder", "Guardrails", "RS & Regime", "Kalibrierungsurteil"
-                                        ])
-                                        with _tab_score_v288:
-                                            _score_v288 = _cal_v288.get("score_bands")
-                                            if isinstance(_score_v288, pd.DataFrame) and not _score_v288.empty:
-                                                st.caption("Prüft die aktuellen Shadow-Grenzen: Rot <28, Weiß 28-54, Gelb 55-71, Grün ab 72.")
-                                                st.dataframe(_score_v288, hide_index=True, use_container_width=True)
-                                            else:
-                                                st.info("Noch nicht genügend Events mit Guarded Engine-Score für diese Auswertung.")
-                                        with _tab_guard_v288:
-                                            _guard_seg_v288 = _cal_v288.get("guardrails")
-                                            _guard_bt_v288 = _cal_v288.get("guardrail_backtest")
-                                            if isinstance(_guard_seg_v288, pd.DataFrame) and not _guard_seg_v288.empty:
-                                                st.markdown("**Performance nach Guardrail-Segment**")
-                                                st.dataframe(_guard_seg_v288, hide_index=True, use_container_width=True)
-                                            if isinstance(_guard_bt_v288, pd.DataFrame) and not _guard_bt_v288.empty:
-                                                st.markdown("**Guardrail-Backtest: hat die Score-Bremse defensiv geholfen?**")
-                                                st.dataframe(_guard_bt_v288, hide_index=True, use_container_width=True)
-                                            if (not isinstance(_guard_seg_v288, pd.DataFrame) or _guard_seg_v288.empty) and (not isinstance(_guard_bt_v288, pd.DataFrame) or _guard_bt_v288.empty):
-                                                st.info("Guardrail-Metadaten werden ab v28.8 vollständig mit jedem neuen Shadow-Ereignis gespeichert. Alte Events bleiben bewusst als 'Daten fehlen' markiert.")
-                                        with _tab_context_v288:
-                                            for _title_v288, _key_v288 in [("RS-Dynamik", "rs"), ("Marktregime", "market"), ("Volatilitätsregime", "volatility")]:
-                                                _tbl_v288 = _cal_v288.get(_key_v288)
-                                                st.markdown(f"**{_title_v288}**")
-                                                if isinstance(_tbl_v288, pd.DataFrame) and not _tbl_v288.empty:
-                                                    st.dataframe(_tbl_v288, hide_index=True, use_container_width=True)
-                                                else:
-                                                    st.caption("Noch keine ausreichenden Metadaten in den gespeicherten Events.")
-                                        with _tab_rec_v288:
-                                            _rec_v288 = _cal_v288.get("recommendations")
-                                            if isinstance(_rec_v288, pd.DataFrame) and not _rec_v288.empty:
-                                                st.markdown("**Kalibrierungsdiagnose**")
-                                                st.dataframe(_rec_v288, hide_index=True, use_container_width=True)
-                                            _coverage_v288 = _cal_v288.get("coverage")
-                                            if isinstance(_coverage_v288, pd.DataFrame) and not _coverage_v288.empty:
-                                                st.markdown("**Datenabdeckung**")
-                                                st.dataframe(_coverage_v288, hide_index=True, use_container_width=True)
-                                            st.warning("v28.8 arbeitet ausschließlich im Beobachtungsmodus. Selbst ein positives Kalibrierungsurteil ändert weder Live-Ampel noch Score-Schwellen automatisch.")
-
-                                # v30.0: Controlled Cutover. This release gate is read-only:
-                                # it decides whether individual engine components have enough
-                                # real evidence for a future A/B cutover, but never switches the
-                                # productive Live-Ampel automatically.
-                                with st.expander(f"Validated Trading Engine / Controlled Cutover · {APP_VERSION}", expanded=False):
-                                    st.caption(
-                                        "Release-Gate für den Übergang von Shadow zu produktiver Engine. Bewertet Stichprobe, Forward-Edge, "
-                                        "Auf-/Abwertungen, Horizont-Stabilität, Guardrails, Regime-Abdeckung sowie reale Trade-/Portfolio-Evidenz. "
-                                        "Ein grünes Urteil ist nur eine Freigabe für einen späteren kontrollierten A/B-Cutover – kein automatisches Umschalten."
-                                    )
-                                    try:
-                                        _journal_all_v300 = _v270_journal_entries_dataframe()
-                                        _events_all_v300 = _v2416_events_dataframe()
-                                        _learning_all_v300 = _v290_build_learning_package(_journal_all_v300, _events_all_v300)
-                                        _learning_summary_v300 = _learning_all_v300.get("summary") or {}
-                                        _exit_detail_v300 = _learning_all_v300.get("exit_detail")
-                                    except Exception:
-                                        _learning_summary_v300 = {}
-                                        _exit_detail_v300 = pd.DataFrame()
-                                    try:
-                                        _portfolio_settings_v300 = _v291_load_portfolio_settings() or {}
-                                    except Exception:
-                                        _portfolio_settings_v300 = {}
-
-                                    _cutover_v300 = _validated_engine_v300.build_cutover_report(
-                                        _perf_events_v287,
-                                        learning_summary=_learning_summary_v300,
-                                        exit_detail=_exit_detail_v300,
-                                        portfolio_settings=_portfolio_settings_v300,
-                                    )
-                                    _ov_v300 = _cutover_v300.get("overview") or {}
-                                    st.markdown(
-                                        f"## {_ov_v300.get('status','⚪')} · {_ov_v300.get('verdict','Noch keine Freigabe')}"
-                                    )
-                                    _v300m1, _v300m2, _v300m3, _v300m4 = st.columns(4)
-                                    _v300m1.metric("Validation Score", f"{float(_ov_v300.get('validation_score') or 0):.0f}/100")
-                                    _v300m2.metric("Primärhorizont", f"{int(_ov_v300.get('primary_horizon') or 5)}T")
-                                    _v300m3.metric("Auswertbare Episoden", int(_ov_v300.get("evaluable") or 0))
-                                    _v300m4.metric(
-                                        "Harte Gates",
-                                        f"{int(_ov_v300.get('hard_passed') or 0)}/{int(_ov_v300.get('hard_total') or 0)}",
-                                    )
-                                    _v300s1, _v300s2, _v300s3 = st.columns(3)
-                                    _hit_v300 = _ov_v300.get("hit_rate")
-                                    _edge_v300 = _ov_v300.get("avg_edge")
-                                    _median_v300 = _ov_v300.get("median_edge")
-                                    _v300s1.metric("Trefferquote", "n/a" if _hit_v300 is None else f"{float(_hit_v300)*100:.1f}%")
-                                    _v300s2.metric("Ø Shadow-Edge", "n/a" if _edge_v300 is None else f"{float(_edge_v300):+.2f}%")
-                                    _v300s3.metric("Median Edge", "n/a" if _median_v300 is None else f"{float(_median_v300):+.2f}%")
-                                    st.info(f"Produktiver Modus bleibt: {_ov_v300.get('productive_mode','Live-Ampel')}.")
-
-                                    if bool(_ov_v300.get("cutover_candidate")):
-                                        st.success(_ov_v300.get("next_action") or "Kontrollierter Cutover-Kandidat. Keine automatische Umschaltung.")
-                                    else:
-                                        _blockers_v300 = list(_ov_v300.get("blockers") or [])
-                                        st.warning(_ov_v300.get("next_action") or "Noch keine Cutover-Freigabe.")
-                                        if _blockers_v300:
-                                            st.caption("Noch blockierend: " + " · ".join(_blockers_v300))
-
-                                    _gates_v300 = _cutover_v300.get("gates")
-                                    if isinstance(_gates_v300, pd.DataFrame) and not _gates_v300.empty:
-                                        st.markdown("**Release-Gates**")
-                                        st.dataframe(_gates_v300, hide_index=True, use_container_width=True)
-
-                                    _components_v300 = _cutover_v300.get("components")
-                                    if isinstance(_components_v300, pd.DataFrame) and not _components_v300.empty:
-                                        st.markdown("**Freigabe-Matrix nach Engine-Baustein**")
-                                        st.dataframe(_components_v300, hide_index=True, use_container_width=True)
-
-                                    _v300tab_h, _v300tab_r = st.tabs(["Horizont-Stabilität", "Regime-Stabilität"])
-                                    with _v300tab_h:
-                                        _horizon_v300 = _cutover_v300.get("horizons")
-                                        if isinstance(_horizon_v300, pd.DataFrame) and not _horizon_v300.empty:
-                                            st.dataframe(_horizon_v300, hide_index=True, use_container_width=True)
-                                        else:
-                                            st.info("Noch keine auswertbaren Forward-Horizonte.")
-                                    with _v300tab_r:
-                                        _market_v300 = _cutover_v300.get("market_regimes")
-                                        _vol_v300 = _cutover_v300.get("volatility_regimes")
-                                        st.markdown("**Marktregime**")
-                                        if isinstance(_market_v300, pd.DataFrame) and not _market_v300.empty:
-                                            st.dataframe(_market_v300, hide_index=True, use_container_width=True)
-                                        else:
-                                            st.caption("Noch keine belastbare Marktregime-Abdeckung.")
-                                        st.markdown("**Volatilitätsregime**")
-                                        if isinstance(_vol_v300, pd.DataFrame) and not _vol_v300.empty:
-                                            st.dataframe(_vol_v300, hide_index=True, use_container_width=True)
-                                        else:
-                                            st.caption("Noch keine belastbare Volatilitätsregime-Abdeckung.")
-
-                                    st.caption(
-                                        f"{APP_VERSION} verändert keine Live-/Shadow-Schwellen, Gewichte, Positionen oder Orders. "
-                                        "Der Validation Score ist nur Orientierung; ein Voll-Cutover bleibt gesperrt, solange auch nur ein hartes Release-Gate offen ist."
+                                    st.dataframe(
+                                        _detail_df_v3021l,
+                                        hide_index=True,
+                                        use_container_width=True,
+                                        height=min(620, 42 * len(_detail_df_v3021l) + 55),
                                     )
 
-                                with st.expander("Shadow-Mode Rohhistorie", expanded=False):
-                                    st.caption("Nur echte Zustandsänderungen werden gespeichert; identische Auto-Refreshes erzeugen keine Duplikate.")
-                                    _shadow_hist_show_v286 = shadow_events_df_v286.tail(100).iloc[::-1].reset_index(drop=True)
-                                    st.dataframe(_shadow_hist_show_v286, hide_index=True, use_container_width=True, height=min(520, 38 * len(_shadow_hist_show_v286) + 55))
-
-                            green_count = int((live_df["Ampel"] == "🟢").sum()) if "Ampel" in live_df.columns else 0
-                            yellow_count = int((live_df["Ampel"] == "🟡").sum()) if "Ampel" in live_df.columns else 0
-                            red_count = int((live_df["Ampel"] == "🔴").sum()) if "Ampel" in live_df.columns else 0
-                            changed_count = int((live_df["Änderung"].astype(str).isin(["Neu", "Verbessert", "Verschlechtert", "Geändert"])).sum()) if "Änderung" in live_df.columns else 0
-                            score_txt = ""
-                            if "Live-Score" in live_df.columns:
-                                try:
-                                    score_vals = live_df["Live-Score"].astype(str).str.extract(r"(\d+)")[0].dropna().astype(float)
-                                    if not score_vals.empty:
-                                        score_txt = f" · Score Ø {score_vals.mean():.0f}/100"
-                                except Exception:
-                                    score_txt = ""
-                            st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {_v305b_format_berlin_timestamp(_v305b_berlin_now())}")
-
-                            # v30.21k: Market-time/data-freshness context. This is UI-only
-                            # and does not alter any scan, score, trigger or status.
-                            try:
-                                _now_berlin_v3021k = _v305b_berlin_now()
-                                _now_ny_v3021k = _now_berlin_v3021k.astimezone(ZoneInfo("America/New_York"))
-                                _ny_minutes_v3021k = int(_now_ny_v3021k.hour) * 60 + int(_now_ny_v3021k.minute)
-                                _ny_weekday_v3021k = int(_now_ny_v3021k.weekday())
-                                if _ny_weekday_v3021k < 5 and _ny_minutes_v3021k < (9 * 60 + 30):
-                                    _open_ny_v3021k = _now_ny_v3021k.replace(hour=9, minute=30, second=0, microsecond=0)
-                                    _open_berlin_v3021k = _open_ny_v3021k.astimezone(ZoneInfo("Europe/Berlin"))
-                                    st.info(
-                                        f"🇺🇸 US-Kernhandel noch nicht geöffnet · reguläre Wall-Street-Eröffnung heute "
-                                        f"{_open_berlin_v3021k.strftime('%H:%M')} Berliner Zeit. "
-                                        "US-Live-Signale können bis dahin noch überwiegend auf der letzten abgeschlossenen Tageskerze beruhen und sich nach Eröffnung deutlich ändern."
-                                    )
-                            except Exception:
-                                pass
-
-                            try:
-                                if "__diag_setup_data_date" in live_df.columns and len(live_df) > 0:
-                                    _raw_dates_v3021k = live_df["__diag_setup_data_date"].astype(str).str.strip()
-                                    _parsed_dates_v3021k = pd.to_datetime(_raw_dates_v3021k, errors="coerce").dt.date
-                                    _valid_dates_v3021k = _parsed_dates_v3021k.dropna()
-                                    if not _valid_dates_v3021k.empty:
-                                        _today_berlin_v3021k = _v305b_berlin_now().date()
-                                        _old_count_v3021k = int((_valid_dates_v3021k < _today_berlin_v3021k).sum())
-                                        _valid_count_v3021k = int(len(_valid_dates_v3021k))
-                                        if _valid_count_v3021k and _old_count_v3021k / _valid_count_v3021k >= 0.50:
-                                            _date_counts_v3021k = _valid_dates_v3021k.value_counts()
-                                            _date_parts_v3021k = " · ".join(
-                                                f"{d.strftime('%d.%m.%Y')}: {int(n)}" for d, n in _date_counts_v3021k.head(3).items()
-                                            )
-                                            st.warning(
-                                                f"Datenstand beachten: {_old_count_v3021k}/{_valid_count_v3021k} Werte basieren noch auf einem früheren Handelstag. "
-                                                f"{_date_parts_v3021k}"
-                                            )
-                            except Exception:
-                                pass
-
-                            # v30.21g: Read-only diagnosis for unusual 0-green states.
-                            # Diagnostic inputs are explicit aliases preserved by live_monitor
-                            # after status-history processing. Missing aliases mean an older
-                            # cached scan; they must never be interpreted as a real zero.
-                            if green_count == 0 and isinstance(live_df, pd.DataFrame) and not live_df.empty:
-                                _diag_total_v3021g = int(len(live_df))
-
-                                def _diag_bool_count_v3021g(_col):
-                                    try:
-                                        if _col not in live_df.columns:
-                                            return None
-                                        _vals = live_df[_col]
-                                        if _vals.isna().all():
-                                            return None
-                                        return int(_vals.fillna(False).astype(bool).sum())
-                                    except Exception:
-                                        return None
-
-                                def _diag_num_count_v3021g(_col, _threshold):
-                                    try:
-                                        if _col not in live_df.columns:
-                                            return None
-                                        _vals = pd.to_numeric(live_df[_col], errors="coerce")
-                                        if not _vals.notna().any():
-                                            return None
-                                        return int((_vals >= float(_threshold)).fillna(False).sum())
-                                    except Exception:
-                                        return None
-
-                                _release_n_v3021g = _diag_bool_count_v3021g("__diag_final_release_ok")
-                                _hard_gate_n_v3021g = _diag_bool_count_v3021g("__diag_entry_hard_gate")
-                                _invalid_n_v3021g = _diag_bool_count_v3021g("__diag_invalidated")
-
-                                _trigger_cols_v3021g = [
-                                    "__diag_bucket_active",
-                                    "__diag_entry_reached",
-                                    "__diag_wave_active",
-                                ]
-                                _trigger_present_v3021g = [c for c in _trigger_cols_v3021g if c in live_df.columns]
-                                _trigger_n_v3021g = None
-                                if _trigger_present_v3021g:
-                                    try:
-                                        _trigger_mask_v3021g = pd.Series(False, index=live_df.index)
-                                        for _tc_v3021g in _trigger_present_v3021g:
-                                            _trigger_mask_v3021g = _trigger_mask_v3021g | live_df[_tc_v3021g].fillna(False).astype(bool)
-                                        _trigger_n_v3021g = int(_trigger_mask_v3021g.sum())
-                                    except Exception:
-                                        _trigger_n_v3021g = None
-
-                                _timing_n_v3021g = _diag_num_count_v3021g("__diag_timing_component", 70)
-                                _conf_n_v3021g = _diag_num_count_v3021g("__diag_conf_component", 65)
-
-                                # Grade can contain suffixes such as A-/B+. Count by leading
-                                # letter instead of exact string equality.
-                                _grade_n_v3021g = None
-                                try:
-                                    if "Grade" in live_df.columns:
-                                        _grade_letters_v3021g = live_df["Grade"].astype(str).str.strip().str.upper().str.extract(r"^([A-Z])")[0]
-                                        if _grade_letters_v3021g.notna().any():
-                                            _grade_n_v3021g = int(_grade_letters_v3021g.isin(["A", "B", "C"]).sum())
-                                except Exception:
-                                    _grade_n_v3021g = None
-
-                                # CRV can be numeric, use decimal comma, or carry small labels.
-                                _crv_n_v3021g = None
-                                try:
-                                    if "CRV" in live_df.columns:
-                                        _crv_text_v3021g = live_df["CRV"].astype(str).str.replace(",", ".", regex=False)
-                                        _crv_num_v3021g = pd.to_numeric(
-                                            _crv_text_v3021g.str.extract(r"([-+]?\d+(?:\.\d+)?)")[0],
-                                            errors="coerce",
-                                        )
-                                        if _crv_num_v3021g.notna().any():
-                                            _crv_n_v3021g = int((_crv_num_v3021g >= 1.5).fillna(False).sum())
-                                except Exception:
-                                    _crv_n_v3021g = None
-
-                                _diag_has_snapshot_v3021g = any(
-                                    x is not None
-                                    for x in [
-                                        _release_n_v3021g, _trigger_n_v3021g, _timing_n_v3021g,
-                                        _conf_n_v3021g, _hard_gate_n_v3021g, _invalid_n_v3021g,
-                                    ]
-                                )
-                                st.warning(
-                                    "Aktuell 0 grüne Live-Signale. Die folgende Diagnose erklärt den aktuellen Scan "
-                                    "und verändert keine Trading-Regel."
-                                )
-                                if not _diag_has_snapshot_v3021g:
-                                    st.info(
-                                        "Dieser angezeigte Stand stammt noch aus einem Scan ohne v30.21g-Diagnosefelder. "
-                                        "Bitte einmal einen vollständigen Scan starten; fehlende Diagnosewerte werden nicht als 0 gewertet."
-                                    )
-
-                                def _diag_metric_text_v3021g(_value):
-                                    return f"{_value}/{_diag_total_v3021g}" if _value is not None else "n/a"
-
-                                _dg1_v3021g, _dg2_v3021g, _dg3_v3021g, _dg4_v3021g = st.columns(4)
-                                _dg1_v3021g.metric("Finale Freigabe", _diag_metric_text_v3021g(_release_n_v3021g))
-                                _dg2_v3021g.metric("Aktiver Trigger", _diag_metric_text_v3021g(_trigger_n_v3021g))
-                                _dg3_v3021g.metric("Timing ≥ 70", _diag_metric_text_v3021g(_timing_n_v3021g))
-                                _dg4_v3021g.metric("Konfluenz ≥ 65", _diag_metric_text_v3021g(_conf_n_v3021g))
-                                _dg5_v3021g, _dg6_v3021g, _dg7_v3021g, _dg8_v3021g = st.columns(4)
-                                _dg5_v3021g.metric("Grade A-C", _diag_metric_text_v3021g(_grade_n_v3021g))
-                                _dg6_v3021g.metric("CRV ≥ 1,50", _diag_metric_text_v3021g(_crv_n_v3021g))
-                                _dg7_v3021g.metric("Harte Einstiegsgates", _diag_metric_text_v3021g(_hard_gate_n_v3021g))
-                                _dg8_v3021g.metric("Invalidiert", _diag_metric_text_v3021g(_invalid_n_v3021g))
-
-                                _blocker_rows_v3021g = []
-                                _blocker_map_v3021g = {}
-                                if "__diag_final_blockers" in live_df.columns:
-                                    for _, _br_v3021g in live_df.iterrows():
-                                        _ticker_v3021g = str(_br_v3021g.get("Ticker") or "-").strip().upper()
-                                        _raw_block_v3021g = str(_br_v3021g.get("__diag_final_blockers") or "").strip()
-                                        if not _raw_block_v3021g or _raw_block_v3021g.lower() in {"nan", "none", "-"}:
-                                            continue
-                                        for _part_v3021g in [x.strip() for x in _raw_block_v3021g.split(";") if x.strip()]:
-                                            _blocker_map_v3021g.setdefault(_part_v3021g, []).append(_ticker_v3021g)
-                                if _hard_gate_n_v3021g:
-                                    _gate_tickers_v3021g = []
-                                    if "__diag_entry_hard_gate" in live_df.columns:
-                                        for _, _gr_v3021g in live_df.iterrows():
-                                            try:
-                                                if bool(_gr_v3021g.get("__diag_entry_hard_gate")):
-                                                    _gate_tickers_v3021g.append(str(_gr_v3021g.get("Ticker") or "-").strip().upper())
-                                            except Exception:
-                                                pass
-                                    if _gate_tickers_v3021g:
-                                        _blocker_map_v3021g.setdefault("Hartes Einstiegsgate aktiv", []).extend(_gate_tickers_v3021g)
-
-                                for _reason_v3021g, _ticks_v3021g in sorted(_blocker_map_v3021g.items(), key=lambda kv: (-len(set(kv[1])), kv[0]))[:6]:
-                                    _uniq_ticks_v3021g = sorted(set(_ticks_v3021g))
-                                    _blocker_rows_v3021g.append({
-                                        "Häufigster Blocker": _reason_v3021g,
-                                        "Anzahl": len(_uniq_ticks_v3021g),
-                                        "Ticker": ", ".join(_uniq_ticks_v3021g[:12]) + (" …" if len(_uniq_ticks_v3021g) > 12 else ""),
-                                    })
-                                if _blocker_rows_v3021g:
-                                    st.markdown("**Häufigste Ursachen im aktuellen Scan**")
-                                    for _brow_v3021g in _blocker_rows_v3021g:
-                                        st.write(f"**{_brow_v3021g['Häufigster Blocker']} · {_brow_v3021g['Anzahl']} Wert(e):** {_brow_v3021g['Ticker']}")
-
-                                # v30.21h: Decompose the central valid_trade_setup gate.
-                                # This is intentionally diagnostic-only: the exact existing
-                                # thresholds from analysis_core are mirrored, not changed.
-                                _setup_valid_n_v3021h = _diag_bool_count_v3021g("__diag_setup_valid_flag")
-                                _setup_invest_n_v3021h = _diag_num_count_v3021g("__diag_setup_investment", 60)
-                                _setup_adj_n_v3021h = _diag_num_count_v3021g("__diag_setup_adj", 55)
-                                _setup_kb_n_v3021h = _diag_num_count_v3021g("__diag_setup_kb", 2)
-                                _setup_type_n_v3021h = _diag_bool_count_v3021g("__diag_setup_type_valid")
-                                _setup_market_n_v3021h = _diag_bool_count_v3021g("__diag_setup_market_ok")
-                                _earnings_clear_n_v3021h = None
-                                if "__diag_setup_earnings_block" in live_df.columns:
-                                    try:
-                                        _eb_v3021h = live_df["__diag_setup_earnings_block"]
-                                        if not _eb_v3021h.isna().all():
-                                            _earnings_clear_n_v3021h = int((~_eb_v3021h.fillna(False).astype(bool)).sum())
-                                    except Exception:
-                                        _earnings_clear_n_v3021h = None
-
-                                if any(v is not None for v in [
-                                    _setup_valid_n_v3021h, _setup_invest_n_v3021h, _setup_adj_n_v3021h,
-                                    _setup_kb_n_v3021h, _setup_type_n_v3021h, _setup_market_n_v3021h,
-                                    _earnings_clear_n_v3021h,
-                                ]):
-                                    st.markdown("**Warum ist das zentrale Trade-Setup valide oder nicht?**")
-                                    _sg1_v3021h, _sg2_v3021h, _sg3_v3021h, _sg4_v3021h = st.columns(4)
-                                    _sg1_v3021h.metric("Valides Setup", _diag_metric_text_v3021g(_setup_valid_n_v3021h))
-                                    _sg2_v3021h.metric("Investment ≥ 60", _diag_metric_text_v3021g(_setup_invest_n_v3021h))
-                                    _sg3_v3021h.metric("Setup-Score ≥ 55", _diag_metric_text_v3021g(_setup_adj_n_v3021h))
-                                    _sg4_v3021h.metric("Technikbausteine ≥ 2", _diag_metric_text_v3021g(_setup_kb_n_v3021h))
-                                    _sg5_v3021h, _sg6_v3021h, _sg7_v3021h = st.columns(3)
-                                    _sg5_v3021h.metric("Setup-Typ erkannt", _diag_metric_text_v3021g(_setup_type_n_v3021h))
-                                    _sg6_v3021h.metric("Marktregime nicht negativ", _diag_metric_text_v3021g(_setup_market_n_v3021h))
-                                    _sg7_v3021h.metric("Kein Earnings-Veto <7T", _diag_metric_text_v3021g(_earnings_clear_n_v3021h))
-
-                                    _tech_counts_v3021h = []
-                                    for _label_v3021h, _col_v3021h in [
-                                        ("Trendqualität", "__diag_setup_s3"),
-                                        ("Momentum", "__diag_setup_s4"),
-                                        ("Volumen/Nachfrage", "__diag_setup_s5"),
-                                        ("Volatilität", "__diag_setup_s6"),
-                                    ]:
-                                        _cnt_v3021h = _diag_num_count_v3021g(_col_v3021h, 65)
-                                        if _cnt_v3021h is not None:
-                                            _tech_counts_v3021h.append(f"{_label_v3021h} ≥65: {_cnt_v3021h}/{_diag_total_v3021g}")
-                                    if _tech_counts_v3021h:
-                                        st.caption("Technikbausteine · " + " · ".join(_tech_counts_v3021h))
-
-                                    _regime_parts_v3021h = []
-                                    if "__diag_setup_market_regime" in live_df.columns:
-                                        try:
-                                            _reg_v3021h = live_df["__diag_setup_market_regime"].astype(str).str.strip().str.upper()
-                                            _reg_v3021h = _reg_v3021h[~_reg_v3021h.isin(["", "N/A", "NAN", "NONE", "-"])]
-                                            if not _reg_v3021h.empty:
-                                                _vc_v3021h = _reg_v3021h.value_counts()
-                                                _regime_parts_v3021h = [f"{k}: {int(v)}" for k, v in _vc_v3021h.items()]
-                                        except Exception:
-                                            _regime_parts_v3021h = []
-                                    if _regime_parts_v3021h:
-                                        st.caption("Marktregime im Scan · " + " · ".join(_regime_parts_v3021h))
-
-                                    if "__diag_setup_data_date" in live_df.columns:
-                                        try:
-                                            _dates_v3021h = live_df["__diag_setup_data_date"].astype(str).str.strip()
-                                            _dates_v3021h = _dates_v3021h[~_dates_v3021h.isin(["", "n/a", "nan", "None", "-"])]
-                                            if not _dates_v3021h.empty:
-                                                _date_vc_v3021h = _dates_v3021h.value_counts()
-                                                _date_txt_v3021h = " · ".join([f"{k}: {int(v)}" for k, v in _date_vc_v3021h.head(4).items()])
-                                                st.caption("Kursdaten-Stichtag · " + _date_txt_v3021h)
-                                        except Exception:
-                                            pass
-
-                                _prev_green_rows_v3021g = []
-                                if "Vorher" in live_df.columns:
-                                    for _, _pr_v3021g in live_df.iterrows():
-                                        _prev_v3021g = str(_pr_v3021g.get("Vorher") or "").strip()
-                                        _curr_v3021g = str(_pr_v3021g.get("Ampel") or "").strip()
-                                        if _prev_v3021g.startswith("🟢") and _curr_v3021g != "🟢":
-                                            _prev_green_rows_v3021g.append({
-                                                "Ticker": str(_pr_v3021g.get("Ticker") or "-").strip().upper(),
-                                                "Jetzt": f"{_curr_v3021g} {str(_pr_v3021g.get('Status') or '').strip()}",
-                                                "Warum": str(_pr_v3021g.get("Warum geändert?") or _pr_v3021g.get("Grund") or "-").strip(),
-                                                "Blocker": str(_pr_v3021g.get("__diag_final_blockers") or "-").strip(),
-                                            })
-                                if _prev_green_rows_v3021g:
-                                    st.markdown(f"**Vorher grün, im aktuellen Scan nicht mehr grün · {len(_prev_green_rows_v3021g)}**")
-                                    with st.expander("Betroffene Werte & konkrete Änderung", expanded=False):
-                                        st.dataframe(pd.DataFrame(_prev_green_rows_v3021g), hide_index=True, use_container_width=True)
-
-                                with st.expander("ℹ️ Diagnose lesen", expanded=False):
-                                    st.caption(
-                                        "Finale Freigabe fasst die bestehende Sofortanalyse zusammen. Aktiver Trigger zählt Jetzt-prüfbar-, Entry-Zonen- oder Wave-Trigger. "
-                                        "Timing/Konfluenz zeigen die bereits berechneten internen Komponenten. Die Diagnose ändert keine Schwelle und erzeugt kein Signal."
-                                    )
-
-                            # v30.21k: Always-available technical comparison. Previously the
-                            # v30.21j block lived inside the 0-green diagnosis and vanished
-                            # as soon as green signals returned. This expander is read-only.
-                            if isinstance(live_df, pd.DataFrame) and not live_df.empty:
-                                def _v3021k_num_count(_col, _threshold=65):
-                                    try:
-                                        if _col not in live_df.columns:
-                                            return None
-                                        _vals = pd.to_numeric(live_df[_col], errors="coerce")
-                                        if not _vals.notna().any():
-                                            return None
-                                        return int((_vals >= float(_threshold)).fillna(False).sum())
-                                    except Exception:
-                                        return None
-
-                                _total_v3021k = int(len(live_df))
-                                _trend_prod_v3021k = _v3021k_num_count("__diag_setup_s3")
-                                _trend_legacy_v3021k = _v3021k_num_count("__diag_setup_legacy_s3")
-                                _vol_prod_v3021k = _v3021k_num_count("__diag_setup_s5")
-                                _vol_modern_v3021k = _v3021k_num_count("__diag_setup_shadow_volume")
-                                _vola_prod_v3021k = _v3021k_num_count("__diag_setup_s6")
-                                _vola_modern_v3021k = _v3021k_num_count("__diag_setup_shadow_volatility")
-                                _kb_prod_v3021k = _v3021k_num_count("__diag_setup_kb", 2)
-                                _kb_shadow_v3021k = _v3021k_num_count("__diag_setup_shadow_kb", 2)
-
-                                if any(v is not None for v in [
-                                    _trend_prod_v3021k, _trend_legacy_v3021k, _vol_modern_v3021k,
-                                    _vola_modern_v3021k, _kb_shadow_v3021k,
-                                ]):
-                                    with st.expander("🧪 Diagnose / Technikvergleich", expanded=False):
-                                        st.caption(
-                                            "Nur Vergleich · keine Tradingwirkung. Produktive Regeln werden hier weder geändert noch neu berechnet."
-                                        )
-                                        _tc1_v3021k, _tc2_v3021k, _tc3_v3021k = st.columns(3)
-                                        _tc1_v3021k.metric(
-                                            "Trendqualität ≥65",
-                                            "n/a" if _trend_prod_v3021k is None else f"{_trend_prod_v3021k}/{_total_v3021k}",
-                                            None if _trend_prod_v3021k is None or _trend_legacy_v3021k is None else f"{_trend_prod_v3021k - _trend_legacy_v3021k:+d} vs. alte Trendregel",
-                                        )
-                                        _tc2_v3021k.metric(
-                                            "Volumen modern ≥65",
-                                            "n/a" if _vol_modern_v3021k is None else f"{_vol_modern_v3021k}/{_total_v3021k}",
-                                            None if _vol_prod_v3021k is None or _vol_modern_v3021k is None else f"{_vol_modern_v3021k - _vol_prod_v3021k:+d} vs. produktiv",
-                                        )
-                                        _tc3_v3021k.metric(
-                                            "Vola-Kontraktion ≥65",
-                                            "n/a" if _vola_modern_v3021k is None else f"{_vola_modern_v3021k}/{_total_v3021k}",
-                                            None if _vola_prod_v3021k is None or _vola_modern_v3021k is None else f"{_vola_modern_v3021k - _vola_prod_v3021k:+d} vs. produktiv",
-                                        )
-                                        _tc4_v3021k, _tc5_v3021k, _tc6_v3021k = st.columns(3)
-                                        _tc4_v3021k.metric(
-                                            "Alte Trendregel ≥65",
-                                            "n/a" if _trend_legacy_v3021k is None else f"{_trend_legacy_v3021k}/{_total_v3021k}",
-                                        )
-                                        _tc5_v3021k.metric(
-                                            "Produktiv Technik ≥2",
-                                            "n/a" if _kb_prod_v3021k is None else f"{_kb_prod_v3021k}/{_total_v3021k}",
-                                        )
-                                        _tc6_v3021k.metric(
-                                            "Modern-Shadow Technik ≥2",
-                                            "n/a" if _kb_shadow_v3021k is None else f"{_kb_shadow_v3021k}/{_total_v3021k}",
-                                            None if _kb_prod_v3021k is None or _kb_shadow_v3021k is None else f"{_kb_shadow_v3021k - _kb_prod_v3021k:+d} vs. produktiv",
-                                        )
-
-                                        if "__diag_setup_data_date" in live_df.columns:
-                                            try:
-                                                _dates_v3021k = live_df["__diag_setup_data_date"].astype(str).str.strip()
-                                                _dates_v3021k = _dates_v3021k[~_dates_v3021k.isin(["", "n/a", "nan", "None", "-"])]
-                                                if not _dates_v3021k.empty:
-                                                    _dvc_v3021k = _dates_v3021k.value_counts()
-                                                    st.caption(
-                                                        "Kursdaten-Stichtag · " + " · ".join(
-                                                            f"{k}: {int(v)}" for k, v in _dvc_v3021k.head(4).items()
-                                                        )
-                                                    )
-                                            except Exception:
-                                                pass
-
-                                        _diff_rows_v3021k = []
-                                        _needed_cols_v3021k = [
-                                            "__diag_setup_s3", "__diag_setup_legacy_s3",
-                                            "__diag_setup_s5", "__diag_setup_shadow_volume",
-                                            "__diag_setup_s6", "__diag_setup_shadow_volatility",
-                                        ]
-                                        if all(c in live_df.columns for c in _needed_cols_v3021k):
-                                            try:
-                                                for _, _rr_v3021k in live_df.iterrows():
-                                                    _new_tr_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_s3"), errors="coerce")
-                                                    _old_tr_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_legacy_s3"), errors="coerce")
-                                                    _pv_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_s5"), errors="coerce")
-                                                    _mv_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_shadow_volume"), errors="coerce")
-                                                    _pa_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_s6"), errors="coerce")
-                                                    _ma_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_shadow_volatility"), errors="coerce")
-                                                    if any(pd.notna(x) and abs(float(x) - float(y)) >= 10 for x, y in [
-                                                        (_new_tr_v3021k, _old_tr_v3021k), (_mv_v3021k, _pv_v3021k), (_ma_v3021k, _pa_v3021k)
-                                                    ] if pd.notna(y)):
-                                                        _diff_rows_v3021k.append({
-                                                            "Ticker": str(_rr_v3021k.get("Ticker") or "-").strip().upper(),
-                                                            "Trend alt": _old_tr_v3021k,
-                                                            "Trend neu": _new_tr_v3021k,
-                                                            "Volumen alt": _pv_v3021k,
-                                                            "Volumen modern": _mv_v3021k,
-                                                            "Vola alt": _pa_v3021k,
-                                                            "Vola modern": _ma_v3021k,
-                                                        })
-                                            except Exception:
-                                                _diff_rows_v3021k = []
-                                        if _diff_rows_v3021k:
-                                            with st.expander("Differenzen nach Ticker", expanded=False):
-                                                st.dataframe(pd.DataFrame(_diff_rows_v3021k), hide_index=True, use_container_width=True)
-
-                        # ---------- v30.1: Investment Rotation Radar ----------
                         elif cockpit_area == "🧭 Rotation Radar":
                             st.markdown(f"### 🧭 Investment Rotation Radar · {APP_VERSION}")
                             st.caption(
@@ -24980,6 +25078,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 use_container_width=True,
                             )
 
+# v30.21l: In der Watchlisten-Seite wird die große Analyse-Eingabe nur noch
+# im expliziten Arbeitsbereich "Einzelanalyse" gerendert. Alle anderen
+# Cockpit-Bereiche enden hier, damit die Seite nicht erneut eine zweite
+# Arbeitsoberfläche unter das Live-Cockpit stapelt.
+if workspace_mode == "Watchlisten":
+    _cockpit_guard_v3021l = str(st.session_state.get("watchlist_cockpit_area_persist_v301b", "📡 Live-Screener"))
+    _live_view_guard_v3021l = str(st.session_state.get("v3021l_live_work_area", "📡 Live-Screener"))
+    if not (_cockpit_guard_v3021l == "📡 Live-Screener" and _live_view_guard_v3021l == "🔎 Einzelanalyse"):
+        st.stop()
+
 # ---------- Analyse-Steuerung im Hauptbereich ----------
 if workspace_mode:
     if workspace_mode:
@@ -24991,9 +25099,9 @@ if workspace_mode:
         st.markdown(
             """
             <div class="mobile-form-card" style="border-left:5px solid #8b5cf6;">
-                <div class="mobile-form-title">Watchlist-Analyse</div>
+                <div class="mobile-form-title">Einzelanalyse / Vergleich</div>
                 <div class="mobile-form-sub">
-                    Watchlist wählen, analysieren oder Alerts prüfen.
+                    Einzelne Ticker analysieren oder mehrere Werte gezielt vergleichen.
                 </div>
             </div>
             """,

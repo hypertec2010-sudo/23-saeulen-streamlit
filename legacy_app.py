@@ -21572,6 +21572,45 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     score_txt = ""
                             st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {_v305b_format_berlin_timestamp(_v305b_berlin_now())}")
 
+                            # v30.21k: Market-time/data-freshness context. This is UI-only
+                            # and does not alter any scan, score, trigger or status.
+                            try:
+                                _now_berlin_v3021k = _v305b_berlin_now()
+                                _now_ny_v3021k = _now_berlin_v3021k.astimezone(ZoneInfo("America/New_York"))
+                                _ny_minutes_v3021k = int(_now_ny_v3021k.hour) * 60 + int(_now_ny_v3021k.minute)
+                                _ny_weekday_v3021k = int(_now_ny_v3021k.weekday())
+                                if _ny_weekday_v3021k < 5 and _ny_minutes_v3021k < (9 * 60 + 30):
+                                    _open_ny_v3021k = _now_ny_v3021k.replace(hour=9, minute=30, second=0, microsecond=0)
+                                    _open_berlin_v3021k = _open_ny_v3021k.astimezone(ZoneInfo("Europe/Berlin"))
+                                    st.info(
+                                        f"🇺🇸 US-Kernhandel noch nicht geöffnet · reguläre Wall-Street-Eröffnung heute "
+                                        f"{_open_berlin_v3021k.strftime('%H:%M')} Berliner Zeit. "
+                                        "US-Live-Signale können bis dahin noch überwiegend auf der letzten abgeschlossenen Tageskerze beruhen und sich nach Eröffnung deutlich ändern."
+                                    )
+                            except Exception:
+                                pass
+
+                            try:
+                                if "__diag_setup_data_date" in live_df.columns and len(live_df) > 0:
+                                    _raw_dates_v3021k = live_df["__diag_setup_data_date"].astype(str).str.strip()
+                                    _parsed_dates_v3021k = pd.to_datetime(_raw_dates_v3021k, errors="coerce").dt.date
+                                    _valid_dates_v3021k = _parsed_dates_v3021k.dropna()
+                                    if not _valid_dates_v3021k.empty:
+                                        _today_berlin_v3021k = _v305b_berlin_now().date()
+                                        _old_count_v3021k = int((_valid_dates_v3021k < _today_berlin_v3021k).sum())
+                                        _valid_count_v3021k = int(len(_valid_dates_v3021k))
+                                        if _valid_count_v3021k and _old_count_v3021k / _valid_count_v3021k >= 0.50:
+                                            _date_counts_v3021k = _valid_dates_v3021k.value_counts()
+                                            _date_parts_v3021k = " · ".join(
+                                                f"{d.strftime('%d.%m.%Y')}: {int(n)}" for d, n in _date_counts_v3021k.head(3).items()
+                                            )
+                                            st.warning(
+                                                f"Datenstand beachten: {_old_count_v3021k}/{_valid_count_v3021k} Werte basieren noch auf einem früheren Handelstag. "
+                                                f"{_date_parts_v3021k}"
+                                            )
+                            except Exception:
+                                pass
+
                             # v30.21g: Read-only diagnosis for unusual 0-green states.
                             # Diagnostic inputs are explicit aliases preserved by live_monitor
                             # after status-history processing. Missing aliases mean an older
@@ -21761,71 +21800,6 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     if _tech_counts_v3021h:
                                         st.caption("Technikbausteine · " + " · ".join(_tech_counts_v3021h))
 
-                                    # v30.21j: read-only shadow comparison. Productive
-                                    # scores/gates remain untouched; this block only
-                                    # quantifies how the already existing modern volume
-                                    # and volatility-quality scores would change the
-                                    # technical >=2 count.
-                                    _shadow_volq_n_v3021j = _diag_num_count_v3021g("__diag_setup_shadow_volume", 65)
-                                    _shadow_volc_n_v3021j = _diag_num_count_v3021g("__diag_setup_shadow_volatility", 65)
-                                    _shadow_kb_n_v3021j = _diag_num_count_v3021g("__diag_setup_shadow_kb", 2)
-                                    _prod_vol_n_v3021j = _diag_num_count_v3021g("__diag_setup_s5", 65)
-                                    _prod_vola_n_v3021j = _diag_num_count_v3021g("__diag_setup_s6", 65)
-                                    _prod_kb_n_v3021j = _setup_kb_n_v3021h
-                                    if any(v is not None for v in [
-                                        _shadow_volq_n_v3021j, _shadow_volc_n_v3021j, _shadow_kb_n_v3021j
-                                    ]):
-                                        st.markdown("**Shadow-Vergleich · moderne Technikbausteine (keine Tradingwirkung)**")
-                                        _sh1_v3021j, _sh2_v3021j, _sh3_v3021j = st.columns(3)
-                                        _sh1_v3021j.metric(
-                                            "Volumen modern ≥65",
-                                            _diag_metric_text_v3021g(_shadow_volq_n_v3021j),
-                                            None if _prod_vol_n_v3021j is None or _shadow_volq_n_v3021j is None else f"{_shadow_volq_n_v3021j - _prod_vol_n_v3021j:+d} vs. produktiv",
-                                        )
-                                        _sh2_v3021j.metric(
-                                            "Volatilitäts-Kontraktion ≥65",
-                                            _diag_metric_text_v3021g(_shadow_volc_n_v3021j),
-                                            None if _prod_vola_n_v3021j is None or _shadow_volc_n_v3021j is None else f"{_shadow_volc_n_v3021j - _prod_vola_n_v3021j:+d} vs. produktiv",
-                                        )
-                                        _sh3_v3021j.metric(
-                                            "Shadow Technik ≥2",
-                                            _diag_metric_text_v3021g(_shadow_kb_n_v3021j),
-                                            None if _prod_kb_n_v3021j is None or _shadow_kb_n_v3021j is None else f"{_shadow_kb_n_v3021j - _prod_kb_n_v3021j:+d} vs. produktiv",
-                                        )
-
-                                        _shadow_only_rows_v3021j = []
-                                        if all(c in live_df.columns for c in [
-                                            "__diag_setup_kb", "__diag_setup_shadow_kb"
-                                        ]):
-                                            try:
-                                                for _, _sr_v3021j in live_df.iterrows():
-                                                    _pk_v3021j = pd.to_numeric(_sr_v3021j.get("__diag_setup_kb"), errors="coerce")
-                                                    _sk_v3021j = pd.to_numeric(_sr_v3021j.get("__diag_setup_shadow_kb"), errors="coerce")
-                                                    if pd.notna(_pk_v3021j) and pd.notna(_sk_v3021j) and _pk_v3021j < 2 <= _sk_v3021j:
-                                                        _shadow_only_rows_v3021j.append({
-                                                            "Ticker": str(_sr_v3021j.get("Ticker") or "-").strip().upper(),
-                                                            "Produktiv": int(_pk_v3021j),
-                                                            "Shadow": int(_sk_v3021j),
-                                                            "Volumen alt": _sr_v3021j.get("__diag_setup_s5"),
-                                                            "Volumen modern": _sr_v3021j.get("__diag_setup_shadow_volume"),
-                                                            "Volatilität alt": _sr_v3021j.get("__diag_setup_s6"),
-                                                            "Volatilität modern": _sr_v3021j.get("__diag_setup_shadow_volatility"),
-                                                        })
-                                            except Exception:
-                                                _shadow_only_rows_v3021j = []
-                                        if _shadow_only_rows_v3021j:
-                                            st.caption(
-                                                f"{len(_shadow_only_rows_v3021j)} Wert(e) erreichen im Shadow mindestens zwei Technikbausteine, produktiv aber noch nicht."
-                                            )
-                                            with st.expander("Shadow-Differenzen nach Ticker", expanded=False):
-                                                st.dataframe(pd.DataFrame(_shadow_only_rows_v3021j), hide_index=True, use_container_width=True)
-                                        with st.expander("ℹ️ Shadow-Vergleich lesen", expanded=False):
-                                            st.caption(
-                                                "Produktiv bleiben Trendqualität + Momentum + das bestehende Volumen-s5 + die bestehende ATR-s6-Regel. "
-                                                "Shadow ersetzt nur s5 durch volume_quality_score und s6 durch volatility_contraction_score. "
-                                                "Die Anzeige ändert weder Setup-Gültigkeit noch Score, Trigger, Ampel, Grade, CRV oder Orders."
-                                            )
-
                                     _regime_parts_v3021h = []
                                     if "__diag_setup_market_regime" in live_df.columns:
                                         try:
@@ -21872,6 +21846,117 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Finale Freigabe fasst die bestehende Sofortanalyse zusammen. Aktiver Trigger zählt Jetzt-prüfbar-, Entry-Zonen- oder Wave-Trigger. "
                                         "Timing/Konfluenz zeigen die bereits berechneten internen Komponenten. Die Diagnose ändert keine Schwelle und erzeugt kein Signal."
                                     )
+
+                            # v30.21k: Always-available technical comparison. Previously the
+                            # v30.21j block lived inside the 0-green diagnosis and vanished
+                            # as soon as green signals returned. This expander is read-only.
+                            if isinstance(live_df, pd.DataFrame) and not live_df.empty:
+                                def _v3021k_num_count(_col, _threshold=65):
+                                    try:
+                                        if _col not in live_df.columns:
+                                            return None
+                                        _vals = pd.to_numeric(live_df[_col], errors="coerce")
+                                        if not _vals.notna().any():
+                                            return None
+                                        return int((_vals >= float(_threshold)).fillna(False).sum())
+                                    except Exception:
+                                        return None
+
+                                _total_v3021k = int(len(live_df))
+                                _trend_prod_v3021k = _v3021k_num_count("__diag_setup_s3")
+                                _trend_legacy_v3021k = _v3021k_num_count("__diag_setup_legacy_s3")
+                                _vol_prod_v3021k = _v3021k_num_count("__diag_setup_s5")
+                                _vol_modern_v3021k = _v3021k_num_count("__diag_setup_shadow_volume")
+                                _vola_prod_v3021k = _v3021k_num_count("__diag_setup_s6")
+                                _vola_modern_v3021k = _v3021k_num_count("__diag_setup_shadow_volatility")
+                                _kb_prod_v3021k = _v3021k_num_count("__diag_setup_kb", 2)
+                                _kb_shadow_v3021k = _v3021k_num_count("__diag_setup_shadow_kb", 2)
+
+                                if any(v is not None for v in [
+                                    _trend_prod_v3021k, _trend_legacy_v3021k, _vol_modern_v3021k,
+                                    _vola_modern_v3021k, _kb_shadow_v3021k,
+                                ]):
+                                    with st.expander("🧪 Diagnose / Technikvergleich", expanded=False):
+                                        st.caption(
+                                            "Nur Vergleich · keine Tradingwirkung. Produktive Regeln werden hier weder geändert noch neu berechnet."
+                                        )
+                                        _tc1_v3021k, _tc2_v3021k, _tc3_v3021k = st.columns(3)
+                                        _tc1_v3021k.metric(
+                                            "Trendqualität ≥65",
+                                            "n/a" if _trend_prod_v3021k is None else f"{_trend_prod_v3021k}/{_total_v3021k}",
+                                            None if _trend_prod_v3021k is None or _trend_legacy_v3021k is None else f"{_trend_prod_v3021k - _trend_legacy_v3021k:+d} vs. alte Trendregel",
+                                        )
+                                        _tc2_v3021k.metric(
+                                            "Volumen modern ≥65",
+                                            "n/a" if _vol_modern_v3021k is None else f"{_vol_modern_v3021k}/{_total_v3021k}",
+                                            None if _vol_prod_v3021k is None or _vol_modern_v3021k is None else f"{_vol_modern_v3021k - _vol_prod_v3021k:+d} vs. produktiv",
+                                        )
+                                        _tc3_v3021k.metric(
+                                            "Vola-Kontraktion ≥65",
+                                            "n/a" if _vola_modern_v3021k is None else f"{_vola_modern_v3021k}/{_total_v3021k}",
+                                            None if _vola_prod_v3021k is None or _vola_modern_v3021k is None else f"{_vola_modern_v3021k - _vola_prod_v3021k:+d} vs. produktiv",
+                                        )
+                                        _tc4_v3021k, _tc5_v3021k, _tc6_v3021k = st.columns(3)
+                                        _tc4_v3021k.metric(
+                                            "Alte Trendregel ≥65",
+                                            "n/a" if _trend_legacy_v3021k is None else f"{_trend_legacy_v3021k}/{_total_v3021k}",
+                                        )
+                                        _tc5_v3021k.metric(
+                                            "Produktiv Technik ≥2",
+                                            "n/a" if _kb_prod_v3021k is None else f"{_kb_prod_v3021k}/{_total_v3021k}",
+                                        )
+                                        _tc6_v3021k.metric(
+                                            "Modern-Shadow Technik ≥2",
+                                            "n/a" if _kb_shadow_v3021k is None else f"{_kb_shadow_v3021k}/{_total_v3021k}",
+                                            None if _kb_prod_v3021k is None or _kb_shadow_v3021k is None else f"{_kb_shadow_v3021k - _kb_prod_v3021k:+d} vs. produktiv",
+                                        )
+
+                                        if "__diag_setup_data_date" in live_df.columns:
+                                            try:
+                                                _dates_v3021k = live_df["__diag_setup_data_date"].astype(str).str.strip()
+                                                _dates_v3021k = _dates_v3021k[~_dates_v3021k.isin(["", "n/a", "nan", "None", "-"])]
+                                                if not _dates_v3021k.empty:
+                                                    _dvc_v3021k = _dates_v3021k.value_counts()
+                                                    st.caption(
+                                                        "Kursdaten-Stichtag · " + " · ".join(
+                                                            f"{k}: {int(v)}" for k, v in _dvc_v3021k.head(4).items()
+                                                        )
+                                                    )
+                                            except Exception:
+                                                pass
+
+                                        _diff_rows_v3021k = []
+                                        _needed_cols_v3021k = [
+                                            "__diag_setup_s3", "__diag_setup_legacy_s3",
+                                            "__diag_setup_s5", "__diag_setup_shadow_volume",
+                                            "__diag_setup_s6", "__diag_setup_shadow_volatility",
+                                        ]
+                                        if all(c in live_df.columns for c in _needed_cols_v3021k):
+                                            try:
+                                                for _, _rr_v3021k in live_df.iterrows():
+                                                    _new_tr_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_s3"), errors="coerce")
+                                                    _old_tr_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_legacy_s3"), errors="coerce")
+                                                    _pv_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_s5"), errors="coerce")
+                                                    _mv_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_shadow_volume"), errors="coerce")
+                                                    _pa_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_s6"), errors="coerce")
+                                                    _ma_v3021k = pd.to_numeric(_rr_v3021k.get("__diag_setup_shadow_volatility"), errors="coerce")
+                                                    if any(pd.notna(x) and abs(float(x) - float(y)) >= 10 for x, y in [
+                                                        (_new_tr_v3021k, _old_tr_v3021k), (_mv_v3021k, _pv_v3021k), (_ma_v3021k, _pa_v3021k)
+                                                    ] if pd.notna(y)):
+                                                        _diff_rows_v3021k.append({
+                                                            "Ticker": str(_rr_v3021k.get("Ticker") or "-").strip().upper(),
+                                                            "Trend alt": _old_tr_v3021k,
+                                                            "Trend neu": _new_tr_v3021k,
+                                                            "Volumen alt": _pv_v3021k,
+                                                            "Volumen modern": _mv_v3021k,
+                                                            "Vola alt": _pa_v3021k,
+                                                            "Vola modern": _ma_v3021k,
+                                                        })
+                                            except Exception:
+                                                _diff_rows_v3021k = []
+                                        if _diff_rows_v3021k:
+                                            with st.expander("Differenzen nach Ticker", expanded=False):
+                                                st.dataframe(pd.DataFrame(_diff_rows_v3021k), hide_index=True, use_container_width=True)
 
                         # ---------- v30.1: Investment Rotation Radar ----------
                         elif cockpit_area == "🧭 Rotation Radar":

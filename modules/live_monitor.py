@@ -1510,6 +1510,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     # already existing modern quality scores from the same analysis result.
     _setup_shadow_volume_v3021j = _v210_alert_num(r.get("volume_quality_score"), default=None)
     _setup_shadow_volatility_v3021j = _v210_alert_num(r.get("volatility_contraction_score"), default=None)
+    # v30.21k: keep the pre-v30.21i binary trend component as a read-only
+    # comparator. It never feeds the productive setup gate.
+    _setup_legacy_trend_v3021k = _v210_alert_num(r.get("s3"), default=None)
     _setup_shadow_trend_v3021j = _v210_alert_num(
         r.get("setup_trend_score"),
         default=_v210_alert_num(r.get("trend_quality_score"), default=None),
@@ -1633,6 +1636,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         # v30.21i: Mirror the actual graduated trend component used by the
         # central setup gate. Fall back to legacy s3 for older cached analyses.
         "__setup_s3": _v210_alert_num(r.get("setup_trend_score"), default=_v210_alert_num(r.get("trend_quality_score"), default=_v210_alert_num(r.get("s3"), default=None))),
+        "__setup_legacy_s3": _setup_legacy_trend_v3021k,
         "__setup_s4": _v210_alert_num(r.get("s4"), default=None),
         "__setup_s5": _v210_alert_num(r.get("s5"), default=None),
         "__setup_s6": _v210_alert_num(r.get("s6"), default=None),
@@ -2256,6 +2260,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
         "__diag_setup_market_ok": "__setup_market_ok",
         "__diag_setup_earnings_block": "__setup_earnings_block",
         "__diag_setup_s3": "__setup_s3",
+        "__diag_setup_legacy_s3": "__setup_legacy_s3",
         "__diag_setup_s4": "__setup_s4",
         "__diag_setup_s5": "__setup_s5",
         "__diag_setup_s6": "__setup_s6",

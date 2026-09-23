@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.21i"
+APP_VERSION = "v30.21j"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -21760,6 +21760,71 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                             _tech_counts_v3021h.append(f"{_label_v3021h} ≥65: {_cnt_v3021h}/{_diag_total_v3021g}")
                                     if _tech_counts_v3021h:
                                         st.caption("Technikbausteine · " + " · ".join(_tech_counts_v3021h))
+
+                                    # v30.21j: read-only shadow comparison. Productive
+                                    # scores/gates remain untouched; this block only
+                                    # quantifies how the already existing modern volume
+                                    # and volatility-quality scores would change the
+                                    # technical >=2 count.
+                                    _shadow_volq_n_v3021j = _diag_num_count_v3021g("__diag_setup_shadow_volume", 65)
+                                    _shadow_volc_n_v3021j = _diag_num_count_v3021g("__diag_setup_shadow_volatility", 65)
+                                    _shadow_kb_n_v3021j = _diag_num_count_v3021g("__diag_setup_shadow_kb", 2)
+                                    _prod_vol_n_v3021j = _diag_num_count_v3021g("__diag_setup_s5", 65)
+                                    _prod_vola_n_v3021j = _diag_num_count_v3021g("__diag_setup_s6", 65)
+                                    _prod_kb_n_v3021j = _setup_kb_n_v3021h
+                                    if any(v is not None for v in [
+                                        _shadow_volq_n_v3021j, _shadow_volc_n_v3021j, _shadow_kb_n_v3021j
+                                    ]):
+                                        st.markdown("**Shadow-Vergleich · moderne Technikbausteine (keine Tradingwirkung)**")
+                                        _sh1_v3021j, _sh2_v3021j, _sh3_v3021j = st.columns(3)
+                                        _sh1_v3021j.metric(
+                                            "Volumen modern ≥65",
+                                            _diag_metric_text_v3021g(_shadow_volq_n_v3021j),
+                                            None if _prod_vol_n_v3021j is None or _shadow_volq_n_v3021j is None else f"{_shadow_volq_n_v3021j - _prod_vol_n_v3021j:+d} vs. produktiv",
+                                        )
+                                        _sh2_v3021j.metric(
+                                            "Volatilitäts-Kontraktion ≥65",
+                                            _diag_metric_text_v3021g(_shadow_volc_n_v3021j),
+                                            None if _prod_vola_n_v3021j is None or _shadow_volc_n_v3021j is None else f"{_shadow_volc_n_v3021j - _prod_vola_n_v3021j:+d} vs. produktiv",
+                                        )
+                                        _sh3_v3021j.metric(
+                                            "Shadow Technik ≥2",
+                                            _diag_metric_text_v3021g(_shadow_kb_n_v3021j),
+                                            None if _prod_kb_n_v3021j is None or _shadow_kb_n_v3021j is None else f"{_shadow_kb_n_v3021j - _prod_kb_n_v3021j:+d} vs. produktiv",
+                                        )
+
+                                        _shadow_only_rows_v3021j = []
+                                        if all(c in live_df.columns for c in [
+                                            "__diag_setup_kb", "__diag_setup_shadow_kb"
+                                        ]):
+                                            try:
+                                                for _, _sr_v3021j in live_df.iterrows():
+                                                    _pk_v3021j = pd.to_numeric(_sr_v3021j.get("__diag_setup_kb"), errors="coerce")
+                                                    _sk_v3021j = pd.to_numeric(_sr_v3021j.get("__diag_setup_shadow_kb"), errors="coerce")
+                                                    if pd.notna(_pk_v3021j) and pd.notna(_sk_v3021j) and _pk_v3021j < 2 <= _sk_v3021j:
+                                                        _shadow_only_rows_v3021j.append({
+                                                            "Ticker": str(_sr_v3021j.get("Ticker") or "-").strip().upper(),
+                                                            "Produktiv": int(_pk_v3021j),
+                                                            "Shadow": int(_sk_v3021j),
+                                                            "Volumen alt": _sr_v3021j.get("__diag_setup_s5"),
+                                                            "Volumen modern": _sr_v3021j.get("__diag_setup_shadow_volume"),
+                                                            "Volatilität alt": _sr_v3021j.get("__diag_setup_s6"),
+                                                            "Volatilität modern": _sr_v3021j.get("__diag_setup_shadow_volatility"),
+                                                        })
+                                            except Exception:
+                                                _shadow_only_rows_v3021j = []
+                                        if _shadow_only_rows_v3021j:
+                                            st.caption(
+                                                f"{len(_shadow_only_rows_v3021j)} Wert(e) erreichen im Shadow mindestens zwei Technikbausteine, produktiv aber noch nicht."
+                                            )
+                                            with st.expander("Shadow-Differenzen nach Ticker", expanded=False):
+                                                st.dataframe(pd.DataFrame(_shadow_only_rows_v3021j), hide_index=True, use_container_width=True)
+                                        with st.expander("ℹ️ Shadow-Vergleich lesen", expanded=False):
+                                            st.caption(
+                                                "Produktiv bleiben Trendqualität + Momentum + das bestehende Volumen-s5 + die bestehende ATR-s6-Regel. "
+                                                "Shadow ersetzt nur s5 durch volume_quality_score und s6 durch volatility_contraction_score. "
+                                                "Die Anzeige ändert weder Setup-Gültigkeit noch Score, Trigger, Ampel, Grade, CRV oder Orders."
+                                            )
 
                                     _regime_parts_v3021h = []
                                     if "__diag_setup_market_regime" in live_df.columns:

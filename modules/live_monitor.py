@@ -1503,6 +1503,32 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         and _setup_days_earn_v3021h < 7
     )
 
+    # v30.21j: read-only shadow comparison for the two remaining legacy
+    # technical gate components. This deliberately does NOT feed setup validity,
+    # scoring, triggers, grades, CRV or live status. It only lets the 0-green
+    # diagnosis compare the productive legacy volume/ATR components with the
+    # already existing modern quality scores from the same analysis result.
+    _setup_shadow_volume_v3021j = _v210_alert_num(r.get("volume_quality_score"), default=None)
+    _setup_shadow_volatility_v3021j = _v210_alert_num(r.get("volatility_contraction_score"), default=None)
+    _setup_shadow_trend_v3021j = _v210_alert_num(
+        r.get("setup_trend_score"),
+        default=_v210_alert_num(r.get("trend_quality_score"), default=None),
+    )
+    _setup_shadow_momentum_v3021j = _v210_alert_num(r.get("s4"), default=None)
+    _setup_shadow_kb_v3021j = None
+    if all(v is not None for v in [
+        _setup_shadow_trend_v3021j,
+        _setup_shadow_momentum_v3021j,
+        _setup_shadow_volume_v3021j,
+        _setup_shadow_volatility_v3021j,
+    ]):
+        _setup_shadow_kb_v3021j = int(sum([
+            _setup_shadow_trend_v3021j >= 65,
+            _setup_shadow_momentum_v3021j >= 65,
+            _setup_shadow_volume_v3021j >= 65,
+            _setup_shadow_volatility_v3021j >= 65,
+        ]))
+
     return {
         **_package_fields_v3020,
         "Ampel": status_icon,
@@ -1610,6 +1636,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "__setup_s4": _v210_alert_num(r.get("s4"), default=None),
         "__setup_s5": _v210_alert_num(r.get("s5"), default=None),
         "__setup_s6": _v210_alert_num(r.get("s6"), default=None),
+        # v30.21j shadow-only diagnostics; never used by productive gates.
+        "__setup_shadow_volume": _setup_shadow_volume_v3021j,
+        "__setup_shadow_volatility": _setup_shadow_volatility_v3021j,
+        "__setup_shadow_kb": _setup_shadow_kb_v3021j,
         "__setup_data_date": str(r.get("ts") or "n/a").strip(),
     }
 
@@ -2229,6 +2259,9 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
         "__diag_setup_s4": "__setup_s4",
         "__diag_setup_s5": "__setup_s5",
         "__diag_setup_s6": "__setup_s6",
+        "__diag_setup_shadow_volume": "__setup_shadow_volume",
+        "__diag_setup_shadow_volatility": "__setup_shadow_volatility",
+        "__diag_setup_shadow_kb": "__setup_shadow_kb",
         "__diag_setup_data_date": "__setup_data_date",
     }
     for _diag_dst_v3021g, _diag_src_v3021g in _diag_aliases_v3021g.items():

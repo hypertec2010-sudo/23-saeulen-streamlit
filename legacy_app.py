@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.21g"
+APP_VERSION = "v30.21h"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -21713,6 +21713,77 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.markdown("**Häufigste Ursachen im aktuellen Scan**")
                                     for _brow_v3021g in _blocker_rows_v3021g:
                                         st.write(f"**{_brow_v3021g['Häufigster Blocker']} · {_brow_v3021g['Anzahl']} Wert(e):** {_brow_v3021g['Ticker']}")
+
+                                # v30.21h: Decompose the central valid_trade_setup gate.
+                                # This is intentionally diagnostic-only: the exact existing
+                                # thresholds from analysis_core are mirrored, not changed.
+                                _setup_valid_n_v3021h = _diag_bool_count_v3021g("__diag_setup_valid_flag")
+                                _setup_invest_n_v3021h = _diag_num_count_v3021g("__diag_setup_investment", 60)
+                                _setup_adj_n_v3021h = _diag_num_count_v3021g("__diag_setup_adj", 55)
+                                _setup_kb_n_v3021h = _diag_num_count_v3021g("__diag_setup_kb", 2)
+                                _setup_type_n_v3021h = _diag_bool_count_v3021g("__diag_setup_type_valid")
+                                _setup_market_n_v3021h = _diag_bool_count_v3021g("__diag_setup_market_ok")
+                                _earnings_clear_n_v3021h = None
+                                if "__diag_setup_earnings_block" in live_df.columns:
+                                    try:
+                                        _eb_v3021h = live_df["__diag_setup_earnings_block"]
+                                        if not _eb_v3021h.isna().all():
+                                            _earnings_clear_n_v3021h = int((~_eb_v3021h.fillna(False).astype(bool)).sum())
+                                    except Exception:
+                                        _earnings_clear_n_v3021h = None
+
+                                if any(v is not None for v in [
+                                    _setup_valid_n_v3021h, _setup_invest_n_v3021h, _setup_adj_n_v3021h,
+                                    _setup_kb_n_v3021h, _setup_type_n_v3021h, _setup_market_n_v3021h,
+                                    _earnings_clear_n_v3021h,
+                                ]):
+                                    st.markdown("**Warum ist das zentrale Trade-Setup valide oder nicht?**")
+                                    _sg1_v3021h, _sg2_v3021h, _sg3_v3021h, _sg4_v3021h = st.columns(4)
+                                    _sg1_v3021h.metric("Valides Setup", _diag_metric_text_v3021g(_setup_valid_n_v3021h))
+                                    _sg2_v3021h.metric("Investment ≥ 60", _diag_metric_text_v3021g(_setup_invest_n_v3021h))
+                                    _sg3_v3021h.metric("Setup-Score ≥ 55", _diag_metric_text_v3021g(_setup_adj_n_v3021h))
+                                    _sg4_v3021h.metric("Technikbausteine ≥ 2", _diag_metric_text_v3021g(_setup_kb_n_v3021h))
+                                    _sg5_v3021h, _sg6_v3021h, _sg7_v3021h = st.columns(3)
+                                    _sg5_v3021h.metric("Setup-Typ erkannt", _diag_metric_text_v3021g(_setup_type_n_v3021h))
+                                    _sg6_v3021h.metric("Marktregime nicht negativ", _diag_metric_text_v3021g(_setup_market_n_v3021h))
+                                    _sg7_v3021h.metric("Kein Earnings-Veto <7T", _diag_metric_text_v3021g(_earnings_clear_n_v3021h))
+
+                                    _tech_counts_v3021h = []
+                                    for _label_v3021h, _col_v3021h in [
+                                        ("Trend", "__diag_setup_s3"),
+                                        ("Momentum", "__diag_setup_s4"),
+                                        ("Volumen/Nachfrage", "__diag_setup_s5"),
+                                        ("Volatilität", "__diag_setup_s6"),
+                                    ]:
+                                        _cnt_v3021h = _diag_num_count_v3021g(_col_v3021h, 65)
+                                        if _cnt_v3021h is not None:
+                                            _tech_counts_v3021h.append(f"{_label_v3021h} ≥65: {_cnt_v3021h}/{_diag_total_v3021g}")
+                                    if _tech_counts_v3021h:
+                                        st.caption("Technikbausteine · " + " · ".join(_tech_counts_v3021h))
+
+                                    _regime_parts_v3021h = []
+                                    if "__diag_setup_market_regime" in live_df.columns:
+                                        try:
+                                            _reg_v3021h = live_df["__diag_setup_market_regime"].astype(str).str.strip().str.upper()
+                                            _reg_v3021h = _reg_v3021h[~_reg_v3021h.isin(["", "N/A", "NAN", "NONE", "-"])]
+                                            if not _reg_v3021h.empty:
+                                                _vc_v3021h = _reg_v3021h.value_counts()
+                                                _regime_parts_v3021h = [f"{k}: {int(v)}" for k, v in _vc_v3021h.items()]
+                                        except Exception:
+                                            _regime_parts_v3021h = []
+                                    if _regime_parts_v3021h:
+                                        st.caption("Marktregime im Scan · " + " · ".join(_regime_parts_v3021h))
+
+                                    if "__diag_setup_data_date" in live_df.columns:
+                                        try:
+                                            _dates_v3021h = live_df["__diag_setup_data_date"].astype(str).str.strip()
+                                            _dates_v3021h = _dates_v3021h[~_dates_v3021h.isin(["", "n/a", "nan", "None", "-"])]
+                                            if not _dates_v3021h.empty:
+                                                _date_vc_v3021h = _dates_v3021h.value_counts()
+                                                _date_txt_v3021h = " · ".join([f"{k}: {int(v)}" for k, v in _date_vc_v3021h.head(4).items()])
+                                                st.caption("Kursdaten-Stichtag · " + _date_txt_v3021h)
+                                        except Exception:
+                                            pass
 
                                 _prev_green_rows_v3021g = []
                                 if "Vorher" in live_df.columns:

@@ -1487,6 +1487,22 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         except Exception:
             _package_fields_v3020 = {}  # fail closed for planning, not for the scanner
 
+    # v30.21h: Read-only decomposition of the central valid_trade_setup gate.
+    # These values mirror the existing analysis_core conditions and are used
+    # only by the 0-green diagnosis. They do not feed score/status decisions.
+    _setup_investment_v3021h = _v210_alert_num(r.get("investment"), default=None)
+    _setup_adj_v3021h = _v210_alert_num(r.get("setup_adj"), default=None)
+    _setup_kb_v3021h = _v210_alert_num(r.get("kb"), default=None)
+    _setup_type_v3021h = str(r.get("setup_type") or "-").strip()
+    _setup_market_regime_v3021h = str(((r.get("market_info") or {}) if isinstance(r.get("market_info"), dict) else {}).get("regime") or "n/a").strip().upper()
+    _setup_days_earn_v3021h = _v210_alert_num(r.get("days_earn"), default=None)
+    _setup_has_earnings_v3021h = bool(r.get("has_upcoming_earnings", False))
+    _setup_earnings_block_v3021h = bool(
+        _setup_has_earnings_v3021h
+        and _setup_days_earn_v3021h is not None
+        and _setup_days_earn_v3021h < 7
+    )
+
     return {
         **_package_fields_v3020,
         "Ampel": status_icon,
@@ -1578,6 +1594,21 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "__ma20_stretch_pct": None if ma20_stretch_pct is None else round(float(ma20_stretch_pct), 2),
         "__gate": gate,
         "__final_blockers": final_blocker_text,
+        # v30.21h setup-gate diagnosis (read-only)
+        "__setup_valid_flag": bool(r.get("valid_trade_setup", False)),
+        "__setup_investment": _setup_investment_v3021h,
+        "__setup_adj": _setup_adj_v3021h,
+        "__setup_kb": _setup_kb_v3021h,
+        "__setup_type": _setup_type_v3021h,
+        "__setup_type_valid": bool(_setup_type_v3021h not in {"", "-", "Kein sauberes Setup"}),
+        "__setup_market_regime": _setup_market_regime_v3021h,
+        "__setup_market_ok": bool(_setup_market_regime_v3021h != "NEGATIV"),
+        "__setup_earnings_block": _setup_earnings_block_v3021h,
+        "__setup_s3": _v210_alert_num(r.get("s3"), default=None),
+        "__setup_s4": _v210_alert_num(r.get("s4"), default=None),
+        "__setup_s5": _v210_alert_num(r.get("s5"), default=None),
+        "__setup_s6": _v210_alert_num(r.get("s6"), default=None),
+        "__setup_data_date": str(r.get("ts") or "n/a").strip(),
     }
 
 
@@ -2182,6 +2213,21 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
         "__diag_entry_reached": "__entry_reached",
         "__diag_wave_active": "__wave_active",
         "__diag_final_blockers": "__final_blockers",
+        # v30.21h: central valid_trade_setup decomposition
+        "__diag_setup_valid_flag": "__setup_valid_flag",
+        "__diag_setup_investment": "__setup_investment",
+        "__diag_setup_adj": "__setup_adj",
+        "__diag_setup_kb": "__setup_kb",
+        "__diag_setup_type": "__setup_type",
+        "__diag_setup_type_valid": "__setup_type_valid",
+        "__diag_setup_market_regime": "__setup_market_regime",
+        "__diag_setup_market_ok": "__setup_market_ok",
+        "__diag_setup_earnings_block": "__setup_earnings_block",
+        "__diag_setup_s3": "__setup_s3",
+        "__diag_setup_s4": "__setup_s4",
+        "__diag_setup_s5": "__setup_s5",
+        "__diag_setup_s6": "__setup_s6",
+        "__diag_setup_data_date": "__setup_data_date",
     }
     for _diag_dst_v3021g, _diag_src_v3021g in _diag_aliases_v3021g.items():
         if _diag_src_v3021g in enriched.columns:

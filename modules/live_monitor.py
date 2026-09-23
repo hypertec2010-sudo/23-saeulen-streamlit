@@ -2167,13 +2167,33 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             )
         state[key] = current_snapshot
 
-    # Remove ephemeral hysteresis/sort helpers, NOT package snapshot data.
-    # v30.20c: this frame is committed to the Atomic cache and persistent
-    # snapshot, and then consumed by the package planner. Deleting __pkg_ here
-    # erased entry, stop, target, currency and time for EVERY scanned ticker.
-    # Display tables already select public columns / hide internal columns.
+    # v30.21g: Preserve a compact diagnostic snapshot before ephemeral internals
+    # are stripped. The UI's 0-green diagnosis runs after this function, so
+    # reading the original __timing/__trigger fields there produced false zeros
+    # and n/a values. These aliases are read-only and do not feed any score,
+    # gate, hysteresis or trading decision. Display tables select public columns.
+    _diag_aliases_v3021g = {
+        "__diag_timing_component": "__timing_component",
+        "__diag_conf_component": "__conf_component",
+        "__diag_entry_hard_gate": "__entry_hard_gate",
+        "__diag_invalidated": "__invalidated",
+        "__diag_final_release_ok": "__final_release_ok",
+        "__diag_bucket_active": "__bucket_active",
+        "__diag_entry_reached": "__entry_reached",
+        "__diag_wave_active": "__wave_active",
+        "__diag_final_blockers": "__final_blockers",
+    }
+    for _diag_dst_v3021g, _diag_src_v3021g in _diag_aliases_v3021g.items():
+        if _diag_src_v3021g in enriched.columns:
+            enriched[_diag_dst_v3021g] = enriched[_diag_src_v3021g]
+
+    # Remove ephemeral hysteresis/sort helpers, NOT package or diagnostic
+    # snapshot data. __pkg_ is consumed by the package planner; __diag_ is
+    # consumed only by the read-only live-scan diagnosis.
     for _internal_col in [c for c in enriched.columns
-                          if str(c).startswith("__") and not str(c).startswith("__pkg_")]:
+                          if str(c).startswith("__")
+                          and not str(c).startswith("__pkg_")
+                          and not str(c).startswith("__diag_")]:
         if _internal_col in enriched.columns:
             enriched = enriched.drop(columns=[_internal_col])
     # Signal-Stabilität und Bestätigungen direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.

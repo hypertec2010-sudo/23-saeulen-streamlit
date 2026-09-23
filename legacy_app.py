@@ -2725,7 +2725,7 @@ from ui_helpers import show_sheet_result
 
 warnings.filterwarnings("ignore")
 
-APP_VERSION = "v30.21e"
+APP_VERSION = "v30.21f"
 
 _MULTIPAGE_BOOTSTRAPPED_V282 = os.environ.get("CAPITAL_HILL_MULTIPAGE", "0") == "1"
 
@@ -21571,6 +21571,131 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 except Exception:
                                     score_txt = ""
                             st.caption(f"Status: {green_count} grün · {yellow_count} gelb · {red_count} rot · {changed_count} Statuswechsel{score_txt} · geprüft: {_v305b_format_berlin_timestamp(_v305b_berlin_now())}")
+
+                            # v30.21f: Rein lesende Diagnose fuer ungewoehnliche 0-Gruen-Staende.
+                            # Keine Schwelle, kein Score und keine Ampel wird veraendert. Die internen
+                            # Diagnosefelder werden bereits vom Live-Monitor berechnet und hier nur
+                            # zusammengefasst, damit ein ploetzlicher kompletter Gruen-Ausfall nicht
+                            # tickerweise manuell untersucht werden muss.
+                            if green_count == 0 and isinstance(live_df, pd.DataFrame) and not live_df.empty:
+                                _diag_total_v3021f = int(len(live_df))
+
+                                def _diag_bool_count_v3021f(_col):
+                                    try:
+                                        if _col not in live_df.columns:
+                                            return None
+                                        return int(live_df[_col].fillna(False).astype(bool).sum())
+                                    except Exception:
+                                        return None
+
+                                def _diag_num_count_v3021f(_col, _threshold):
+                                    try:
+                                        if _col not in live_df.columns:
+                                            return None
+                                        _vals = pd.to_numeric(live_df[_col], errors="coerce")
+                                        return int((_vals >= float(_threshold)).fillna(False).sum())
+                                    except Exception:
+                                        return None
+
+                                _release_n_v3021f = _diag_bool_count_v3021f("__final_release_ok")
+                                _hard_gate_n_v3021f = _diag_bool_count_v3021f("__entry_hard_gate")
+                                _invalid_n_v3021f = _diag_bool_count_v3021f("__invalidated")
+                                _trigger_mask_v3021f = pd.Series(False, index=live_df.index)
+                                for _tc_v3021f in ["__bucket_active", "__entry_reached", "__wave_active"]:
+                                    if _tc_v3021f in live_df.columns:
+                                        try:
+                                            _trigger_mask_v3021f = _trigger_mask_v3021f | live_df[_tc_v3021f].fillna(False).astype(bool)
+                                        except Exception:
+                                            pass
+                                _trigger_n_v3021f = int(_trigger_mask_v3021f.sum())
+                                _timing_n_v3021f = _diag_num_count_v3021f("__timing_component", 70)
+                                _conf_n_v3021f = _diag_num_count_v3021f("__conf_component", 65)
+
+                                _grade_n_v3021f = None
+                                try:
+                                    if "Grade" in live_df.columns:
+                                        _grade_n_v3021f = int(live_df["Grade"].astype(str).str.upper().isin(["A", "B", "C"]).sum())
+                                except Exception:
+                                    _grade_n_v3021f = None
+
+                                _crv_n_v3021f = None
+                                try:
+                                    if "CRV" in live_df.columns:
+                                        _crv_vals_v3021f = pd.to_numeric(live_df["CRV"], errors="coerce")
+                                        _crv_n_v3021f = int((_crv_vals_v3021f >= 1.5).fillna(False).sum())
+                                except Exception:
+                                    _crv_n_v3021f = None
+
+                                st.warning(
+                                    "Aktuell 0 grüne Live-Signale. Die folgende Diagnose erklärt den aktuellen Scan "
+                                    "und verändert keine Trading-Regel."
+                                )
+                                _dg1_v3021f, _dg2_v3021f, _dg3_v3021f, _dg4_v3021f = st.columns(4)
+                                _dg1_v3021f.metric("Finale Freigabe", f"{_release_n_v3021f}/{_diag_total_v3021f}" if _release_n_v3021f is not None else "n/a")
+                                _dg2_v3021f.metric("Aktiver Trigger", f"{_trigger_n_v3021f}/{_diag_total_v3021f}")
+                                _dg3_v3021f.metric("Timing ≥ 70", f"{_timing_n_v3021f}/{_diag_total_v3021f}" if _timing_n_v3021f is not None else "n/a")
+                                _dg4_v3021f.metric("Konfluenz ≥ 65", f"{_conf_n_v3021f}/{_diag_total_v3021f}" if _conf_n_v3021f is not None else "n/a")
+                                _dg5_v3021f, _dg6_v3021f, _dg7_v3021f, _dg8_v3021f = st.columns(4)
+                                _dg5_v3021f.metric("Grade A-C", f"{_grade_n_v3021f}/{_diag_total_v3021f}" if _grade_n_v3021f is not None else "n/a")
+                                _dg6_v3021f.metric("CRV ≥ 1,50", f"{_crv_n_v3021f}/{_diag_total_v3021f}" if _crv_n_v3021f is not None else "n/a")
+                                _dg7_v3021f.metric("Harte Einstiegsgates", f"{_hard_gate_n_v3021f}/{_diag_total_v3021f}" if _hard_gate_n_v3021f is not None else "n/a")
+                                _dg8_v3021f.metric("Invalidiert", f"{_invalid_n_v3021f}/{_diag_total_v3021f}" if _invalid_n_v3021f is not None else "n/a")
+
+                                _blocker_rows_v3021f = []
+                                _blocker_map_v3021f = {}
+                                if "__final_blockers" in live_df.columns:
+                                    for _, _br_v3021f in live_df.iterrows():
+                                        _ticker_v3021f = str(_br_v3021f.get("Ticker") or "-").strip().upper()
+                                        _raw_block_v3021f = str(_br_v3021f.get("__final_blockers") or "").strip()
+                                        if not _raw_block_v3021f or _raw_block_v3021f.lower() in {"nan", "none", "-"}:
+                                            continue
+                                        for _part_v3021f in [x.strip() for x in _raw_block_v3021f.split(";") if x.strip()]:
+                                            _blocker_map_v3021f.setdefault(_part_v3021f, []).append(_ticker_v3021f)
+                                if _hard_gate_n_v3021f:
+                                    _gate_tickers_v3021f = []
+                                    for _, _gr_v3021f in live_df.iterrows():
+                                        try:
+                                            if bool(_gr_v3021f.get("__entry_hard_gate")):
+                                                _gate_tickers_v3021f.append(str(_gr_v3021f.get("Ticker") or "-").strip().upper())
+                                        except Exception:
+                                            pass
+                                    if _gate_tickers_v3021f:
+                                        _blocker_map_v3021f.setdefault("Hartes Einstiegsgate aktiv", []).extend(_gate_tickers_v3021f)
+
+                                for _reason_v3021f, _ticks_v3021f in sorted(_blocker_map_v3021f.items(), key=lambda kv: (-len(set(kv[1])), kv[0]))[:6]:
+                                    _uniq_ticks_v3021f = sorted(set(_ticks_v3021f))
+                                    _blocker_rows_v3021f.append({
+                                        "Häufigster Blocker": _reason_v3021f,
+                                        "Anzahl": len(_uniq_ticks_v3021f),
+                                        "Ticker": ", ".join(_uniq_ticks_v3021f[:12]) + (" …" if len(_uniq_ticks_v3021f) > 12 else ""),
+                                    })
+                                if _blocker_rows_v3021f:
+                                    st.markdown("**Häufigste Ursachen im aktuellen Scan**")
+                                    for _brow_v3021f in _blocker_rows_v3021f:
+                                        st.write(f"**{_brow_v3021f['Häufigster Blocker']} · {_brow_v3021f['Anzahl']} Wert(e):** {_brow_v3021f['Ticker']}")
+
+                                _prev_green_rows_v3021f = []
+                                if "Vorher" in live_df.columns:
+                                    for _, _pr_v3021f in live_df.iterrows():
+                                        _prev_v3021f = str(_pr_v3021f.get("Vorher") or "").strip()
+                                        _curr_v3021f = str(_pr_v3021f.get("Ampel") or "").strip()
+                                        if _prev_v3021f.startswith("🟢") and _curr_v3021f != "🟢":
+                                            _prev_green_rows_v3021f.append({
+                                                "Ticker": str(_pr_v3021f.get("Ticker") or "-").strip().upper(),
+                                                "Jetzt": f"{_curr_v3021f} {str(_pr_v3021f.get('Status') or '').strip()}",
+                                                "Warum": str(_pr_v3021f.get("Warum geändert?") or _pr_v3021f.get("Grund") or "-").strip(),
+                                                "Blocker": str(_pr_v3021f.get("__final_blockers") or "-").strip(),
+                                            })
+                                if _prev_green_rows_v3021f:
+                                    st.markdown(f"**Vorher grün, im aktuellen Scan nicht mehr grün · {len(_prev_green_rows_v3021f)}**")
+                                    with st.expander("Betroffene Werte & konkrete Änderung", expanded=False):
+                                        st.dataframe(pd.DataFrame(_prev_green_rows_v3021f), hide_index=True, use_container_width=True)
+
+                                with st.expander("ℹ️ Diagnose lesen", expanded=False):
+                                    st.caption(
+                                        "Finale Freigabe fasst die bestehende Sofortanalyse zusammen. Aktiver Trigger zählt Jetzt-prüfbar-, Entry-Zonen- oder Wave-Trigger. "
+                                        "Timing/Konfluenz zeigen die bereits berechneten internen Komponenten. Die Diagnose ändert keine Schwelle und erzeugt kein Signal."
+                                    )
 
                         # ---------- v30.1: Investment Rotation Radar ----------
                         elif cockpit_area == "🧭 Rotation Radar":

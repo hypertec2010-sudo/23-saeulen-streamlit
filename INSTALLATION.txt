@@ -1,0 +1,11 @@
+CHSM v30.21n - Kandidaten-Radar Statusklarheit
+
+Gemeinsam ersetzen/hochladen:
+- legacy_app.py
+- VERSION.txt
+- modules/candidate_radar.py
+- modules/candidate_radar_ui.py
+- modules/radar_universe.py
+
+Danach im Kandidaten-Radar einmal einen neuen Scan starten.
+Bestehende Radar-Snapshots aus v30.21a werden bewusst nicht als v30.21n wiederverwendet.

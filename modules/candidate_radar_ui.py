@@ -193,9 +193,12 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
     watched, held, pending = radar.known_tickers(wl_rows, positions, st.session_state.get("pending_watchlist_adds_v228", []))
     rows = radar.view_rows(payload, now=clock(), max_scan_hours=max_age)
     counts = Counter(r["status"] for r in rows)
-    cs = st.columns(4)
-    for col, label, value in zip(cs, ("Ausgewertet", "Live-Pr\u00fcfung m\u00f6glich", "Trigger abwarten", "Gesperrt / Daten fehlen"),
-                                 (f"{len(rows)}/{payload['requested']}", counts[radar.READY], counts[radar.NEAR], counts[radar.BLOCKED])):
+    cs = st.columns(5)
+    for col, label, value in zip(
+        cs,
+        ("Ausgewertet", "Live-Pr\u00fcfung m\u00f6glich", "Trigger abwarten", "Beobachten / kein Trade-Plan", "Gesperrt / Daten fehlen"),
+        (f"{len(rows)}/{payload['requested']}", counts[radar.READY], counts[radar.NEAR], counts[radar.NO_PLAN], counts[radar.BLOCKED]),
+    ):
         col.metric(label, value)
     if not fresh:
         st.write(f"**Historische Beobachtungen: {len(rows)}. Keine aktuelle Radar-Freigabe.**")
@@ -206,9 +209,14 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
     mtf_missing = sum(not r.get("mtf_available") for r in rows)
     wave_missing = sum(not r.get("wave_available") for r in rows)
     coverage_missing = sum(r.get("coverage") is None for r in rows)
-    if rows and (mtf_missing or wave_missing or coverage_missing):
-        st.write(f"**Datenhinweise:** MTF nicht geliefert {mtf_missing}/{len(rows)} \u00b7 "
-                 f"Wellenpr\u00fcfung nicht geliefert {wave_missing}/{len(rows)} \u00b7 Abdeckung unbekannt {coverage_missing}/{len(rows)}.")
+    if coverage_missing:
+        st.warning(f"Datenabdeckung unbekannt: {coverage_missing}/{len(rows)} Wert(e).")
+    no_plan_rows = [r for r in rows if r.get("status") == radar.NO_PLAN]
+    if no_plan_rows:
+        symbols = [r["ticker"] for r in no_plan_rows]
+        st.write(f"**Trade-Plan noch nicht erzeugt ({len(no_plan_rows)}):** "
+                 + ", ".join(symbols[:15]) + (" ..." if len(symbols) > 15 else "")
+                 + " \u00b7 Setup noch nicht valide; fehlende Entry-/Stop-/CRV-Werte gelten hier nicht als Datenfehler.")
     gate_counts = Counter(g for r in rows for g in r.get("gates", []))
     for reason, count in gate_counts.most_common(3):
         symbols = [r["ticker"] for r in rows if reason in r.get("gates", [])]
@@ -216,6 +224,12 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
     with st.expander("Scan-Details, vollst\u00e4ndige Ergebnisse & Export", expanded=False):
         st.write(f"Vollst\u00e4ndig durchlaufen: {payload['processed']}/{payload['requested']}. "
                  "Ausgewertet umfasst auch gesperrte Kandidaten; es bedeutet nicht kaufbar.")
+        if rows:
+            if mtf_missing == len(rows) and wave_missing == len(rows):
+                st.caption("Zusatzanalysen MTF/Welle: im schnellen Radar-Scan nicht aktiv.")
+            else:
+                st.caption(f"Zusatzanalysen: MTF verf\u00fcgbar {len(rows)-mtf_missing}/{len(rows)} \u00b7 "
+                           f"Welle verf\u00fcgbar {len(rows)-wave_missing}/{len(rows)}.")
         for error in payload["errors"]:
             st.write(f"{error['ticker']}: {error['reason']}")
         for note in payload["resolution"]:
@@ -225,6 +239,7 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
             "Status": r["status"], "Note": r["grade"], "Score": r["score"], "CRV": r["crv"],
             "Zielherkunft": r["target_provenance"]["label"], "Kursdatum": r["quote_date"],
             "Abdeckung": r["coverage"], "Sperren": "; ".join(r["gates"]),
+            "Trade-Plan": "; ".join(r.get("trade_plan_reasons", [])),
             "Entry-Zone": r["entry_zone"], "Naechster Schritt": r["next_step"],
         } for r in rows]
         try:
@@ -238,7 +253,7 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
     # hidden analytical limit before another group is evaluated.
     include_known = st.checkbox("Bereits erfasste / vorgemerkte Werte mit anzeigen", value=False, key="radar_v3021_include_known")
     eligible_view = rows if include_known else [r for r in rows if r["ticker"] not in watched | held | pending]
-    labels = ["Alle Ergebnisse"] + [v for v in (radar.READY, radar.NEAR, radar.WATCH, radar.BLOCKED, radar.HISTORY) if any(r["status"] == v for r in eligible_view)]
+    labels = ["Alle Ergebnisse"] + [v for v in (radar.READY, radar.NEAR, radar.NO_PLAN, radar.WATCH, radar.BLOCKED, radar.HISTORY) if any(r["status"] == v for r in eligible_view)]
     status_filter = _select(st, "Ergebnisgruppe", labels, "radar_v3021_filter")
     filtered = [r for r in eligible_view if status_filter == "Alle Ergebnisse" or r["status"] == status_filter]
     st.write(f"**{len(filtered)} Treffer im Filter \u00b7 {min(limit, len(filtered))} Karten sichtbar**. "

@@ -25323,7 +25323,7 @@ if workspace_mode:
         try:
             from modules.candidate_radar_ui import render_candidate_radar
             from modules.candidate_radar import RADAR_VERSION as _radar_version_v3021
-            if _radar_version_v3021 != "v30.21a":
+            if _radar_version_v3021 != "v30.21n":
                 raise ImportError("Mixed Radar deployment")
         except ImportError:
             st.error("Radar-Update unvollstaendig. legacy_app.py sowie candidate_radar.py, candidate_radar_ui.py und radar_universe.py gemeinsam hochladen.")

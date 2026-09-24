@@ -19,13 +19,14 @@ from uuid import uuid4
 
 from .radar_universe import CATALOG_VERSION, normalize_entries, universe_digest
 
-RADAR_VERSION = "v30.21a"
+RADAR_VERSION = "v30.21n"
 SCHEMA_VERSION = 1
 DEFAULT_MAX_SCAN_HOURS = 24
 MAX_QUOTE_AGE_DAYS = 7
 READY = "Im Live-Screener pr\u00fcfen"
 NEAR = "Trigger abwarten"
 WATCH = "Beobachten"
+NO_PLAN = "Beobachten / noch kein Trade-Plan"
 BLOCKED = "Gesperrt / Daten fehlen"
 HISTORY = "Historischer Scan"
 STYLES = ("Leader", "Charttechnik", "Turnaround", "Ausgewogen")
@@ -224,14 +225,13 @@ def gate_reasons(result, decision, rr, asof):
         reasons.append("Radar-Risikosperre")
     if text(result.get("trigger_status")).lower() == "passiv":
         reasons.append(trigger_reason or "Analyse derzeit passiv")
-    for key, label in (("price", "Kurs"), ("stop", "Stop-Basis"), ("tp1", "Hauptziel")):
-        n = number(rr.get(key))
-        if n is None or n <= 0:
-            reasons.append(label + " fehlt oder ist unplausibel")
-    if number(rr.get("crv")) is None:
-        reasons.append("CRV nicht berechenbar")
-    if number(rr.get("entry_distance_pct")) is None:
-        reasons.append("Entry-Zone nicht belastbar")
+    # Kurs und Kursalter sind echte Datenvoraussetzungen. Stop, Ziel, CRV und
+    # Entry-Zone gehoeren dagegen zum Trade-Plan und werden separat bewertet:
+    # Bei einem noch nicht validen Setup ist ihr Fehlen erwartbar und kein
+    # Datenfehler.
+    price = number(rr.get("price"))
+    if price is None or price <= 0:
+        reasons.append("Kurs fehlt oder ist unplausibel")
     qdate = quote_date(result)
     qtime = parse_time(qdate)
     if qtime is None:
@@ -240,6 +240,24 @@ def gate_reasons(result, decision, rr, asof):
         reasons.append(f"Kursdaten \u00e4lter als {MAX_QUOTE_AGE_DAYS} Kalendertage")
     elif qtime.date() > asof.date():
         reasons.append("Kursdatum liegt in der Zukunft")
+    return list(dict.fromkeys(reasons))
+
+
+def trade_plan_reasons(rr):
+    """Missing plan fields, separated from hard/data gates.
+
+    Entry, stop and CRV are intentionally absent for many candidates until the
+    central setup is valid. That state is observational, not a data failure.
+    """
+    reasons = []
+    for key, label in (("stop", "Stop-Basis"), ("tp1", "Hauptziel")):
+        n = number(rr.get(key))
+        if n is None or n <= 0:
+            reasons.append(label + " fehlt oder ist unplausibel")
+    if number(rr.get("crv")) is None:
+        reasons.append("CRV nicht berechenbar")
+    if number(rr.get("entry_distance_pct")) is None:
+        reasons.append("Entry-Zone nicht belastbar")
     return list(dict.fromkeys(reasons))
 
 
@@ -257,16 +275,26 @@ def build_candidate(result, *, ticker, style, decide, entry_package, analyzed_at
     cov = number(confidence.get("coverage"))
     if cov is not None and not 0 <= cov <= 1:
         cov = None
+    valid_setup = truth(result.get("valid_trade_setup"))
+    plan_reasons = trade_plan_reasons(rr)
     gates = gate_reasons(result, decision, rr, now)
     if cov is None:
         gates.append("Datenabdeckung unbekannt")
+    # A missing trade plan is only a blocking inconsistency once the central
+    # setup itself is valid. Before that it is the expected observation state.
+    if valid_setup:
+        gates.extend(plan_reasons)
+    gates = list(dict.fromkeys(gates))
     grade = text(decision.get("grade"), "n/a")
     trigger = text(result.get("trigger_status"), "Unbekannt")
     active = trigger.lower() in {"aktiv", "jetzt pr\u00fcfbar", "trigger aktiv"}
     if gates:
         status = BLOCKED
         next_step = "; ".join(gates[:3])
-    elif active and truth(result.get("valid_trade_setup")) and grade in {"A", "B"} and decision.get("bucket") == "Jetzt pr\u00fcfbar":
+    elif not valid_setup and plan_reasons:
+        status = NO_PLAN
+        next_step = "Weiter beobachten; zentrales Setup noch nicht valide. Trade-Plan erst bei belastbarem Setup pr\u00fcfen."
+    elif active and valid_setup and grade in {"A", "B"} and decision.get("bucket") == "Jetzt pr\u00fcfbar":
         status = READY
         next_step = "Frischen Live-Scan pr\u00fcfen; noch keine Kauf- oder Paketfreigabe."
     elif grade in {"A", "B"} or decision.get("bucket") in {"Nahe am Trigger", "Starke Watchlist"}:
@@ -288,7 +316,7 @@ def build_candidate(result, *, ticker, style, decide, entry_package, analyzed_at
         "grade": grade, "score": number(decision.get("score")),
         "rank_score": number(decision.get("top_chance_rank")) or number(decision.get("score")) or 0,
         "status": status, "trigger": trigger, "trigger_reason": text(result.get("trigger_reason")),
-        "valid_setup": truth(result.get("valid_trade_setup")), "gates": gates,
+        "valid_setup": valid_setup, "gates": gates, "trade_plan_reasons": plan_reasons,
         "why": text(decision.get("why_today"), "Keine belastbare Begr\u00fcndung geliefert"),
         "next_step": next_step, "brake": text(decision.get("brake")),
         "crv": number(rr.get("crv")), "price": number(rr.get("price")),

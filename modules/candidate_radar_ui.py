@@ -176,13 +176,28 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
             st.session_state[session_key + "_save"] = (ok, message)
         except Exception as exc:
             if isinstance(fresh, Mapping) and fresh.get("errors"):
-                processed = int(fresh.get("processed") or fresh.get("requested") or len(entries))
+                processed = int(fresh.get("processed") or 0)
+                requested = int(fresh.get("requested") or len(entries))
                 successful = len(fresh.get("rows") or [])
                 failed = len(fresh.get("errors") or [])
-                st.error(
-                    f"Neuer Radar-Lauf fehlgeschlagen: {successful}/{processed} Werte erfolgreich, {failed} Fehler. "
-                    "Ein vorhandener Scan bleibt unver\u00e4ndert."
-                )
+                skipped = int(fresh.get("skipped") or max(0, requested - processed))
+                if fresh.get("abort_reason") == "provider_rate_limit":
+                    streak = int(fresh.get("rate_limit_streak") or failed or 0)
+                    st.error(
+                        f"Provider voruebergehend gedrosselt: Radar nach {processed}/{requested} geprueften Werten "
+                        f"und {streak} aufeinanderfolgenden Rate-Limit-Fehlern gestoppt. "
+                        f"{skipped} Werte wurden bewusst nicht mehr angefragt. "
+                        "Ein vorhandener Scan bleibt unveraendert."
+                    )
+                    st.caption(
+                        "Provider-Schutz aktiv: Der Lauf wird frueh beendet, statt weitere identische Yahoo-Abfragen "
+                        "zu senden. Ein erneuter Lauf ist erst nach einer Provider-Pause sinnvoll."
+                    )
+                else:
+                    st.error(
+                        f"Neuer Radar-Lauf fehlgeschlagen: {successful}/{processed or requested} Werte erfolgreich, "
+                        f"{failed} Fehler. Ein vorhandener Scan bleibt unveraendert."
+                    )
                 _render_error_diagnostics(
                     st, fresh.get("errors"), title="Fehlerbeispiele aus diesem Scan", expanded=True
                 )

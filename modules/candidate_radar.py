@@ -14,6 +14,7 @@ from hashlib import sha256
 import json
 import math
 import re
+import time
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -404,7 +405,8 @@ def summarize_scan_errors(errors, max_examples=8):
 
 def run_scan(*, universe, style, entries, analyze, decide, entry_package,
              resolver=None, model_version=RADAR_VERSION, progress=None, clock=utcnow,
-             source="manual"):
+             source="manual", rate_limit_abort_after=3, per_ticker_pause_seconds=0.0,
+             rate_limit_pause_seconds=0.0, sleeper=None):
     if style not in STYLES:
         raise ValueError("Unbekannter Radar-Suchstil")
     entries = list(entries)
@@ -415,8 +417,27 @@ def run_scan(*, universe, style, entries, analyze, decide, entry_package,
         raise ValueError("Maximal 500 unterschiedliche Ticker pro bewusster Scan-Anforderung.")
     start = parse_time(clock()) or utcnow()
     candidates, errors = [], []
+    processed = 0
+    consecutive_rate_limits = 0
+    aborted = False
+    abort_reason = ""
+    sleep_fn = sleeper or time.sleep
+    try:
+        abort_after = max(1, int(rate_limit_abort_after or 3))
+    except (TypeError, ValueError):
+        abort_after = 3
+    try:
+        normal_pause = max(0.0, float(per_ticker_pause_seconds or 0.0))
+    except (TypeError, ValueError):
+        normal_pause = 0.0
+    try:
+        rate_pause = max(0.0, float(rate_limit_pause_seconds or 0.0))
+    except (TypeError, ValueError):
+        rate_pause = 0.0
+
     for index, ticker in enumerate(symbols):
         stage = "Zentrale Analyse"
+        rate_limited = False
         try:
             result = analyze(ticker=ticker, horizon="Swing (1-4 Wochen)", depot=10000,
                              risk_pct=1.0, override=0.0, buy_in_override=0.0,
@@ -425,16 +446,33 @@ def run_scan(*, universe, style, entries, analyze, decide, entry_package,
             candidate = build_candidate(result, ticker=ticker, style=style, decide=decide,
                                         entry_package=entry_package, analyzed_at=clock())
             candidates.append(candidate)
+            consecutive_rate_limits = 0
         except Exception as exc:
             info = safe_scan_error(exc)
+            rate_limited = info.get("category") == "Provider-Limit"
+            consecutive_rate_limits = consecutive_rate_limits + 1 if rate_limited else 0
             errors.append({
                 "ticker": ticker,
                 "reason": "Nicht auswertbar: " + info["error_type"],
                 "stage": stage,
                 **info,
             })
+        processed = index + 1
         if progress is not None:
-            progress(index + 1, len(symbols), ticker)
+            progress(processed, len(symbols), ticker)
+
+        if rate_limited and consecutive_rate_limits >= abort_after:
+            aborted = True
+            abort_reason = "provider_rate_limit"
+            break
+
+        delay = rate_pause if rate_limited else normal_pause
+        if delay > 0:
+            try:
+                sleep_fn(delay)
+            except Exception:
+                pass
+
     end = parse_time(clock()) or utcnow()
     candidates = rank_candidates(candidates)
     for index, row in enumerate(candidates, 1):
@@ -446,7 +484,11 @@ def run_scan(*, universe, style, entries, analyze, decide, entry_package,
         "scan_id": "radar-" + start.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8],
         "universe": universe, "style": style, "source": source,
         "started_at": start.isoformat(), "completed_at": end.isoformat(),
-        "completed": True, "requested": len(symbols), "processed": len(symbols),
+        "completed": not aborted, "requested": len(symbols), "processed": processed,
+        "skipped": max(0, len(symbols) - processed),
+        "skipped_symbols": symbols[processed:] if aborted else [],
+        "abort_reason": abort_reason or None,
+        "rate_limit_streak": consecutive_rate_limits if aborted else 0,
         "symbols": symbols, "symbols_hash": universe_digest(symbols),
         "rows": candidates, "errors": errors, "resolution": resolution,
     }

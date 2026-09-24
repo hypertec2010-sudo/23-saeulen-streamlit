@@ -5800,12 +5800,30 @@ def compute_radar_style_sort_shared(row, result_map, style_name):
 
 def _v3021_run_radar_scan(*, universe, style, entries, source="manual", progress=None):
     from modules.candidate_radar import run_scan
+
+    # v30.21q: Radar nutzt denselben 15-Minuten-Analysecache wie der Live-Screener.
+    # Dadurch werden kurz zuvor bereits analysierte Titel nicht erneut bei Yahoo
+    # abgefragt. Der Bucket bleibt fuer den gesamten Radar-Lauf stabil.
+    radar_analysis_bucket = _v2414_market_bucket(15)
+
+    def _radar_analyze_cached(**kwargs):
+        return analyze_stock_live_cached_v2414(
+            **kwargs,
+            market_bucket=radar_analysis_bucket,
+        )
+
     return run_scan(
-        universe=universe, style=style, entries=entries, analyze=analyze_stock,
+        universe=universe, style=style, entries=entries, analyze=_radar_analyze_cached,
         decide=build_professional_radar_decision_v18,
         entry_package=build_radar_entry_rr_package_v182,
         resolver=resolve_input_to_ticker, model_version=APP_VERSION,
         source=source, progress=progress,
+        # Kleine Pause reduziert Burst-Last. Nach Rate-Limits wird deutlicher
+        # gebremst; nach drei aufeinanderfolgenden Limits beendet der Radar den
+        # Lauf, statt die komplette Kandidatenliste weiter anzufragen.
+        per_ticker_pause_seconds=0.50,
+        rate_limit_pause_seconds=4.0,
+        rate_limit_abort_after=3,
     )
 
 

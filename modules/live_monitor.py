@@ -2242,6 +2242,12 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
     _diag_aliases_v3021g = {
         "__diag_timing_component": "__timing_component",
         "__diag_conf_component": "__conf_component",
+        # v30.21m: preserve all productive Live-Score components for the
+        # read-only influence audit. These aliases are never read by scoring.
+        "__diag_trigger_component": "__trigger_component",
+        "__diag_chart_component": "__chart_component",
+        "__diag_trend_component": "__trend_component",
+        "__diag_crv_component": "__crv_component",
         "__diag_entry_hard_gate": "__entry_hard_gate",
         "__diag_invalidated": "__invalidated",
         "__diag_final_release_ok": "__final_release_ok",

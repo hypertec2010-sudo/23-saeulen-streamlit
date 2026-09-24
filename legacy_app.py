@@ -21838,6 +21838,217 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                     with st.expander("Differenzen nach Ticker", expanded=False):
                                                         st.dataframe(pd.DataFrame(_diff_rows_v3021k), hide_index=True, use_container_width=True)
 
+                                # v30.21m: Read-only influence audit for the productive Live-Score.
+                                # It separates nominal weights, current scan contributions and
+                                # upstream setup-gate coupling. No productive field is written.
+                                if isinstance(live_df, pd.DataFrame) and not live_df.empty:
+                                    with st.expander("📐 Einfluss-Audit · Charttechnik & Doppelzählung", expanded=False):
+                                        st.caption(
+                                            "Nur Diagnose · keine Tradingwirkung. Zeigt Direktgewicht, technische Nebenpfade und die tatsächlichen Beiträge des aktuellen Scans."
+                                        )
+
+                                        _horizon_vals_v3021m = []
+                                        if "Live-Horizont" in live_df.columns:
+                                            try:
+                                                _horizon_vals_v3021m = [
+                                                    str(x).strip() for x in live_df["Live-Horizont"].dropna().tolist()
+                                                    if str(x).strip()
+                                                ]
+                                            except Exception:
+                                                _horizon_vals_v3021m = []
+                                        _short_v3021m = any("kurz" in x.lower() for x in _horizon_vals_v3021m)
+                                        _mode_v3021m = "Kurzfrist" if _short_v3021m else "Swing"
+                                        _weights_v3021m = (
+                                            {
+                                                "Trigger": 0.34, "Timing": 0.26, "Konfluenz": 0.18,
+                                                "Charttechnik": 0.14, "Trend": 0.05, "CRV": 0.02, "Grade": 0.01,
+                                            }
+                                            if _short_v3021m else
+                                            {
+                                                "Trigger": 0.30, "Timing": 0.24, "Konfluenz": 0.20,
+                                                "Charttechnik": 0.14, "Trend": 0.06, "CRV": 0.04, "Grade": 0.02,
+                                            }
+                                        )
+                                        _direct_chart_w_v3021m = _weights_v3021m["Charttechnik"]
+                                        _clear_tech_w_v3021m = sum(_weights_v3021m[k] for k in ["Trigger", "Charttechnik", "Trend"])
+                                        _entry_tech_w_v3021m = sum(_weights_v3021m[k] for k in ["Trigger", "Timing", "Konfluenz", "Charttechnik", "Trend"])
+
+                                        _aw1_v3021m, _aw2_v3021m, _aw3_v3021m, _aw4_v3021m = st.columns(4)
+                                        _aw1_v3021m.metric("Live-Modus", _mode_v3021m)
+                                        _aw2_v3021m.metric("Charttechnik direkt", f"{_direct_chart_w_v3021m * 100:.0f}%")
+                                        _aw3_v3021m.metric("Eindeutig technisch", f"{_clear_tech_w_v3021m * 100:.0f}%")
+                                        _aw4_v3021m.metric("Technik-/Entry-nah", f"{_entry_tech_w_v3021m * 100:.0f}%")
+                                        st.caption(
+                                            f"Sensitivität vor Bremsen/Gates: +10 Punkte im Charttechnik-Block verändern den Live-Score um +{10 * _direct_chart_w_v3021m:.1f} Punkte. "
+                                            "'Technik-/Entry-nah' umfasst Trigger, Timing, Konfluenz, Charttechnik und Trend; das ist keine Behauptung, dass jeder dieser Blöcke ausschließlich Chartdaten enthält."
+                                        )
+
+                                        _component_cols_v3021m = {
+                                            "Trigger": "__diag_trigger_component",
+                                            "Timing": "__diag_timing_component",
+                                            "Konfluenz": "__diag_conf_component",
+                                            "Charttechnik": "__diag_chart_component",
+                                            "Trend": "__diag_trend_component",
+                                            "CRV": "__diag_crv_component",
+                                        }
+                                        _missing_components_v3021m = [
+                                            c for c in _component_cols_v3021m.values() if c not in live_df.columns
+                                        ]
+                                        if _missing_components_v3021m:
+                                            st.info(
+                                                "Für die Ist-Beiträge bitte einmal einen vollständigen Scan nach dem Update starten. "
+                                                "Der gespeicherte Scan enthält die neuen Diagnose-Aliase noch nicht."
+                                            )
+                                        else:
+                                            _grade_map_v3021m = {
+                                                "A": 92.0, "B": 80.0, "C": 66.0, "D": 48.0,
+                                                "E": 35.0, "F": 22.0, "G": 12.0,
+                                            }
+
+                                            def _audit_series_v3021m(_col):
+                                                return pd.to_numeric(live_df[_col], errors="coerce")
+
+                                            def _audit_mean_v3021m(_series):
+                                                try:
+                                                    _clean = pd.to_numeric(_series, errors="coerce").dropna()
+                                                    return None if _clean.empty else float(_clean.mean())
+                                                except Exception:
+                                                    return None
+
+                                            _grade_series_v3021m = pd.Series(index=live_df.index, dtype=float)
+                                            if "Grade" in live_df.columns:
+                                                try:
+                                                    _grade_series_v3021m = live_df["Grade"].astype(str).str.strip().str.upper().str[:1].map(_grade_map_v3021m)
+                                                except Exception:
+                                                    pass
+
+                                            _component_series_v3021m = {
+                                                _name: _audit_series_v3021m(_col)
+                                                for _name, _col in _component_cols_v3021m.items()
+                                            }
+                                            _component_series_v3021m["Grade"] = _grade_series_v3021m
+
+                                            _contrib_rows_v3021m = []
+                                            _base_series_v3021m = pd.Series(0.0, index=live_df.index, dtype=float)
+                                            _base_valid_v3021m = pd.Series(True, index=live_df.index, dtype=bool)
+                                            for _name_v3021m in ["Trigger", "Timing", "Konfluenz", "Charttechnik", "Trend", "CRV", "Grade"]:
+                                                _ser_v3021m = pd.to_numeric(_component_series_v3021m[_name_v3021m], errors="coerce")
+                                                _w_v3021m = float(_weights_v3021m[_name_v3021m])
+                                                _avg_v3021m = _audit_mean_v3021m(_ser_v3021m)
+                                                _avg_pts_v3021m = None if _avg_v3021m is None else _avg_v3021m * _w_v3021m
+                                                _contrib_rows_v3021m.append({
+                                                    "Baustein": _name_v3021m,
+                                                    "Gewicht": f"{_w_v3021m * 100:.0f}%",
+                                                    "Ø Komponente": "n/a" if _avg_v3021m is None else f"{_avg_v3021m:.1f}",
+                                                    "Ø Basisbeitrag": "n/a" if _avg_pts_v3021m is None else f"{_avg_pts_v3021m:.1f} Pkt.",
+                                                })
+                                                _base_valid_v3021m &= _ser_v3021m.notna()
+                                                _base_series_v3021m = _base_series_v3021m + _ser_v3021m.fillna(0.0) * _w_v3021m
+
+                                            st.markdown("**Nominalgewicht und Ist-Beitrag im aktuellen Scan**")
+                                            st.dataframe(pd.DataFrame(_contrib_rows_v3021m), hide_index=True, use_container_width=True)
+
+                                            def _parse_live_score_v3021m(_v):
+                                                try:
+                                                    return float(str(_v).replace("/100", "").replace(",", ".").strip())
+                                                except Exception:
+                                                    return np.nan
+
+                                            _live_score_series_v3021m = (
+                                                live_df["Live-Score"].map(_parse_live_score_v3021m)
+                                                if "Live-Score" in live_df.columns else pd.Series(index=live_df.index, dtype=float)
+                                            )
+                                            _base_complete_v3021m = _base_series_v3021m[_base_valid_v3021m]
+                                            _base_avg_v3021m = _audit_mean_v3021m(_base_complete_v3021m)
+                                            _live_avg_v3021m = _audit_mean_v3021m(_live_score_series_v3021m)
+                                            _net_avg_v3021m = None if _base_avg_v3021m is None or _live_avg_v3021m is None else (_live_avg_v3021m - _base_avg_v3021m)
+                                            _ab1_v3021m, _ab2_v3021m, _ab3_v3021m = st.columns(3)
+                                            _ab1_v3021m.metric("Ø gewichtete Basis", "n/a" if _base_avg_v3021m is None else f"{_base_avg_v3021m:.1f}/100")
+                                            _ab2_v3021m.metric("Ø angezeigter Live-Score", "n/a" if _live_avg_v3021m is None else f"{_live_avg_v3021m:.1f}/100")
+                                            _ab3_v3021m.metric("Ø Netto danach", "n/a" if _net_avg_v3021m is None else f"{_net_avg_v3021m:+.1f} Pkt.")
+                                            st.caption(
+                                                "'Netto danach' bündelt Bremsen, harte Gates, Invalidierung, MA20-Stretch, Performance-Kontext und Score/Ampel-Alignment. "
+                                                "Es ist deshalb nicht als reiner Charttechnik-Effekt zu lesen."
+                                            )
+
+                                            _arch_rows_v3021m = [
+                                                {
+                                                    "Pfad": "Charttechnik → Live-Score",
+                                                    "Mechanik": "direkt",
+                                                    "Wirkung": "14% Gewicht",
+                                                },
+                                                {
+                                                    "Pfad": "Valid-Setup → Timing",
+                                                    "Mechanik": "+12 bei valide / -10 bei nicht valide",
+                                                    "Wirkung": f"22 Timing-Punkte = bis zu {22 * _weights_v3021m['Timing']:.1f} Live-Punkte vor Caps",
+                                                },
+                                                {
+                                                    "Pfad": "Valid-Setup → Konfluenz",
+                                                    "Mechanik": "bearishes Trade-Setup-Gate + Deckel",
+                                                    "Wirkung": "ohne valides Setup Konfluenz max. 57",
+                                                },
+                                                {
+                                                    "Pfad": "Technik → Setup-Gate",
+                                                    "Mechanik": "mind. 2 Technikbausteine ≥65 + Setup-Score ≥55",
+                                                    "Wirkung": "kann Entry-Freigabe vor Live-Score blockieren",
+                                                },
+                                                {
+                                                    "Pfad": "Finale Freigabe / harte Gates",
+                                                    "Mechanik": "Statuslogik vor/nach Score",
+                                                    "Wirkung": "kann Grün trotz numerischem Score verhindern",
+                                                },
+                                            ]
+                                            st.markdown("**Mehrfachpfade der technischen Information**")
+                                            st.dataframe(pd.DataFrame(_arch_rows_v3021m), hide_index=True, use_container_width=True)
+
+                                            if "__diag_setup_valid_flag" in live_df.columns:
+                                                try:
+                                                    _valid_mask_v3021m = live_df["__diag_setup_valid_flag"].fillna(False).astype(bool)
+                                                    _coupling_rows_v3021m = []
+                                                    for _label_v3021m, _mask_v3021m in [
+                                                        ("Valides Setup", _valid_mask_v3021m),
+                                                        ("Kein valides Setup", ~_valid_mask_v3021m),
+                                                    ]:
+                                                        _n_v3021m = int(_mask_v3021m.sum())
+                                                        if _n_v3021m <= 0:
+                                                            continue
+                                                        _coupling_rows_v3021m.append({
+                                                            "Gruppe": _label_v3021m,
+                                                            "n": _n_v3021m,
+                                                            "Ø Timing": round(float(_component_series_v3021m["Timing"][_mask_v3021m].mean()), 1),
+                                                            "Ø Konfluenz": round(float(_component_series_v3021m["Konfluenz"][_mask_v3021m].mean()), 1),
+                                                            "Ø Chart": round(float(_component_series_v3021m["Charttechnik"][_mask_v3021m].mean()), 1),
+                                                            "Ø Live-Score": round(float(_live_score_series_v3021m[_mask_v3021m].mean()), 1),
+                                                        })
+                                                    if _coupling_rows_v3021m:
+                                                        st.markdown("**Kopplung im aktuellen Scan**")
+                                                        st.dataframe(pd.DataFrame(_coupling_rows_v3021m), hide_index=True, use_container_width=True)
+                                                        st.caption(
+                                                            "Die Gruppenwerte sind deskriptiv. Sie zeigen, wie stark Setup-Gültigkeit, Timing, Konfluenz und Live-Score gemeinsam auseinanderliegen; sie beweisen keine alleinige Kausalität."
+                                                        )
+                                                except Exception:
+                                                    pass
+
+                                            _per_ticker_cols_v3021m = [
+                                                "Ticker", "Ampel", "Live-Score", "Grade",
+                                                "__diag_trigger_component", "__diag_timing_component", "__diag_conf_component",
+                                                "__diag_chart_component", "__diag_trend_component", "__diag_crv_component",
+                                                "__diag_setup_valid_flag",
+                                            ]
+                                            if all(c in live_df.columns for c in _per_ticker_cols_v3021m):
+                                                with st.expander("Einfluss je Ticker", expanded=False):
+                                                    _ticker_audit_v3021m = live_df[_per_ticker_cols_v3021m].copy()
+                                                    _ticker_audit_v3021m = _ticker_audit_v3021m.rename(columns={
+                                                        "__diag_trigger_component": "Trigger",
+                                                        "__diag_timing_component": "Timing",
+                                                        "__diag_conf_component": "Konfluenz",
+                                                        "__diag_chart_component": "Charttechnik",
+                                                        "__diag_trend_component": "Trend",
+                                                        "__diag_crv_component": "CRV-Komponente",
+                                                        "__diag_setup_valid_flag": "Valides Setup",
+                                                    })
+                                                    st.dataframe(_ticker_audit_v3021m, hide_index=True, use_container_width=True)
+
                                 with _diag_cal_v3021l:
                                     st.caption("Kalibrierung und Release-Gates bleiben rein beobachtend; keine produktive Schwelle wird automatisch geändert.")
                                     _v3010_render_action_queue_learning(selected_watchlist_name)

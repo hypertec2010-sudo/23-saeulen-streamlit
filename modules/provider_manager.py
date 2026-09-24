@@ -29,6 +29,10 @@ class MarketDataRateLimitError(MarketDataError):
     """Raised when the upstream provider reports a rate limit."""
 
 
+class ProviderCoolingDownError(MarketDataRateLimitError):
+    """Raised while Yahoo is quarantined after a confirmed rate limit."""
+
+
 @dataclass(frozen=True)
 class ProviderStatus:
     provider: str
@@ -54,6 +58,14 @@ class ProviderHealth:
     curl_cffi_installed: bool = False
     curl_cffi_active: Optional[bool] = None
     http_backend: str = ""
+
+
+@dataclass(frozen=True)
+class ProviderQuarantine:
+    active: bool
+    until: float = 0.0
+    remaining_seconds: int = 0
+    reason: str = ""
 
 
 def _safe_health_message(exc: BaseException) -> str:
@@ -254,11 +266,58 @@ class MarketDataProvider:
         self._health_lock = threading.Lock()
         self._health_cache: Optional[ProviderHealth] = None
         self._health_cache_ttl = 15 * 60.0
+        # v30.21s: a confirmed Yahoo rate limit quarantines the provider for
+        # 30 minutes. This is intentionally much longer than the old per-request
+        # retry sleep and prevents Live-Screener, Radar and Sofortanalyse from
+        # repeatedly probing a blocked Cloud IP.
+        self._quarantine_until = 0.0
+        self._quarantine_reason = ""
+        self._quarantine_seconds = 30 * 60.0
 
-    def _pace_request(self) -> None:
+    def quarantine_state(self) -> ProviderQuarantine:
+        now = time.time()
+        with self._request_lock:
+            until = float(self._quarantine_until or 0.0)
+            reason = str(self._quarantine_reason or "")
+        remaining = max(0, int(round(until - now)))
+        active = remaining > 0
+        if not active and until:
+            with self._request_lock:
+                if self._quarantine_until and self._quarantine_until <= time.time():
+                    self._quarantine_until = 0.0
+                    self._quarantine_reason = ""
+            until = 0.0
+            reason = ""
+        return ProviderQuarantine(active=active, until=until, remaining_seconds=remaining, reason=reason)
+
+    def _set_quarantine(self, *, reason: str = "Yahoo Rate-Limit", seconds: Optional[float] = None) -> ProviderQuarantine:
+        duration = self._quarantine_seconds if seconds is None else max(1.0, float(seconds))
+        until = time.time() + duration
+        with self._request_lock:
+            self._quarantine_until = max(float(self._quarantine_until or 0.0), until)
+            self._quarantine_reason = str(reason or "Yahoo Rate-Limit")[:200]
+        return self.quarantine_state()
+
+    def clear_quarantine(self) -> None:
+        with self._request_lock:
+            self._quarantine_until = 0.0
+            self._quarantine_reason = ""
+            self._cooldown_until = 0.0
+
+    def ensure_available(self, *, allow_probe: bool = False) -> None:
+        state = self.quarantine_state()
+        if state.active and not allow_probe:
+            minutes = max(1, int((state.remaining_seconds + 59) // 60))
+            raise ProviderCoolingDownError(
+                f"Yahoo Provider-Cooldown aktiv; noch ca. {minutes} Min. Keine neue Provider-Abfrage gestartet."
+            )
+
+    def _pace_request(self, *, allow_probe: bool = False) -> None:
+        self.ensure_available(allow_probe=allow_probe)
         with self._request_lock:
             now = time.monotonic()
-            wait_for = max(0.0, self._cooldown_until - now, self._min_request_gap - (now - self._last_request_at))
+            cooldown_wait = 0.0 if allow_probe else (self._cooldown_until - now)
+            wait_for = max(0.0, cooldown_wait, self._min_request_gap - (now - self._last_request_at))
             if wait_for > 0:
                 time.sleep(min(wait_for, 12.0))
             self._last_request_at = time.monotonic()
@@ -295,6 +354,7 @@ class MarketDataProvider:
         with self._health_lock:
             self._health_cache = result
         self._note_rate_limit(2)
+        self._set_quarantine(reason=f"{source}: Yahoo Rate-Limit")
         return result
 
     def _http_backend_health(self) -> tuple[str, bool, Optional[bool], str]:
@@ -342,8 +402,22 @@ class MarketDataProvider:
         the normal multi-retry/fallback history path.
         """
         now = time.time()
+        quarantine = self.quarantine_state()
         with self._health_lock:
             cached = self._health_cache
+            if quarantine.active and not force:
+                if cached is not None:
+                    return cached
+                clean_q = self.normalize_symbol(symbol) or "AAPL"
+                yf_version, curl_installed, curl_active, backend = self._http_backend_health()
+                return ProviderHealth(
+                    provider=self.primary.name, symbol=clean_q, checked_at=now, overall="rate_limited",
+                    history_ok=False, info_ok=None, rate_limited=True,
+                    history_message="Yahoo Provider-Cooldown aktiv; keine neue Kursabfrage gestartet.",
+                    info_message="Wegen aktivem Provider-Cooldown nicht getestet.",
+                    yfinance_version=yf_version, curl_cffi_installed=bool(curl_installed),
+                    curl_cffi_active=curl_active, http_backend=backend,
+                )
             if (
                 not force
                 and cached is not None
@@ -362,7 +436,7 @@ class MarketDataProvider:
             rate_limited = False
 
             try:
-                self._pace_request()
+                self._pace_request(allow_probe=bool(force))
                 frame = self.primary.history(
                     resolved,
                     period="5d",
@@ -391,7 +465,7 @@ class MarketDataProvider:
             elif history_ok:
                 try:
                     ticker = self.primary.ticker(resolved)
-                    self._pace_request()
+                    self._pace_request(allow_probe=bool(force))
                     fast = getattr(ticker, "fast_info", None)
                     last_price = None
                     if fast is not None:
@@ -420,6 +494,7 @@ class MarketDataProvider:
 
             if rate_limited:
                 overall = "rate_limited"
+                self._set_quarantine(reason="Provider-Health: Yahoo Rate-Limit")
             elif history_ok and info_ok:
                 overall = "ok"
             elif history_ok:
@@ -443,6 +518,8 @@ class MarketDataProvider:
                 http_backend=backend,
             )
             self._health_cache = result
+            if force and overall in {"ok", "partial"} and history_ok:
+                self.clear_quarantine()
             return result
 
     @staticmethod
@@ -476,6 +553,7 @@ class MarketDataProvider:
             return self._status.get(key)
 
     def get_ticker(self, symbol: str):
+        self.ensure_available()
         clean = self.normalize_symbol(symbol)
         resolved = self.resolve_symbol(clean)
         if not resolved:
@@ -491,6 +569,7 @@ class MarketDataProvider:
             raise MarketDataError(str(exc)) from exc
 
     def get_history(self, symbol: str, **kwargs) -> pd.DataFrame:
+        self.ensure_available()
         clean = self.normalize_symbol(symbol)
         resolution = self.resolve(clean)
         resolved = resolution.provider_symbol
@@ -534,8 +613,10 @@ class MarketDataProvider:
                         break
                 except MarketDataRateLimitError as exc:
                     last_rate_exc = exc
-                    self._note_rate_limit(attempt)
-                    continue
+                    # v30.21s: a confirmed 429 quarantines Yahoo immediately.
+                    # Do not spend two more retries on the same blocked Cloud IP.
+                    self.mark_rate_limited(clean, source="Kursdaten")
+                    raise
 
             is_daily = str(request_kwargs.get("interval") or "1d").lower() in {"1d", "1day", "day"}
 
@@ -613,6 +694,7 @@ class MarketDataProvider:
         Keeping the ticker object is important because the existing analysis
         engine still derives statements/earnings from yfinance in this phase.
         """
+        self.ensure_available()
         ticker = self.get_ticker(symbol)
         info: Dict[str, Any] = {}
         for getter in (
@@ -620,21 +702,20 @@ class MarketDataProvider:
             lambda: ticker.get_info() or {},
             lambda: ticker.info or {},
         ):
-            for attempt in range(2):
-                try:
-                    self._pace_request()
-                    part = getter()
-                    if isinstance(part, dict):
-                        for key, value in part.items():
-                            if key not in info or info.get(key) in (None, ""):
-                                info[key] = value
-                    break
-                except Exception as exc:
-                    if _looks_rate_limited(exc):
-                        self._note_rate_limit(attempt)
-                        self._record(symbol, "info", False, f"rate_limit retry {attempt + 1}: {exc}")
-                        continue
-                    break
+            try:
+                self._pace_request()
+                part = getter()
+                if isinstance(part, dict):
+                    for key, value in part.items():
+                        if key not in info or info.get(key) in (None, ""):
+                            info[key] = value
+            except Exception as exc:
+                if _looks_rate_limited(exc):
+                    self._record(symbol, "info", False, f"rate_limit: {exc}")
+                    self.mark_rate_limited(symbol, source="Zusatzdaten")
+                    raise MarketDataRateLimitError(str(exc)) from exc
+                # Non-rate-limit supplemental failures remain soft, as before.
+                continue
         self._record(symbol, "info", True, f"fields={len(info)}")
         return ticker, info
 

@@ -17389,6 +17389,11 @@ def _render_market_provider_health_v3021r():
             st.warning(f"Provider-Gesundheitscheck nicht verfuegbar ({type(exc).__name__}).")
         return
 
+    try:
+        quarantine = _market_provider_v2845a.quarantine_state()
+    except Exception:
+        quarantine = None
+
     labels = {
         "ok": ("🟢", "Yahoo erreichbar"),
         "partial": ("🟡", "Yahoo teilweise erreichbar"),
@@ -17427,10 +17432,23 @@ def _render_market_provider_health_v3021r():
                 st.metric("Yahoo HTTP", "? unbekannt")
 
         if health.rate_limited:
-            st.error(
-                "Yahoo begrenzt die Cloud-Abfragen aktuell. Frische Vollscans/Radar-Laeufe besser pausieren; "
-                "vorhandene Scan-, Last-Good- und Cache-Staende bleiben nutzbar."
-            )
+            if quarantine is not None and getattr(quarantine, "active", False):
+                _q_minutes = max(1, int((int(getattr(quarantine, "remaining_seconds", 0)) + 59) // 60))
+                try:
+                    _q_until = datetime.fromtimestamp(float(getattr(quarantine, "until", 0.0)), tz=timezone.utc).astimezone(_V305B_BERLIN_TZ)
+                    _q_until_text = _q_until.strftime("%H:%M:%S %Z")
+                except Exception:
+                    _q_until_text = "unbekannt"
+                st.error(
+                    f"Yahoo Provider-Quarantaene aktiv · noch ca. {_q_minutes} Min. · bis {_q_until_text}. "
+                    "Live-Vollscan, Teilscan, Radar und Sofortanalyse starten bis dahin keine neuen Yahoo-Abfragen. "
+                    "Vorhandene Scan-, Last-Good- und Cache-Staende bleiben nutzbar."
+                )
+            else:
+                st.error(
+                    "Yahoo begrenzt die Cloud-Abfragen aktuell. Frische Vollscans/Radar-Laeufe besser pausieren; "
+                    "vorhandene Scan-, Last-Good- und Cache-Staende bleiben nutzbar."
+                )
         elif health.overall == "partial":
             st.warning("Kursdaten sind erreichbar, aber Zusatzdaten sind derzeit nicht vollstaendig verfuegbar.")
         elif health.overall == "down":
@@ -19458,6 +19476,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 live_monitor_enabled and (not mobile_mode_v2842 or mobile_auto_scan_v2842)
             )
 
+            try:
+                _provider_quarantine_v3021s = _market_provider_v2845a.quarantine_state()
+                _provider_quarantine_active_v3021s = bool(_provider_quarantine_v3021s.active)
+            except Exception:
+                _provider_quarantine_v3021s = None
+                _provider_quarantine_active_v3021s = False
+
             run_live_monitor = False
             manual_live_run_v246 = False
             if mobile_mode_v2842:
@@ -19466,7 +19491,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
             else:
                 lm_run1, lm_run2 = st.columns([1.0, 2.0])
             with lm_run1:
-                if st.button("Vollscan starten", use_container_width=True, key="run_live_watchlist_monitor_now"):
+                if st.button(
+                    "Vollscan starten", use_container_width=True, key="run_live_watchlist_monitor_now",
+                    disabled=_provider_quarantine_active_v3021s,
+                ):
                     run_live_monitor = True
                     manual_live_run_v246 = True
                     st.session_state.live_watchlist_last_manual_run = datetime.now().isoformat()
@@ -19478,6 +19506,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     # Schutzschicht genutzt werden und laufen ueber ihre normale TTL aus.
                     st.session_state.v286e5_manual_full_refresh = True
                     st.session_state.v286e6_rate_limit_safe_refresh = True
+                if _provider_quarantine_active_v3021s:
+                    _q_min_v3021s = max(1, int((int(getattr(_provider_quarantine_v3021s, "remaining_seconds", 0)) + 59) // 60))
+                    st.caption(f"🔴 Yahoo-Cooldown aktiv · Vollscan ca. {_q_min_v3021s} Min. pausiert.")
             with lm_run2:
                 if live_auto_scan_enabled_v2842:
                     interval_ms = {"15 Minuten": 15 * 60 * 1000, "30 Minuten": 30 * 60 * 1000, "60 Minuten": 60 * 60 * 1000}.get(refresh_label, 30 * 60 * 1000)
@@ -19784,7 +19815,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                     st.session_state.v3021d_partial_refresh_grace_until = ""
 
             _pending_selective_v3021e = st.session_state.pop("v3021e_pending_selective_scan", [])
-            if live_screener_active_v271 and cache_ok_v246 and _pending_selective_v3021e:
+            if live_screener_active_v271 and cache_ok_v246 and _pending_selective_v3021e and not _provider_quarantine_active_v3021s:
                 _allowed_selective_v3021e = {str(_t or "").strip().upper() for _t in scan_tickers_v2844 if str(_t or "").strip()}
                 selective_tickers_v3021d = [
                     str(_t or "").strip().upper()
@@ -19808,7 +19839,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 except Exception:
                     _auto_failure_cooldown_v287b = False
             live_should_scan_v246 = bool(
-                (not selective_live_run_v3021d)
+                (not _provider_quarantine_active_v3021s)
+                and (not selective_live_run_v3021d)
                 and (
                     manual_live_run_v246
                     or run_live_monitor
@@ -19835,9 +19867,15 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
             # v28.6e6: Die Pause-Meldung darf nicht behaupten, dass ein Stand
             # sichtbar ist, wenn kein kompatibler Snapshot gefunden wurde.
-            if live_screener_active_v271 and _auto_failure_cooldown_v287b and not manual_live_run_v246:
+            if live_screener_active_v271 and _auto_failure_cooldown_v287b and not manual_live_run_v246 and not _provider_quarantine_active_v3021s:
                 st.warning("Auto-Vollscan nach einem fehlgeschlagenen Lauf 5 Minuten pausiert. 'Vollscan starten' bleibt jederzeit möglich.")
-            if live_screener_active_v271 and not live_should_scan_v246 and not cache_ok_v246:
+            if live_screener_active_v271 and _provider_quarantine_active_v3021s:
+                _q_min_v3021s = max(1, int((int(getattr(_provider_quarantine_v3021s, "remaining_seconds", 0)) + 59) // 60))
+                if cache_ok_v246:
+                    st.info(f"🔴 Yahoo-Cooldown aktiv · keine neuen Providerabrufe fuer ca. {_q_min_v3021s} Min. Der letzte gute Live-Stand bleibt sichtbar.")
+                else:
+                    st.warning(f"🔴 Yahoo-Cooldown aktiv · keine neuen Providerabrufe fuer ca. {_q_min_v3021s} Min. Noch kein kompatibler Live-Stand vorhanden.")
+            elif live_screener_active_v271 and not live_should_scan_v246 and not cache_ok_v246:
                 st.warning("Kein gespeicherter Live-Stand verfügbar. Bitte einmal 'Vollscan starten' ausführen; danach bleibt der letzte Stand auch bei pausiertem Auto-Scan sichtbar.")
             elif live_screener_active_v271 and not live_should_scan_v246 and cache_ok_v246:
                 if bool(st.session_state.get("v286e4_restored_from_visible", False)):
@@ -21457,13 +21495,18 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _scan_c1_v3021e, _scan_c2_v3021e = st.columns([1.55, 2.45])
                                     if _scan_c1_v3021e.button(
                                         f"⚡ Ausgewählte neu scannen ({len(_selected_tickers_v3021e)})",
-                                        disabled=not bool(_selected_tickers_v3021e),
+                                        disabled=(not bool(_selected_tickers_v3021e)) or _provider_quarantine_active_v3021s,
                                         key=f"v3021e_run_selected_{_partial_widget_suffix_v3021e}",
                                         use_container_width=True,
                                     ):
                                         st.session_state.v3021e_pending_selective_scan = list(_selected_tickers_v3021e)
                                         st.rerun()
-                                    if cache_stale_v246:
+                                    if _provider_quarantine_active_v3021s:
+                                        _q_min_part_v3021s = max(1, int((int(getattr(_provider_quarantine_v3021s, "remaining_seconds", 0)) + 59) // 60))
+                                        _scan_c2_v3021e.caption(
+                                            f"Yahoo-Cooldown aktiv · selektiver Re-Scan ca. {_q_min_part_v3021s} Min. pausiert."
+                                        )
+                                    elif cache_stale_v246:
                                         _scan_c2_v3021e.warning(
                                             "Der Vollstand ist älter als dein Refresh-Intervall. Nur die angehakten Werte werden aktualisiert; alle übrigen behalten ihren bisherigen Zeitstand."
                                         )
@@ -25665,7 +25708,19 @@ if workspace_mode:
             analysis_candidates = [x for x in analysis_candidates if not (x in seen or seen.add(x))]
 
         run_analysis_label = "Analyse starten" if workspace_mode == "Sofortanalyse" else ("Zusatzanalyse starten" if workspace_mode == "Positionen" else "Analyse starten / Watchlist ergänzen")
-        run_analysis = st.button(run_analysis_label, use_container_width=True, type="primary", key="run_analysis_main")
+        try:
+            _analysis_quarantine_v3021s = _market_provider_v2845a.quarantine_state()
+            _analysis_quarantine_active_v3021s = bool(_analysis_quarantine_v3021s.active)
+        except Exception:
+            _analysis_quarantine_v3021s = None
+            _analysis_quarantine_active_v3021s = False
+        run_analysis = st.button(
+            run_analysis_label, use_container_width=True, type="primary", key="run_analysis_main",
+            disabled=_analysis_quarantine_active_v3021s,
+        )
+        if _analysis_quarantine_active_v3021s:
+            _q_min_analysis_v3021s = max(1, int((int(getattr(_analysis_quarantine_v3021s, "remaining_seconds", 0)) + 59) // 60))
+            st.caption(f"🔴 Yahoo-Cooldown aktiv · neue Sofortanalysen ca. {_q_min_analysis_v3021s} Min. pausiert. Vorhandene Ergebnisse bleiben sichtbar.")
         if run_analysis:
             explicit_position_mode = st.session_state.get("position_perspective_widget_main", "Pre-Entry / Watchlist") == "Post-Entry / Position"
             if explicit_position_mode and analysis_mode == "Einzelanalyse" and buy_in_override <= 0:

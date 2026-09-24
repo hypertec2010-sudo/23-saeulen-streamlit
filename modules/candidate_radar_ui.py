@@ -175,7 +175,21 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
             ok, message = radar.save_snapshot(storage, fresh)
             st.session_state[session_key + "_save"] = (ok, message)
         except Exception as exc:
-            if isinstance(fresh, Mapping) and fresh.get("errors"):
+            if isinstance(fresh, Mapping) and fresh.get("abort_reason") == "provider_quarantine":
+                requested = int(fresh.get("requested") or len(entries))
+                skipped = int(fresh.get("skipped") or requested)
+                remaining = int(fresh.get("quarantine_remaining_seconds") or 0)
+                minutes = max(1, int((remaining + 59) // 60)) if remaining > 0 else 1
+                st.error(
+                    f"Yahoo Provider-Cooldown aktiv: Radar wurde vor der ersten Provider-Abfrage pausiert. "
+                    f"{skipped}/{requested} Werte wurden bewusst nicht angefragt. "
+                    f"Voraussichtlich noch ca. {minutes} Min. Cooldown. Ein vorhandener Scan bleibt unveraendert."
+                )
+                st.caption(
+                    "Provider-Quarantaene: Kein weiterer Yahoo-Traffic aus dem Radar, bis der Cooldown abgelaufen "
+                    "oder ein manueller Provider-Test wieder erfolgreich ist."
+                )
+            elif isinstance(fresh, Mapping) and fresh.get("errors"):
                 processed = int(fresh.get("processed") or 0)
                 requested = int(fresh.get("requested") or len(entries))
                 successful = len(fresh.get("rows") or [])

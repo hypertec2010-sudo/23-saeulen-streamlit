@@ -416,6 +416,32 @@ def run_scan(*, universe, style, entries, analyze, decide, entry_package,
     if len(symbols) > 500:
         raise ValueError("Maximal 500 unterschiedliche Ticker pro bewusster Scan-Anforderung.")
     start = parse_time(clock()) or utcnow()
+
+    # v30.21s: honor the shared provider quarantine before the first ticker.
+    # This avoids even the three local circuit-breaker attempts while Yahoo is
+    # already known to be blocked for the current Cloud process/IP.
+    try:
+        from modules.provider_manager import get_market_data_provider
+        _provider_state = get_market_data_provider().quarantine_state()
+    except Exception:
+        _provider_state = None
+    if _provider_state is not None and getattr(_provider_state, "active", False):
+        end = parse_time(clock()) or utcnow()
+        return {
+            "schema_version": SCHEMA_VERSION, "radar_version": RADAR_VERSION,
+            "model_version": model_version, "catalog_version": CATALOG_VERSION,
+            "key": request_key(universe, style, entries, model_version),
+            "scan_id": "radar-" + start.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8],
+            "universe": universe, "style": style, "source": source,
+            "started_at": start.isoformat(), "completed_at": end.isoformat(),
+            "completed": False, "requested": len(symbols), "processed": 0,
+            "skipped": len(symbols), "skipped_symbols": list(symbols),
+            "abort_reason": "provider_quarantine", "rate_limit_streak": 0,
+            "quarantine_remaining_seconds": int(getattr(_provider_state, "remaining_seconds", 0) or 0),
+            "symbols": symbols, "symbols_hash": universe_digest(symbols),
+            "rows": [], "errors": [], "resolution": resolution,
+        }
+
     candidates, errors = [], []
     processed = 0
     consecutive_rate_limits = 0

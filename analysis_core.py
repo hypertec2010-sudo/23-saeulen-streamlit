@@ -33,6 +33,14 @@ from plotly.subplots import make_subplots
 
 from auth_utils import check_password
 
+from modules.provider_manager import (
+    MarketDataRateLimitError,
+    ProviderCoolingDownError,
+    get_market_data_provider,
+)
+
+_market_provider = get_market_data_provider()
+
 from logging_utils import (
     append_auto_run_log,
     append_df_to_gsheet,
@@ -490,7 +498,7 @@ def load_sector_context(symbol):
     if not symbol:
         return None
     try:
-        df = yf.download(symbol, period="2y", auto_adjust=True, progress=False)
+        df = _market_provider.get_history(symbol, period="2y", interval="1d", auto_adjust=True, actions=False)
         if df is None or df.empty or len(df) < 120:
             return None
         close = df["Close"]
@@ -2425,26 +2433,28 @@ def build_company_summary(info, ticker):
     return "Keine Unternehmensbeschreibung verfügbar."
 
 def load_data(ticker):
-    t = yf.Ticker(ticker)
-    hist = t.history(period="3y", auto_adjust=True)
+    # v30.21s: all central analysis starts behind the shared Yahoo quarantine.
+    # During an active provider cooldown this raises before any network request.
+    _market_provider.ensure_available()
+    hist = _market_provider.get_history(
+        ticker, period="3y", interval="1d", auto_adjust=True, actions=False
+    )
+    t, info = _market_provider.get_info_bundle(ticker)
+    info = dict(info or {})
 
-    info = {}
+    # Statement/analyst/earnings access still uses the native yfinance ticker.
+    # The initial history/info calls above are the provider guard. If any of the
+    # following native accesses exposes another rate limit, publish it globally
+    # and abort before the next symbol is queried.
     try:
-        info = merge_info(info, getattr(t, "fast_info", {}) or {})
-    except Exception:
-        pass
-    try:
-        info = merge_info(info, t.get_info() or {})
-    except Exception:
-        pass
-    try:
-        info = merge_info(info, t.info or {})
-    except Exception:
-        pass
-
-    info = derive_fundamentals_from_statements(t, info)
-    info = extract_analyst_data(t, info)
-    info = extract_earnings_data(t, info)
+        info = derive_fundamentals_from_statements(t, info)
+        info = extract_analyst_data(t, info)
+        info = extract_earnings_data(t, info)
+    except Exception as exc:
+        if _market_provider.is_rate_limit_error(exc):
+            _market_provider.mark_rate_limited(ticker, source="Zentrale Analyse")
+            raise MarketDataRateLimitError(str(exc)) from exc
+        raise
 
     try:
         info["_fund_fields_loaded"] = int(sum(pd.notna(normalize_missing(info.get(k))) for k in [
@@ -2461,9 +2471,13 @@ def load_data(ticker):
 
 def load_benchmark_data(symbol):
     try:
-        t = yf.Ticker(symbol)
-        hist = t.history(period="1y", auto_adjust=True)
-        return hist
+        return _market_provider.get_history(
+            symbol, period="1y", interval="1d", auto_adjust=True, actions=False
+        )
+    except ProviderCoolingDownError:
+        raise
+    except MarketDataRateLimitError:
+        raise
     except Exception:
         return pd.DataFrame()
 
@@ -2975,15 +2989,10 @@ def analyze_stock(
     else:
         rs_score = 100 if ret63 > 12 else (78 if ret63 > 4 else (55 if ret63 > -5 else 22))
 
-    # v30.21i: The setup gate uses the existing graduated trend-quality
-    # score instead of the legacy binary MA-stack score (s3). The legacy s3
-    # output remains available for backwards-compatible diagnostics/display,
-    # but no longer drives setup validity or setup scoring.
-    setup_trend_score = trend_quality_score
-    kb = sum([setup_trend_score >= 65, s4 >= 65, s5 >= 65, s6 >= 65])
+    kb = sum([s3 >= 65, s4 >= 65, s5 >= 65, s6 >= 65])
 
     setup_raw = (
-        setup_trend_score * (0.22 * style_adj["trend"])
+        s3 * (0.22 * style_adj["trend"])
         + s4 * (0.24 * style_adj["momentum"])
         + s5 * 0.18
         + s6 * 0.10
@@ -3186,7 +3195,7 @@ def analyze_stock(
 
     setup_confidence = round(clamp(
         setup_base_score * 0.38
-        + setup_trend_score * 0.22
+        + s3 * 0.22
         + s4 * 0.22
         + min(kb / 4 * 100, 100) * 0.10
         + (85 if market_info["regime"] == "POSITIV" else 60 if market_info["regime"] == "NEUTRAL" else 35) * 0.08
@@ -3310,42 +3319,6 @@ def analyze_stock(
             ]
             stop_source = "Unter Trendzone / Higher Low"
 
-        # v30.21b: Die strukturelle Setup-Invalidierung separat von ATR-,
-        # Praxis- und Entry-Zonen-Logik erfassen. Diese Marke dient der
-        # Herkunftstransparenz im Risiko-Rechner; die bestehende Screener-
-        # Stop-/CRV-Logik darunter bleibt unveraendert.
-        chart_invalidation_level = np.nan
-        chart_invalidation_source = "-"
-        chart_invalidation_kind = "missing"
-        _chart_candidate = np.nan
-        _chart_source = "-"
-        if setup_type == "Breakout":
-            _chart_candidate = (prev20_high * 0.975) if pd.notna(prev20_high) else np.nan
-            _chart_source = "Unter Breakout-Level (2,5%-Puffer)"
-        elif setup_type == "Breakout-Retest":
-            _chart_candidate = (prev20_high * 0.985) if pd.notna(prev20_high) else np.nan
-            _chart_source = "Unter Retest-/Breakout-Level (1,5%-Puffer)"
-        elif setup_type == "Pullback an MA20":
-            _chart_candidate = (ma20 * 0.985) if pd.notna(ma20) else np.nan
-            _chart_source = "Unter MA20 / Pullback-Struktur (1,5%-Puffer)"
-        elif setup_type == "Pullback an MA50":
-            _chart_candidate = (ma50 * 0.985) if pd.notna(ma50) else np.nan
-            _chart_source = "Unter MA50 / Pullback-Struktur (1,5%-Puffer)"
-        elif setup_type == "Rebound":
-            _chart_candidate = (prev20_low * 0.99) if pd.notna(prev20_low) else np.nan
-            _chart_source = "Unter 20T-Rebound-Tief (1,0%-Puffer)"
-        elif setup_type == "Range-Breakout":
-            _chart_candidate = (prev20_high * 0.985) if pd.notna(prev20_high) else np.nan
-            _chart_source = "Unter Range-Oberkante (1,5%-Puffer)"
-        elif setup_type == "Trendfolge":
-            _chart_candidate = (ma20 * 0.985) if pd.notna(ma20) else np.nan
-            _chart_source = "Unter MA20 / Trendstruktur (1,5%-Puffer)"
-
-        if pd.notna(_chart_candidate) and _chart_candidate > 0 and _chart_candidate < price:
-            chart_invalidation_level = round(float(_chart_candidate), 2)
-            chart_invalidation_source = _chart_source
-            chart_invalidation_kind = "setup_structure"
-
         stop_candidates = [
             x for x in setup_stop_candidates + [generic_atr_stop, generic_struct_stop]
             if pd.notna(x) and x > 0 and x < price
@@ -3444,7 +3417,7 @@ def analyze_stock(
 
         setup_confidence = round(clamp(
             (88 if setup_type in {"Breakout", "Pullback im Aufwärtstrend", "Trendfolge"} else 72 if setup_type in {"Rebound im Aufwärtstrend"} else 35) * 0.35
-            + setup_trend_score * 0.20
+            + s3 * 0.20
             + s4 * 0.20
             + min(kb / 4 * 100, 100) * 0.15
             + (100 if entry_quality == "gut" else 60 if entry_quality == "abwarten" else 45) * 0.10
@@ -3505,9 +3478,6 @@ def analyze_stock(
         technical_target_1 = np.nan
         technical_target_2 = np.nan
         stop_source = "-"
-        chart_invalidation_level = np.nan
-        chart_invalidation_source = "-"
-        chart_invalidation_kind = "missing"
         suggested_entry_zone = "-"
         entry_source = "-"
         entry_quality = "-"
@@ -4521,7 +4491,6 @@ def analyze_stock(
         "sector_trend_text": sector_trend_text,
         "industry_trend_text": industry_trend_text,
         "trend_quality_score": trend_quality_score,
-        "setup_trend_score": setup_trend_score,
         "ma20_slope": ma20_slope,
         "ma50_slope": ma50_slope,
         "ma200_slope": ma200_slope,
@@ -4593,9 +4562,6 @@ def analyze_stock(
         "technical_target_1": technical_target_1,
         "technical_target_2": technical_target_2,
         "stop_source": stop_source,
-        "chart_invalidation_level": chart_invalidation_level,
-        "chart_invalidation_source": chart_invalidation_source,
-        "chart_invalidation_kind": chart_invalidation_kind,
         "suggested_entry_zone": suggested_entry_zone,
         "entry_source": entry_source,
         "entry_quality": entry_quality,

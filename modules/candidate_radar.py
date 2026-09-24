@@ -331,6 +331,77 @@ def build_candidate(result, *, ticker, style, decide, entry_package, analyzed_at
     })
 
 
+def safe_scan_error(exc):
+    """Return a diagnostic summary without persisting arbitrary provider text.
+
+    Exception messages may contain URLs, tokens or other implementation details.
+    Only known, non-sensitive conditions are surfaced verbatim; everything else is
+    reduced to a stable category plus the exception class.
+    """
+    error_type = type(exc).__name__
+    raw = str(exc or "").strip()
+    known = {
+        "Keine strukturierte Analyse": ("Analyseformat", "Zentrale Analyse lieferte keine strukturierte Antwort."),
+        "Instrumentidentitaet abweichend": ("Ticker-Zuordnung", "Geliefertes Instrument passt nicht zum angefragten Ticker."),
+        "Unbekannter Radar-Suchstil": ("Radar-Konfiguration", "Das gewaehlte Suchprofil ist unbekannt."),
+        "Keine gueltigen Kandidaten. Tickerliste pruefen.": ("Radar-Konfiguration", "Die Kandidatenliste enthaelt keine gueltigen Symbole."),
+        "Maximal 500 unterschiedliche Ticker pro bewusster Scan-Anforderung.": ("Radar-Konfiguration", "Die Kandidatenliste ueberschreitet das Radar-Limit."),
+    }
+    if raw in known:
+        category, detail = known[raw]
+    else:
+        low = raw.lower()
+        cls = error_type.lower()
+        if isinstance(exc, TimeoutError) or "timeout" in cls or "timed out" in low:
+            category, detail = "Provider / Netzwerk", "Zeitlimit beim Datenabruf oder bei der Analyse ueberschritten."
+        elif isinstance(exc, ConnectionError) or any(token in cls for token in ("connection", "network")):
+            category, detail = "Provider / Netzwerk", "Verbindung zum Datenanbieter oder Analysedienst fehlgeschlagen."
+        elif any(token in low for token in ("rate limit", "too many requests", "429")) or "ratelimit" in cls:
+            category, detail = "Provider-Limit", "Datenanbieter hat die Abfrage voruebergehend begrenzt."
+        elif any(token in low for token in ("no price", "no prices", "no data", "empty data", "no timezone", "possibly delisted")):
+            category, detail = "Marktdaten fehlen", "Fuer das Symbol wurden keine verwertbaren Marktdaten geliefert."
+        elif any(token in low for token in ("tz-naive", "tz-aware", "nat type", "nat-type", "out of bounds nanosecond")):
+            category, detail = "Zeit-/Datumsdaten", "Zeitstempel oder Handelsdatum konnten nicht konsistent verarbeitet werden."
+        elif any(token in low for token in ("truth value of a series", "truth value of an array", "ambiguous")):
+            category, detail = "Mehrdeutige Datenreihe", "Ein Analysefeld enthielt mehrere Werte, wo ein Einzelwert erwartet wurde."
+        elif any(token in low for token in ("could not convert string to float", "cannot convert float nan", "invalid literal for int")):
+            category, detail = "Numerisches Datenformat", "Ein gelieferter Zahlenwert konnte nicht sicher konvertiert werden."
+        elif any(token in low for token in ("length mismatch", "cannot reindex", "duplicate labels")):
+            category, detail = "Tabellenstruktur", "Marktdaten hatten eine unerwartete Tabellen- oder Indexstruktur."
+        elif isinstance(exc, KeyError):
+            category, detail = "Analyseformat", "Ein erwartetes Analysefeld fehlte."
+        elif isinstance(exc, (TypeError, AttributeError)):
+            category, detail = "Analyseformat", "Analyseergebnis hatte nicht die erwartete Struktur."
+        elif isinstance(exc, ValueError):
+            category, detail = "Analysewert ungueltig", "Ein Wert konnte in der zentralen Analyse nicht verarbeitet werden."
+        else:
+            category, detail = "Analysefehler", "Der Wert konnte in der zentralen Analyse nicht ausgewertet werden."
+    return {"error_type": error_type, "category": category, "detail": detail}
+
+
+def summarize_scan_errors(errors, max_examples=8):
+    rows = [dict(e) for e in (errors or []) if isinstance(e, Mapping)]
+    categories = Counter(text(e.get("category"), "Unbekannt") for e in rows)
+    types = Counter(text(e.get("error_type"), "Unbekannt") for e in rows)
+    stages = Counter(text(e.get("stage"), "Unbekannt") for e in rows)
+    examples = []
+    for row in rows[:max(0, int(max_examples))]:
+        examples.append({
+            "ticker": text(row.get("ticker"), "?"),
+            "category": text(row.get("category"), "Unbekannt"),
+            "error_type": text(row.get("error_type"), "Unbekannt"),
+            "stage": text(row.get("stage"), "Unbekannt"),
+            "detail": text(row.get("detail"), "Keine weiteren Details."),
+        })
+    return {
+        "count": len(rows),
+        "categories": categories.most_common(),
+        "types": types.most_common(),
+        "stages": stages.most_common(),
+        "examples": examples,
+    }
+
+
 def run_scan(*, universe, style, entries, analyze, decide, entry_package,
              resolver=None, model_version=RADAR_VERSION, progress=None, clock=utcnow,
              source="manual"):
@@ -345,15 +416,23 @@ def run_scan(*, universe, style, entries, analyze, decide, entry_package,
     start = parse_time(clock()) or utcnow()
     candidates, errors = [], []
     for index, ticker in enumerate(symbols):
+        stage = "Zentrale Analyse"
         try:
             result = analyze(ticker=ticker, horizon="Swing (1-4 Wochen)", depot=10000,
                              risk_pct=1.0, override=0.0, buy_in_override=0.0,
                              smart_money_default=True, strict_mode=True)
+            stage = "Radar-Aufbereitung"
             candidate = build_candidate(result, ticker=ticker, style=style, decide=decide,
                                         entry_package=entry_package, analyzed_at=clock())
             candidates.append(candidate)
         except Exception as exc:
-            errors.append({"ticker": ticker, "reason": "Nicht auswertbar: " + type(exc).__name__})
+            info = safe_scan_error(exc)
+            errors.append({
+                "ticker": ticker,
+                "reason": "Nicht auswertbar: " + info["error_type"],
+                "stage": stage,
+                **info,
+            })
         if progress is not None:
             progress(index + 1, len(symbols), ticker)
     end = parse_time(clock()) or utcnow()

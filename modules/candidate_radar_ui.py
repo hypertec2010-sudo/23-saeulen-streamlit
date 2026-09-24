@@ -33,6 +33,28 @@ def _records(loader):
         return [], True
 
 
+def _render_error_diagnostics(st, errors, *, title="Fehlerdiagnose", expanded=False):
+    summary = radar.summarize_scan_errors(errors)
+    if not summary["count"]:
+        return
+    if summary["categories"]:
+        parts = [f"{count}x {category}" for category, count in summary["categories"][:5]]
+        st.write("**H\u00e4ufigste Ursachen:** " + " \u00b7 ".join(parts))
+    with st.expander(title, expanded=expanded):
+        if summary["stages"]:
+            st.caption("Fehlerstufe: " + " \u00b7 ".join(f"{count}x {stage}" for stage, count in summary["stages"][:4]))
+        if summary["types"]:
+            st.caption("Fehlerklassen: " + " \u00b7 ".join(f"{count}x {kind}" for kind, count in summary["types"][:6]))
+        for row in summary["examples"]:
+            st.write(
+                f"**{_md(row['ticker'])}** \u00b7 {_md(row['stage'])} \u00b7 {_md(row['category'])} \u00b7 "
+                f"{_md(row['detail'])} ({_md(row['error_type'])})"
+            )
+        remaining = summary["count"] - len(summary["examples"])
+        if remaining > 0:
+            st.caption(f"+ {remaining} weitere Fehler.")
+
+
 def _select(st, label, options, key, default=None):
     # Stale widget choices cannot resurrect hidden inputs after a scan change.
     if key in st.session_state and st.session_state[key] not in options:
@@ -139,6 +161,7 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
     if st.button("Kandidatenliste jetzt scannen", key="radar_v3021_run", type="primary", disabled=not entries):
         bar = st.progress(0.0)
         status_line = st.empty()
+        fresh = None
         def progress(done, total, ticker):
             bar.progress(done / total)
             status_line.write(f"{done}/{total} gepr\u00fcft \u00b7 {ticker}")
@@ -152,7 +175,24 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
             ok, message = radar.save_snapshot(storage, fresh)
             st.session_state[session_key + "_save"] = (ok, message)
         except Exception as exc:
-            st.error("Neuer Radar-Lauf fehlgeschlagen (" + type(exc).__name__ + "). Ein vorhandener Scan bleibt unver\u00e4ndert.")
+            if isinstance(fresh, Mapping) and fresh.get("errors"):
+                processed = int(fresh.get("processed") or fresh.get("requested") or len(entries))
+                successful = len(fresh.get("rows") or [])
+                failed = len(fresh.get("errors") or [])
+                st.error(
+                    f"Neuer Radar-Lauf fehlgeschlagen: {successful}/{processed} Werte erfolgreich, {failed} Fehler. "
+                    "Ein vorhandener Scan bleibt unver\u00e4ndert."
+                )
+                _render_error_diagnostics(
+                    st, fresh.get("errors"), title="Fehlerbeispiele aus diesem Scan", expanded=True
+                )
+            else:
+                info = radar.safe_scan_error(exc)
+                st.error(
+                    "Neuer Radar-Lauf fehlgeschlagen (" + info["error_type"] + "). "
+                    "Ein vorhandener Scan bleibt unver\u00e4ndert."
+                )
+                st.write("**Ursache:** " + info["category"] + " \u00b7 " + info["detail"])
         finally:
             bar.empty()
             status_line.empty()
@@ -206,6 +246,7 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
         st.write(f"Weitere Beobachtungsideen: {counts[radar.WATCH]} \u00b7 Abfragefehler: {len(payload['errors'])}")
     if payload["errors"]:
         st.warning("Nicht auswertbar: " + ", ".join(e["ticker"] for e in payload["errors"]))
+        _render_error_diagnostics(st, payload["errors"], title="Abfragefehler im Detail", expanded=False)
     mtf_missing = sum(not r.get("mtf_available") for r in rows)
     wave_missing = sum(not r.get("wave_available") for r in rows)
     coverage_missing = sum(r.get("coverage") is None for r in rows)

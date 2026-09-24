@@ -464,6 +464,14 @@ def run_scan(*, universe, style, entries, analyze, decide, entry_package,
         if rate_limited and consecutive_rate_limits >= abort_after:
             aborted = True
             abort_reason = "provider_rate_limit"
+            # v30.21r: publish the observed limit into the shared provider
+            # health state so the global header turns red immediately without
+            # launching another Yahoo probe.
+            try:
+                from modules.provider_manager import get_market_data_provider
+                get_market_data_provider().mark_rate_limited(ticker, source="Kandidaten-Radar")
+            except Exception:
+                pass
             break
 
         delay = rate_pause if rate_limited else normal_pause

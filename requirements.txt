@@ -53,3 +53,5 @@ gspread
 plotly
 
 yfinance
+
+curl_cffi

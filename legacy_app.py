@@ -17379,6 +17379,82 @@ build_shadow_validation_v286a = _live_module.build_shadow_validation_v286a
 reset_live_watchlist_status_history_v227 = _live_module.reset_live_watchlist_status_history_v227
 apply_live_watchlist_status_history_v220 = _live_module.apply_live_watchlist_status_history_v220
 
+
+def _render_market_provider_health_v3021r():
+    """Compact global provider health indicator without changing trading logic."""
+    try:
+        health = _market_provider_v2845a.health_check(force=False, symbol="AAPL")
+    except Exception as exc:
+        with st.expander("⚪ Marktdaten-Status", expanded=False):
+            st.warning(f"Provider-Gesundheitscheck nicht verfuegbar ({type(exc).__name__}).")
+        return
+
+    labels = {
+        "ok": ("🟢", "Yahoo erreichbar"),
+        "partial": ("🟡", "Yahoo teilweise erreichbar"),
+        "rate_limited": ("🔴", "Yahoo rate-limited"),
+        "down": ("🔴", "Yahoo nicht erreichbar"),
+    }
+    icon, label = labels.get(str(health.overall or ""), ("⚪", "Yahoo Status unbekannt"))
+    try:
+        checked_dt = datetime.fromtimestamp(float(health.checked_at), tz=timezone.utc).astimezone(_V305B_BERLIN_TZ)
+        checked_text = checked_dt.strftime("%d.%m.%Y %H:%M:%S %Z")
+    except Exception:
+        checked_text = "unbekannt"
+
+    with st.expander(f"{icon} Marktdaten · {label}", expanded=False):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if health.history_ok is True:
+                st.metric("Kursdaten", "✅ erreichbar")
+            elif health.history_ok is False:
+                st.metric("Kursdaten", "❌ gestört")
+            else:
+                st.metric("Kursdaten", "—")
+        with c2:
+            if health.info_ok is True:
+                st.metric("Zusatzdaten", "✅ erreichbar")
+            elif health.info_ok is False:
+                st.metric("Zusatzdaten", "❌ gestört")
+            else:
+                st.metric("Zusatzdaten", "— nicht getestet")
+        with c3:
+            if health.curl_cffi_active is True:
+                st.metric("Yahoo HTTP", "✅ curl_cffi")
+            elif health.curl_cffi_active is False:
+                st.metric("Yahoo HTTP", "⚠️ kein curl_cffi")
+            else:
+                st.metric("Yahoo HTTP", "? unbekannt")
+
+        if health.rate_limited:
+            st.error(
+                "Yahoo begrenzt die Cloud-Abfragen aktuell. Frische Vollscans/Radar-Laeufe besser pausieren; "
+                "vorhandene Scan-, Last-Good- und Cache-Staende bleiben nutzbar."
+            )
+        elif health.overall == "partial":
+            st.warning("Kursdaten sind erreichbar, aber Zusatzdaten sind derzeit nicht vollstaendig verfuegbar.")
+        elif health.overall == "down":
+            st.warning("Der kleine Yahoo-Test konnte keine belastbaren Kursdaten laden.")
+
+        st.caption(f"Kursdaten: {health.history_message or 'n/a'}")
+        st.caption(f"Zusatzdaten: {health.info_message or 'n/a'}")
+        backend_text = health.http_backend or "nicht erkannt"
+        curl_text = "installiert" if health.curl_cffi_installed else "nicht installiert"
+        st.caption(
+            f"Testticker {health.symbol} · letzter Test {checked_text} · yfinance {health.yfinance_version or 'n/a'} · "
+            f"curl_cffi {curl_text} · Backend {backend_text}"
+        )
+        if health.curl_cffi_active is False:
+            st.info(
+                "Ab v30.21r ist curl_cffi explizit in requirements.txt enthalten. Nach dem Deployment sollte der "
+                "Yahoo-HTTP-Pfad damit aktiv sein; falls nicht, bitte den Status nach App-Neustart erneut pruefen."
+            )
+        if st.button("Provider jetzt neu testen", key="v3021r_provider_health_force", use_container_width=True):
+            try:
+                _market_provider_v2845a.health_check(force=True, symbol="AAPL")
+            finally:
+                st.rerun()
+
 # v25.3: Watchlist-Speicher/Queue-Modul konfigurieren
 _watchlist_module.configure_context(
     _v2214_get_current_price_for_ticker=_v2214_get_current_price_for_ticker,
@@ -17433,7 +17509,7 @@ with top1:
             unsafe_allow_html=True,
         )
 with top2:
-    st.markdown("")
+    _render_market_provider_health_v3021r()
 
 st.markdown(
     """

@@ -8,6 +8,8 @@ in later v28.4.5 releases without changing the trading logic again.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib
+import importlib.util
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -35,6 +37,38 @@ class ProviderStatus:
     ok: bool
     message: str = ""
     timestamp: float = 0.0
+
+
+@dataclass(frozen=True)
+class ProviderHealth:
+    provider: str
+    symbol: str
+    checked_at: float
+    overall: str
+    history_ok: Optional[bool]
+    info_ok: Optional[bool]
+    rate_limited: bool
+    history_message: str = ""
+    info_message: str = ""
+    yfinance_version: str = ""
+    curl_cffi_installed: bool = False
+    curl_cffi_active: Optional[bool] = None
+    http_backend: str = ""
+
+
+def _safe_health_message(exc: BaseException) -> str:
+    """Return a compact, non-sensitive provider-health message."""
+    text = str(exc or "").replace("\n", " ").replace("\r", " ").strip()
+    lowered = text.lower()
+    if _looks_rate_limited(exc):
+        return "Yahoo begrenzt die Abfragen voruebergehend (Rate-Limit)."
+    if "timeout" in lowered or "timed out" in lowered:
+        return "Provider-Abfrage hat das Zeitlimit ueberschritten."
+    if "connection" in lowered or "network" in lowered:
+        return "Provider-Verbindung konnte nicht hergestellt werden."
+    if not text:
+        return type(exc).__name__
+    return f"{type(exc).__name__}: {text[:160]}"
 
 
 def _looks_rate_limited(exc: BaseException) -> bool:
@@ -214,6 +248,12 @@ class MarketDataProvider:
         self._last_request_at = 0.0
         self._cooldown_until = 0.0
         self._min_request_gap = 0.45
+        # v30.21r: a tiny cached health probe. It deliberately runs far less
+        # often than normal app reruns so the diagnostic itself cannot create
+        # provider pressure.
+        self._health_lock = threading.Lock()
+        self._health_cache: Optional[ProviderHealth] = None
+        self._health_cache_ttl = 15 * 60.0
 
     def _pace_request(self) -> None:
         with self._request_lock:
@@ -232,6 +272,178 @@ class MarketDataProvider:
 
     def is_rate_limit_error(self, exc: BaseException) -> bool:
         return isinstance(exc, MarketDataRateLimitError) or _looks_rate_limited(exc)
+
+    def mark_rate_limited(self, symbol: str = "AAPL", *, source: str = "Yahoo") -> ProviderHealth:
+        """Publish a rate-limit observation from any app path into health state."""
+        clean = self.normalize_symbol(symbol) or "AAPL"
+        yf_version, curl_installed, curl_active, backend = self._http_backend_health()
+        result = ProviderHealth(
+            provider=self.primary.name,
+            symbol=clean,
+            checked_at=time.time(),
+            overall="rate_limited",
+            history_ok=False,
+            info_ok=None,
+            rate_limited=True,
+            history_message=f"{source}: Yahoo begrenzt die Abfragen voruebergehend (Rate-Limit).",
+            info_message="Wegen aktivem Rate-Limit nicht zusaetzlich getestet.",
+            yfinance_version=yf_version,
+            curl_cffi_installed=bool(curl_installed),
+            curl_cffi_active=curl_active,
+            http_backend=backend,
+        )
+        with self._health_lock:
+            self._health_cache = result
+        self._note_rate_limit(2)
+        return result
+
+    def _http_backend_health(self) -> tuple[str, bool, Optional[bool], str]:
+        """Return yfinance/curl_cffi backend metadata without network access."""
+        yf_obj = getattr(self.primary, "_yf", None)
+        yf_version = str(getattr(yf_obj, "__version__", "") or "")
+        try:
+            curl_installed = importlib.util.find_spec("curl_cffi") is not None
+        except Exception:
+            curl_installed = False
+
+        backend = ""
+        curl_active: Optional[bool] = None
+        try:
+            yf_data = importlib.import_module("yfinance.data")
+            requests_obj = getattr(yf_data, "requests", None)
+            module_name = str(getattr(requests_obj, "__name__", "") or "")
+            if module_name:
+                backend = module_name
+                curl_active = "curl_cffi" in module_name.lower()
+        except Exception:
+            pass
+
+        if not backend:
+            try:
+                yf_data = importlib.import_module("yfinance.data")
+                data_cls = getattr(yf_data, "YfData", None)
+                data_obj = data_cls() if data_cls is not None else None
+                session = getattr(data_obj, "_session", None)
+                if session is not None:
+                    backend = f"{type(session).__module__}.{type(session).__name__}"
+                    curl_active = "curl_cffi" in backend.lower()
+            except Exception:
+                pass
+
+        if curl_active is None and not curl_installed:
+            curl_active = False
+        return yf_version, curl_installed, curl_active, backend
+
+    def health_check(self, *, force: bool = False, symbol: str = "AAPL") -> ProviderHealth:
+        """Run a low-cost Yahoo/yfinance health probe with a 15-minute cache.
+
+        The probe intentionally performs at most one lightweight history call
+        and, only when history succeeds, one fast-info lookup. It never enters
+        the normal multi-retry/fallback history path.
+        """
+        now = time.time()
+        with self._health_lock:
+            cached = self._health_cache
+            if (
+                not force
+                and cached is not None
+                and (now - float(cached.checked_at or 0.0)) < self._health_cache_ttl
+            ):
+                return cached
+
+            clean = self.normalize_symbol(symbol) or "AAPL"
+            resolved = self.resolve_symbol(clean) or clean
+            yf_version, curl_installed, curl_active, backend = self._http_backend_health()
+
+            history_ok: Optional[bool] = None
+            info_ok: Optional[bool] = None
+            history_message = ""
+            info_message = ""
+            rate_limited = False
+
+            try:
+                self._pace_request()
+                frame = self.primary.history(
+                    resolved,
+                    period="5d",
+                    interval="1d",
+                    auto_adjust=False,
+                    actions=False,
+                )
+                history_ok = isinstance(frame, pd.DataFrame) and not frame.empty
+                history_message = (
+                    f"{len(frame)} Tageszeilen empfangen."
+                    if history_ok
+                    else "Yahoo lieferte keine Kurszeilen."
+                )
+            except Exception as exc:
+                history_ok = False
+                rate_limited = self.is_rate_limit_error(exc)
+                history_message = _safe_health_message(exc)
+                if rate_limited:
+                    self._note_rate_limit(2)
+
+            # Do not create an additional Yahoo request while an active rate
+            # limit is already established by the history probe.
+            if rate_limited:
+                info_ok = None
+                info_message = "Wegen aktivem Rate-Limit nicht zusaetzlich getestet."
+            elif history_ok:
+                try:
+                    ticker = self.primary.ticker(resolved)
+                    self._pace_request()
+                    fast = getattr(ticker, "fast_info", None)
+                    last_price = None
+                    if fast is not None:
+                        try:
+                            last_price = fast.get("last_price")
+                        except Exception:
+                            try:
+                                last_price = fast["last_price"]
+                            except Exception:
+                                last_price = None
+                    info_ok = last_price is not None
+                    info_message = (
+                        "Fast-Info erreichbar."
+                        if info_ok
+                        else "Fast-Info lieferte keinen letzten Kurs."
+                    )
+                except Exception as exc:
+                    info_ok = False
+                    rate_limited = rate_limited or self.is_rate_limit_error(exc)
+                    info_message = _safe_health_message(exc)
+                    if self.is_rate_limit_error(exc):
+                        self._note_rate_limit(2)
+            else:
+                info_ok = None
+                info_message = "Nicht getestet, weil der Kursdaten-Test bereits fehlgeschlagen ist."
+
+            if rate_limited:
+                overall = "rate_limited"
+            elif history_ok and info_ok:
+                overall = "ok"
+            elif history_ok:
+                overall = "partial"
+            else:
+                overall = "down"
+
+            result = ProviderHealth(
+                provider=self.primary.name,
+                symbol=clean,
+                checked_at=now,
+                overall=overall,
+                history_ok=history_ok,
+                info_ok=info_ok,
+                rate_limited=bool(rate_limited),
+                history_message=history_message,
+                info_message=info_message,
+                yfinance_version=yf_version,
+                curl_cffi_installed=bool(curl_installed),
+                curl_cffi_active=curl_active,
+                http_backend=backend,
+            )
+            self._health_cache = result
+            return result
 
     @staticmethod
     def normalize_symbol(symbol: str) -> str:
@@ -388,7 +600,7 @@ class MarketDataProvider:
             )
             return frame
         except MarketDataRateLimitError as exc:
-            self._note_rate_limit(2)
+            self.mark_rate_limited(clean, source="Kursdaten")
             self._record(clean, "history", False, f"rate_limit: {exc}")
             raise
         except Exception as exc:

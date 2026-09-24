@@ -10,6 +10,8 @@ from typing import Optional
 
 import streamlit as st
 
+from modules.version_info import APP_VERSION
+
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_APP = ROOT / "legacy_app.py"
 VALID_WORKSPACES = {"Sofortanalyse", "Watchlisten", "Positionen", "Kandidaten-Radar"}
@@ -70,7 +72,7 @@ def run_workspace_page(
     if cockpit_area is not None and cockpit_area not in VALID_COCKPIT_AREAS:
         raise ValueError(f"Unbekannter Cockpit-Bereich: {cockpit_area}")
     if not LEGACY_APP.exists():
-        st.error("legacy_app.py fehlt. Bitte den vollständigen v28.4.1-Paketinhalt deployen.")
+        st.error(f"legacy_app.py fehlt. Bitte den vollständigen {APP_VERSION}-Paketinhalt deployen.")
         st.stop()
 
     page_changed = _activate_page_context(workspace, cockpit_area, page_label)

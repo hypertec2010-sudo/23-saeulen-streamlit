@@ -1,10 +1,10 @@
-CHSM v30.21t - Hybrid-Stop Shadow-Vergleich
+CHSM v30.21v - Learning-Report & Review-Status
 
-Diese drei Laufzeitdateien gemeinsam ersetzen:
+Bitte gemeinsam ersetzen:
 - legacy_app.py
 - VERSION.txt
-- modules/stop_shadow.py
+- modules/learning_report.py
 
-Wichtig:
-- Produktive Stop-, CRV-, Positionsgroessen- und Tradinglogik bleibt unveraendert.
-- Der neue Hybrid-Stop erscheint nur als eingeklappter Shadow-Vergleich im Risiko-Rechner.
+macOS Finder: beim Ordner "modules" bitte "Zusammenfuehren" waehlen, nicht "Ersetzen".
+
+Keine produktive Trading-, Stop-, Score-, Trigger- oder Risiko-Regel wurde geaendert.

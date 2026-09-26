@@ -14764,6 +14764,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "harvest_outcome_learning.py",
     _MODULE_DIR_V252 / "action_queue_learning.py",
     _MODULE_DIR_V252 / "stop_outcome_learning.py",
+    _MODULE_DIR_V252 / "learning_report.py",
     _MODULE_DIR_V252 / "calibration_advisor.py",
     _MODULE_DIR_V252 / "calibration_stability.py",
     _MODULE_DIR_V252 / "depot_transaction_import.py",
@@ -14810,6 +14811,7 @@ from modules import early_profit_learning as _early_profit_learning_v303
 from modules import harvest_outcome_learning as _harvest_outcome_learning_v306
 from modules import action_queue_learning as _action_queue_learning_v3010
 from modules import stop_outcome_learning as _stop_outcome_learning_v3021u
+from modules import learning_report as _learning_report_v3021v
 from modules import calibration_advisor as _calibration_advisor_v3011
 from modules import calibration_stability as _calibration_stability_v3012
 from modules import depot_transaction_import as _depot_transaction_import_v3013
@@ -16041,6 +16043,9 @@ _stop_outcome_learning_v3021u.configure_context(
 _v3021u_sync_stop_episodes = _stop_outcome_learning_v3021u.sync_position_episodes
 _v3021u_capture_stop_market = _stop_outcome_learning_v3021u.capture_market_snapshot
 _v3021u_build_stop_learning = _stop_outcome_learning_v3021u.build_learning_package
+_v3021v_build_review_status = _learning_report_v3021v.build_review_status
+_v3021v_build_learning_report = _learning_report_v3021v.build_learning_report
+_v3021v_learning_report_json = _learning_report_v3021v.report_json
 
 # v30.11: guarded calibration recommendations from existing outcome packages.
 # Shadow-only: no productive threshold, queue, gate, stop or order is modified.
@@ -21698,6 +21703,64 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     st.markdown("**Learning-Reifegrad**")
                                     st.dataframe(pd.DataFrame(_learning_rows_v3021u), hide_index=True, use_container_width=True)
                                     st.caption("Governance: Sammeln → Auswerten → Shadow-Empfehlung → Evidenz-Gate → A/B-Phase → manueller Cutover. Keine Engine ändert produktive Regeln automatisch.")
+
+                                    # v30.21v: one central, explicit hand-off from in-app learning
+                                    # to a human calibration review. No report can apply changes.
+                                    try:
+                                        _review_rows_v3021v = _v3021v_build_review_status(
+                                            queue_pkg=_learn_queue_pkg_v3021u,
+                                            harvest_pkg=_learn_harvest_pkg_v3021u,
+                                            shadow_cal=_learn_shadow_cal_v3021u,
+                                            trade_pkg=_learn_trade_pkg_v3021u,
+                                            early_pkg=_learn_early_pkg_v3021u,
+                                            stop_pkg=_learn_stop_pkg_v3021u,
+                                        )
+                                    except Exception:
+                                        _review_rows_v3021v = []
+                                    _due_rows_v3021v = [row for row in _review_rows_v3021v if bool(row.get("Prüfung fällig"))]
+                                    if _due_rows_v3021v:
+                                        st.success(
+                                            "📌 Prüfung fällig: "
+                                            + ", ".join(str(row.get("Engine") or "") for row in _due_rows_v3021v)
+                                            + ". Learning-Report exportieren und die Evidenz vor jeder Regeländerung manuell prüfen."
+                                        )
+                                    else:
+                                        st.caption("📌 Aktuell hat noch keine Learning Engine ihr vollständiges Evidenz-Gate für eine manuelle Review erreicht.")
+
+                                    with st.expander("📤 Learning-Report · Export & Review-Status", expanded=False):
+                                        if _review_rows_v3021v:
+                                            _review_df_v3021v = pd.DataFrame(_review_rows_v3021v)
+                                            _review_cols_v3021v = [c for c in ["Engine", "Status", "Evidenz", "Kriterium"] if c in _review_df_v3021v.columns]
+                                            st.dataframe(_review_df_v3021v[_review_cols_v3021v], hide_index=True, use_container_width=True)
+                                        st.caption(
+                                            "Der Export ist aggregiert: keine Secrets, Konto-/Broker-IDs, Broker-P/L-Summen oder Ticker-Einzeltrades. "
+                                            "Er enthält nur Lernmetriken, Segmentzusammenfassungen, Reifegrad und Evidenz-Gates."
+                                        )
+                                        try:
+                                            _learning_report_v3021v = _v3021v_build_learning_report(
+                                                app_version=APP_VERSION,
+                                                watchlist_name=selected_watchlist_name,
+                                                queue_pkg=_learn_queue_pkg_v3021u,
+                                                harvest_pkg=_learn_harvest_pkg_v3021u,
+                                                shadow_cal=_learn_shadow_cal_v3021u,
+                                                trade_pkg=_learn_trade_pkg_v3021u,
+                                                early_pkg=_learn_early_pkg_v3021u,
+                                                stop_pkg=_learn_stop_pkg_v3021u,
+                                            )
+                                            _learning_json_v3021v = _v3021v_learning_report_json(_learning_report_v3021v)
+                                            _learning_day_v3021v = get_current_berlin_time().strftime("%Y-%m-%d")
+                                            st.download_button(
+                                                "📤 Learning-Report exportieren",
+                                                data=_learning_json_v3021v.encode("utf-8"),
+                                                file_name=f"CHSM_learning_report_{_learning_day_v3021v}.json",
+                                                mime="application/json",
+                                                use_container_width=True,
+                                                key="v3021v_learning_report_download",
+                                            )
+                                            if _due_rows_v3021v:
+                                                st.info("Diesen Report hier im Chat hochladen und 'Bitte Lernstand prüfen' schreiben. Ein produktiver Patch erfolgt weiterhin nur nach manueller Evidenzprüfung.")
+                                        except Exception as _learning_export_exc_v3021v:
+                                            st.warning(f"Learning-Report konnte nicht erzeugt werden ({type(_learning_export_exc_v3021v).__name__}). Die Lernspeicher selbst bleiben unverändert.")
 
                                     with st.expander("🛡 Hybrid-Stop · Outcome-Validierung", expanded=False):
                                         _ls1_v3021u, _ls2_v3021u, _ls3_v3021u, _ls4_v3021u = st.columns(4)

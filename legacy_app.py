@@ -185,6 +185,7 @@ from modules import scoring_engine as _scoring_engine_module
 from modules import live_refresh_policy as _live_refresh_policy
 from modules import live_screener_snapshot as _live_screener_snapshot
 from modules import live_scan_batches as _live_scan_batches
+from modules.stop_shadow import build_hybrid_stop_shadow as _build_hybrid_stop_shadow_v3021t
 import yfinance as yf
 
 # v28.4.5a: zentraler Marktdaten-Provider. Yahoo/yfinance bleibt in dieser
@@ -23351,6 +23352,110 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     with sg4_v3015:
                                         _rec_delta_v3015 = None if _rec_dist_v3015 is None else f"-{_rec_dist_v3015:.1f}%"
                                         st.metric("Empfohlener Risiko-Stop", _v230_price_text(_rec_stop_v3015), delta=_rec_delta_v3015)
+
+                                    _hybrid_shadow_v3021t = _build_hybrid_stop_shadow_v3021t(
+                                        _chart_stop_v3015a,
+                                        entry_input,
+                                        atr_pct=_atr_pct_v3015,
+                                    )
+                                    with st.expander("🧪 Hybrid-Stop · Shadow-Vergleich", expanded=False):
+                                        st.caption(
+                                            "Shadow only: Dieser Vergleich verändert weder den eingegebenen/produktiven Stop noch "
+                                            "Positionsgröße, CRV, Screener, Tradingpaket oder Freigaben."
+                                        )
+                                        _hybrid_stop_v3021t = _v230_safe_float(_hybrid_shadow_v3021t.get("hybrid_stop"), default=None)
+                                        _hybrid_dist_v3021t = _v230_safe_float(_hybrid_shadow_v3021t.get("hybrid_distance_pct"), default=None)
+                                        _hybrid_atr_units_v3021t = _v230_safe_float(_hybrid_shadow_v3021t.get("hybrid_distance_atr"), default=None)
+
+                                        _hs1_v3021t, _hs2_v3021t, _hs3_v3021t = st.columns(3)
+                                        with _hs1_v3021t:
+                                            _struct_delta_v3021t = None
+                                            if _chart_stop_v3015a is not None and entry_input > 0:
+                                                _struct_delta_v3021t = f"-{(entry_input-_chart_stop_v3015a)/entry_input*100:.1f}%"
+                                            st.metric("Struktur-Invalidierung", _v230_price_text(_chart_stop_v3015a), delta=_struct_delta_v3021t)
+                                        with _hs2_v3021t:
+                                            _old_delta_v3021t = None if _rec_dist_v3015 is None else f"-{_rec_dist_v3015:.1f}%"
+                                            st.metric("Produktiv empfohlen", _v230_price_text(_rec_stop_v3015), delta=_old_delta_v3021t)
+                                        with _hs3_v3021t:
+                                            _hybrid_delta_text_v3021t = None if _hybrid_dist_v3021t is None else f"-{_hybrid_dist_v3021t:.1f}%"
+                                            st.metric("Hybrid · Shadow", _v230_price_text(_hybrid_stop_v3021t), delta=_hybrid_delta_text_v3021t)
+
+                                        if _hybrid_shadow_v3021t.get("ok"):
+                                            _shadow_rows_v3021t = []
+                                            _shadow_models_v3021t = [
+                                                ("Produktiv empfohlen", _rec_stop_v3015, "heutige produktive ATR-/Stop-Logik"),
+                                                ("Struktur pur", _chart_stop_v3015a, "reine technische Invalidierung; ohne Noise-Puffer"),
+                                                ("Hybrid Shadow", _hybrid_stop_v3021t, str(_hybrid_shadow_v3021t.get("source") or "-")),
+                                            ]
+                                            _shadow_calcs_v3021t = {}
+                                            for _model_v3021t, _stop_v3021t, _note_v3021t in _shadow_models_v3021t:
+                                                _stop_num_v3021t = _v230_safe_float(_stop_v3021t, default=None)
+                                                if _stop_num_v3021t is None or _stop_num_v3021t <= 0 or entry_input <= 0 or _stop_num_v3021t >= entry_input:
+                                                    continue
+                                                _calc_v3021t = _v230_calculate_position_size(
+                                                    entry_input, _stop_num_v3021t, target_input, account_size, risk_pct_input,
+                                                    max_position_pct=max_position_pct,
+                                                )
+                                                _shadow_calcs_v3021t[_model_v3021t] = _calc_v3021t
+                                                _dist_v3021t = (entry_input - _stop_num_v3021t) / entry_input * 100.0
+                                                _shadow_rows_v3021t.append({
+                                                    "Modell": _model_v3021t,
+                                                    "Stop": round(_stop_num_v3021t, 4),
+                                                    "Abstand %": round(_dist_v3021t, 1),
+                                                    "Stück": int(_calc_v3021t.get("shares") or 0) if _calc_v3021t.get("ok") else None,
+                                                    "Roh-Stück": round(float(_calc_v3021t.get("shares_raw") or 0), 1) if _calc_v3021t.get("ok") else None,
+                                                    "CRV": round(float(_calc_v3021t.get("crv")), 2) if _calc_v3021t.get("ok") and _calc_v3021t.get("crv") is not None else None,
+                                                    "Einordnung": _note_v3021t,
+                                                })
+                                            if _shadow_rows_v3021t:
+                                                st.dataframe(pd.DataFrame(_shadow_rows_v3021t), hide_index=True, use_container_width=True)
+
+                                            _old_calc_v3021t = _shadow_calcs_v3021t.get("Produktiv empfohlen") or {}
+                                            _hybrid_calc_v3021t = _shadow_calcs_v3021t.get("Hybrid Shadow") or {}
+                                            if _rec_dist_v3015 is not None and _hybrid_dist_v3021t is not None:
+                                                _width_diff_v3021t = float(_rec_dist_v3015) - float(_hybrid_dist_v3021t)
+                                                _shares_old_v3021t = int(_old_calc_v3021t.get("shares") or 0) if _old_calc_v3021t.get("ok") else None
+                                                _shares_new_v3021t = int(_hybrid_calc_v3021t.get("shares") or 0) if _hybrid_calc_v3021t.get("ok") else None
+                                                _summary_v3021t = f"Stop-Abstand: produktiv {_rec_dist_v3015:.1f}% vs. Hybrid {_hybrid_dist_v3021t:.1f}%"
+                                                if _width_diff_v3021t > 0.05:
+                                                    _summary_v3021t += f" · produktiv {_width_diff_v3021t:.1f} %-Pkt. weiter"
+                                                elif _width_diff_v3021t < -0.05:
+                                                    _summary_v3021t += f" · Hybrid {abs(_width_diff_v3021t):.1f} %-Pkt. weiter"
+                                                if _shares_old_v3021t is not None and _shares_new_v3021t is not None:
+                                                    _summary_v3021t += f" · Stück {_shares_old_v3021t} → {_shares_new_v3021t}"
+                                                st.info(_summary_v3021t)
+
+                                            if _atr_pct_v3015 is not None:
+                                                _atr_detail_v3021t = f"ATR(14) {_atr_pct_v3015:.1f}% · Strukturpuffer 0,35 ATR · Mindestabstand 0,80 ATR"
+                                                if _hybrid_atr_units_v3021t is not None:
+                                                    _atr_detail_v3021t += f" · Hybrid effektiv {_hybrid_atr_units_v3021t:.2f} ATR"
+                                                st.caption(_atr_detail_v3021t)
+
+                                            if _hybrid_shadow_v3021t.get("provisional"):
+                                                st.warning(
+                                                    "Keine belastbare Struktur-Invalidierung vorhanden. Der Shadow zeigt nur einen provisorischen 1,0-ATR-Risikostop; "
+                                                    "das gilt ausdrücklich nicht als vollständiger Trade-Plan."
+                                                )
+                                            elif _hybrid_shadow_v3021t.get("noise_conflict"):
+                                                st.info(
+                                                    "Die reine Struktur liegt innerhalb von 0,8 ATR vom Entry. Der Hybrid setzt deshalb den Stop weiter, "
+                                                    "statt normale Schwankung als technische Invalidierung zu behandeln."
+                                                )
+
+                                            _tradeability_v3021t = str(_hybrid_shadow_v3021t.get("tradeability") or "n/a")
+                                            if _tradeability_v3021t == "besserer Entry abwarten":
+                                                st.warning(
+                                                    "Shadow-Einordnung: Der strukturell sinnvolle Stop liegt mehr als 12% vom Entry entfernt. "
+                                                    "Nicht künstlich enger setzen; eher besseren Entry/Pullback abwarten."
+                                                )
+                                            elif _tradeability_v3021t == "kritisch":
+                                                st.warning("Shadow-Einordnung: Stop-Abstand 10-12% · kritisch prüfen, aber kein automatisches Gate.")
+                                            elif _tradeability_v3021t == "erhoeht":
+                                                st.caption("Shadow-Einordnung: Stop-Abstand 8-10% · erhöht, aber noch kein automatisches Gate.")
+                                            elif _tradeability_v3021t == "normal":
+                                                st.caption("Shadow-Einordnung: Stop-Abstand bis 8% · im vorgesehenen Normalbereich.")
+                                        else:
+                                            st.caption(f"Hybrid-Stop aktuell nicht berechenbar: {_hybrid_shadow_v3021t.get('reason') or 'keine belastbare Basis'}")
 
                                     with st.expander("ℹ️ Stop-Herkunft & Methodik", expanded=False):
                                         st.caption(

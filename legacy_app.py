@@ -14763,6 +14763,7 @@ _REQUIRED_MODULE_FILES_V252 = (
     _MODULE_DIR_V252 / "early_profit_learning.py",
     _MODULE_DIR_V252 / "harvest_outcome_learning.py",
     _MODULE_DIR_V252 / "action_queue_learning.py",
+    _MODULE_DIR_V252 / "stop_outcome_learning.py",
     _MODULE_DIR_V252 / "calibration_advisor.py",
     _MODULE_DIR_V252 / "calibration_stability.py",
     _MODULE_DIR_V252 / "depot_transaction_import.py",
@@ -14808,6 +14809,7 @@ from modules import trade_learning as _trade_learning_module
 from modules import early_profit_learning as _early_profit_learning_v303
 from modules import harvest_outcome_learning as _harvest_outcome_learning_v306
 from modules import action_queue_learning as _action_queue_learning_v3010
+from modules import stop_outcome_learning as _stop_outcome_learning_v3021u
 from modules import calibration_advisor as _calibration_advisor_v3011
 from modules import calibration_stability as _calibration_stability_v3012
 from modules import depot_transaction_import as _depot_transaction_import_v3013
@@ -16030,6 +16032,15 @@ _action_queue_learning_v3010.configure_context(
 )
 _v3010_capture_action_queue = _action_queue_learning_v3010.capture_queue_snapshot
 _v3010_build_action_queue_learning = _action_queue_learning_v3010.build_learning_package
+
+# v30.21u: provider-free Hybrid-Stop outcome validation.
+_stop_outcome_learning_v3021u.configure_context(
+    storage=_storage_v280,
+    time_provider=get_current_berlin_time,
+)
+_v3021u_sync_stop_episodes = _stop_outcome_learning_v3021u.sync_position_episodes
+_v3021u_capture_stop_market = _stop_outcome_learning_v3021u.capture_market_snapshot
+_v3021u_build_stop_learning = _stop_outcome_learning_v3021u.build_learning_package
 
 # v30.11: guarded calibration recommendations from existing outcome packages.
 # Shadow-only: no productive threshold, queue, gate, stop or order is modified.
@@ -20664,6 +20675,33 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         # Outcome tracking must never block Live-Screener rendering.
                         pass
 
+                    # v30.21u: provider-free Hybrid-Stop outcome collection. New
+                    # position episodes are synchronized from persistent positions;
+                    # daily OHLC is captured only from complete Atomic scans.
+                    try:
+                        _stop_positions_v3021u = _v244_get_positions(selected_watchlist_name)
+                        _v3021u_sync_stop_episodes(selected_watchlist_name, _stop_positions_v3021u)
+                        _stop_meta_v3021u = dict(scan_meta_v2844 or {})
+                        _stop_atomic_v3021u = bool(
+                            _stop_meta_v3021u.get("complete", False)
+                            and _stop_meta_v3021u.get("atomic", False)
+                            and not _stop_meta_v3021u.get("partial_refresh", False)
+                        )
+                        _stop_scan_id_v3021u = str(_stop_meta_v3021u.get("run_id") or "").strip()
+                        _stop_scan_time_v3021u = _stop_meta_v3021u.get("completed_at")
+                        if not _stop_scan_time_v3021u and isinstance(live_cache_v246, dict):
+                            _stop_scan_time_v3021u = live_cache_v246.get("ts")
+                        _v3021u_capture_stop_market(
+                            selected_watchlist_name,
+                            _live_df_complete_v289,
+                            scan_id=_stop_scan_id_v3021u,
+                            scan_time=_stop_scan_time_v3021u,
+                            atomic_complete=_stop_atomic_v3021u,
+                        )
+                    except Exception:
+                        # Stop learning is observational and must never block scanning.
+                        pass
+
                     if only_active and not live_df.empty:
                         live_df = live_df[live_df["Ampel"].isin(["🟢", "🟡"])].reset_index(drop=True)
                     if live_df.empty and _live_df_complete_v289.empty and not rotation_radar_active_v301b:
@@ -21564,9 +21602,126 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             if _live_view_v3021l == "🧪 Diagnose":
                                 st.markdown("#### 🧪 Diagnose & Lernen")
                                 _diag_tech_v3021l, _diag_shadow_v3021l, _diag_cal_v3021l, _diag_raw_v3021l = st.tabs(
-                                    ["Technik", "Shadow & Lernen", "Kalibrierung", "Rohdaten"]
+                                    ["Technik", "Lernen & Validierung", "Kalibrierung", "Rohdaten"]
                                 )
                                 with _diag_shadow_v3021l:
+                                    # v30.21u: one compact maturity overview across the
+                                    # observational/learning engines. All rows are descriptive;
+                                    # no engine is allowed to change productive rules automatically.
+                                    try:
+                                        _learn_queue_pkg_v3021u = _v3010_build_action_queue_learning(selected_watchlist_name)
+                                    except Exception:
+                                        _learn_queue_pkg_v3021u = {}
+                                    try:
+                                        _learn_harvest_pkg_v3021u = _v306_build_harvest_learning(selected_watchlist_name, _v2416_events_dataframe())
+                                    except Exception:
+                                        _learn_harvest_pkg_v3021u = {}
+                                    try:
+                                        _learn_stop_pkg_v3021u = _v3021u_build_stop_learning(selected_watchlist_name)
+                                    except Exception:
+                                        _learn_stop_pkg_v3021u = {}
+                                    try:
+                                        _learn_journal_v3021u = _v270_journal_entries_dataframe()
+                                        _learn_events_v3021u = _v2416_events_dataframe()
+                                        _learn_trade_pkg_v3021u = _v290_build_learning_package(_learn_journal_v3021u, _learn_events_v3021u)
+                                        _learn_trades_v3021u = _learn_trade_pkg_v3021u.get("trades") if isinstance(_learn_trade_pkg_v3021u, dict) else pd.DataFrame()
+                                        _learn_early_pkg_v3021u = _v303_build_early_profit_learning(_learn_trades_v3021u, _learn_events_v3021u)
+                                    except Exception:
+                                        _learn_trade_pkg_v3021u = {}
+                                        _learn_early_pkg_v3021u = {}
+                                    try:
+                                        _learn_shadow_events_v3021u = _shadow_performance_v287.sync_events(shadow_events_df_v286)
+                                        _learn_shadow_cal_v3021u = _shadow_performance_v287.build_calibration(_learn_shadow_events_v3021u, horizon=5)
+                                        _learn_shadow_5t_v3021u = int(((_learn_shadow_cal_v3021u.get("overview") or {}).get("events_evaluable")) or 0)
+                                    except Exception:
+                                        _learn_shadow_5t_v3021u = 0
+
+                                    def _learning_stage_v3021u(n, cuts, labels):
+                                        _n = int(n or 0)
+                                        for _cut, _label in zip(cuts, labels):
+                                            if _n < _cut:
+                                                return _label
+                                        return labels[-1]
+
+                                    _queue_sum_v3021u = (_learn_queue_pkg_v3021u.get("summary") or {}) if isinstance(_learn_queue_pkg_v3021u, dict) else {}
+                                    _harvest_sum_v3021u = (_learn_harvest_pkg_v3021u.get("summary") or {}) if isinstance(_learn_harvest_pkg_v3021u, dict) else {}
+                                    _trade_sum_v3021u = (_learn_trade_pkg_v3021u.get("summary") or {}) if isinstance(_learn_trade_pkg_v3021u, dict) else {}
+                                    _early_sum_v3021u = (_learn_early_pkg_v3021u.get("summary") or {}) if isinstance(_learn_early_pkg_v3021u, dict) else {}
+                                    _stop_sum_v3021u = (_learn_stop_pkg_v3021u.get("summary") or {}) if isinstance(_learn_stop_pkg_v3021u, dict) else {}
+
+                                    _queue_n_v3021u = int(_queue_sum_v3021u.get("evaluable_3t") or 0)
+                                    _harvest_n_v3021u = int(_harvest_sum_v3021u.get("evaluable_3t") or 0)
+                                    _trade_n_v3021u = int(_trade_sum_v3021u.get("closed_trades") or 0)
+                                    _early_n_v3021u = int(_early_sum_v3021u.get("evaluable") or 0)
+                                    _stop_n_v3021u = int(_stop_sum_v3021u.get("pair_evaluable") or 0)
+                                    _stop_total_v3021u = int(_stop_sum_v3021u.get("episodes_total") or 0)
+                                    _stop_active_v3021u = int(_stop_sum_v3021u.get("active") or 0)
+
+                                    _learning_rows_v3021u = [
+                                        {
+                                            "Engine": "Action Queue",
+                                            "Reife": _learning_stage_v3021u(_queue_n_v3021u, [5, 15, 30], ["🔴 Sammeln", "🟠 Früh", "🟡 Beobachtbar", "🟢 Reifer"]),
+                                            "Daten": f"{_queue_n_v3021u} · 3T",
+                                            "Nächster Schritt": "≥15 je Vergleichsgruppe für Schwellenhinweise",
+                                        },
+                                        {
+                                            "Engine": "Harvest / Chop",
+                                            "Reife": _learning_stage_v3021u(_harvest_n_v3021u, [5, 15, 30], ["🔴 Sammeln", "🟠 Früh", "🟡 Beobachtbar", "🟢 Reifer"]),
+                                            "Daten": f"{_harvest_n_v3021u} · 3T",
+                                            "Nächster Schritt": "Giveback-/Band-Trennung weiter validieren",
+                                        },
+                                        {
+                                            "Engine": "Guarded / Shadow",
+                                            "Reife": _learning_stage_v3021u(_learn_shadow_5t_v3021u, [10, 40, 60], ["🔴 Sammeln", "🟠 Früh", "🟡 Cutover-Gates prüfen", "🟢 Breiter"]),
+                                            "Daten": f"{_learn_shadow_5t_v3021u} · 5T",
+                                            "Nächster Schritt": "≥40 5T-Episoden + alle harten Release-Gates",
+                                        },
+                                        {
+                                            "Engine": "Real Trade Learning",
+                                            "Reife": _learning_stage_v3021u(_trade_n_v3021u, [5, 15, 20], ["🔴 Sammeln", "🟠 Hypothesen", "🟡 Strukturiert", "🟢 Cutover-Unterstützung"]),
+                                            "Daten": f"{_trade_n_v3021u} Trades · Kontext {float(_trade_sum_v3021u.get('context_coverage') or 0):.0f}%",
+                                            "Nächster Schritt": "≥20 Trades, ØR >0 und Kontext ≥60%",
+                                        },
+                                        {
+                                            "Engine": "Early Profit / Exit",
+                                            "Reife": _learning_stage_v3021u(_early_n_v3021u, [10, 20, 40], ["🔴 Sammeln", "🟠 Früh", "🟡 Beobachtbar", "🟢 Breiter"]),
+                                            "Daten": f"{_early_n_v3021u} auswertbar",
+                                            "Nächster Schritt": "≥20 sicher gematchte Warn-/Trade-Fälle",
+                                        },
+                                        {
+                                            "Engine": "Hybrid Stop",
+                                            "Reife": str(_stop_sum_v3021u.get("maturity") or "🔴 Sammeln"),
+                                            "Daten": f"{_stop_n_v3021u} Vergleich · {_stop_active_v3021u} aktiv · {_stop_total_v3021u} gesamt",
+                                            "Nächster Schritt": str(_stop_sum_v3021u.get("next_step") or "Stop-Episoden sammeln"),
+                                        },
+                                    ]
+                                    st.markdown("**Learning-Reifegrad**")
+                                    st.dataframe(pd.DataFrame(_learning_rows_v3021u), hide_index=True, use_container_width=True)
+                                    st.caption("Governance: Sammeln → Auswerten → Shadow-Empfehlung → Evidenz-Gate → A/B-Phase → manueller Cutover. Keine Engine ändert produktive Regeln automatisch.")
+
+                                    with st.expander("🛡 Hybrid-Stop · Outcome-Validierung", expanded=False):
+                                        _ls1_v3021u, _ls2_v3021u, _ls3_v3021u, _ls4_v3021u = st.columns(4)
+                                        _ls1_v3021u.metric("Episoden", _stop_total_v3021u)
+                                        _ls2_v3021u.metric("Aktiv", _stop_active_v3021u)
+                                        _ls3_v3021u.metric("Paarweise auswertbar", _stop_n_v3021u)
+                                        _ls4_v3021u.metric("Reife", str(_stop_sum_v3021u.get("maturity") or "Sammeln").replace("🔴 ", "").replace("🟠 ", "").replace("🟡 ", "").replace("🟢 ", ""))
+                                        _stop_model_v3021u = _learn_stop_pkg_v3021u.get("model_summary") if isinstance(_learn_stop_pkg_v3021u, dict) else pd.DataFrame()
+                                        if isinstance(_stop_model_v3021u, pd.DataFrame) and not _stop_model_v3021u.empty:
+                                            st.dataframe(_stop_model_v3021u, hide_index=True, use_container_width=True)
+                                        _stop_insights_v3021u = list(_learn_stop_pkg_v3021u.get("insights") or []) if isinstance(_learn_stop_pkg_v3021u, dict) else []
+                                        for _insight_v3021u in _stop_insights_v3021u[:4]:
+                                            st.caption("• " + str(_insight_v3021u))
+                                        st.caption(
+                                            "Auswertung ab dem Folgetag auf Basis der in vollständigen Atomic-Scans bereits vorhandenen Tageshochs/-tiefs. "
+                                            "Wenn Stop und Ziel am selben Tag berührt werden, ist die Reihenfolge mit Tagesdaten unklar und der Fall zählt nicht als entscheidbarer Vergleich."
+                                        )
+                                        _stop_detail_v3021u = _learn_stop_pkg_v3021u.get("detail") if isinstance(_learn_stop_pkg_v3021u, dict) else pd.DataFrame()
+                                        if isinstance(_stop_detail_v3021u, pd.DataFrame) and not _stop_detail_v3021u.empty:
+                                            with st.expander("Stop-Episoden im Detail", expanded=False):
+                                                st.dataframe(_stop_detail_v3021u, hide_index=True, use_container_width=True, height=min(520, 38 * len(_stop_detail_v3021u) + 55))
+                                        else:
+                                            st.info("Noch keine neuen Stop-Episoden seit v30.21u. Historische Trades werden bewusst nicht mit heutigen Stop-Werten rückwirkend befüllt.")
+
                                     # v28.6: Shadow Mode Zusammenfassung + deduplizierte Historie.
                                     if "Shadow-Abweichung" in live_df.columns:
                                         try:
@@ -24254,6 +24409,33 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         else:
                                             _entry_context_v290 = dict(_current_context_v290 or {})
                                             _opened_at_iso_v290 = get_current_berlin_time().isoformat()
+                                            # v30.21u: freeze the observational Hybrid-Stop geometry once
+                                            # when a new Screener trade is premarked. Existing positions are
+                                            # never backfilled with today's structure/ATR.
+                                            try:
+                                                _stop_shadow_v3021u = _build_hybrid_stop_shadow_v3021t(
+                                                    pos_defaults.get("chart_invalidation_stop"),
+                                                    float(entry_v or 0.0),
+                                                    atr_pct=pos_defaults.get("atr_pct"),
+                                                )
+                                                if _stop_shadow_v3021u.get("ok"):
+                                                    _entry_context_v290["stop_shadow"] = {
+                                                        "captured_at": _opened_at_iso_v290,
+                                                        "entry": float(entry_v or 0.0),
+                                                        "target": float(target_v or 0.0),
+                                                        "productive_stop": float(stop_v or 0.0),
+                                                        "structure_stop": pos_defaults.get("chart_invalidation_stop"),
+                                                        "hybrid_stop": _stop_shadow_v3021u.get("hybrid_stop"),
+                                                        "atr_pct": _stop_shadow_v3021u.get("atr_pct"),
+                                                        "tradeability": _stop_shadow_v3021u.get("tradeability"),
+                                                        "source": _stop_shadow_v3021u.get("source"),
+                                                        "setup_type": selected_pos_row.get("__diag_setup_type"),
+                                                        "market_regime": _entry_context_v290.get("market_regime"),
+                                                        "volatility_regime": _entry_context_v290.get("volatility_regime"),
+                                                        "full_trade_plan": bool(_stop_shadow_v3021u.get("full_trade_plan")),
+                                                    }
+                                            except Exception:
+                                                pass
                                         positions[pos_ticker] = {
                                             "ticker": pos_ticker,
                                             "name": pos_name,

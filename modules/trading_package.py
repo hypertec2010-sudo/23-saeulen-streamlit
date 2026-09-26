@@ -17,6 +17,8 @@ import math
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
+from .stop_shadow import build_hybrid_stop_shadow
+
 VERSION = "v30.20g"
 CRV_SELECTION_BASIS = "screener"
 CRV_COMPARISON_LEVELS = (2.0, 1.8, 1.5)
@@ -836,6 +838,26 @@ def build_intentions(plan: Mapping, alternative: int, store: Mapping, *, watchli
         if c["ticker"] in bucket:
             raise ValueError("Eine vorhandene Position darf nicht \u00fcberschrieben werden.")
         context = safe_json(capture_context(dict(c["context_row"])))
+        # v30.21u: freeze the observational Hybrid-Stop comparison at planning
+        # time. It is metadata only and never changes the productive package stop.
+        _atr_pct = number((c.get("context_row") or {}).get("ATR-%"))
+        _hybrid = build_hybrid_stop_shadow(c.get("chart_stop"), c.get("limit") or c.get("entry"), atr_pct=_atr_pct)
+        if _hybrid.get("ok"):
+            context["stop_shadow"] = safe_json({
+                "captured_at": timestamp(now).isoformat(),
+                "entry": c.get("limit") or c.get("entry"),
+                "target": c.get("target"),
+                "productive_stop": c.get("stop"),
+                "structure_stop": c.get("chart_stop"),
+                "hybrid_stop": _hybrid.get("hybrid_stop"),
+                "atr_pct": _hybrid.get("atr_pct"),
+                "tradeability": _hybrid.get("tradeability"),
+                "source": _hybrid.get("source"),
+                "setup_type": (c.get("context_row") or {}).get("__diag_setup_type"),
+                "market_regime": context.get("market_regime"),
+                "volatility_regime": context.get("volatility_regime"),
+                "full_trade_plan": _hybrid.get("full_trade_plan"),
+            })
         metadata = {"id": chosen["id"], "scan_id": plan["scan_id"], "version": VERSION,
                     "planned_at": timestamp(now).isoformat(), "scan_at": c["scan_at"],
                     "limit": c["limit"], "shares": c["shares"], "currency": c["currency"],

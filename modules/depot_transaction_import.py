@@ -969,6 +969,9 @@ def apply_transactions(
                 "created_at": pos.get("created_at") or berlin_pretty[:16],
                 "updated_at": berlin_pretty[:16],
                 "opened_at_iso": pos.get("opened_at_iso") or berlin_iso,
+                # v30.21u: preserve the actual broker fill time separately from
+                # an earlier Screener planning timestamp for stop-outcome learning.
+                "broker_opened_at": pos.get("broker_opened_at") or (berlin_iso if is_new_cycle else pos.get("opened_at_iso") or berlin_iso),
                 "entry_context": dict(pos.get("entry_context") or {}),
                 "last_context": dict(pos.get("last_context") or {}),
                 "last_price": _num(pos.get("last_price"), price) or price,

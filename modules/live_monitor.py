@@ -879,6 +879,35 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         return None
 
     atr_pct_live = _v2412_atr_pct(r, price_float)
+
+    # v30.21u: provider-free Stop-Learning needs the already loaded daily OHLC
+    # from the Atomic analysis. These values are diagnostic/learning-only and
+    # never feed productive scores, stops, CRV or gates.
+    _stop_day_high_v3021u = None
+    _stop_day_low_v3021u = None
+    _stop_day_close_v3021u = price_float
+    _stop_data_date_v3021u = str(r.get("ts") or "").strip()
+    try:
+        _stop_df_v3021u = r.get("df")
+        if isinstance(_stop_df_v3021u, pd.DataFrame) and not _stop_df_v3021u.empty:
+            _stop_high_col_v3021u = next((c for c in ["High", "high"] if c in _stop_df_v3021u.columns), None)
+            _stop_low_col_v3021u = next((c for c in ["Low", "low"] if c in _stop_df_v3021u.columns), None)
+            _stop_close_col_v3021u = next((c for c in ["Close", "close", "Adj Close", "Adj_Close"] if c in _stop_df_v3021u.columns), None)
+            _stop_last_v3021u = _stop_df_v3021u.iloc[-1]
+            if _stop_high_col_v3021u:
+                _stop_day_high_v3021u = _v229_num_any(_stop_last_v3021u.get(_stop_high_col_v3021u))
+            if _stop_low_col_v3021u:
+                _stop_day_low_v3021u = _v229_num_any(_stop_last_v3021u.get(_stop_low_col_v3021u))
+            if _stop_close_col_v3021u:
+                _stop_day_close_v3021u = _v229_num_any(_stop_last_v3021u.get(_stop_close_col_v3021u), price_float)
+            if not _stop_data_date_v3021u:
+                try:
+                    _stop_data_date_v3021u = str(pd.Timestamp(_stop_df_v3021u.index[-1]).date())
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     if atr_pct_live is None:
         volatility_text = "n/a"
     elif atr_pct_live < 2.8:
@@ -1645,6 +1674,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "__setup_shadow_volatility": _setup_shadow_volatility_v3021j,
         "__setup_shadow_kb": _setup_shadow_kb_v3021j,
         "__setup_data_date": str(r.get("ts") or "n/a").strip(),
+        # v30.21u: daily OHLC snapshot for provider-free stop outcome learning.
+        "__stop_day_high": _stop_day_high_v3021u,
+        "__stop_day_low": _stop_day_low_v3021u,
+        "__stop_day_close": _stop_day_close_v3021u,
+        "__stop_data_date": _stop_data_date_v3021u or str(r.get("ts") or "n/a").strip(),
     }
 
 
@@ -2274,6 +2308,11 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
         "__diag_setup_shadow_volatility": "__setup_shadow_volatility",
         "__diag_setup_shadow_kb": "__setup_shadow_kb",
         "__diag_setup_data_date": "__setup_data_date",
+        # v30.21u: learning-only daily OHLC aliases survive ephemeral stripping.
+        "__diag_stop_day_high": "__stop_day_high",
+        "__diag_stop_day_low": "__stop_day_low",
+        "__diag_stop_day_close": "__stop_day_close",
+        "__diag_stop_data_date": "__stop_data_date",
     }
     for _diag_dst_v3021g, _diag_src_v3021g in _diag_aliases_v3021g.items():
         if _diag_src_v3021g in enriched.columns:

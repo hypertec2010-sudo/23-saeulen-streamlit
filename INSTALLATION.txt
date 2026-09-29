@@ -1,10 +1,10 @@
-CHSM v30.21v - Learning-Report & Review-Status
+CHSM v30.21x - Setup-Invalidierung Restore
 
-Bitte gemeinsam ersetzen:
-- legacy_app.py
+Ersetzen:
+- analysis_core.py
 - VERSION.txt
-- modules/learning_report.py
 
-macOS Finder: beim Ordner "modules" bitte "Zusammenfuehren" waehlen, nicht "Ersetzen".
+Nach Deployment/Neustart einen frischen Scan bzw. eine frische Analyse ausfuehren.
+Durch den Versionswechsel wird der versionsgebundene Risiko-Cache nicht wiederverwendet.
 
-Keine produktive Trading-, Stop-, Score-, Trigger- oder Risiko-Regel wurde geaendert.
+Keine Aenderung an produktiver Stop-, CRV-, Score- oder Triggerlogik.

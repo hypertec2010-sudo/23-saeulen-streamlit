@@ -186,6 +186,7 @@ from modules import live_refresh_policy as _live_refresh_policy
 from modules import live_screener_snapshot as _live_screener_snapshot
 from modules import live_scan_batches as _live_scan_batches
 from modules.stop_shadow import build_hybrid_stop_shadow as _build_hybrid_stop_shadow_v3021t
+from modules.classic_pivots import build_classic_daily_pivot_package
 import yfinance as yf
 
 # v28.4.5a: zentraler Marktdaten-Provider. Yahoo/yfinance bleibt in dieser
@@ -28547,6 +28548,24 @@ if result is not None:
     except Exception:
         chart_structures = None
 
+    # v30.21y: klassische Daily Pivot Points nur als informative Charttechnik.
+    # Keine Score-/Ampel-/CRV-/Entry-/Stop-Wirkung und kein zusaetzlicher Provider-Aufruf.
+    try:
+        _classic_pivot_price = price if "price" in locals() else ((result or {}).get("price") if isinstance(result, dict) else None)
+        classic_pivot_pkg = build_classic_daily_pivot_package(
+            chart_sr_basis_df,
+            current_price=_classic_pivot_price,
+            structures=chart_structures,
+        )
+    except Exception:
+        classic_pivot_pkg = {
+            "available": False,
+            "score_neutral": True,
+            "reason": "Pivot Points konnten nicht berechnet werden.",
+        }
+    if isinstance(result, dict):
+        result["classic_pivot_pkg"] = classic_pivot_pkg
+
     # v19.4: Wellenanalyse vor dem Chart berechnen, damit Wann aktiv?/-Zielzone im Overlay sichtbar sind.
     try:
         wave_structure_pkg = build_wave_structure_context_v190(chart_df, result if "result" in locals() else {})
@@ -28646,6 +28665,45 @@ if result is not None:
                 </style>
                 <table class="{table_class}"><thead><tr>{head}</tr></thead><tbody>{''.join(html_rows)}</tbody></table>
                 """, unsafe_allow_html=True)
+
+            # v30.21y: klassische Pivot Points informativ, explizit ohne Wertung.
+            _pivot_pkg = classic_pivot_pkg if "classic_pivot_pkg" in locals() and isinstance(classic_pivot_pkg, dict) else {}
+            st.markdown("**Klassische Pivot Points · Daily (informativ, ohne Wertung)**")
+            if _pivot_pkg.get("available"):
+                _pivot_levels = _pivot_pkg.get("levels", {}) or {}
+                _pivot_source = str(_pivot_pkg.get("source_date") or "vorherige Tageskerze")
+                _pivot_level_line = " · ".join(
+                    f"{_name} {float(_pivot_levels.get(_name)):.2f}"
+                    for _name in ("PP", "R1", "R2", "S1", "S2")
+                    if _pivot_levels.get(_name) is not None
+                )
+                _pivot_conf = _pivot_pkg.get("confluences", []) or []
+                _pivot_conf_text = " · ".join(str(x.get("text", "")) for x in _pivot_conf[:2] if isinstance(x, dict) and x.get("text"))
+                if not _pivot_conf_text:
+                    _pivot_conf_text = "Keine enge Konfluenz mit den aktuell erkannten CHSM-S/R-Zonen."
+                st.markdown(
+                    f"""
+                    <div class="section-card" style="padding:0.85rem 0.95rem;margin:0.55rem 0 0.85rem 0;">
+                        <div class="premium-title">Basis {_pivot_source} · keine Score-Wirkung</div>
+                        <div class="premium-value" style="font-size:1.02rem;">{html.escape(_pivot_level_line)}</div>
+                        <div class="premium-sub" style="margin-top:6px;"><b>Lage:</b> {html.escape(str(_pivot_pkg.get('location', '-')))}</div>
+                        <div class="premium-sub" style="margin-top:6px;"><b>Nächstes Level:</b> {html.escape(str(_pivot_pkg.get('nearest', '-')))}</div>
+                        <div class="premium-sub" style="margin-top:6px;"><b>Konfluenz:</b> {html.escape(_pivot_conf_text)}</div>
+                        <div class="premium-sub" style="margin-top:6px;"><b>Technische Empfehlung:</b> {html.escape(str(_pivot_pkg.get('recommendation', '-')))}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                _pivot_rows = _pivot_pkg.get("rows", []) or []
+                if _pivot_rows:
+                    _render_wrapped_detail_table_v1533(
+                        _pivot_rows,
+                        ["Level", "Kurs", "Abstand", "Bedeutung"],
+                        table_class="wrapped-pivot-table",
+                    )
+                st.caption("Klassische Pivot Points werden aus High/Low/Close der vorherigen abgeschlossenen Tageskerze berechnet. Sie dienen nur als technische Orientierung und verändern weder Score, Ampel, Grade, CRV, Entry noch Stop.")
+            else:
+                st.caption(str(_pivot_pkg.get("reason", "Keine belastbare abgeschlossene Tageskerze für Pivot Points verfügbar.")))
 
             # v19.4: Wellenanalyse wurde bereits vor dem Chart fuer das Trade-Setup-Overlay berechnet.
             if "wave_structure_pkg" not in locals() or not isinstance(wave_structure_pkg, dict):

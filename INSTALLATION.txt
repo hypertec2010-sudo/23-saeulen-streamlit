@@ -1,10 +1,25 @@
-CHSM v30.21x - Setup-Invalidierung Restore
+CHSM v30.21y - Klassische Daily Pivot Points in der Charttechnik
 
-Ersetzen:
-- analysis_core.py
+Ersetzen / zusammenfuehren:
+- legacy_app.py
 - VERSION.txt
+- modules/classic_pivots.py
 
-Nach Deployment/Neustart einen frischen Scan bzw. eine frische Analyse ausfuehren.
-Durch den Versionswechsel wird der versionsgebundene Risiko-Cache nicht wiederverwendet.
+Optional fuer lokale Tests:
+- tests/test_classic_pivots.py
 
-Keine Aenderung an produktiver Stop-, CRV-, Score- oder Triggerlogik.
+macOS:
+- Den Ordner modules ZUSAMMENFUEHREN, nicht den gesamten vorhandenen modules-Ordner ersetzen.
+- Danach Streamlit neu starten.
+
+Neu:
+- Daily Pivot Points PP, R1, R2, S1, S2 aus der vorherigen abgeschlossenen Tageskerze.
+- Anzeige unter Technische Chartdetails.
+- Abstand zum aktuellen Kurs.
+- Beschreibende Konfluenz mit bestehenden CHSM-Support-/Resistance-Zonen.
+- Kurze technische Empfehlung / Handlungshilfe.
+
+Wichtig:
+- Rein informativ, ohne Score-Wirkung.
+- Keine Aenderung an Ampel, Grade, CRV, Entry, Stop oder produktiver Trading-Logik.
+- Kein zusaetzlicher Provider-/Yahoo-Aufruf; verwendet bereits vorhandene OHLC-Daten.

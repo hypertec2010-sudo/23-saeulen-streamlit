@@ -136,6 +136,17 @@ def build_change_explanation(
     if old_crv is not None and new_crv is not None and abs(new_crv - old_crv) >= 0.15:
         reasons.append(f"CRV {_fmt_number(old_crv, 2)}→{_fmt_number(new_crv, 2)}")
 
+    # v30.21z: If a CRV change came from a different target/stop basis, say so.
+    # These fields are diagnostic only and do not affect the live score.
+    old_target_source = _text(previous.get("crv_target_source"))
+    new_target_source = _text(current.get("crv_target_source"))
+    if old_target_source and new_target_source and old_target_source != new_target_source:
+        reasons.append(f"CRV-Zielquelle {old_target_source}→{new_target_source}")
+    old_stop_source = _text(previous.get("crv_stop_source"))
+    new_stop_source = _text(current.get("crv_stop_source"))
+    if old_stop_source and new_stop_source and old_stop_source != new_stop_source:
+        reasons.append(f"CRV-Stopquelle {old_stop_source}→{new_stop_source}")
+
     if score_delta is not None and abs(score_delta) >= 2.0:
         reasons.append(
             f"Live-Score {_fmt_number(old_score)}→{_fmt_number(new_score)} "

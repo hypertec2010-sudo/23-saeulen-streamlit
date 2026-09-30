@@ -50,3 +50,28 @@ def test_unchanged_status_has_no_noise() -> None:
 def test_first_state_is_identified() -> None:
     text = build_change_explanation({}, {"ampel": "🟡", "status": "Neu"}, "Neu")
     assert "Erster gespeicherter Vergleichsstand" in text
+
+
+def test_crv_source_switch_is_explained() -> None:
+    previous = {
+        "ampel": "🟡",
+        "status": "Nahe am Trigger",
+        "price": 100.0,
+        "live_score": "61/100",
+        "crv": 4.2,
+        "crv_target_source": "52W-Hoch",
+        "crv_stop_source": "Unter Breakout-Level / ATR",
+    }
+    current = {
+        "ampel": "⚪",
+        "status": "Beobachten",
+        "price": 100.1,
+        "live_score": "55/100",
+        "crv": 1.8,
+        "crv_target_source": "Synthetisches 1,8R-Mindestziel · Setup-Ziel (Breakout) lag näher",
+        "crv_stop_source": "Praxis-Mindestabstand",
+    }
+    text = build_change_explanation(previous, current, "Verschlechtert")
+    assert "CRV 4,20→1,80" in text
+    assert "CRV-Zielquelle" in text
+    assert "CRV-Stopquelle" in text

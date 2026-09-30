@@ -1,25 +1,27 @@
-CHSM v30.21y - Klassische Daily Pivot Points in der Charttechnik
+CHSM v30.21z - CRV-Stabilitaet & Herkunft
 
-Ersetzen / zusammenfuehren:
-- legacy_app.py
-- VERSION.txt
-- modules/classic_pivots.py
+Installation (macOS / Streamlit Cloud):
+1. Sicherung des aktuellen Projekts erstellen.
+2. VERSION.txt, legacy_app.py und analysis_core.py ersetzen.
+3. Den Ordner modules in den vorhandenen modules-Ordner ZUSAMMENFUEHREN, nicht den gesamten Ordner ersetzen.
+4. Optional: tests ebenfalls zusammenfuehren.
+5. Streamlit neu starten / Cloud deployen.
 
-Optional fuer lokale Tests:
-- tests/test_classic_pivots.py
+Enthaltene Aenderungen:
+- Breakout-Ziel korrigiert: Das projizierte Ziel (z.B. altes 20T-Hoch x 1,03) wird gegen den aktuellen Kurs geprueft. Das alte 20T-Hoch selbst muss nicht mehr ueber dem Kurs liegen.
+- Analysten-Konsensziel aus dem produktiven TP2 / Swing-CRV entfernt. Es kann weiterhin als TP3-Kontext erscheinen, beeinflusst aber das operative CRV nicht mehr.
+- 1,8R-Mindestziel wird als synthetisch gekennzeichnet, wenn es statt eines naeheren Strukturziels verwendet wird.
+- 2R-Fallback wird explizit als synthetischer Fallback ausgewiesen.
+- Live-Screener zeigt kompakt die CRV-Basis: Zielquelle + Stopquelle.
+- Bei Statuswechseln kann 'Warum geaendert?' nun auch einen Wechsel der CRV-Ziel- oder Stopquelle nennen.
+- v30.21y Classic Daily Pivot Points bleiben im enthaltenen legacy_app.py erhalten; classic_pivots.py ist vorsorglich mit enthalten.
 
-macOS:
-- Den Ordner modules ZUSAMMENFUEHREN, nicht den gesamten vorhandenen modules-Ordner ersetzen.
-- Danach Streamlit neu starten.
+Nicht geaendert:
+- Stopformeln und 3,5%-Praxis-Mindestabstand.
+- CRV-Score-/Ampel-Grenzwerte.
+- Entry-, Grade-, Trigger- und Gate-Logik ausser der korrigierten Breakout-Zielherleitung.
+- Kein zusaetzlicher Provider-Aufruf.
 
-Neu:
-- Daily Pivot Points PP, R1, R2, S1, S2 aus der vorherigen abgeschlossenen Tageskerze.
-- Anzeige unter Technische Chartdetails.
-- Abstand zum aktuellen Kurs.
-- Beschreibende Konfluenz mit bestehenden CHSM-Support-/Resistance-Zonen.
-- Kurze technische Empfehlung / Handlungshilfe.
-
-Wichtig:
-- Rein informativ, ohne Score-Wirkung.
-- Keine Aenderung an Ampel, Grade, CRV, Entry, Stop oder produktiver Trading-Logik.
-- Kein zusaetzlicher Provider-/Yahoo-Aufruf; verwendet bereits vorhandene OHLC-Daten.
+Tests:
+- 13/13 gezielte Tests bestanden (CRV, Change-Explainer, Pivot Points).
+- Gesamtsuite: 34 bestanden, 1 uebersprungen; 1 bekannter Source-Guard schlaegt fehl, weil .github/workflows/quality.yml im gelieferten Projektstand fehlt.

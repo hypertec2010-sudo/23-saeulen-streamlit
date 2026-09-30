@@ -311,6 +311,13 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     except Exception:
         crv_float = None
 
+    # v30.21z: Keep the productive CRV provenance visible on every scan so a
+    # changed CRV can be distinguished from a changed price. No scoring uses
+    # these strings; they are diagnostics/display only.
+    crv_target_source = str(r.get("tp2_source") or "-").strip() or "-"
+    crv_stop_source = str(r.get("stop_source") or "-").strip() or "-"
+    crv_basis = f"Ziel: {crv_target_source} · Stop: {crv_stop_source}"
+
     alerts = build_setup_alerts_v210(r, style_name=style_name, decision=d)
     alert_types = [str(a.get("Alert-Typ") or "") for a in alerts]
     alert_text = " · ".join(alert_types[:2]) if alert_types else "-"
@@ -1624,6 +1631,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Grade": grade,
         "Radar-Bucket": bucket,
         "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
+        "CRV-Basis": crv_basis,
+        "CRV-Zielquelle": crv_target_source,
+        "CRV-Stopquelle": crv_stop_source,
         "Entry-Abstand": d.get("entry_distance_text") or ("n/a" if entry_distance is None else f"{entry_distance:+.1f}%"),
         "Wann aktiv?": d.get("wave_trigger") or "-",
         "Setup-Alert": alert_text,
@@ -1767,7 +1777,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "Benchmark", "Primärbenchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Benchmark-Diagnose", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "Exit-Score", "Tactical-Exit-Risk", "Trendbruch-Score", "Momentum-Collapse-Score", "Distribution-Score", "Relative-Schwäche-Score", "Akkumulation-Score", "MA10-Abstand %", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "Benchmark", "Primärbenchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Benchmark-Diagnose", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "Exit-Score", "Tactical-Exit-Risk", "Trendbruch-Score", "Momentum-Collapse-Score", "Distribution-Score", "Relative-Schwäche-Score", "Akkumulation-Score", "MA10-Abstand %", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "CRV-Basis", "CRV-Zielquelle", "CRV-Stopquelle", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:
@@ -2189,6 +2199,8 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             "live_score": str(row2.get("Live-Score") or ""),
             "grade": str(row2.get("Grade") or ""),
             "crv": str(row2.get("CRV") or ""),
+            "crv_target_source": str(row2.get("CRV-Zielquelle") or ""),
+            "crv_stop_source": str(row2.get("CRV-Stopquelle") or ""),
             "price": row2.get("Kurs"),
             "updated": now,
             "reason": str(row2.get("Grund") or ""),

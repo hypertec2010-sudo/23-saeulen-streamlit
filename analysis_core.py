@@ -33,6 +33,8 @@ from plotly.subplots import make_subplots
 
 from auth_utils import check_password
 
+from modules.crv_targeting import projected_breakout_target, select_operational_tp2
+
 from modules.provider_manager import (
     MarketDataRateLimitError,
     ProviderCoolingDownError,
@@ -3389,10 +3391,12 @@ def analyze_stock(
         technical_target_2 = np.nan
 
         if setup_type in {"Breakout", "Range-Breakout"}:
-            technical_target_1 = prev20_high * 1.03 if pd.notna(prev20_high) and prev20_high > price else np.nan
+            # v30.21z: During a real breakout prev20_high is normally BELOW the
+            # current price. Validate the projected +3% target, not the old level.
+            technical_target_1 = projected_breakout_target(prev20_high, price, 1.03)
             technical_target_2 = high52 if pd.notna(high52) and high52 > price else np.nan
         elif setup_type == "Breakout-Retest":
-            technical_target_1 = prev20_high * 1.02 if pd.notna(prev20_high) and prev20_high > price else np.nan
+            technical_target_1 = projected_breakout_target(prev20_high, price, 1.02)
             technical_target_2 = high52 if pd.notna(high52) and high52 > price else np.nan
         elif setup_type == "Pullback an MA20":
             technical_target_1 = prev20_high if pd.notna(prev20_high) and prev20_high > price else np.nan
@@ -3407,19 +3411,23 @@ def analyze_stock(
             technical_target_1 = prev20_high if pd.notna(prev20_high) and prev20_high > price else np.nan
             technical_target_2 = high52 if pd.notna(high52) and high52 > price else np.nan
 
-        tp2_floor = price + 1.8 * risk_per_share
-        if pd.notna(technical_target_1) and technical_target_1 > price:
-            tp2 = round(max(float(technical_target_1), tp2_floor), 2)
-            tp2_source = f"Primärziel aus Setup ({setup_type})"
-        elif pd.notna(target) and target > price:
-            tp2 = round(max(float(target), tp2_floor), 2)
-            tp2_source = "Analysten-Target"
-        elif pd.notna(high52) and high52 > price:
-            tp2 = round(max(float(high52), tp2_floor), 2)
-            tp2_source = "52W-Hoch"
-        else:
-            tp2 = round(price + 2 * risk_per_share, 2)
-            tp2_source = "2R-Fallback"
+        # v30.21z: Productive swing-CRV must not depend on Yahoo's optional
+        # analyst consensus target. That field may appear/disappear between scans
+        # and previously caused large CRV jumps. TP2 is now setup/price-structure
+        # based; analyst consensus remains context and may only inform TP3 below.
+        _tp2_plan = select_operational_tp2(
+            price=price,
+            risk_per_share=risk_per_share,
+            setup_type=setup_type,
+            technical_target=technical_target_1,
+            high52=high52,
+        )
+        tp2 = _tp2_plan["value"]
+        tp2_source = _tp2_plan["source"]
+        tp2_target_kind = _tp2_plan["kind"]
+        tp2_base_target = _tp2_plan["base_target"]
+        tp2_is_synthetic = bool(_tp2_plan["synthetic"])
+        tp2_floor = _tp2_plan["floor"]
 
         tp3_floor = max(price + 2.8 * risk_per_share, tp2 + 0.8 * risk_per_share)
         if pd.notna(technical_target_2) and technical_target_2 > tp2:
@@ -3427,7 +3435,7 @@ def analyze_stock(
             tp3_source = f"Sekundärziel aus Setup ({setup_type})"
         elif pd.notna(target) and target > tp2:
             tp3 = round(max(float(target), tp3_floor), 2)
-            tp3_source = "Analysten-Target"
+            tp3_source = "Analysten-Orientierung (nur TP3, nicht CRV)"
         elif pd.notna(high52) and high52 > tp2:
             tp3 = round(max(float(high52), tp3_floor), 2)
             tp3_source = "52W-Hoch"
@@ -3511,6 +3519,10 @@ def analyze_stock(
         tp1_source = "-"
         tp2_source = "-"
         tp3_source = "-"
+        tp2_target_kind = "missing"
+        tp2_base_target = np.nan
+        tp2_is_synthetic = False
+        tp2_floor = np.nan
         technical_target_1 = np.nan
         technical_target_2 = np.nan
         stop_source = "-"
@@ -4598,6 +4610,10 @@ def analyze_stock(
         "tp1_source": tp1_source,
         "tp2_source": tp2_source,
         "tp3_source": tp3_source,
+        "tp2_target_kind": tp2_target_kind,
+        "tp2_base_target": tp2_base_target,
+        "tp2_is_synthetic": tp2_is_synthetic,
+        "tp2_floor": tp2_floor,
         "technical_target_1": technical_target_1,
         "technical_target_2": technical_target_2,
         "stop_source": stop_source,

@@ -20811,7 +20811,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # hinter Shadow-/Diagnosespalten verschwinden.
                                 "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Chop-Risk", "Trader-Modus", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
-                                "CRV", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
+                                "CRV", "CRV-Basis", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
                             optional_cols = [c for c in main_cols if c in live_df.columns]
                             live_display_df = live_df[optional_cols].copy() if optional_cols else live_df.copy()
@@ -21152,7 +21152,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     live_display_df["Trader-Ziel"] = live_display_df["Trader-Ziel"].apply(_v304a_trader_target_badge)
                                 if "Harvest-Score" in live_display_df.columns:
                                     live_display_df["Harvest-Score"] = live_display_df["Harvest-Score"].apply(_v304a_harvest_badge)
-                                for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24, "Warum geändert?": 96}.items():
+                                for _col, _max in {"Name": 28, "Setup-Alert": 44, "Warnhinweis": 40, "Status": 28, "Trade-State": 24, "CRV-Basis": 84, "Warum geändert?": 96}.items():
                                     if _col in live_display_df.columns:
                                         live_display_df[_col] = live_display_df[_col].apply(lambda x, m=_max: _v243_clip_cell(x, m))
 
@@ -21237,6 +21237,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
                                         _status_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Status"), 52))
                                         _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV")))
+                                        _crv_basis_v3021z = html.escape(_v243_clip_cell(_mobile_row_v2842.get("CRV-Basis"), 110))
                                         _distance_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Entry-Abstand")))
                                         _change_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Änderung")))
                                         _why_changed_full_v2847 = _v243_clean_cell(_mobile_row_v2842.get("Warum geändert?"))
@@ -21275,6 +21276,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 <div><span class="v2842-mobile-label">Trade-State</span>{_state_v2842}</div>
                                                 <div><span class="v2842-mobile-label">CRV</span>{_crv_v2842}</div>
                                                 <div><span class="v2842-mobile-label">Entry-Abstand</span>{_distance_v2842}</div>
+                                                <div class="v304a-trader-wide"><span class="v2842-mobile-label">CRV-Basis</span>{_crv_basis_v3021z}</div>
                                                 <div><span class="v2842-mobile-label">Änderung</span>{_change_v2842}</div>
                                               </div>
                                               <div class="v2842-mobile-status">{_status_v2842}</div>

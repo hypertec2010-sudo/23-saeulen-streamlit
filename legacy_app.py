@@ -28668,42 +28668,62 @@ if result is not None:
                 <table class="{table_class}"><thead><tr>{head}</tr></thead><tbody>{''.join(html_rows)}</tbody></table>
                 """, unsafe_allow_html=True)
 
-            # v30.21y: klassische Pivot Points informativ, explizit ohne Wertung.
+            # v30.21aa: klassische Pivot Points als klare Wenn-dann-Handlungshilfe,
+            # weiterhin rein informativ und ohne Einfluss auf Score/Ampel/Grade/CRV/Entry/Stop.
             _pivot_pkg = classic_pivot_pkg if "classic_pivot_pkg" in locals() and isinstance(classic_pivot_pkg, dict) else {}
             st.markdown("**Klassische Pivot Points · Daily (informativ, ohne Wertung)**")
             if _pivot_pkg.get("available"):
-                _pivot_levels = _pivot_pkg.get("levels", {}) or {}
+                _pivot_guidance = _pivot_pkg.get("guidance", {}) or {}
                 _pivot_source = str(_pivot_pkg.get("source_date") or "vorherige Tageskerze")
+                try:
+                    _pivot_source_dt = pd.Timestamp(_pivot_source)
+                    _pivot_source_label = _pivot_source_dt.strftime("%d.%m.%Y")
+                except Exception:
+                    _pivot_source_label = _pivot_source
+
+                _pivot_display_levels = _pivot_guidance.get("display_levels", []) or []
+                _pivot_relevant_names = set(_pivot_guidance.get("relevant_level_names", []) or [])
                 _pivot_level_line = " · ".join(
-                    f"{_name} {float(_pivot_levels.get(_name)):.2f}"
-                    for _name in ("PP", "R1", "R2", "S1", "S2")
-                    if _pivot_levels.get(_name) is not None
-                )
+                    str(_row.get("text", ""))
+                    for _row in _pivot_display_levels
+                    if isinstance(_row, dict) and _row.get("text")
+                ) or "Keine aktuell relevante Pivot-Marke verfügbar."
+
                 _pivot_conf = _pivot_pkg.get("confluences", []) or []
-                _pivot_conf_text = " · ".join(str(x.get("text", "")) for x in _pivot_conf[:2] if isinstance(x, dict) and x.get("text"))
-                if not _pivot_conf_text:
-                    _pivot_conf_text = "Keine enge Konfluenz mit den aktuell erkannten CHSM-S/R-Zonen."
+                _pivot_relevant_conf = [
+                    _hit for _hit in _pivot_conf
+                    if isinstance(_hit, dict) and _hit.get("level") in _pivot_relevant_names
+                ]
+                if _pivot_relevant_conf:
+                    _hit = _pivot_relevant_conf[0]
+                    _pivot_conf_text = "⭐ Verstärkte technische Zone: " + str(_hit.get("text", ""))
+                else:
+                    _pivot_conf_text = "Keine enge CHSM-Konfluenz an den aktuell relevanten Pivot-Marken."
+
+                _pivot_headline = str(_pivot_guidance.get("headline") or "Pivot-Orientierung")
+                _pivot_current = str(_pivot_guidance.get("current") or _pivot_pkg.get("location") or "-")
+                _pivot_positive = str(_pivot_guidance.get("positive") or "-")
+                _pivot_negative = str(_pivot_guidance.get("negative") or "-")
+                _pivot_action = str(_pivot_guidance.get("action") or _pivot_pkg.get("recommendation") or "-")
+
                 st.markdown(
                     f"""
-                    <div class="section-card" style="padding:0.85rem 0.95rem;margin:0.55rem 0 0.85rem 0;">
-                        <div class="premium-title">Basis {_pivot_source} · keine Score-Wirkung</div>
-                        <div class="premium-value" style="font-size:1.02rem;">{html.escape(_pivot_level_line)}</div>
-                        <div class="premium-sub" style="margin-top:6px;"><b>Lage:</b> {html.escape(str(_pivot_pkg.get('location', '-')))}</div>
-                        <div class="premium-sub" style="margin-top:6px;"><b>Nächstes Level:</b> {html.escape(str(_pivot_pkg.get('nearest', '-')))}</div>
-                        <div class="premium-sub" style="margin-top:6px;"><b>Konfluenz:</b> {html.escape(_pivot_conf_text)}</div>
-                        <div class="premium-sub" style="margin-top:6px;"><b>Technische Empfehlung:</b> {html.escape(str(_pivot_pkg.get('recommendation', '-')))}</div>
+                    <div class="section-card" style="padding:0.9rem 1rem;margin:0.55rem 0 0.85rem 0;">
+                        <div class="premium-title">Pivot-Basis {_pivot_source_label} · keine Score-Wirkung</div>
+                        <div class="premium-value" style="font-size:1.04rem;margin-top:4px;">{html.escape(_pivot_headline)}</div>
+                        <div class="premium-sub" style="margin-top:8px;"><b>Relevante Marken:</b> {html.escape(_pivot_level_line)}</div>
+                        <div class="premium-sub" style="margin-top:9px;"><b>📍 Aktuell:</b> {html.escape(_pivot_current)}</div>
+                        <div class="premium-sub" style="margin-top:7px;"><b>🟢 Positiv, wenn:</b> {html.escape(_pivot_positive)}</div>
+                        <div class="premium-sub" style="margin-top:7px;"><b>🔴 Negativ, wenn:</b> {html.escape(_pivot_negative)}</div>
+                        <div class="premium-sub" style="margin-top:7px;"><b>➡️ Was jetzt?</b> {html.escape(_pivot_action)}</div>
+                        <div class="premium-sub" style="margin-top:9px;"><b>Konfluenz:</b> {html.escape(_pivot_conf_text)}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
-                _pivot_rows = _pivot_pkg.get("rows", []) or []
-                if _pivot_rows:
-                    _render_wrapped_detail_table_v1533(
-                        _pivot_rows,
-                        ["Level", "Kurs", "Abstand", "Bedeutung"],
-                        table_class="wrapped-pivot-table",
-                    )
-                st.caption("Klassische Pivot Points werden aus High/Low/Close der vorherigen abgeschlossenen Tageskerze berechnet. Sie dienen nur als technische Orientierung und verändern weder Score, Ampel, Grade, CRV, Entry noch Stop.")
+                st.caption(
+                    "Pivot Points sind nur kurzfristige Chart-Orientierung. Sie erzeugen kein eigenes Kauf-/Verkaufssignal und verändern weder Score, Ampel, Grade, CRV, Entry noch Stop. R2/S2 werden nur eingeblendet, wenn sie für die aktuelle Wenn-dann-Lage als nächste Marke relevant sind."
+                )
             else:
                 st.caption(str(_pivot_pkg.get("reason", "Keine belastbare abgeschlossene Tageskerze für Pivot Points verfügbar.")))
 

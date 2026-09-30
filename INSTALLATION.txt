@@ -1,27 +1,29 @@
-CHSM v30.21z - CRV-Stabilitaet & Herkunft
+CHSM v30.21aa - Pivot-Wenn-dann-Handlungshilfe
 
 Installation (macOS / Streamlit Cloud):
 1. Sicherung des aktuellen Projekts erstellen.
-2. VERSION.txt, legacy_app.py und analysis_core.py ersetzen.
+2. VERSION.txt und legacy_app.py ersetzen.
 3. Den Ordner modules in den vorhandenen modules-Ordner ZUSAMMENFUEHREN, nicht den gesamten Ordner ersetzen.
 4. Optional: tests ebenfalls zusammenfuehren.
 5. Streamlit neu starten / Cloud deployen.
 
-Enthaltene Aenderungen:
-- Breakout-Ziel korrigiert: Das projizierte Ziel (z.B. altes 20T-Hoch x 1,03) wird gegen den aktuellen Kurs geprueft. Das alte 20T-Hoch selbst muss nicht mehr ueber dem Kurs liegen.
-- Analysten-Konsensziel aus dem produktiven TP2 / Swing-CRV entfernt. Es kann weiterhin als TP3-Kontext erscheinen, beeinflusst aber das operative CRV nicht mehr.
-- 1,8R-Mindestziel wird als synthetisch gekennzeichnet, wenn es statt eines naeheren Strukturziels verwendet wird.
-- 2R-Fallback wird explizit als synthetischer Fallback ausgewiesen.
-- Live-Screener zeigt kompakt die CRV-Basis: Zielquelle + Stopquelle.
-- Bei Statuswechseln kann 'Warum geaendert?' nun auch einen Wechsel der CRV-Ziel- oder Stopquelle nennen.
-- v30.21y Classic Daily Pivot Points bleiben im enthaltenen legacy_app.py erhalten; classic_pivots.py ist vorsorglich mit enthalten.
+Neu in v30.21aa:
+- Die bisherige technische Pivot-Zahlenbox wurde in eine klare Wenn-dann-Lesart umgebaut:
+  Aktuell -> Positiv, wenn -> Negativ, wenn -> Was jetzt?
+- Es werden standardmaessig nur die aktuell relevanten Pivot-Marken angezeigt.
+- R2/S2 erscheinen nur, wenn sie fuer die aktuelle Lage als naechste Marke relevant sind.
+- Konfluenz mit einer aktuell relevanten CHSM-S/R-Zone wird als verstaerkte technische Zone hervorgehoben.
+- Die Pivot-Basis wird lesbarer als Datum angezeigt.
+- Die komplette bisherige Pivot-Level-Tabelle wurde aus der Standardansicht entfernt, um den Charttechnik-Bereich kompakter zu halten.
 
-Nicht geaendert:
-- Stopformeln und 3,5%-Praxis-Mindestabstand.
-- CRV-Score-/Ampel-Grenzwerte.
-- Entry-, Grade-, Trigger- und Gate-Logik ausser der korrigierten Breakout-Zielherleitung.
-- Kein zusaetzlicher Provider-Aufruf.
+Weiterhin unveraendert:
+- Pivot Points bleiben vollstaendig score-neutral.
+- Keine Aenderung an Ampel, Grade, CRV, Entry, Stop, Trigger oder produktiver Handelslogik.
+- Kein zusaetzlicher Provider-/Yahoo-Aufruf.
+- Berechnung weiterhin aus der vorherigen abgeschlossenen Tageskerze.
+- v30.21z CRV-Stabilitaetsfix bleibt enthalten.
 
 Tests:
-- 13/13 gezielte Tests bestanden (CRV, Change-Explainer, Pivot Points).
-- Gesamtsuite: 34 bestanden, 1 uebersprungen; 1 bekannter Source-Guard schlaegt fehl, weil .github/workflows/quality.yml im gelieferten Projektstand fehlt.
+- Pivot-/CRV-/Change-Explainer gezielt: 17/17 bestanden.
+- Vollstaendiger Projektstand ohne bekannten Source-Guard: 37 bestanden, 1 uebersprungen.
+- Bekannter Source-Guard scheitert weiterhin nur, weil .github/workflows/quality.yml im gelieferten Projektstand fehlt.

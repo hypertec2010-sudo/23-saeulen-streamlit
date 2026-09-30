@@ -166,13 +166,60 @@ def find_pivot_confluences(
     return hits
 
 
-def build_pivot_reading(levels: Dict[str, float], current_price: Optional[float]) -> Dict[str, str]:
+def _level_distance_text(price: float, level: float) -> str:
+    pct = ((level - price) / price) * 100.0 if price else 0.0
+    return f"{pct:+.2f}%"
+
+
+def _level_value(levels: Dict[str, float], name: Optional[str]) -> Optional[float]:
+    if not name:
+        return None
+    return _finite_float(levels.get(name))
+
+
+def _neighbor_name(name: Optional[str], step: int) -> Optional[str]:
+    if not name or name not in LEVEL_ORDER:
+        return None
+    idx = LEVEL_ORDER.index(name) + step
+    return LEVEL_ORDER[idx] if 0 <= idx < len(LEVEL_ORDER) else None
+
+
+def _display_level_row(levels: Dict[str, float], price: float, name: str) -> Optional[Dict[str, Any]]:
+    value = _level_value(levels, name)
+    if value is None:
+        return None
+    return {
+        "name": name,
+        "price": round(value, 6),
+        "distance_pct": ((value - price) / price) * 100.0 if price else None,
+        "text": f"{name} {value:.2f} ({_level_distance_text(price, value)})",
+    }
+
+
+def build_pivot_reading(levels: Dict[str, float], current_price: Optional[float]) -> Dict[str, Any]:
+    """Build a score-neutral, action-oriented reading of classic daily pivots.
+
+    The wording deliberately follows a simple pattern:
+    current situation -> positive if -> negative if -> what to do now.
+    This is descriptive chart guidance only and never changes CHSM decisions.
+    """
     price = _finite_float(current_price)
     if price is None or price <= 0:
         return {
             "location": "Aktueller Kurs nicht belastbar verfügbar.",
             "recommendation": "Pivot-Level nur als Orientierung anzeigen; keine technische Handlungshilfe ohne aktuellen Kurs.",
             "nearest": "n/a",
+            "guidance": {
+                "headline": "Pivot-Lage aktuell nicht belastbar",
+                "current": "Ohne belastbaren aktuellen Kurs ist keine Wenn-dann-Einordnung möglich.",
+                "positive": "n/a",
+                "negative": "n/a",
+                "action": "CHSM-Hauptsignal bleibt maßgeblich; Pivot-Kontext heute nicht verwenden.",
+                "decision_level": None,
+                "near_decision_level": False,
+                "relevant_level_names": [],
+                "display_levels": [],
+            },
         }
 
     ordered = sorted(((name, float(value)) for name, value in levels.items()), key=lambda x: x[1])
@@ -193,42 +240,138 @@ def build_pivot_reading(levels: Dict[str, float], current_price: Optional[float]
     else:
         location = f"Kurs {price:.2f}; Pivot-Lage nicht eindeutig."
 
-    if nearest_abs_pct <= 0.35:
-        if nearest_name.startswith("R"):
-            recommendation = (
-                f"Kurs liegt unmittelbar am {nearest_name}. Reaktion am Pivot-Widerstand beobachten; "
-                f"für einen kurzfristigen Ausbruch ist eine Stabilisierung oberhalb {nearest_name} aussagekräftiger als das bloße Antesten."
+    near = nearest_abs_pct <= 0.35
+    relevant_names: List[str] = []
+
+    def _add(name: Optional[str]) -> None:
+        if name and name in levels and name not in relevant_names:
+            relevant_names.append(name)
+
+    if near:
+        _add(nearest_name)
+        _add(_neighbor_name(nearest_name, +1))
+        _add(_neighbor_name(nearest_name, -1))
+    else:
+        if lower:
+            _add(lower[0])
+        if upper:
+            _add(upper[0])
+
+    display_levels = []
+    for name in relevant_names:
+        row = _display_level_row(levels, price, name)
+        if row:
+            display_levels.append(row)
+
+    if near:
+        side = "über" if price >= nearest_price else "unter"
+        headline = f"Entscheidungsmarke {nearest_name} direkt am Kurs"
+        current = (
+            f"Kurs {price:.2f} liegt {nearest_abs_pct:.2f}% {side} {nearest_name} {nearest_price:.2f}. "
+            f"{nearest_name} ist damit aktuell die relevante Pivot-Marke."
+        )
+        up_name = _neighbor_name(nearest_name, +1)
+        down_name = _neighbor_name(nearest_name, -1)
+        up_value = _level_value(levels, up_name)
+        down_value = _level_value(levels, down_name)
+
+        if nearest_name == "PP":
+            positive = (
+                f"Bleibt bzw. stabilisiert sich der Kurs über PP {nearest_price:.2f}, bestätigt das kurzfristige Stärke. "
+                + (f"Nächste obere Orientierung: {up_name} {up_value:.2f}." if up_name and up_value is not None else "")
+            ).strip()
+            negative = (
+                f"Fällt der Kurs klar unter PP {nearest_price:.2f}, kippt die kurzfristige Pivot-Lage nach unten. "
+                + (f"Nächste untere Orientierung: {down_name} {down_value:.2f}." if down_name and down_value is not None else "")
+            ).strip()
+            action = (
+                "Aktuell nichts allein wegen des Pivots auslösen. CHSM-Ampel und Setup bleiben führend; "
+                "oberhalb PP die obere Route, unterhalb PP die untere Route als Zusatzorientierung nutzen."
             )
-        elif nearest_name.startswith("S"):
-            next_lower = "S2" if nearest_name == "S1" else None
-            tail = f" Bei Bruch rückt {next_lower} als nächste Pivot-Orientierung in den Fokus." if next_lower else ""
-            recommendation = (
-                f"Kurs liegt unmittelbar am {nearest_name}. Reaktion bzw. Stabilisierung an dieser Pivot-Unterstützung beobachten."
-                + tail
+        elif nearest_name.startswith("R"):
+            positive = (
+                f"Stabilisiert sich der Kurs oberhalb {nearest_name} {nearest_price:.2f}, gilt der Pivot-Widerstand als überwunden. "
+                + (f"Nächste obere Orientierung: {up_name} {up_value:.2f}." if up_name and up_value is not None else "Oberhalb liegt kein weiteres Standard-Pivot-Level.")
+            )
+            negative = (
+                f"Wird der Kurs an {nearest_name} {nearest_price:.2f} abgewiesen und fällt wieder darunter, bleibt der Widerstand intakt. "
+                + (f"Nächste untere Orientierung: {down_name} {down_value:.2f}." if down_name and down_value is not None else "")
+            ).strip()
+            action = (
+                f"Nicht direkt in {nearest_name} hinein nachlaufen. Für Pivot-Kontext erst eine Stabilisierung oberhalb als positive Zusatzbestätigung nutzen; "
+                "bei Abweisung die darunterliegende Pivot-Marke beobachten."
             )
         else:
-            recommendation = (
-                "Kurs liegt direkt am Tages-Pivot PP. Die Reaktion am PP beobachten; "
-                "eine Stabilisierung darüber bzw. ein klarer Bruch darunter liefert zusätzliche kurzfristige Orientierung."
+            positive = (
+                f"Hält {nearest_name} {nearest_price:.2f} bzw. wird die Marke zurückerobert, stabilisiert sich die kurzfristige Pivot-Lage. "
+                + (f"Nächste obere Orientierung: {up_name} {up_value:.2f}." if up_name and up_value is not None else "")
+            ).strip()
+            negative = (
+                f"Fällt der Kurs klar unter {nearest_name} {nearest_price:.2f}, ist diese Pivot-Unterstützung gebrochen. "
+                + (f"Nächste untere Orientierung: {down_name} {down_value:.2f}." if down_name and down_value is not None else "Unterhalb liegt kein weiteres Standard-Pivot-Level.")
             )
-    elif upper and lower:
-        recommendation = (
-            f"Aktuell kein Pivot-Level unmittelbar am Kurs. {upper[0]} {upper[1]:.2f} ist die nächste obere, "
-            f"{lower[0]} {lower[1]:.2f} die nächste untere Pivot-Orientierung."
+            action = (
+                f"Nicht auf die bloße Berührung von {nearest_name} reagieren. Halt/Rückeroberung als positive Zusatzbestätigung abwarten; "
+                "bei Bruch die Marke nicht mehr als Unterstützung anrechnen."
+            )
+    elif lower and upper:
+        headline = f"Kurs zwischen {lower[0]} und {upper[0]}"
+        current = (
+            f"Kurs {price:.2f} liegt nicht direkt an einer Pivot-Marke: unten {lower[0]} {lower[1]:.2f}, "
+            f"oben {upper[0]} {upper[1]:.2f}."
+        )
+        next_up_name = _neighbor_name(upper[0], +1)
+        next_up_value = _level_value(levels, next_up_name)
+        next_down_name = _neighbor_name(lower[0], -1)
+        next_down_value = _level_value(levels, next_down_name)
+        positive = (
+            f"Erst ein Anstieg über {upper[0]} {upper[1]:.2f} verbessert die Pivot-Lage nach oben. "
+            + (f"Danach wäre {next_up_name} {next_up_value:.2f} die nächste Orientierung." if next_up_name and next_up_value is not None else "")
+        ).strip()
+        negative = (
+            f"Erst ein Fall unter {lower[0]} {lower[1]:.2f} verschlechtert die Pivot-Lage nach unten. "
+            + (f"Danach wäre {next_down_name} {next_down_value:.2f} die nächste Orientierung." if next_down_name and next_down_value is not None else "")
+        ).strip()
+        action = (
+            "Aktuell keine Pivot-spezifische Aktion. CHSM-Ampel und Setup bleiben maßgeblich; "
+            "erst beim Annähern an eine der beiden Grenzen wird der Pivot-Kontext handlungsrelevant."
         )
     elif lower:
-        recommendation = f"Kurs liegt oberhalb der Standard-Pivot-Spanne; einen möglichen Re-Test von {lower[0]} {lower[1]:.2f} beobachten."
+        headline = "Kurs oberhalb der Standard-Pivot-Spanne"
+        current = f"Kurs {price:.2f} liegt oberhalb des höchsten Standard-Pivot-Levels {lower[0]} {lower[1]:.2f}."
+        positive = f"Solange {lower[0]} {lower[1]:.2f} bei einem Rücklauf hält, bleibt die Pivot-Lage kurzfristig konstruktiv."
+        negative = f"Ein Rückfall unter {lower[0]} {lower[1]:.2f} wäre das erste Pivot-Warnsignal; darunter die nächste Marke beobachten."
+        action = "Kein zusätzliches Hochjagen wegen der Pivot-Lage; bei Rücklauf den Re-Test der höchsten Pivot-Marke beobachten."
     elif upper:
-        recommendation = f"Kurs liegt unterhalb der Standard-Pivot-Spanne; eine mögliche Rückeroberung von {upper[0]} {upper[1]:.2f} beobachten."
+        headline = "Kurs unterhalb der Standard-Pivot-Spanne"
+        current = f"Kurs {price:.2f} liegt unterhalb des tiefsten Standard-Pivot-Levels {upper[0]} {upper[1]:.2f}."
+        positive = f"Eine Rückeroberung von {upper[0]} {upper[1]:.2f} wäre das erste positive Pivot-Signal."
+        negative = f"Bleibt der Kurs unter {upper[0]} {upper[1]:.2f}, liefert das Pivot-Paket keine technische Unterstützung darunter."
+        action = "Nicht allein wegen tiefer Pivot-Lage auf eine Gegenbewegung setzen; zuerst Rückeroberung der tiefsten Marke abwarten."
     else:
-        recommendation = "Pivot-Level nur ergänzend zur bestehenden CHSM-Chartstruktur verwenden."
+        headline = "Pivot-Lage nicht eindeutig"
+        current = location
+        positive = "n/a"
+        negative = "n/a"
+        action = "Pivot-Level nur ergänzend zur bestehenden CHSM-Chartstruktur verwenden."
 
+    recommendation = action
     return {
         "location": location,
         "recommendation": recommendation,
         "nearest": f"{nearest_name} {nearest_price:.2f} ({nearest_abs_pct:.2f}% Abstand)",
+        "guidance": {
+            "headline": headline,
+            "current": current,
+            "positive": positive,
+            "negative": negative,
+            "action": action,
+            "decision_level": nearest_name if near else None,
+            "near_decision_level": bool(near),
+            "relevant_level_names": relevant_names,
+            "display_levels": display_levels,
+        },
     }
-
 
 def build_classic_daily_pivot_package(
     daily_df: pd.DataFrame,
@@ -246,6 +389,7 @@ def build_classic_daily_pivot_package(
         "location": "n/a",
         "recommendation": "n/a",
         "nearest": "n/a",
+        "guidance": {},
         "source_date": None,
     }
     bar = select_previous_completed_daily_bar(daily_df, now=now)
@@ -293,6 +437,7 @@ def build_classic_daily_pivot_package(
         "location": reading["location"],
         "recommendation": reading["recommendation"],
         "nearest": reading["nearest"],
+        "guidance": reading.get("guidance", {}),
         "reason": "Aus High/Low/Close der vorherigen abgeschlossenen Tageskerze berechnet.",
     })
     return base

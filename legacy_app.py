@@ -5659,13 +5659,23 @@ def _v214_monitor_final_release_check(result, decision=None):
     valid_setup_text = any(term in all_text for term in ["trade-setup ist valide", "setup ist valide", "einstieg grundsätzlich freigegeben", "einstieg grundsaetzlich freigegeben"])
     valid_setup = valid_setup_flag or valid_setup_text or (positive_text_release and strong_numeric_release)
 
-    offensive_release = bool(valid_setup and (positive_text_release or strong_numeric_release) and (timing_score is None or timing_score >= 55) and (conf_score is None or conf_score >= 58))
+    # v30.21ah: Missing timing/confluence is unknown evidence, never positive evidence.
+    signal_scores_present = timing_score is not None and conf_score is not None
+    offensive_release = bool(
+        valid_setup
+        and signal_scores_present
+        and (positive_text_release or strong_numeric_release)
+        and timing_score >= 55
+        and conf_score >= 58
+    )
 
     # Harte Blocker nur setzen, wenn sie nicht durch eine klare positive Sofortanalyse ueberstimmt werden.
     if not valid_setup and not offensive_release:
         blockers.append("Valides Trade-Setup fehlt")
 
-    if timing_score is not None and timing_score < 55:
+    if timing_score is None:
+        blockers.append("Timing-Konfidenz nicht geliefert")
+    elif timing_score < 55:
         blockers.append(f"Timing-Konfidenz zu niedrig ({timing_score:.0f}/100)")
     elif any(x in timing_label for x in ["sehr niedrig", "niedrig", "noch nicht", "nicht freigegeben"]):
         if not offensive_release:
@@ -5687,7 +5697,9 @@ def _v214_monitor_final_release_check(result, decision=None):
         if not offensive_release:
             blockers.append("Charttechnik-Trigger noch nicht aktiv")
 
-    if conf_score is not None and conf_score < 58:
+    if conf_score is None:
+        blockers.append("Trigger-Konfluenz nicht geliefert")
+    elif conf_score < 58:
         blockers.append(f"Trigger-Konfluenz noch nicht stark ({conf_score:.0f}/100)")
     elif "gemischt" in conf_label and not offensive_release:
         blockers.append("Trigger-Konfluenz gemischt")
@@ -17766,6 +17778,128 @@ def _v303g_sync_atomic_marks_into_positions(all_positions, live_df):
         new_store[store_key] = new_positions
     return new_store, changed
 
+# ---------- v30.21ah: shared headless Timing-/Konfluenz-Pakete ----------
+def _v3021ah_attach_shared_signal_packages(result):
+    """Attach the same timing/confluence builders to headless/live analyses.
+
+    The detailed single-analysis UI can later enrich/overwrite these packages with
+    candle/chart context. For the live screener, however, missing packages must
+    never be interpreted as positive evidence. This bridge derives a conservative
+    package from the central analysis result only and marks its provenance.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    existing_timing = result.get("timing_action_confidence_pkg")
+    existing_conf = result.get("trigger_confluence_pkg")
+    try:
+        if isinstance(existing_timing, dict) and existing_timing.get("score") is not None \
+                and isinstance(existing_conf, dict) and existing_conf.get("score") is not None:
+            existing_timing.setdefault("source", "analysis-result")
+            existing_conf.setdefault("source", "analysis-result")
+            result.setdefault("signal_package_source", "analysis-result")
+            return result
+    except Exception:
+        pass
+
+    try:
+        position_mode = str(result.get("mode_label") or "").strip().lower() == "position"
+        market_info = result.get("market_info") if isinstance(result.get("market_info"), dict) else {}
+        regime_ctx = get_market_regime_context(market_info)
+
+        final_investment_case = investment_case_label_phase1(result.get("investment_case_score"))
+        base_timing = timing_label_phase1(
+            result.get("trading_case_score"),
+            result.get("entry_quality", "-"),
+            result.get("trigger_status", "-"),
+        )
+        base_risk = risk_label_phase1(
+            result.get("exit_score", 0),
+            result.get("tactical_exit_risk", 0),
+            result.get("exit_score_text", "-"),
+        )
+        base_priority = priority_label_phase1(result.get("watchlist_priority", "mittel"))
+
+        if position_mode:
+            main_action = result.get("position_action") or result.get("emp") or "-"
+        else:
+            main_action = display_emp_label(result.get("emp", "-"))
+        base_action = action_label_phase1(main_action, position_mode=position_mode)
+
+        final_timing, _ = apply_regime_to_timing(
+            base_timing, regime_ctx, risk_label=base_risk,
+            trigger_status=result.get("trigger_status", "-"), setup_priority=base_priority,
+        )
+        final_risk, _ = apply_regime_to_risk(
+            base_risk, regime_ctx, tactical_exit_risk=result.get("tactical_exit_risk", 0),
+        )
+        final_priority, _ = apply_regime_to_priority(
+            base_priority, regime_ctx, investment_case=final_investment_case,
+            timing_label=final_timing, risk_label=final_risk,
+        )
+        final_action, final_action_reason = apply_regime_to_action(
+            base_action, regime_ctx, timing_label=final_timing, risk_label=final_risk,
+            setup_priority=final_priority, position_mode=position_mode,
+        )
+        final_action, final_action_reason = align_action_with_trigger_v1520_2(
+            final_action, final_action_reason,
+            result.get("next_trigger", "-"), result.get("trigger_status", "-"),
+            result.get("entry_quality", "-"), position_mode=position_mode,
+        )
+
+        base_tactical = tactical_label_phase2(result.get("tactical_exit_risk", 0))
+        final_tactical, _ = apply_regime_to_tactical_label(
+            base_tactical, regime_ctx,
+            tactical_exit_risk=result.get("tactical_exit_risk", 0),
+            title_risk_score=result.get("short_term_gap_risk_score", result.get("title_risk_score", 0)),
+        )
+        conflict_pkg = compute_signal_conflict_phase_ui(
+            investment_case=final_investment_case, timing_label=final_timing,
+            risk_label=final_risk, action_label=final_action,
+            candle_daily=None, candle_hourly=None, ultra_label="-", tactical_label=final_tactical,
+        )
+
+        stock_fomo = result.get("stock_fomo_pkg") if isinstance(result.get("stock_fomo_pkg"), dict) else {}
+        market_fomo = result.get("market_fomo_pkg") if isinstance(result.get("market_fomo_pkg"), dict) else {}
+        fomo_pkg = result.get("fomo_smart_money_pkg") if isinstance(result.get("fomo_smart_money_pkg"), dict) else {}
+        fib_pkg = result.get("fibonacci_context_pkg") if isinstance(result.get("fibonacci_context_pkg"), dict) else {}
+        wave_pkg = result.get("wave_structure_pkg") if isinstance(result.get("wave_structure_pkg"), dict) else {}
+        pattern_pkg = result.get("setup_pattern_pkg") if isinstance(result.get("setup_pattern_pkg"), dict) else {}
+
+        conf_pkg = build_trigger_confluence_v1537(
+            final_action_label=final_action, final_timing_label=final_timing,
+            final_risk_label=final_risk, conflict_pkg=conflict_pkg,
+            daily_sig=None, hourly_sig=None, ultra_signal=None, final_ultra_label="-",
+            regime_ctx=regime_ctx, fomo_pkg=fomo_pkg, stock_fomo_pkg=stock_fomo,
+            market_fomo_pkg=market_fomo, fibonacci_pkg=fib_pkg, wave_pkg=wave_pkg,
+            setup_pattern_pkg=pattern_pkg, result=result,
+        )
+        conf_pkg["source"] = "shared-headless-v30.21ah"
+
+        timing_pkg = build_timing_action_confidence_v163(
+            trigger_confluence_pkg=conf_pkg, final_action_label=final_action,
+            final_timing_label=final_timing, final_risk_label=final_risk,
+            valid_trade_setup=bool(result.get("valid_trade_setup", False)),
+            conflict_pkg=conflict_pkg, fomo_pkg=fomo_pkg, fibonacci_pkg=fib_pkg,
+            wave_pkg=wave_pkg, setup_pattern_pkg=pattern_pkg, regime_ctx=regime_ctx,
+            daily_sig=None, ultra_signal=None, final_ultra_label="-", result=result,
+            entry_zone=result.get("suggested_entry_zone", "-"),
+            current_price=result.get("price"),
+            structures=result.get("chart_structures_analysis") or {},
+            ccy=result.get("ccy", ""),
+        )
+        timing_pkg["source"] = "shared-headless-v30.21ah"
+
+        result["trigger_confluence_pkg"] = conf_pkg
+        result["timing_action_confidence_pkg"] = timing_pkg
+        result["signal_package_source"] = "shared-headless-v30.21ah"
+        result["signal_package_complete"] = True
+    except Exception as exc:
+        result["signal_package_complete"] = False
+        result["signal_package_error"] = type(exc).__name__
+    return result
+
+
 # v30.20a: risk fields captured from the SAME full-scan result, without
 # market-data requests or changes to productive scores/gates.
 def _v3020_package_scan_fields(result, style_name="Ausgewogen", price=None):
@@ -17780,6 +17914,7 @@ _live_module.configure_context(
     _v210_alert_num=_v210_alert_num,
     _v210_alert_price=_v210_alert_price,
     _v214_monitor_final_release_check=_v214_monitor_final_release_check,
+    ensure_shared_signal_packages=_v3021ah_attach_shared_signal_packages,
     _v232_is_current_baseline_source=_v232_is_current_baseline_source,
     build_professional_radar_decision_v18=build_professional_radar_decision_v18,
     build_setup_alerts_v210=build_setup_alerts_v210,
@@ -29591,6 +29726,7 @@ if result is not None:
         setup_pattern_pkg=result.get("setup_pattern_pkg") or {},
         result=result,
     )
+    trigger_confluence_pkg["source"] = "single-analysis-detailed-v30.21ah"
     result["trigger_confluence_pkg"] = trigger_confluence_pkg
 
     timing_action_confidence_pkg = build_timing_action_confidence_v163(
@@ -29614,7 +29750,10 @@ if result is not None:
         structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
         ccy=ccy if "ccy" in locals() else "",
     )
+    timing_action_confidence_pkg["source"] = "single-analysis-detailed-v30.21ah"
     result["timing_action_confidence_pkg"] = timing_action_confidence_pkg
+    result["signal_package_source"] = "single-analysis-detailed-v30.21ah"
+    result["signal_package_complete"] = True
 
     # ---------- v17.6: klare operative Empfehlung + verdichtetes Charttechnik-Setup ----------
     action_clarity_pkg = build_action_clarity_v176(

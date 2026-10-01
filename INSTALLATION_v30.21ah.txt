@@ -1,0 +1,19 @@
+CHSM v30.21ah - Live/Einzelanalyse Signal-Konsistenz
+
+Ersetzen:
+- legacy_app.py
+- VERSION.txt
+- modules/live_monitor.py
+
+Beim Kopieren des Ordners modules auf macOS: Zusammenfuehren, nicht Ersetzen.
+
+Aenderungen:
+- Live-Screener erhaelt ein gemeinsames Timing-/Trigger-Konfluenz-Paket aus der zentralen Analyse.
+- Fehlende Timing-/Konfluenzwerte werden nicht mehr optimistisch mit 82/78 ersetzt.
+- Fehlende Signalwerte sind neutral im Score und blockieren Gruen.
+- Trend-Gruen benoetigt echte Timing- und Konfluenzwerte.
+- Kurzfrist-/Trading-Gruen benoetigt valid_trade_setup=True.
+- Timing-Signal, Trigger-Konfluenz-Signal und Paketquelle werden diagnostisch sichtbar.
+- Einzelanalyse markiert detaillierte Signalpakete mit eigener Quelle.
+
+Keine Aenderung an CRV-, Stop-, Pivot-, Distribution- oder Brokerlogik.

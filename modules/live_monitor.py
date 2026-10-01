@@ -278,7 +278,16 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
 
     Läuft nur in der geöffneten App und nutzt dieselben Bausteine wie Radar und Setup-Alerts.
     """
-    r = result or {}
+    r = dict(result or {})
+    # v30.21ah: Live/Screener must consume real timing/confluence packages.
+    # Attach a conservative shared package from the central analysis before the
+    # radar decision is built. Missing packages are never positive evidence.
+    _shared_signal_builder = _CONTEXT.get("ensure_shared_signal_packages")
+    if callable(_shared_signal_builder):
+        try:
+            _shared_signal_builder(r)
+        except Exception:
+            pass
     d = decision or build_professional_radar_decision_v18(r, style_name)
     # v24.0: live_short_term muss im Scope der Status-/Scorefunktion definiert sein.
     # In v23.11 wurde die Variable zwar spaeter verwendet, aber nicht gesetzt; dadurch
@@ -1086,6 +1095,15 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     conf_pkg_lm = r.get("trigger_confluence_pkg") if isinstance(r.get("trigger_confluence_pkg"), dict) else {}
     timing_score_lm = _v210_alert_num(timing_pkg_lm.get("score"), default=None)
     conf_score_lm = _v210_alert_num(conf_pkg_lm.get("score"), default=None)
+    timing_signal_available = timing_score_lm is not None
+    conf_signal_available = conf_score_lm is not None
+    signal_packages_complete = bool(timing_signal_available and conf_signal_available)
+    signal_package_source = str(
+        r.get("signal_package_source")
+        or timing_pkg_lm.get("source")
+        or conf_pkg_lm.get("source")
+        or ("analysis-result" if signal_packages_complete else "nicht geliefert")
+    ).strip()
     chart_pkg_lm = r.get("charttechnik_setup_pkg") if isinstance(r.get("charttechnik_setup_pkg"), dict) else {}
     chart_score_lm = _v210_alert_num(chart_pkg_lm.get("score"), default=None)
     chart_text_lm = " ".join([
@@ -1101,7 +1119,12 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         and price_float > ma20_val
         and (ma50_val is None or ma20_val >= ma50_val)
     )
-    trend_timing_ok = bool((timing_score_lm is None or timing_score_lm >= 70) and (conf_score_lm is None or conf_score_lm >= 65))
+    # v30.21ah: unknown is not good. Trend green requires both measured values.
+    trend_timing_ok = bool(
+        signal_packages_complete
+        and timing_score_lm >= 70
+        and conf_score_lm >= 65
+    )
     trend_not_too_extended = bool(ma20_stretch_pct is None or ma20_stretch_pct <= 12.0)
     trend_extended_but_interesting = bool(ma20_stretch_pct is not None and 12.0 < ma20_stretch_pct <= 20.0)
     trend_quality_ok = grade in {"A", "B"} and (crv_float is None or crv_float >= 1.3)
@@ -1142,6 +1165,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         and trend_quality_ok
         and trend_structure_ok
         and trend_timing_ok
+        and bool(r.get("valid_trade_setup", False))
         and trend_not_too_extended
         and not entry_hard_gate
         and "Invalidierung gebrochen" not in alert_types
@@ -1200,6 +1224,19 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         reason = brake if brake and brake != "-" else "Bremse/Gate noch aktiv."
         monitor_action = "Nur beobachten; erst bei besserem Entry, Trigger oder geklärter Bremse neu prüfen."
 
+    # v30.21ah: final safety guard. A green screener state must never be created
+    # from missing timing/confluence data. The shared builder normally supplies
+    # both; if it cannot, stay yellow and make the missing evidence explicit.
+    if status_icon == "🟢" and not signal_packages_complete:
+        status_icon, status, priority = "🟡", "Signaldaten unvollständig", 2
+        _missing_parts = []
+        if not timing_signal_available:
+            _missing_parts.append("Timing")
+        if not conf_signal_available:
+            _missing_parts.append("Trigger-Konfluenz")
+        reason = "Grün zurückgehalten: " + ", ".join(_missing_parts or ["Signaldaten"]) + " wurden nicht belastbar geliefert."
+        monitor_action = "Erneut analysieren bzw. vollständigen Scan abwarten; fehlende Signaldaten werden nicht positiv ersetzt."
+
     # v22.13: Starke Watchlist-Performance sichtbar machen.
     # Das ist KEIN automatisches Kaufsignal. Es verhindert nur, dass ein +20%-Lauf
     # als irrelevanter weisser Wert wirkt, wenn aktuell kein frischer Entry erkannt wird.
@@ -1228,9 +1265,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             return lo
 
     grade_component = {"A": 92.0, "B": 80.0, "C": 66.0, "D": 48.0, "E": 35.0, "F": 22.0, "G": 12.0}.get(grade, 50.0)
-    timing_component = _v2210_clip(timing_score_lm if timing_score_lm is not None else (82.0 if final_release_ok else 50.0))
-    conf_component = _v2210_clip(conf_score_lm if conf_score_lm is not None else (78.0 if final_release_ok else 50.0))
-    chart_component = _v2210_clip(chart_score_lm if chart_score_lm is not None else (72.0 if final_release_ok else 48.0))
+    # v30.21ah: no optimistic synthetic fallbacks. Unknown signal values are
+    # neutral for the numeric score and explicitly marked as missing below.
+    timing_component = _v2210_clip(timing_score_lm if timing_score_lm is not None else 50.0)
+    conf_component = _v2210_clip(conf_score_lm if conf_score_lm is not None else 50.0)
+    chart_component = _v2210_clip(chart_score_lm if chart_score_lm is not None else 50.0)
     if any(t in chart_text_lm for t in ["abwarten", "noch nicht", "kein", "fehlt", "nicht reif"]):
         chart_component = min(chart_component, 54.0)
     if any(t in chart_text_lm for t in ["reclaim", "breakout", "ausbruch", "trigger", "entry-zone", "stabilisierung", "bullische reaktion"]):
@@ -1398,6 +1437,13 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _score_drivers = "; ".join(f"{label} {int(round(float(value)))}/100" for label, value in _explain_sorted[:3])
     _score_brakes_list = [(label, value) for label, value in sorted(_explain_components, key=lambda x: float(x[1])) if float(value) < 60.0]
     _score_brakes = "; ".join(f"{label} {int(round(float(value)))}/100" for label, value in _score_brakes_list[:3]) or "Keine deutliche Komponenten-Bremse"
+    _missing_signal_labels = []
+    if not timing_signal_available:
+        _missing_signal_labels.append("Timing n/a (nicht geliefert)")
+    if not conf_signal_available:
+        _missing_signal_labels.append("Konfluenz n/a (nicht geliefert)")
+    if _missing_signal_labels:
+        _score_brakes = "; ".join(_missing_signal_labels) + "; " + _score_brakes
 
     # v30.21ag: Eine Distribution-Warnzone soll in der Entscheidungs-Zusammenfassung
     # sichtbar bleiben, auch wenn sie bewusst kein hartes Einstiegsgate mehr ist.
@@ -1643,6 +1689,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Relative-Schwäche-Score": _v210_alert_num(r.get("relative_weakness_score"), default=None),
         "Akkumulation-Score": _v210_alert_num(r.get("accumulation_score"), default=None),
         "MA10-Abstand %": _v210_alert_num(r.get("ma10_dist_pct"), default=None),
+        "Timing-Signal": (f"{timing_score_lm:.1f}/100 · gemessen" if timing_signal_available else "n/a · nicht geliefert"),
+        "Trigger-Konfluenz-Signal": (f"{conf_score_lm:.1f}/100 · gemessen" if conf_signal_available else "n/a · nicht geliefert"),
+        "Signalpaket-Quelle": signal_package_source or "-",
         "Score-Treiber": _score_drivers,
         "Score-Bremsen": _score_brakes,
         "Aktive Einstiegsgates": active_entry_gates if entry_hard_gate else "-",
@@ -1672,6 +1721,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         # Snapshot gespeichert und beim naechsten Scan verglichen.
         "__timing_component": round(float(timing_component), 2),
         "__conf_component": round(float(conf_component), 2),
+        "__timing_signal_available": bool(timing_signal_available),
+        "__conf_signal_available": bool(conf_signal_available),
+        "__signal_package_source": signal_package_source or "-",
         "__chart_component": round(float(chart_component), 2),
         "__trigger_component": round(float(trigger_component), 2),
         "__trend_component": round(float(trend_component), 2),
@@ -1765,6 +1817,14 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
                 strict_mode=True,
                 market_bucket=_analysis_bucket_v287b,
             )
+            # v30.21ah: attach shared timing/confluence before the radar decision,
+            # so bucket/grade and the final live status see the same signal package.
+            _shared_signal_builder = _CONTEXT.get("ensure_shared_signal_packages")
+            if callable(_shared_signal_builder):
+                try:
+                    result = _shared_signal_builder(dict(result or {})) or result
+                except Exception:
+                    pass
             decision = build_professional_radar_decision_v18(result, style_name)
             rows.append(_v212_monitor_status_from_decision(result, decision, style_name=style_name, watchlist_meta=meta_by_ticker.get(ticker, {}), live_horizon=live_horizon))
         except Exception as exc:

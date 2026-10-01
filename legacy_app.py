@@ -16176,35 +16176,40 @@ def _v3013_render_depot_import(watchlist_name, positions):
         norm_df = normalized_pkg.get("data")
         _norm_df_full_v3018b = norm_df.copy() if isinstance(norm_df, pd.DataFrame) else pd.DataFrame()
 
-        # ---------- v30.21ab: Trading 212 authoritative correction ----------
+        # ---------- v30.21ad: Trading 212 unified preview; one final apply ----------
         _is_t212_v3021ab = False
         try:
             _is_t212_v3021ab = bool(_v3021ab_is_trading212_export(source_df))
         except Exception:
             _is_t212_v3021ab = False
+
+        _missing_selected_v3021ac = []
+        _corr_selected_v3021ab = []
+        _missing_pkg_v3021ac = {"table": pd.DataFrame(), "eligible_tickers": [], "blocked_tickers": []}
+        _corr_pkg_v3021ab = {"table": pd.DataFrame(), "eligible_tickers": [], "blocked_tickers": []}
+
         if _is_t212_v3021ab:
-            with st.expander("🛠 Trading 212 · manuelle Trade-Fehler aus Broker-CSV korrigieren", expanded=False):
+            with st.expander("🔄 Trading 212 · Abgleich vorbereiten", expanded=True):
                 st.info(
-                    "Nur für Trading 212: Die CSV ist für die ausgewählten Ticker die Ausführungs-Wahrheit. "
-                    "BUY/SELL, Stückzahl, Kurs und Broker-ID werden chronologisch aus der Datei neu aufgebaut. "
-                    "Manuelle Exit-Buchungen im betroffenen Datei-Zeitraum werden nicht gelöscht, sondern als "
-                    "'Storniert · Broker-Korrektur' aus Performance/Lernen herausgenommen. Stop, Ziel und vorhandener "
-                    "CHSM-Entry-Kontext werden soweit möglich erhalten. Reine Pie-/externe Ticker werden nicht angeboten."
+                    "Hier wird nur vorbereitet – noch nichts gespeichert. Wähle fehlende Broker-Positionen und/oder "
+                    "Korrekturen aus. Der normale Import, diese Übernahmen und die Korrekturen werden erst ganz unten "
+                    "mit einem einzigen Button gemeinsam angewendet."
                 )
                 st.caption(
-                    "Dieser Korrekturmodus verwendet bewusst die vollständigen Trading-212-Transaktionen des ausgewählten Tickers; "
-                    "der optionale Mindestvolumen-Filter weiter unten wirkt hier nicht. Bei einem unvollständigen Broker-Zyklus wird die Korrektur blockiert."
+                    "Trading 212 ist für ausgewählte Korrekturen die Ausführungs-Wahrheit. BUY/SELL, Stückzahl, Kurs, "
+                    "Zeit und Broker-ID stammen aus der CSV. Stop, Ziel und vorhandener CHSM-Kontext bleiben soweit möglich erhalten. "
+                    "Reine Pie-/externe Werte werden nie automatisch angelegt."
                 )
-                # v30.21ac: explicit adoption of broker-open positions that CHSM does not know yet.
+
+                # Missing broker-open positions: selectable, but no separate apply button anymore.
                 _missing_pkg_v3021ac = _v3021ac_t212_missing_preview(_norm_df_full_v3018b, positions)
                 _missing_table_v3021ac = _missing_pkg_v3021ac.get("table")
                 _missing_eligible_v3021ac = list(_missing_pkg_v3021ac.get("eligible_tickers") or [])
-                _missing_selected_v3021ac = []
                 if _missing_eligible_v3021ac:
                     st.markdown("**➕ Offene Trading-212-Positionen, die in CHSM fehlen**")
                     st.caption(
-                        "Diese Werte werden nicht automatisch übernommen. Nur angehakte Ticker werden als offene Broker-Position angelegt. "
-                        "Damit bleiben Pie-/externe Bestände unter deiner Kontrolle. Stop, Ziel und Grade werden bei einer neuen Broker-Position nicht erfunden."
+                        "Nur angehakte Ticker werden beim abschließenden Gesamtimport als offene Broker-Position angelegt. "
+                        "Stop, Ziel und Grade werden nicht erfunden."
                     )
                     _missing_candidates_v3021ac = _missing_table_v3021ac[
                         _missing_table_v3021ac["Ticker"].astype(str).isin(_missing_eligible_v3021ac)
@@ -16214,11 +16219,11 @@ def _v3013_render_depot_import(watchlist_name, positions):
                         _missing_candidates_v3021ac,
                         hide_index=True,
                         use_container_width=True,
-                        key=f"v3021ac_t212_missing_editor_{watchlist_name}",
+                        key=f"v3021ad_t212_missing_editor_{watchlist_name}",
                         disabled=[c for c in _missing_candidates_v3021ac.columns if c != "Übernehmen"],
                         column_config={
                             "Übernehmen": st.column_config.CheckboxColumn(
-                                "Übernehmen", help="Nur angehakte offene Broker-Positionen werden in CHSM angelegt.", default=False
+                                "Übernehmen", help="Wird erst mit dem gemeinsamen Abschlussbutton angewendet.", default=False
                             )
                         },
                     )
@@ -16229,53 +16234,7 @@ def _v3013_render_depot_import(watchlist_name, positions):
                         ].tolist()
                         if str(x).strip()
                     ]
-                    if st.button(
-                        "Ausgewählte fehlende Broker-Positionen übernehmen",
-                        use_container_width=True,
-                        disabled=not _missing_selected_v3021ac,
-                        key=f"v3021ac_t212_missing_apply_{watchlist_name}",
-                    ):
-                        _missing_rows_v3021ac = _v3021ac_t212_open_cycle_rows(
-                            _norm_df_full_v3018b, _missing_selected_v3021ac
-                        )
-                        _missing_plan_v3021ac = _v3013_apply_depot_transactions(
-                            watchlist_name,
-                            _missing_rows_v3021ac,
-                            positions,
-                            mode="rebuild",
-                            already_processed=set(),
-                            screener_only=False,
-                            broker_source="Trading 212 CSV",
-                        )
-                        _missing_anom_v3021ac = _missing_plan_v3021ac.get("anomalies")
-                        if not _missing_plan_v3021ac.get("ok") or (isinstance(_missing_anom_v3021ac, pd.DataFrame) and not _missing_anom_v3021ac.empty):
-                            st.error("Übernahme nicht angewendet: Mindestens eine ausgewählte Position ist aus dem CSV-Zeitraum nicht sicher rekonstruierbar.")
-                            if isinstance(_missing_anom_v3021ac, pd.DataFrame) and not _missing_anom_v3021ac.empty:
-                                st.dataframe(_missing_anom_v3021ac, hide_index=True, use_container_width=True)
-                        else:
-                            _missing_newpos_v3021ac = dict(_missing_plan_v3021ac.get("positions") or {})
-                            for _tk_v3021ac in _missing_selected_v3021ac:
-                                if _tk_v3021ac in _missing_newpos_v3021ac:
-                                    _missing_newpos_v3021ac[_tk_v3021ac]["strategy_origin"] = "broker_import"
-                            _v244_save_positions(watchlist_name, _missing_newpos_v3021ac)
-                            _missing_ledger_ok_v3021ac = _v3013_mark_depot_imported(
-                                watchlist_name,
-                                _missing_plan_v3021ac.get("applied_rows") if isinstance(_missing_plan_v3021ac.get("applied_rows"), pd.DataFrame) else pd.DataFrame(),
-                                filename=upload.name,
-                                result_summary={
-                                    **dict(_missing_plan_v3021ac.get("stats") or {}),
-                                    "Modus": "Trading 212 fehlende offene Position übernommen",
-                                    "Übernommene Ticker": list(_missing_selected_v3021ac),
-                                },
-                            )
-                            if _missing_ledger_ok_v3021ac:
-                                st.success(
-                                    "Trading-212-Position(en) übernommen: " + ", ".join(_missing_selected_v3021ac) +
-                                    ". Broker-Stückzahl und Entry stammen aus der CSV; Stop/Ziel/Grade bleiben leer, bis CHSM-Kontext vorhanden ist."
-                                )
-                                st.rerun()
-                            else:
-                                st.warning("Positionen wurden gespeichert, aber das Import-Ledger konnte nicht vollständig aktualisiert werden. Bitte Importarchiv prüfen.")
+
                 _missing_blocked_v3021ac = list(_missing_pkg_v3021ac.get("blocked_tickers") or [])
                 if _missing_blocked_v3021ac:
                     with st.expander("Nicht sicher rekonstruierbare fehlende Broker-Positionen", expanded=False):
@@ -16285,29 +16244,29 @@ def _v3013_render_depot_import(watchlist_name, positions):
                         st.dataframe(_blocked_table_v3021ac, hide_index=True, use_container_width=True)
                         st.caption("Für diese Werte bitte einen Trading-212-Export ab Beginn des Positionszyklus verwenden.")
 
+                # Existing CHSM positions/manual exits that can be rebuilt from broker truth.
                 _corr_pkg_v3021ab = _v3021ab_t212_correction_preview(
                     watchlist_name, _norm_df_full_v3018b, positions
                 )
                 _corr_table_v3021ab = _corr_pkg_v3021ab.get("table")
                 _corr_eligible_v3021ab = list(_corr_pkg_v3021ab.get("eligible_tickers") or [])
                 _corr_blocked_v3021ab = list(_corr_pkg_v3021ab.get("blocked_tickers") or [])
-                _corr_selected_v3021ab = []
                 if isinstance(_corr_table_v3021ab, pd.DataFrame) and not _corr_table_v3021ab.empty:
                     _corr_candidates_v3021ab = _corr_table_v3021ab[
                         _corr_table_v3021ab["Ticker"].astype(str).isin(_corr_eligible_v3021ab)
                     ].copy()
                     if not _corr_candidates_v3021ab.empty:
                         _corr_candidates_v3021ab.insert(0, "Korrigieren", False)
-                        st.markdown("**Korrekturfähige CHSM-Ticker**")
+                        st.markdown("**🛠 Korrekturfähige CHSM-Ticker**")
                         _corr_edit_v3021ab = st.data_editor(
                             _corr_candidates_v3021ab,
                             hide_index=True,
                             use_container_width=True,
-                            key=f"v3021ab_t212_corr_editor_{watchlist_name}",
+                            key=f"v3021ad_t212_corr_editor_{watchlist_name}",
                             disabled=[c for c in _corr_candidates_v3021ab.columns if c != "Korrigieren"],
                             column_config={
                                 "Korrigieren": st.column_config.CheckboxColumn(
-                                    "Korrigieren", help="Nur angehakte Ticker werden verändert.", default=False
+                                    "Korrigieren", help="Wird erst mit dem gemeinsamen Abschlussbutton angewendet.", default=False
                                 )
                             },
                         )
@@ -16333,97 +16292,16 @@ def _v3013_render_depot_import(watchlist_name, positions):
                         (" …" if len(_corr_blocked_v3021ab) > 20 else "") +
                         " reicht der CSV-Zeitraum nicht für einen sicheren Neuaufbau. Bitte bei Bedarf einen Export ab Beginn des Positionszyklus verwenden."
                     )
-                _corr_confirm_v3021ab = st.checkbox(
-                    "Ich habe die ausgewählten Ticker geprüft und bestätige, dass die Trading-212-CSV den vollständigen Broker-Zyklus für diese Korrektur enthält.",
-                    key=f"v3021ab_t212_corr_confirm_{watchlist_name}",
-                )
-                if st.button(
-                    "Ausgewählte Ticker aus Trading 212 neu aufbauen",
-                    type="primary",
-                    use_container_width=True,
-                    disabled=(not _corr_selected_v3021ab or not _corr_confirm_v3021ab),
-                    key=f"v3021ab_t212_corr_apply_{watchlist_name}",
-                ):
-                    _sel_keys_v3021ab = {str(x).strip().upper().split(".", 1)[0] for x in _corr_selected_v3021ab}
-                    _corr_rows_v3021ab = _norm_df_full_v3018b.copy()
-                    _corr_rows_v3021ab = _corr_rows_v3021ab[
-                        _corr_rows_v3021ab["Ticker"].astype(str).str.upper().str.split(".").str[0].isin(_sel_keys_v3021ab)
-                    ].copy()
-                    _corr_rows_v3021ab = _corr_rows_v3021ab[
-                        _corr_rows_v3021ab["Action-Typ"].astype(str).isin(["BUY", "SELL"])
-                    ].copy()
-                    _prep_v3021ab = _v3021ab_prepare_correction_positions(
-                        watchlist_name, positions, _corr_selected_v3021ab
-                    )
-                    _corr_plan_v3021ab = _v3013_apply_depot_transactions(
-                        watchlist_name,
-                        _corr_rows_v3021ab,
-                        _prep_v3021ab.get("positions") or positions,
-                        mode="rebuild",
-                        already_processed=set(),
-                        screener_only=False,
-                        broker_source="Trading 212 CSV",
-                    )
-                    _corr_anom_v3021ab = _corr_plan_v3021ab.get("anomalies")
-                    if not _corr_plan_v3021ab.get("ok") or (isinstance(_corr_anom_v3021ab, pd.DataFrame) and not _corr_anom_v3021ab.empty):
-                        st.error("Korrektur nicht angewendet: Der ausgewählte Broker-Zyklus ist nicht eindeutig rekonstruierbar.")
-                        if isinstance(_corr_anom_v3021ab, pd.DataFrame) and not _corr_anom_v3021ab.empty:
-                            st.dataframe(_corr_anom_v3021ab, hide_index=True, use_container_width=True)
-                    else:
-                        _new_pos_v3021ab = dict(_corr_plan_v3021ab.get("positions") or {})
-                        _v244_save_positions(watchlist_name, _new_pos_v3021ab)
-                        _pos_ok_v3021ab = True
-                        _sup_v3021ab = _v3021ab_supersede_manual_executions(
-                            watchlist_name, _corr_rows_v3021ab, _corr_selected_v3021ab
-                        )
-                        _jn_v3021ab, _jn_ok_v3021ab = _v3013_merge_import_journal(
-                            _corr_plan_v3021ab.get("journal_entries") or []
-                        )
-                        _ledger_ok_v3021ab = _v3013_mark_depot_imported(
-                            watchlist_name,
-                            _corr_plan_v3021ab.get("applied_rows") if isinstance(_corr_plan_v3021ab.get("applied_rows"), pd.DataFrame) else pd.DataFrame(),
-                            filename=upload.name,
-                            result_summary={
-                                **dict(_corr_plan_v3021ab.get("stats") or {}),
-                                "Korrekturmodus": "Trading 212 autoritativ",
-                                "Korrigierte Ticker": list(_corr_selected_v3021ab),
-                                "Stornierte manuelle Ausführungen": int(_sup_v3021ab.get("updated") or 0),
-                            },
-                        )
-                        try:
-                            _v2416_log_event(
-                                event_type="Trading 212 Broker-Korrektur",
-                                ticker="MULTI",
-                                watchlist_name=watchlist_name,
-                                source="Trading 212 CSV",
-                                status="Manuelle Ausführung korrigiert",
-                                details=(
-                                    f"Ticker: {', '.join(_corr_selected_v3021ab)} · "
-                                    f"stornierte manuelle Ausführungen {int(_sup_v3021ab.get('updated') or 0)} · "
-                                    f"Broker-Journalzeilen {int(_jn_v3021ab or 0)}"
-                                ),
-                                payload={
-                                    "Ticker": list(_corr_selected_v3021ab),
-                                    "Stornierte manuelle Ausführungen": int(_sup_v3021ab.get("updated") or 0),
-                                    "Broker-Journalzeilen": int(_jn_v3021ab or 0),
-                                    "Datei": upload.name,
-                                },
-                                signature=f"t212corr|{upload.name}|{','.join(sorted(_corr_selected_v3021ab))}|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
-                            )
-                        except Exception:
-                            pass
-                        if _pos_ok_v3021ab and _sup_v3021ab.get("ok") and _jn_ok_v3021ab and _ledger_ok_v3021ab:
-                            st.success(
-                                f"Trading-212-Korrektur abgeschlossen: {len(_corr_selected_v3021ab)} Ticker neu aufgebaut · "
-                                f"{int(_sup_v3021ab.get('updated') or 0)} manuelle Exit-Buchung(en) audit-sicher storniert · "
-                                f"{int(_jn_v3021ab or 0)} Broker-Exit-Zeile(n) übernommen."
-                            )
-                            st.rerun()
-                        else:
-                            st.warning(
-                                "Broker-Neuaufbau wurde ausgeführt, aber mindestens ein Speicherschritt meldet ein Problem. "
-                                "Bitte Position und Journal vor einem weiteren Import prüfen."
-                            )
+
+                _prep_parts_v3021ad = []
+                if _missing_selected_v3021ac:
+                    _prep_parts_v3021ad.append("neu übernehmen: " + ", ".join(_missing_selected_v3021ac))
+                if _corr_selected_v3021ab:
+                    _prep_parts_v3021ad.append("korrigieren: " + ", ".join(_corr_selected_v3021ab))
+                if _prep_parts_v3021ad:
+                    st.success("Für den gemeinsamen Abschluss vorgemerkt · " + " · ".join(_prep_parts_v3021ad))
+                else:
+                    st.caption("Noch keine zusätzliche Übernahme/Korrektur ausgewählt. Der normale Broker-Import kann trotzdem unten gemeinsam ausgeführt werden.")
 
         st.markdown("**Optionaler Mindest-Transaktionswert**")
         _minvol_enabled_v3014a = st.checkbox(
@@ -16475,6 +16353,23 @@ def _v3013_render_depot_import(watchlist_name, positions):
                         hide_index=True,
                         use_container_width=True,
                     )
+
+        # v30.21ad: selected Trading-212 correction/missing-position tickers are handled
+        # by the unified final action and must not be processed a second time by the normal import plan.
+        _t212_reserved_keys_v3021ad = set()
+        if _is_t212_v3021ab:
+            _t212_reserved_keys_v3021ad = {
+                str(x).strip().upper().split(".", 1)[0]
+                for x in (list(_missing_selected_v3021ac) + list(_corr_selected_v3021ab))
+                if str(x).strip()
+            }
+            if _t212_reserved_keys_v3021ad and isinstance(norm_df, pd.DataFrame) and not norm_df.empty:
+                _ticker_keys_v3021ad = norm_df["Ticker"].astype(str).str.upper().str.split(".").str[0]
+                norm_df = norm_df[~_ticker_keys_v3021ad.isin(_t212_reserved_keys_v3021ad)].copy()
+                st.caption(
+                    "Ausgewählte Trading-212-Übernahmen/Korrekturen werden aus dem normalen Importplan herausgenommen, "
+                    "damit keine Brokerzeile doppelt gebucht wird."
+                )
 
         summary = _v3013_preview_depot_import(norm_df, watchlist_name)
         p1,p2,p3,p4,p5,p6 = st.columns(6)
@@ -16652,106 +16547,341 @@ def _v3013_render_depot_import(watchlist_name, positions):
         if errors:
             st.warning(f"{errors} Datei-Zeile(n) sind fehlerhaft oder innerhalb der Datei doppelt und werden nicht gebucht.")
 
-        _recon_confirm_v3014 = True
-        if _recon_flagged_v3014 and not _recon_blockers_v3014:
-            if mode == "incremental":
-                _recon_confirm_v3014 = st.checkbox(
-                    "Abgleich bestätigt: Bei den markierten manuellen Positionen entspricht der aktuelle Tool-Bestand dem Stand unmittelbar vor der ersten noch nicht importierten Broker-Transaktion.",
-                    key=f"v3014_recon_confirm_inc_{watchlist_name}",
+        if _is_t212_v3021ab:
+            st.markdown("**✅ Trading 212 · ein gemeinsamer Abschluss**")
+            _t212_actions_v3021ad = []
+            if _missing_selected_v3021ac:
+                _t212_actions_v3021ad.append(
+                    f"{len(_missing_selected_v3021ac)} fehlende Position(en) übernehmen: "
+                    + ", ".join(_missing_selected_v3021ac)
                 )
-            else:
-                _recon_confirm_v3014 = st.checkbox(
-                    "Abgleich bestätigt: Die Datei enthält für alle markierten Ticker die vollständige Kauf-/Verkaufshistorie des Positionszyklus und darf den manuellen Bestand neu aufbauen.",
-                    key=f"v3014_recon_confirm_rebuild_{watchlist_name}",
+            if _corr_selected_v3021ab:
+                _t212_actions_v3021ad.append(
+                    f"{len(_corr_selected_v3021ab)} Ticker korrigieren: "
+                    + ", ".join(_corr_selected_v3021ab)
+                )
+            _regular_rows_v3021ad = int(len(plan.get("applied_rows"))) if isinstance(plan.get("applied_rows"), pd.DataFrame) else 0
+            _t212_actions_v3021ad.append(f"normaler Broker-Import: {_regular_rows_v3021ad} noch anzuwendende Brokerzeile(n)")
+            st.info(" · ".join(_t212_actions_v3021ad))
+            st.caption(
+                "Mit dem folgenden Button werden alle oben ausgewählten Übernahmen/Korrekturen und der normale Import "
+                "in einem Durchgang ausgeführt. Vor dem Klick wird nichts an Positionen, Journal oder Import-Ledger verändert."
+            )
+            if _recon_flagged_v3014 and not _recon_blockers_v3014:
+                st.warning(
+                    "Bestands-Abgleich erforderlich für: " + ", ".join(_recon_flagged_v3014[:20])
+                    + (" …" if len(_recon_flagged_v3014) > 20 else "")
+                    + ". Der Klick auf den Abschlussbutton bestätigt zugleich den oben angezeigten Abgleich und den gewählten Importmodus."
                 )
 
-        confirm = st.checkbox(
-            "Ich habe Importmodus, Screener-Zuordnung und Vorschau geprüft.",
-            key=f"v3013_import_confirm_{watchlist_name}",
-        )
-        disabled = (
-            (not confirm)
-            or (not _recon_confirm_v3014)
-            or bool(_recon_blockers_v3014)
-            or (isinstance(anomalies, pd.DataFrame) and not anomalies.empty)
-        )
-        if st.button(
-            "Transaktionen jetzt importieren",
-            type="primary",
-            use_container_width=True,
-            disabled=disabled,
-            key=f"v3013_import_apply_{watchlist_name}",
-        ):
-            new_positions = dict(plan.get("positions") or {})
-            _v244_save_positions(watchlist_name, new_positions)
-            journal_n, journal_ok = _v3013_merge_import_journal(plan.get("journal_entries") or [])
-            archived_df = plan.get("applied_rows")
-            ledger_ok = _v3013_mark_depot_imported(
-                watchlist_name,
-                archived_df if isinstance(archived_df, pd.DataFrame) else pd.DataFrame(),
-                filename=upload.name,
-                result_summary=stats,
+            _t212_unified_disabled_v3021ad = bool(_recon_blockers_v3014) or (
+                isinstance(anomalies, pd.DataFrame) and not anomalies.empty
             )
-            added_msg = ""
-            try:
-                open_tickers = list(plan.get("open_tickers") or [])
-                if open_tickers:
-                    add_ok, add_msg = add_entries_to_watchlist(
-                        watchlist_name, "Positions-Watchlist", open_tickers, check_frequency="3x täglich"
+            if st.button(
+                "Alle ausgewählten Trading-212-Änderungen jetzt anwenden",
+                type="primary",
+                use_container_width=True,
+                disabled=_t212_unified_disabled_v3021ad,
+                key=f"v3021ad_t212_apply_all_{watchlist_name}",
+            ):
+                _working_pos_v3021ad = dict(positions or {})
+                _all_journal_v3021ad = []
+                _all_applied_v3021ad = []
+                _combined_stats_v3021ad = {}
+                _preflight_errors_v3021ad = []
+                _missing_count_v3021ad = 0
+                _corr_count_v3021ad = 0
+                _corr_sup_v3021ad = {"ok": True, "updated": 0}
+
+                def _v3021ad_collect_plan(_label, _pkg):
+                    _anom = _pkg.get("anomalies")
+                    if (not _pkg.get("ok")) or (isinstance(_anom, pd.DataFrame) and not _anom.empty):
+                        _preflight_errors_v3021ad.append((_label, _anom))
+                        return False
+                    _all_journal_v3021ad.extend(list(_pkg.get("journal_entries") or []))
+                    _applied = _pkg.get("applied_rows")
+                    if isinstance(_applied, pd.DataFrame) and not _applied.empty:
+                        _all_applied_v3021ad.append(_applied.copy())
+                    for _k, _v in dict(_pkg.get("stats") or {}).items():
+                        if isinstance(_v, bool):
+                            continue
+                        if isinstance(_v, (int, float)):
+                            _combined_stats_v3021ad[_k] = _combined_stats_v3021ad.get(_k, 0) + _v
+                    return True
+
+                # 1) Missing broker-open positions selected by the user.
+                if _missing_selected_v3021ac:
+                    _missing_rows_v3021ad = _v3021ac_t212_open_cycle_rows(
+                        _norm_df_full_v3018b, _missing_selected_v3021ac
                     )
-                    added_msg = str(add_msg or "")
-            except Exception as exc:
-                added_msg = f"Watchlist-Sync nicht ausgeführt: {exc}"
-            try:
-                _v2416_log_event(
-                    event_type="Depot-Excel Import",
-                    ticker="MULTI",
-                    watchlist_name=watchlist_name,
-                    source="Depot-Excel Import",
-                    status="Import abgeschlossen",
-                    details=(
-                        f"Datei {upload.name} · Modus {mode} · Käufe {stats.get('buy_rows',0)} · "
-                        f"Verkäufe {stats.get('sell_rows',0)} · offene Ticker {len(plan.get('open_tickers') or [])} · "
-                        f"Abgleich {len(_recon_flagged_v3014)} · Blocker {len(_recon_blockers_v3014)} · "
-                        f"Volumenfilter {'ab ' + format(_minvol_eur_v3014a, '.2f') + ' EUR' if _minvol_enabled_v3014a else 'aus'} · ausgeschlossen {_excluded_volume_n_v3014a}"
-                    ),
-                    payload={**stats, "Datei": upload.name, "Modus": mode, "Journalzeilen": journal_n, "Abgleich-Ticker": _recon_flagged_v3014, "Rebuild-Blocker": _recon_blockers_v3014, "Volumenfilter aktiv": bool(_minvol_enabled_v3014a), "Mindestvolumen EUR": float(_minvol_eur_v3014a), "Volumenfilter ausgeschlossen": int(_excluded_volume_n_v3014a)},
-                    signature=f"v3014|{upload.name}|{len(archived_df) if isinstance(archived_df,pd.DataFrame) else 0}|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
-                )
-            except Exception:
-                pass
-            _applied_rows_v3016b = len(archived_df) if isinstance(archived_df, pd.DataFrame) else 0
-            _no_changes_v3016c = bool(
-                _applied_rows_v3016b == 0
-                and int(journal_n or 0) == 0
-                and int(stats.get("closed_positions") or 0) == 0
-                and int(stats.get("partial_sales") or 0) == 0
+                    _missing_plan_v3021ad = _v3013_apply_depot_transactions(
+                        watchlist_name,
+                        _missing_rows_v3021ad,
+                        _working_pos_v3021ad,
+                        mode="rebuild",
+                        already_processed=set(),
+                        screener_only=False,
+                        broker_source="Trading 212 CSV",
+                    )
+                    if _v3021ad_collect_plan("Fehlende Positionen", _missing_plan_v3021ad):
+                        _working_pos_v3021ad = dict(_missing_plan_v3021ad.get("positions") or _working_pos_v3021ad)
+                        for _tk in _missing_selected_v3021ac:
+                            if _tk in _working_pos_v3021ad:
+                                _working_pos_v3021ad[_tk]["strategy_origin"] = "broker_import"
+                        _missing_count_v3021ad = len(_missing_selected_v3021ac)
+
+                # 2) Authoritative broker rebuilds for selected correction tickers.
+                if (not _preflight_errors_v3021ad) and _corr_selected_v3021ab:
+                    _sel_keys_v3021ad = {str(x).strip().upper().split(".", 1)[0] for x in _corr_selected_v3021ab}
+                    _corr_rows_v3021ad = _norm_df_full_v3018b.copy()
+                    _corr_rows_v3021ad = _corr_rows_v3021ad[
+                        _corr_rows_v3021ad["Ticker"].astype(str).str.upper().str.split(".").str[0].isin(_sel_keys_v3021ad)
+                    ].copy()
+                    _corr_rows_v3021ad = _corr_rows_v3021ad[
+                        _corr_rows_v3021ad["Action-Typ"].astype(str).isin(["BUY", "SELL"])
+                    ].copy()
+                    _prep_v3021ad = _v3021ab_prepare_correction_positions(
+                        watchlist_name, _working_pos_v3021ad, _corr_selected_v3021ab
+                    )
+                    _corr_plan_v3021ad = _v3013_apply_depot_transactions(
+                        watchlist_name,
+                        _corr_rows_v3021ad,
+                        _prep_v3021ad.get("positions") or _working_pos_v3021ad,
+                        mode="rebuild",
+                        already_processed=set(),
+                        screener_only=False,
+                        broker_source="Trading 212 CSV",
+                    )
+                    if _v3021ad_collect_plan("Broker-Korrektur", _corr_plan_v3021ad):
+                        _working_pos_v3021ad = dict(_corr_plan_v3021ad.get("positions") or _working_pos_v3021ad)
+                        _corr_count_v3021ad = len(_corr_selected_v3021ab)
+
+                # 3) Normal import for all remaining (non-reserved) rows.
+                if not _preflight_errors_v3021ad:
+                    _regular_plan_v3021ad = _v3013_apply_depot_transactions(
+                        watchlist_name,
+                        norm_df,
+                        _working_pos_v3021ad,
+                        mode=mode,
+                        already_processed=processed,
+                        screener_only=screener_only,
+                        broker_source="Trading 212 CSV",
+                    )
+                    if _v3021ad_collect_plan("Normaler Import", _regular_plan_v3021ad):
+                        _working_pos_v3021ad = dict(_regular_plan_v3021ad.get("positions") or _working_pos_v3021ad)
+
+                if _preflight_errors_v3021ad:
+                    st.error(
+                        "Nichts wurde gespeichert. Mindestens ein Teil des gemeinsamen Trading-212-Abgleichs ist nicht sicher rekonstruierbar."
+                    )
+                    for _label, _anom in _preflight_errors_v3021ad:
+                        st.warning(str(_label))
+                        if isinstance(_anom, pd.DataFrame) and not _anom.empty:
+                            st.dataframe(_anom, hide_index=True, use_container_width=True)
+                else:
+                    # All calculations succeeded. Persist once, then update audit journal and import ledger.
+                    _v244_save_positions(watchlist_name, _working_pos_v3021ad)
+
+                    if _corr_selected_v3021ab:
+                        _corr_sup_v3021ad = _v3021ab_supersede_manual_executions(
+                            watchlist_name, _norm_df_full_v3018b, _corr_selected_v3021ab
+                        )
+
+                    _journal_n_v3021ad, _journal_ok_v3021ad = _v3013_merge_import_journal(_all_journal_v3021ad)
+                    if _all_applied_v3021ad:
+                        _archived_v3021ad = pd.concat(_all_applied_v3021ad, ignore_index=True)
+                        _dedupe_col_v3021ad = "Import-ID" if "Import-ID" in _archived_v3021ad.columns else ("Broker-ID" if "Broker-ID" in _archived_v3021ad.columns else None)
+                        if _dedupe_col_v3021ad:
+                            _archived_v3021ad = _archived_v3021ad.drop_duplicates(subset=[_dedupe_col_v3021ad], keep="last")
+                    else:
+                        _archived_v3021ad = pd.DataFrame()
+
+                    _combined_stats_v3021ad.update({
+                        "Trading212 fehlende Positionen": int(_missing_count_v3021ad),
+                        "Trading212 korrigierte Ticker": int(_corr_count_v3021ad),
+                        "Trading212 stornierte manuelle Ausführungen": int(_corr_sup_v3021ad.get("updated") or 0),
+                    })
+                    _ledger_ok_v3021ad = _v3013_mark_depot_imported(
+                        watchlist_name,
+                        _archived_v3021ad,
+                        filename=upload.name,
+                        result_summary={
+                            **_combined_stats_v3021ad,
+                            "Modus": "Trading 212 Gesamt-Abgleich v30.21ad",
+                            "Übernommene Ticker": list(_missing_selected_v3021ac),
+                            "Korrigierte Ticker": list(_corr_selected_v3021ab),
+                        },
+                    )
+
+                    _added_msg_v3021ad = ""
+                    try:
+                        _open_tickers_v3021ad = sorted([
+                            str(_tk) for _tk, _pos in _working_pos_v3021ad.items()
+                            if float((_pos or {}).get("shares") or 0) > 1e-12
+                        ])
+                        if _open_tickers_v3021ad:
+                            _add_ok_v3021ad, _add_msg_v3021ad = add_entries_to_watchlist(
+                                watchlist_name, "Positions-Watchlist", _open_tickers_v3021ad, check_frequency="3x täglich"
+                            )
+                            _added_msg_v3021ad = str(_add_msg_v3021ad or "")
+                    except Exception as _exc_v3021ad:
+                        _added_msg_v3021ad = f"Watchlist-Sync nicht ausgeführt: {_exc_v3021ad}"
+
+                    try:
+                        _v2416_log_event(
+                            event_type="Trading 212 Gesamt-Abgleich",
+                            ticker="MULTI",
+                            watchlist_name=watchlist_name,
+                            source="Trading 212 CSV",
+                            status="Import/Korrektur gemeinsam abgeschlossen",
+                            details=(
+                                f"Datei {upload.name} · fehlende Positionen {_missing_count_v3021ad} · "
+                                f"Korrekturen {_corr_count_v3021ad} · manuelle Ausführungen storniert "
+                                f"{int(_corr_sup_v3021ad.get('updated') or 0)} · Brokerzeilen {len(_archived_v3021ad)}"
+                            ),
+                            payload={
+                                **_combined_stats_v3021ad,
+                                "Datei": upload.name,
+                                "Importmodus": mode_label,
+                                "Übernommene Ticker": list(_missing_selected_v3021ac),
+                                "Korrigierte Ticker": list(_corr_selected_v3021ab),
+                                "Journalzeilen": int(_journal_n_v3021ad or 0),
+                            },
+                            signature=f"t212all|{upload.name}|{len(_archived_v3021ad)}|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
+                        )
+                    except Exception:
+                        pass
+
+                    _persist_ok_v3021ad = bool(
+                        _journal_ok_v3021ad
+                        and _ledger_ok_v3021ad
+                        and bool(_corr_sup_v3021ad.get("ok", True))
+                    )
+                    _status_v3021ad = "ok" if _persist_ok_v3021ad else "warning"
+                    _regular_stats_v3021ad = dict(_regular_plan_v3021ad.get("stats") or {})
+                    st.session_state[_last_import_key_v3016b] = {
+                        "status": _status_v3021ad,
+                        "filename": upload.name,
+                        "applied_rows": int(len(_archived_v3021ad)),
+                        "journal_rows": int(_journal_n_v3021ad or 0),
+                        "closed_positions": int(_combined_stats_v3021ad.get("closed_positions") or 0),
+                        "partial_sales": int(_combined_stats_v3021ad.get("partial_sales") or 0),
+                        "external_rows": int(_combined_stats_v3021ad.get("external_rows") or 0),
+                        "mixed_sales": int(_combined_stats_v3021ad.get("mixed_sales") or 0),
+                    }
+                    if _persist_ok_v3021ad:
+                        st.success(
+                            f"Trading-212-Gesamtabgleich abgeschlossen: {_missing_count_v3021ad} fehlende Position(en) übernommen · "
+                            f"{_corr_count_v3021ad} Ticker korrigiert · {len(_archived_v3021ad)} Brokerzeile(n) verarbeitet · "
+                            f"{int(_journal_n_v3021ad or 0)} Journalzeile(n). " + (_added_msg_v3021ad if _added_msg_v3021ad else "")
+                        )
+                    else:
+                        st.warning(
+                            "Positionen wurden gemeinsam verarbeitet, aber Journal/Import-Ledger meldet mindestens ein Speicherproblem. "
+                            "Bitte vor einem erneuten Import den aktuellen Stand prüfen."
+                        )
+                    st.rerun()
+        else:
+            _recon_confirm_v3014 = True
+            if _recon_flagged_v3014 and not _recon_blockers_v3014:
+                if mode == "incremental":
+                    _recon_confirm_v3014 = st.checkbox(
+                        "Abgleich bestätigt: Bei den markierten manuellen Positionen entspricht der aktuelle Tool-Bestand dem Stand unmittelbar vor der ersten noch nicht importierten Broker-Transaktion.",
+                        key=f"v3014_recon_confirm_inc_{watchlist_name}",
+                    )
+                else:
+                    _recon_confirm_v3014 = st.checkbox(
+                        "Abgleich bestätigt: Die Datei enthält für alle markierten Ticker die vollständige Kauf-/Verkaufshistorie des Positionszyklus und darf den manuellen Bestand neu aufbauen.",
+                        key=f"v3014_recon_confirm_rebuild_{watchlist_name}",
+                    )
+
+            confirm = st.checkbox(
+                "Ich habe Importmodus, Screener-Zuordnung und Vorschau geprüft.",
+                key=f"v3013_import_confirm_{watchlist_name}",
             )
-            _status_v3016c = (
-                "no_changes" if (_no_changes_v3016c and journal_ok and ledger_ok)
-                else ("ok" if (journal_ok and ledger_ok) else "warning")
+            disabled = (
+                (not confirm)
+                or (not _recon_confirm_v3014)
+                or bool(_recon_blockers_v3014)
+                or (isinstance(anomalies, pd.DataFrame) and not anomalies.empty)
             )
-            st.session_state[_last_import_key_v3016b] = {
-                "status": _status_v3016c,
-                "filename": upload.name,
-                "applied_rows": int(_applied_rows_v3016b),
-                "journal_rows": int(journal_n or 0),
-                "closed_positions": int(stats.get("closed_positions") or 0),
-                "partial_sales": int(stats.get("partial_sales") or 0),
-                "external_rows": int(stats.get("external_rows") or 0),
-                "mixed_sales": int(stats.get("mixed_sales") or 0),
-            }
-            if journal_ok and ledger_ok:
-                st.success(
-                    f"Import abgeschlossen: {len(plan.get('open_tickers') or [])} offene Ticker · "
-                    f"{journal_n} Verkaufs-/Schließungszeilen im Trade-Journal. " + (added_msg if added_msg else "")
+            if st.button(
+                "Transaktionen jetzt importieren",
+                type="primary",
+                use_container_width=True,
+                disabled=disabled,
+                key=f"v3013_import_apply_{watchlist_name}",
+            ):
+                new_positions = dict(plan.get("positions") or {})
+                _v244_save_positions(watchlist_name, new_positions)
+                journal_n, journal_ok = _v3013_merge_import_journal(plan.get("journal_entries") or [])
+                archived_df = plan.get("applied_rows")
+                ledger_ok = _v3013_mark_depot_imported(
+                    watchlist_name,
+                    archived_df if isinstance(archived_df, pd.DataFrame) else pd.DataFrame(),
+                    filename=upload.name,
+                    result_summary=stats,
                 )
-            else:
-                st.warning(
-                    "Positionen wurden verarbeitet, aber Journal/Import-Ledger konnte nicht vollständig bestätigt werden. "
-                    "Bitte vor einem erneuten Import den aktuellen Stand prüfen."
+                added_msg = ""
+                try:
+                    open_tickers = list(plan.get("open_tickers") or [])
+                    if open_tickers:
+                        add_ok, add_msg = add_entries_to_watchlist(
+                            watchlist_name, "Positions-Watchlist", open_tickers, check_frequency="3x täglich"
+                        )
+                        added_msg = str(add_msg or "")
+                except Exception as exc:
+                    added_msg = f"Watchlist-Sync nicht ausgeführt: {exc}"
+                try:
+                    _v2416_log_event(
+                        event_type="Depot-Excel Import",
+                        ticker="MULTI",
+                        watchlist_name=watchlist_name,
+                        source="Depot-Excel Import",
+                        status="Import abgeschlossen",
+                        details=(
+                            f"Datei {upload.name} · Modus {mode} · Käufe {stats.get('buy_rows',0)} · "
+                            f"Verkäufe {stats.get('sell_rows',0)} · offene Ticker {len(plan.get('open_tickers') or [])} · "
+                            f"Abgleich {len(_recon_flagged_v3014)} · Blocker {len(_recon_blockers_v3014)} · "
+                            f"Volumenfilter {'ab ' + format(_minvol_eur_v3014a, '.2f') + ' EUR' if _minvol_enabled_v3014a else 'aus'} · ausgeschlossen {_excluded_volume_n_v3014a}"
+                        ),
+                        payload={**stats, "Datei": upload.name, "Modus": mode, "Journalzeilen": journal_n, "Abgleich-Ticker": _recon_flagged_v3014, "Rebuild-Blocker": _recon_blockers_v3014, "Volumenfilter aktiv": bool(_minvol_enabled_v3014a), "Mindestvolumen EUR": float(_minvol_eur_v3014a), "Volumenfilter ausgeschlossen": int(_excluded_volume_n_v3014a)},
+                        signature=f"v3014|{upload.name}|{len(archived_df) if isinstance(archived_df,pd.DataFrame) else 0}|{get_current_berlin_time().strftime('%Y%m%d%H%M%S')}",
+                    )
+                except Exception:
+                    pass
+                _applied_rows_v3016b = len(archived_df) if isinstance(archived_df, pd.DataFrame) else 0
+                _no_changes_v3016c = bool(
+                    _applied_rows_v3016b == 0
+                    and int(journal_n or 0) == 0
+                    and int(stats.get("closed_positions") or 0) == 0
+                    and int(stats.get("partial_sales") or 0) == 0
                 )
-            st.rerun()
+                _status_v3016c = (
+                    "no_changes" if (_no_changes_v3016c and journal_ok and ledger_ok)
+                    else ("ok" if (journal_ok and ledger_ok) else "warning")
+                )
+                st.session_state[_last_import_key_v3016b] = {
+                    "status": _status_v3016c,
+                    "filename": upload.name,
+                    "applied_rows": int(_applied_rows_v3016b),
+                    "journal_rows": int(journal_n or 0),
+                    "closed_positions": int(stats.get("closed_positions") or 0),
+                    "partial_sales": int(stats.get("partial_sales") or 0),
+                    "external_rows": int(stats.get("external_rows") or 0),
+                    "mixed_sales": int(stats.get("mixed_sales") or 0),
+                }
+                if journal_ok and ledger_ok:
+                    st.success(
+                        f"Import abgeschlossen: {len(plan.get('open_tickers') or [])} offene Ticker · "
+                        f"{journal_n} Verkaufs-/Schließungszeilen im Trade-Journal. " + (added_msg if added_msg else "")
+                    )
+                else:
+                    st.warning(
+                        "Positionen wurden verarbeitet, aber Journal/Import-Ledger konnte nicht vollständig bestätigt werden. "
+                        "Bitte vor einem erneuten Import den aktuellen Stand prüfen."
+                    )
+                st.rerun()
         return positions
 
 

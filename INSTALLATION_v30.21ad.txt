@@ -1,0 +1,20 @@
+CHSM v30.21ad - Trading 212 Ein-Klick-Gesamtabgleich
+
+Ersetzen:
+- legacy_app.py
+- VERSION.txt
+
+Neu:
+- Trading-212-CSV wird zuerst nur vorbereitet/vorgeprueft.
+- Fehlende Broker-Positionen und Korrekturen werden weiterhin per Haken ausgewaehlt.
+- Keine separaten Uebernehmen-/Korrigieren-Buttons mehr.
+- Am Ende genau ein Abschlussbutton fuer normalen Import + fehlende Positionen + Korrekturen.
+- Ausgewaehlte Korrektur-/Uebernahme-Ticker werden aus dem normalen Importplan entfernt, damit keine Brokerzeile doppelt gebucht wird.
+- Vor dem finalen Klick wird nichts in Positionen, Journal oder Import-Ledger gespeichert.
+- Nicht-Trading-212-Importe behalten den bisherigen Workflow.
+
+Beibehalten:
+- v30.21ac fehlende Trading-212-Positionen
+- v30.21ab Broker-Korrekturmodus
+- v30.21aa Pivot-Wenn-Dann
+- v30.21z CRV-Stabilitaet

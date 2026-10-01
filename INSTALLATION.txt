@@ -1,24 +1,16 @@
-CHSM v30.21ab - Trading 212 Broker-Korrektur
+CHSM v30.21ak - CRV/Hysterese-Konsistenz
 
-Installation auf macOS:
-1. CHSM beenden.
-2. VERSION.txt und legacy_app.py im Projektstamm ersetzen.
-3. Den Ordner modules in den vorhandenen modules-Ordner ZUSAMMENFUEHREN, nicht den gesamten Ordner ersetzen.
-4. Optional kann tests/test_trading212_correction.py mitkopiert werden.
-5. Streamlit neu starten.
+Voraussetzung: v30.21aj installiert.
 
-Neu:
-- Trading-212-CSV wird an ihrer charakteristischen Spaltenstruktur erkannt.
-- Neuer Korrekturmodus im Depot-Import mit Auswahlhaken pro CHSM-Ticker.
-- Ausgewaehlte Ticker werden chronologisch aus Trading-212-BUY/SELL neu aufgebaut.
-- Broker Action, Stueckzahl, Ausfuehrungskurs und Broker-ID sind fuer die Korrektur massgeblich.
-- Manuelle Exit-Buchungen im korrigierten Zeitraum werden NICHT geloescht, sondern audit-sicher als
-  "Storniert · Broker-Korrektur" markiert und dadurch aus Performance/Lernen herausgenommen.
-- Vorhandene CHSM-Metadaten (Stop, Ziel, Gruppe, Entry-Kontext etc.) werden soweit vorhanden erhalten.
-- Verlustfreie Position-vorher-Snapshots koennen eine versehentlich geschlossene Position als Metadatenquelle wiederherstellen.
-- Reine Trading-212-Pie/externe Ticker ohne CHSM-Bezug werden nicht zur Korrektur angeboten.
-- Unvollstaendige Zyklen (z. B. SELL vor ausreichend BUY in der Datei) werden blockiert.
-- Der Mindestvolumenfilter wirkt absichtlich NICHT im Broker-Korrekturmodus.
+Ersetzen:
+- VERSION.txt
+- modules/live_monitor.py
 
-Hinweis:
-Der Benutzer muss vor der Korrektur bestaetigen, dass die CSV fuer die ausgewaehlten Ticker den vollstaendigen Broker-Zyklus enthaelt.
+Beim Kopieren des Ordners modules auf macOS: Zusammenfuehren, nicht Ersetzen.
+
+Aenderungen:
+- Gruen bedeutet jetzt konsistent: aktuelles technisches CRV >= 1,50.
+- CRV 1,20-1,49 bleibt selektiv/gelb; fehlendes CRV erzeugt kein Gruen.
+- Ein gutes CRV erst in der Entry-Zone wird als gelber Pullback-/Entry-Hinweis gefuehrt.
+- Die Hysterese darf ein altes Gruen nicht mehr halten, wenn CRV jetzt < 1,50 oder n/a ist.
+- Keine Aenderung an CRV-Zielberechnung, Score-Formel oder Trading-Stop-Logik.

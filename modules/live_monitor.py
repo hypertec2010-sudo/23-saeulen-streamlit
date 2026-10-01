@@ -831,7 +831,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     monitor_action = next_step
 
     grade_ok = grade in {"A", "B", "C"}
+    # v30.21ak: Gruen bedeutet "jetzt handelbar". Deshalb muss das aktuelle
+    # technische CRV attraktiv sein. Ein gutes CRV erst in der Entry-Zone ist
+    # wertvoll, bleibt aber ein gelber Pullback-/Entry-Hinweis.
     crv_ok = crv_float is not None and crv_float >= 1.5
+    crv_entry_ok = crv_entry_float is not None and crv_entry_float >= 1.5
     entry_reached = "Entry-Zone erreicht" in alert_types
     wave_active = "Wave-Trigger aktiv" in alert_types
     bucket_active = bucket == "Jetzt prüfbar" or "Bucket: Jetzt prüfbar" in alert_types
@@ -1154,7 +1158,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     )
     trend_not_too_extended = bool(ma20_stretch_pct is None or ma20_stretch_pct <= 12.0)
     trend_extended_but_interesting = bool(ma20_stretch_pct is not None and 12.0 < ma20_stretch_pct <= 20.0)
-    trend_quality_ok = grade in {"A", "B"} and (crv_float is None or crv_float >= 1.3)
+    # v30.21ak: dieselbe CRV-Schwelle in allen Gruen-Pfaden. 1.20-1.49 ist
+    # bewusst selektiv/gelb; unbekanntes CRV darf Gruen ebenfalls nicht erzeugen.
+    trend_quality_ok = grade in {"A", "B"} and crv_ok
     trend_reason_tail = ""
     if ma20_stretch_pct is not None:
         trend_reason_tail = f" Abstand zu MA20 ca. {ma20_stretch_pct:.1f}%."
@@ -1218,6 +1224,24 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         status_icon, status, priority = "🟢", "Trendfolge aktiv", 0
         reason = "Trendfolge-Setup ist aktiv: Kurs hält oberhalb MA20, MA20 liegt über/nahe MA50 und Timing/Konfluenz passen." + trend_reason_tail
         monitor_action = "Trendfolge aktiv. Nicht auf alte Entry-Zone fixieren; Positionsgröße über Abstand zu MA20/Stop begrenzen und nur mit klarer Invalidierung handeln."
+    elif (
+        final_release_ok
+        and grade in {"A", "B"}
+        and trend_structure_ok
+        and trend_timing_ok
+        and crv_entry_ok
+        and not crv_ok
+    ):
+        # v30.21ak: gutes Setup, aber das Chance/Risiko passt erst an der
+        # vorgesehenen Entry-Zone. Das ist kein rotes Setup, aber auch kein
+        # aktuelles Gruen.
+        status_icon, status, priority = "🟡", "Pullback / CRV Entry attraktiv", 2
+        reason = (
+            f"Setup/Timing sind konstruktiv, aber CRV jetzt "
+            f"{crv_float:.2f}" if crv_float is not None else "Setup/Timing sind konstruktiv, aber CRV jetzt n/a"
+        )
+        reason += f"; in der geplanten Entry-Zone liegt das technische CRV bei {crv_entry_float:.2f}."
+        monitor_action = "Nicht hinterherlaufen: Pullback bzw. Rückkehr in die CHSM-Entry-Zone abwarten und dort neu bestätigen."
     elif final_release_ok and trend_quality_ok and trend_structure_ok and trend_timing_ok and trend_extended_but_interesting:
         status_icon, status, priority = "🟡", "Trend stark / Pullback bevorzugt", 2
         reason = "Trend und Timing sind stark, aber der Kurs ist bereits deutlich über MA20 gelaufen." + trend_reason_tail
@@ -1988,6 +2012,14 @@ def _v237_apply_live_signal_hysteresis(row, prev):
     prev_status = str(prev.get("status") or "").strip()
     prev_raw_ampel = str(prev.get("raw_ampel") or "").strip()
     prev_score = _v237_parse_live_score(prev.get("live_score"), default=score)
+    try:
+        _crv_now_hyst = float(str(row.get("CRV")).replace(",", ".")) if row.get("CRV") not in {None, "", "-", "n/a"} else None
+    except Exception:
+        _crv_now_hyst = None
+    try:
+        _crv_entry_hyst = float(str(row.get("CRV Entry")).replace(",", ".")) if row.get("CRV Entry") not in {None, "", "-", "n/a"} else None
+    except Exception:
+        _crv_entry_hyst = None
 
     # Default, falls nichts angepasst wird.
     row["Signal-Stabilität"] = "Bestätigt" if prev_ampel == raw_ampel and prev_status == raw_status and prev_status else "Frisch"
@@ -2021,8 +2053,39 @@ def _v237_apply_live_signal_hysteresis(row, prev):
         )
 
     # Gruen halten: wenn ein bestehendes gruenes Signal nur leicht auf gelb/weiss faellt,
-    # nicht sofort rauswerfen. Erst bei klarer Verschlechterung unter ca. 68/100 abwerten.
+    # nicht sofort rauswerfen. CRV ist dabei aber eine harte Bedingung fuer die
+    # Bedeutung "jetzt handelbar": ein aktuelles CRV < 1.50 darf kein altes Gruen
+    # per Hysterese konservieren.
     if prev_was_green and raw_ampel in {"🟡", "🔵", "⚪"}:
+        if _crv_now_hyst is None or _crv_now_hyst < 1.50:
+            if _crv_entry_hyst is not None and _crv_entry_hyst >= 1.50:
+                return _v237_set_live_row(
+                    row,
+                    ampel="🟡",
+                    status="Pullback / CRV Entry attraktiv",
+                    stability="Abgeschwächt",
+                    reason_prefix=(
+                        f"Hysterese gibt Gruen frei: CRV jetzt {_crv_now_hyst:.2f} ist nicht mehr attraktiv; "
+                        f"CRV Entry {_crv_entry_hyst:.2f} bleibt konstruktiv."
+                        if _crv_now_hyst is not None
+                        else f"Hysterese gibt Gruen frei: CRV jetzt n/a; CRV Entry {_crv_entry_hyst:.2f} bleibt konstruktiv."
+                    ),
+                    action_prefix="Kein neuer Kauf zum aktuellen Kurs; Pullback in die Entry-Zone abwarten.",
+                    prio=2,
+                )
+            return _v237_set_live_row(
+                row,
+                ampel="🟡",
+                status="CRV jetzt zu eng",
+                stability="Abgeschwächt",
+                reason_prefix=(
+                    f"Hysterese gibt Gruen frei: CRV jetzt {_crv_now_hyst:.2f} liegt unter 1.50."
+                    if _crv_now_hyst is not None
+                    else "Hysterese gibt Gruen frei: belastbares CRV jetzt fehlt."
+                ),
+                action_prefix="Kein neuer Kauf nur wegen des alten Gruens; technischen Zielraum/Entry neu bestätigen.",
+                prio=2,
+            )
         if score >= 68 and prev_score >= 72:
             return _v237_set_live_row(
                 row,

@@ -1,0 +1,14 @@
+CHSM v30.21ag - Distribution Soft/Hard Gate
+
+Ersetzen:
+- legacy_app.py
+- VERSION.txt
+- modules/live_monitor.py
+
+Beim Kopieren des Ordners modules auf macOS: Zusammenfuehren, nicht Ersetzen.
+
+Aenderung:
+- Distribution > Akkumulation +14 bleibt Warn-/Scorebremse, ist aber kein automatisches hartes Einstiegsgate mehr.
+- Hartes Gate erst bei Distribution > Akkumulation +22 UND Trading-Score < 70.
+- Distribution-Differenz, Warnschwelle und harte Schwelle werden im Live-Screener nachvollziehbar angezeigt.
+- Keine Aenderung an der Berechnung des Distribution-Scores selbst.

@@ -401,11 +401,21 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             elif "distribution dominiert" in low:
                 _acc = _v210_alert_num(r.get('accumulation_score'), default=None)
                 _dist = _v210_alert_num(r.get('distribution_pressure_score', r.get('distribution_score')), default=None)
+                _trading = _v210_alert_num(r.get('trading_case_score'), default=None)
                 name = "Distribution dominiert"
-                if _acc is not None and _dist is not None:
-                    detail = f"Distribution {_dist:.0f} vs. Akkumulation {_acc:.0f} · Gate bei > Akkumulation +14"
+                _decision_detail = str(d.get("distribution_detail") or "").strip()
+                if _decision_detail:
+                    detail = _decision_detail
+                elif _acc is not None and _dist is not None:
+                    _gap = float(_dist - _acc)
+                    _trade_txt = "n/a" if _trading is None else f"{_trading:.0f}"
+                    detail = (
+                        f"Distribution {_dist:.0f} vs. Akkumulation {_acc:.0f} · "
+                        f"Differenz {_gap:+.0f} · hartes Gate nur bei > +22 und Trading-Score < 70 "
+                        f"(aktuell {_trade_txt})"
+                    )
                 else:
-                    detail = "Distribution liegt mehr als 14 Punkte ueber Akkumulation"
+                    detail = "Hartes Distribution-Gate: Differenz > +22 und Trading-Score < 70"
             elif low.startswith("typ "):
                 name = "Risikotyp/Hype-Setup"
                 detail = f"Kandidatentyp: {item[4:].strip()} · dieser Typ setzt ein hartes Radar-Gate"
@@ -1388,6 +1398,13 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _score_drivers = "; ".join(f"{label} {int(round(float(value)))}/100" for label, value in _explain_sorted[:3])
     _score_brakes_list = [(label, value) for label, value in sorted(_explain_components, key=lambda x: float(x[1])) if float(value) < 60.0]
     _score_brakes = "; ".join(f"{label} {int(round(float(value)))}/100" for label, value in _score_brakes_list[:3]) or "Keine deutliche Komponenten-Bremse"
+
+    # v30.21ag: Eine Distribution-Warnzone soll in der Entscheidungs-Zusammenfassung
+    # sichtbar bleiben, auch wenn sie bewusst kein hartes Einstiegsgate mehr ist.
+    if bool(d.get("distribution_warning")):
+        _distribution_detail_v3021ag = str(d.get("distribution_detail") or "").strip()
+        if _distribution_detail_v3021ag:
+            _score_brakes = _distribution_detail_v3021ag + "; " + _score_brakes
     if entry_hard_gate:
         _gate_prefix_v286c = active_entry_gates if active_entry_gates not in {"", "-"} else "Hartes Einstiegsgate aktiv"
         _score_brakes = "Harte Gates: " + _gate_prefix_v286c + "; " + _score_brakes
@@ -1616,6 +1633,13 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             r.get("distribution_pressure_score"),
             default=_v210_alert_num(r.get("distribution_score"), default=None),
         ),
+        "Distribution-Differenz": d.get("distribution_gap"),
+        "Distribution-Status": (
+            "Hartes Gate" if bool(d.get("distribution_hard_gate"))
+            else "Warnzone" if bool(d.get("distribution_warning"))
+            else "Unauffaellig"
+        ),
+        "Distribution-Details": d.get("distribution_detail") or "-",
         "Relative-Schwäche-Score": _v210_alert_num(r.get("relative_weakness_score"), default=None),
         "Akkumulation-Score": _v210_alert_num(r.get("accumulation_score"), default=None),
         "MA10-Abstand %": _v210_alert_num(r.get("ma10_dist_pct"), default=None),

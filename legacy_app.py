@@ -4682,8 +4682,27 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         penalty += 14; gates.append("CRV unattraktiv"); brakes.append(f"{rr_label} ({crv:.2f})")
     elif crv is not None and crv < 1.5:
         penalty += 7; brakes.append(f"{rr_label} ({crv:.2f})")
-    if distribution > accumulation + 14:
-        penalty += 10; gates.append("Distribution dominiert"); brakes.append("Distribution > Akkumulation")
+    # v30.21ag: Distribution wird zweistufig behandelt. Ein erhoehter
+    # Abgabedruck bleibt als Score-/Warnbremse sichtbar, blockiert einen
+    # Einstieg aber nicht mehr allein. Das harte Gate greift erst bei der
+    # bereits vorhandenen strengeren Kombination aus deutlicher Dominanz
+    # (> +22 Punkte) UND schwachem Trading-Case (< 70).
+    distribution_gap = float(distribution - accumulation)
+    distribution_warning = bool(distribution_gap > 14)
+    distribution_hard_gate = bool(distribution_gap > 22 and trading < 70)
+    if distribution_warning:
+        penalty += 10
+        if distribution_hard_gate:
+            brakes.append(
+                f"Distribution dominiert ({distribution:.0f}/{accumulation:.0f}, "
+                f"Differenz +{distribution_gap:.0f}; Trading {trading:.0f}<70)"
+            )
+            gates.append("Distribution dominiert")
+        else:
+            brakes.append(
+                f"Distribution erhoeht ({distribution:.0f}/{accumulation:.0f}, "
+                f"Differenz +{distribution_gap:.0f}; Warnzone, kein hartes Gate)"
+            )
     if typ in {"Hype / Event", "Riskant"}:
         penalty += 10; gates.append(f"Typ {typ}"); brakes.append("Hype-/Risikotyp")
     if regime_raw == "NEGATIV" and typ in {"Bounce", "Hype / Event", "Riskant"}:
@@ -4736,7 +4755,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         knockout = True
     if "kritisch" in fomo_label and trading < 72:
         knockout = True
-    if distribution > accumulation + 22 and trading < 70:
+    if distribution_hard_gate:
         knockout = True
     if str(wave_impact_pkg.get("bias", "")) == "bearish" and trading < 66 and not valid_setup:
         knockout = True
@@ -4998,6 +5017,14 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "risk_reward_label": entry_rr_pkg.get("rr_label"),
         "risk_reward_text": entry_rr_pkg.get("rr_text"),
         "gate_reasons": "; ".join(gates) if gates else "keine harten Gates",
+        "distribution_gap": round(distribution_gap, 1),
+        "distribution_warning": distribution_warning,
+        "distribution_hard_gate": distribution_hard_gate,
+        "distribution_detail": (
+            f"Distribution {distribution:.0f} / Akkumulation {accumulation:.0f} · "
+            f"Differenz {distribution_gap:+.0f} · Warnschwelle > +14 · "
+            f"hartes Gate nur > +22 bei Trading-Score < 70"
+        ),
         "trigger": trigger_display,
     }
 

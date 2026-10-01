@@ -1,0 +1,22 @@
+CHSM v30.21ae - Performance Phase 1: Rerun & Storage
+
+Ersetzen:
+- VERSION.txt
+- modules/page_runtime.py
+- modules/storage/manager.py
+
+Beim Kopieren auf macOS den Ordner modules zusammenfuehren, nicht komplett ersetzen.
+
+Aenderungen:
+- StorageManager wird pro Browser-Session wiederverwendet: bestehende HTTP-Verbindung zu Supabase kann ueber Streamlit-Reruns hinweg offen bleiben.
+- Pro Script-Rerun wird jeder Storage-Namespace nur einmal vom Backend geladen; weitere Reads desselben Namespaces kommen aus einem kurzlebigen Run-Cache.
+- Der Run-Cache wird bei jedem neuen Streamlit-Rerun geleert. Es entsteht kein dauerhafter Daten-Cache zwischen Klicks.
+- Writes aktualisieren den Run-Cache sofort; Deletes invalidieren ihn.
+- Kompakte, eingeklappte Performance-Diagnose in der Sidebar: Seitenlauf, Backend-Reads, vermiedene Doppel-Reads, Remote-Zeit und langsamste Storage-Namespaces.
+- Keine Trading-, Score-, Ampel-, CRV-, Stop-, Learning- oder Brokerlogik geaendert.
+
+Tests:
+- Neue Storage-Cache-/Refresh-/Write-Tests: 4/4 bestanden.
+- Relevante Storage/Trading-212-Tests: 8/8 bestanden.
+- Gesamtsuite: 49 bestanden, 1 uebersprungen; 1 bekannter Source-Guard scheitert weiterhin ausschliesslich, weil .github/workflows/quality.yml im gelieferten Projekt fehlt.
+- Python-3.11-Grammatik fuer die geaenderten Module geprueft.

@@ -1,8 +1,10 @@
 """Configuration, user scoping and resilient primary/fallback orchestration."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -29,58 +31,151 @@ class StorageManager:
         self.last_error = ""
         self.last_backend = self.local.name
         self.degraded = False
+        # v30.21ae: one StorageManager instance is reused for the Streamlit
+        # session so the underlying requests.Session can keep HTTP connections
+        # alive. Data itself is only cached inside one script rerun; begin_run()
+        # clears it, so another browser/device can still update Supabase between
+        # reruns without a long-lived stale application cache.
+        self._run_cache: dict[str, StorageResult] = {}
+        self._perf = {}
+        self.begin_run()
 
     @property
     def remote_enabled(self) -> bool:
         return self.primary is not None
 
-    def load_result(self, namespace: str) -> StorageResult:
+    @staticmethod
+    def _clone_result(result: StorageResult) -> StorageResult:
+        try:
+            data = copy.deepcopy(result.data)
+        except Exception:
+            data = result.data
+        return StorageResult(
+            ok=bool(result.ok),
+            found=bool(result.found),
+            data=data,
+            error=str(result.error or ""),
+            backend=str(result.backend or ""),
+        )
+
+    def begin_run(self) -> None:
+        """Start a new Streamlit rerun without discarding HTTP connections."""
+        self._run_cache = {}
+        self._perf = {
+            "load_calls": 0,
+            "backend_loads": 0,
+            "cache_hits": 0,
+            "backend_ms": 0.0,
+            "local_ms": 0.0,
+            "mirror_writes": 0,
+            "save_calls": 0,
+            "save_ms": 0.0,
+            "delete_calls": 0,
+            "namespaces": {},
+        }
+
+    def _record_namespace(self, namespace: str, elapsed_ms: float, *, cached: bool = False) -> None:
+        bucket = self._perf.setdefault("namespaces", {}).setdefault(
+            namespace, {"calls": 0, "backend_loads": 0, "cache_hits": 0, "ms": 0.0}
+        )
+        bucket["calls"] += 1
+        bucket["ms"] += float(elapsed_ms or 0.0)
+        if cached:
+            bucket["cache_hits"] += 1
+        else:
+            bucket["backend_loads"] += 1
+
+    def load_result(self, namespace: str, *, force_refresh: bool = False) -> StorageResult:
         namespace = str(namespace or "state").strip() or "state"
+        self._perf["load_calls"] = int(self._perf.get("load_calls", 0)) + 1
+
+        if not force_refresh and namespace in self._run_cache:
+            self._perf["cache_hits"] = int(self._perf.get("cache_hits", 0)) + 1
+            self._record_namespace(namespace, 0.0, cached=True)
+            return self._clone_result(self._run_cache[namespace])
+
+        started = time.perf_counter()
         if self.primary is not None:
+            remote_started = time.perf_counter()
             remote = self.primary.load(self.user_id, namespace)
+            remote_ms = (time.perf_counter() - remote_started) * 1000.0
+            self._perf["backend_loads"] = int(self._perf.get("backend_loads", 0)) + 1
+            self._perf["backend_ms"] = float(self._perf.get("backend_ms", 0.0)) + remote_ms
             if remote.ok and remote.found:
                 self.last_backend = remote.backend
                 self.degraded = False
                 self.last_error = ""
                 if self.mirror_local:
+                    mirror_started = time.perf_counter()
                     self.local.save(self.user_id, namespace, remote.data)
-                return remote
+                    self._perf["local_ms"] = float(self._perf.get("local_ms", 0.0)) + (time.perf_counter() - mirror_started) * 1000.0
+                    self._perf["mirror_writes"] = int(self._perf.get("mirror_writes", 0)) + 1
+                elapsed = (time.perf_counter() - started) * 1000.0
+                self._record_namespace(namespace, elapsed)
+                self._run_cache[namespace] = self._clone_result(remote)
+                return self._clone_result(remote)
             if not remote.ok:
                 self.degraded = True
                 self.last_error = remote.error
+
+        local_started = time.perf_counter()
         local = self.local.load(self.user_id, namespace)
+        self._perf["local_ms"] = float(self._perf.get("local_ms", 0.0)) + (time.perf_counter() - local_started) * 1000.0
+        if self.primary is None:
+            self._perf["backend_loads"] = int(self._perf.get("backend_loads", 0)) + 1
         self.last_backend = local.backend
         if not local.ok:
             self.last_error = local.error or self.last_error
-        return local
+        elapsed = (time.perf_counter() - started) * 1000.0
+        self._record_namespace(namespace, elapsed)
+        self._run_cache[namespace] = self._clone_result(local)
+        return self._clone_result(local)
 
-    def load_namespace(self, namespace: str, default=None):
-        result = self.load_result(namespace)
+    def load_namespace(self, namespace: str, default=None, *, force_refresh: bool = False):
+        result = self.load_result(namespace, force_refresh=force_refresh)
         if result.ok and result.found:
             return result.data
         return default
 
     def save_result(self, namespace: str, payload: Any) -> StorageResult:
         namespace = str(namespace or "state").strip() or "state"
+        started = time.perf_counter()
+        self._perf["save_calls"] = int(self._perf.get("save_calls", 0)) + 1
         local = self.local.save(self.user_id, namespace, payload)
         remote = None
+        result = local
         if self.primary is not None:
             remote = self.primary.save(self.user_id, namespace, payload)
             if remote.ok:
                 self.last_backend = remote.backend
                 self.degraded = False
                 self.last_error = ""
-                return remote
-            self.degraded = True
-            self.last_error = remote.error
-        self.last_backend = local.backend
-        return local if local.ok else (remote or local)
+                result = remote
+            else:
+                self.degraded = True
+                self.last_error = remote.error
+                self.last_backend = local.backend
+                result = local if local.ok else (remote or local)
+        else:
+            self.last_backend = local.backend
+        self._perf["save_ms"] = float(self._perf.get("save_ms", 0.0)) + (time.perf_counter() - started) * 1000.0
+        # Make subsequent reads in the same rerun see the just-written state
+        # without another network round trip.
+        if result.ok:
+            self._run_cache[namespace] = StorageResult(
+                ok=True, found=True, data=copy.deepcopy(payload), backend=result.backend
+            )
+        else:
+            self._run_cache.pop(namespace, None)
+        return self._clone_result(result)
 
     def save_namespace(self, namespace: str, payload: Any) -> bool:
         return bool(self.save_result(namespace, payload).ok)
 
     def delete_namespace(self, namespace: str) -> bool:
         namespace = str(namespace or "state").strip() or "state"
+        self._perf["delete_calls"] = int(self._perf.get("delete_calls", 0)) + 1
+        self._run_cache.pop(namespace, None)
         local = self.local.delete(self.user_id, namespace)
         if self.primary is not None:
             remote = self.primary.delete(self.user_id, namespace)
@@ -105,6 +200,30 @@ class StorageManager:
         self.last_error = "" if result.ok else result.error
         self.last_backend = result.backend
         return result
+
+    def performance_snapshot(self) -> dict[str, Any]:
+        namespaces = []
+        for name, stats in (self._perf.get("namespaces") or {}).items():
+            namespaces.append({
+                "namespace": str(name),
+                "calls": int(stats.get("calls", 0)),
+                "backend_loads": int(stats.get("backend_loads", 0)),
+                "cache_hits": int(stats.get("cache_hits", 0)),
+                "ms": round(float(stats.get("ms", 0.0)), 1),
+            })
+        namespaces.sort(key=lambda row: row["ms"], reverse=True)
+        return {
+            "load_calls": int(self._perf.get("load_calls", 0)),
+            "backend_loads": int(self._perf.get("backend_loads", 0)),
+            "cache_hits": int(self._perf.get("cache_hits", 0)),
+            "backend_ms": round(float(self._perf.get("backend_ms", 0.0)), 1),
+            "local_ms": round(float(self._perf.get("local_ms", 0.0)), 1),
+            "mirror_writes": int(self._perf.get("mirror_writes", 0)),
+            "save_calls": int(self._perf.get("save_calls", 0)),
+            "save_ms": round(float(self._perf.get("save_ms", 0.0)), 1),
+            "delete_calls": int(self._perf.get("delete_calls", 0)),
+            "slow_namespaces": namespaces[:8],
+        }
 
     def status(self) -> dict[str, Any]:
         return {
@@ -195,13 +314,41 @@ def create_storage_manager(*, st_module=None, app_dir: str | Path | None = None)
         if candidate.configured:
             primary = candidate
 
-    return StorageManager(
+    # v30.21ae: Reuse the manager for one browser session. This preserves the
+    # requests.Session/HTTP keep-alive connection across Streamlit reruns while
+    # begin_run() guarantees that application data is not cached across reruns.
+    fingerprint = "|".join([
+        requested, user_id, str(local_path), str(mirror_local),
+        str(getattr(primary, "url", "") or ""),
+        str(getattr(primary, "table", "") or ""),
+        hashlib.sha256(str(getattr(primary, "key", "") or "").encode("utf-8")).hexdigest()[:12],
+    ])
+    session_key = "_chsm_storage_manager_v3021ae"
+    fingerprint_key = "_chsm_storage_manager_fingerprint_v3021ae"
+    if st_module is not None:
+        try:
+            existing = st_module.session_state.get(session_key)
+            existing_fp = st_module.session_state.get(fingerprint_key)
+            if isinstance(existing, StorageManager) and existing_fp == fingerprint:
+                existing.begin_run()
+                return existing
+        except Exception:
+            pass
+
+    manager = StorageManager(
         user_id=user_id,
         local_backend=local,
         primary_backend=primary,
         requested_backend=requested,
         mirror_local=mirror_local,
     )
+    if st_module is not None:
+        try:
+            st_module.session_state[session_key] = manager
+            st_module.session_state[fingerprint_key] = fingerprint
+        except Exception:
+            pass
+    return manager
 
 
 def should_use_database_watchlists(*, st_module=None, manager: StorageManager | None = None) -> bool:

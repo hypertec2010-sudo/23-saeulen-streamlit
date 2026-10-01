@@ -187,6 +187,7 @@ from modules import live_screener_snapshot as _live_screener_snapshot
 from modules import live_scan_batches as _live_scan_batches
 from modules.stop_shadow import build_hybrid_stop_shadow as _build_hybrid_stop_shadow_v3021t
 from modules.classic_pivots import build_classic_daily_pivot_package
+from modules.technical_crv import build_technical_crv_package as _build_technical_crv_package_v3021aj, crv_soft_gate_state as _crv_soft_gate_state_v3021aj
 import yfinance as yf
 
 # v28.4.5a: zentraler Marktdaten-Provider. Yahoo/yfinance bleibt in dieser
@@ -4040,11 +4041,23 @@ def build_radar_entry_rr_package_v182(result):
     price = _radar_v182_get_price(r)
     entry_zone = _radar_v182_entry_zone_text(r)
     low, high = _radar_v182_parse_zone(entry_zone)
-    # v30.21ai: Screener CRV is the real structural CRV. The operational
-    # 1.8R/2R floor remains a separate planning value and can no longer make an
-    # opportunity look technically better than its actual target space.
-    tp1, tp1_source = _radar_v3021ai_real_target_value(r, price=price)
-    stop = _radar_v182_stop_value(r)
+    # v30.21aj: one unified chart-derived package for Screener + Einzelanalyse.
+    # It distinguishes CRV at the current price from CRV at the conservative
+    # upper edge of the planned CHSM entry zone. Synthetic 1.8R/2R targets are
+    # never accepted as technical targets.
+    try:
+        _crv_pkg_v3021aj = _build_technical_crv_package_v3021aj(r)
+    except Exception:
+        _crv_pkg_v3021aj = {}
+    tp1 = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_target"), default=None)
+    tp1_source = str(_crv_pkg_v3021aj.get("technical_crv_target_source") or "kein belastbares technisches Ziel")
+    stop = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_stop_now"), default=_radar_v182_stop_value(r))
+    crv_now_v3021aj = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_now"), default=None)
+    crv_entry_v3021aj = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_entry"), default=None)
+    crv_entry_ref_v3021aj = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_entry_reference"), default=None)
+    crv_entry_stop_v3021aj = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_stop_entry"), default=None)
+    crv_stop_source_v3021aj = str(_crv_pkg_v3021aj.get("technical_crv_stop_source") or r.get("stop_source") or "-")
+    crv_entry_stop_source_v3021aj = str(_crv_pkg_v3021aj.get("technical_crv_entry_stop_source") or crv_stop_source_v3021aj)
     plan_crv = _radar_v182_num(r.get("planning_crv"), default=_radar_v182_num(r.get("crv"), default=None))
     plan_source = str(r.get("tp2_source") or "-")
     plan_is_synthetic = bool(r.get("tp2_is_synthetic"))
@@ -4078,40 +4091,37 @@ def build_radar_entry_rr_package_v182(result):
                 entry_position = "Zu weit über Entry"
                 entry_score = max(12.0, 48.0 - (entry_distance_pct - 5.0) * 3.0)
 
-    crv = None
+    crv = crv_now_v3021aj
+    crv_entry = crv_entry_v3021aj
     rr_label = "CRV n/a"
-    rr_score = 45.0
-    rr_text = "Technisches CRV nicht berechenbar; Stop oder belastbares strukturelles Ziel fehlen."
-    if price is not None and stop is not None and tp1 is not None and stop > 0 and tp1 > 0:
-        risk = price - stop
-        reward = tp1 - price
-        if risk > 0 and reward > 0:
-            crv = reward / risk
-            if crv >= 3.0:
-                rr_label = "CRV sehr attraktiv"
-                rr_score = 94.0
-            elif crv >= 2.0:
-                rr_label = "CRV attraktiv"
-                rr_score = 82.0
-            elif crv >= 1.5:
-                rr_label = "CRV okay"
-                rr_score = 66.0
-            elif crv >= 1.0:
-                rr_label = "CRV eng"
-                rr_score = 44.0
-            else:
-                rr_label = "CRV unattraktiv"
-                rr_score = 24.0
-            rr_text = f"Technisches CRV {crv:.2f} · Stop {stop:.2f} · echtes Ziel {tp1:.2f} ({tp1_source})"
-        elif risk <= 0:
-            rr_label = "Stop unplausibel"
-            rr_score = 25.0
-            rr_text = "Stop/Invalidierung liegt nicht unter dem aktuellen Kurs."
+    rr_text = "Kein belastbares technisches Ziel oberhalb des aktuellen Kurses vorhanden."
+    _rr_state_v3021aj = _crv_soft_gate_state_v3021aj(crv, crv_entry)
+    rr_score = float(_rr_state_v3021aj.get("score", 45.0) or 45.0)
+    if crv is not None:
+        if crv >= 3.0:
+            rr_label = "CRV jetzt sehr attraktiv"
+        elif crv >= 2.0:
+            rr_label = "CRV jetzt attraktiv"
+        elif crv >= 1.5:
+            rr_label = "CRV jetzt okay"
+        elif crv >= 1.2:
+            rr_label = "CRV jetzt selektiv"
         else:
-            rr_label = "TP1 unplausibel"
-            rr_score = 25.0
-            rr_text = "Das Ziel liegt nicht oberhalb des aktuellen Kurses."
-
+            rr_label = "CRV jetzt zu eng"
+        _entry_part = ""
+        if crv_entry is not None:
+            _entry_part = f" · CRV Entry {crv_entry:.2f}"
+        _entry_ref_part = "" if crv_entry_ref_v3021aj is None else f" bei Entry {crv_entry_ref_v3021aj:.2f}"
+        rr_text = (
+            f"CRV jetzt {crv:.2f}{_entry_part}{_entry_ref_part} · "
+            f"Ziel {tp1:.2f} ({tp1_source}) · Stop jetzt {stop:.2f} ({crv_stop_source_v3021aj})"
+        )
+    elif crv_entry is not None:
+        rr_label = "CRV erst in Entry-Zone beurteilbar"
+        rr_text = (
+            f"CRV jetzt n/a · CRV Entry {crv_entry:.2f} bei {crv_entry_ref_v3021aj:.2f} · "
+            f"Ziel {tp1:.2f} ({tp1_source})"
+        )
     distance_text = "n/a" if entry_distance_pct is None else f"{entry_distance_pct:+.1f}%"
     if entry_zone:
         entry_text = f"{entry_position} ({distance_text}) · Zone {entry_zone}"
@@ -4125,6 +4135,11 @@ def build_radar_entry_rr_package_v182(result):
         "entry_distance_text": distance_text,
         "entry_score": round(_radar_v18_clip(entry_score), 1),
         "crv": None if crv is None else round(crv, 2),
+        "crv_now": None if crv is None else round(crv, 2),
+        "crv_entry": None if crv_entry is None else round(crv_entry, 2),
+        "crv_entry_reference": crv_entry_ref_v3021aj,
+        "crv_entry_stop": crv_entry_stop_v3021aj,
+        "crv_entry_stop_source": crv_entry_stop_source_v3021aj,
         "rr_label": rr_label,
         "rr_score": round(_radar_v18_clip(rr_score), 1),
         "rr_text": rr_text,
@@ -4740,15 +4755,27 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         penalty += 8; brakes.append("FOMO erhöht")
     entry_distance_pct = entry_rr_pkg.get("entry_distance_pct")
     crv = entry_rr_pkg.get("crv")
+    crv_entry = entry_rr_pkg.get("crv_entry")
     rr_label = str(entry_rr_pkg.get("rr_label", "") or "")
     if entry_distance_pct is not None and entry_distance_pct > 5.0:
         penalty += 12; gates.append("Entry-Abstand zu groß"); brakes.append(f"{entry_rr_pkg.get('entry_position')} ({entry_rr_pkg.get('entry_distance_text')})")
     elif entry_distance_pct is not None and entry_distance_pct > 1.5:
         penalty += 5; brakes.append(f"oberhalb Entry ({entry_rr_pkg.get('entry_distance_text')})")
+    # v30.21aj: CRV ist eine Timing-/Entry-Bremse, aber kein automatisches
+    # hartes No-Go. Ein gutes Setup mit engem CRV *jetzt* soll gelb bzw.
+    # Pullback-bevorzugt werden, nicht allein deshalb rot.
     if crv is not None and crv < 1.2:
-        penalty += 14; gates.append("CRV unattraktiv"); brakes.append(f"{rr_label} ({crv:.2f})")
+        if crv_entry is not None and crv_entry >= 1.5:
+            penalty += 5
+            brakes.append(f"CRV jetzt {crv:.2f} zu eng · in Entry-Zone {crv_entry:.2f}")
+        else:
+            penalty += 9
+            _entry_txt = "" if crv_entry is None else f" · CRV Entry {crv_entry:.2f}"
+            brakes.append(f"CRV jetzt {crv:.2f} zu eng{_entry_txt}")
     elif crv is not None and crv < 1.5:
-        penalty += 7; brakes.append(f"{rr_label} ({crv:.2f})")
+        penalty += 5
+        _entry_txt = "" if crv_entry is None else f" · CRV Entry {crv_entry:.2f}"
+        brakes.append(f"CRV jetzt {crv:.2f} selektiv{_entry_txt}")
     # v30.21ag: Distribution wird zweistufig behandelt. Ein erhoehter
     # Abgabedruck bleibt als Score-/Warnbremse sichtbar, blockiert einen
     # Einstieg aber nicht mehr allein. Das harte Gate greift erst bei der
@@ -4840,11 +4867,12 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     poor_crv_gate = bool(crv is not None and crv < 1.2)
     weak_crv_gate = bool(crv is not None and 1.2 <= crv < 1.5)
     if poor_crv_gate:
-        gates.append("CRV zu eng für aktiven Entry")
-        brakes.insert(0, f"CRV {crv:.2f} zu eng")
+        _entry_txt = "" if crv_entry is None else f" · Entry {crv_entry:.2f}"
+        brakes.insert(0, f"CRV jetzt {crv:.2f} zu eng{_entry_txt}")
         score = min(score, 64.0)
     elif weak_crv_gate:
-        brakes.insert(0, f"CRV {crv:.2f} nur selektiv")
+        _entry_txt = "" if crv_entry is None else f" · Entry {crv_entry:.2f}"
+        brakes.insert(0, f"CRV jetzt {crv:.2f} nur selektiv{_entry_txt}")
         score = min(score, 70.0)
 
     if knockout:
@@ -4977,9 +5005,14 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         grade = "C"
 
     if poor_crv_gate:
-        next_step = f"Noch nicht als aktiven Entry werten: CRV {crv:.2f} ist zu eng; besseren Entry, engeren Stop oder höhere TP-Bestätigung abwarten."
+        if crv_entry is not None and crv_entry >= 1.5:
+            next_step = f"Nicht hinterherlaufen: CRV jetzt {crv:.2f}; in der geplanten Entry-Zone verbessert es sich auf {crv_entry:.2f}. Rücklauf/Entry-Zone abwarten."
+        else:
+            _entry_txt = "" if crv_entry is None else f"; CRV Entry {crv_entry:.2f}"
+            next_step = f"Noch nicht als aktiven Entry werten: CRV jetzt {crv:.2f}{_entry_txt}. Besseren Entry oder neue technische Zielstruktur abwarten."
     elif weak_crv_gate:
-        next_step = f"Nur selektiv prüfen: CRV {crv:.2f} ist knapp; Positionsgröße reduzieren oder bessere Zone abwarten."
+        _entry_txt = "" if crv_entry is None else f"; CRV Entry {crv_entry:.2f}"
+        next_step = f"Nur selektiv prüfen: CRV jetzt {crv:.2f}{_entry_txt}. Entry-Zone und Zielbestätigung beachten."
     elif bucket == "Jetzt prüfbar":
         next_step = f"Jetzt prüfbar: {entry_rr_pkg.get('entry_text')}; {entry_rr_pkg.get('rr_text')}"
     elif bucket == "Nahe am Trigger":
@@ -5028,7 +5061,9 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     if style_fit_score >= 68:
         why_parts.append(style_fit_pkg.get("label", "Stil-Fit stark"))
     if entry_rr_pkg.get("crv") is not None and float(entry_rr_pkg.get("crv") or 0) >= 1.5:
-        why_parts.append(f"CRV {float(entry_rr_pkg.get('crv')):.2f}")
+        why_parts.append(f"CRV jetzt {float(entry_rr_pkg.get('crv')):.2f}")
+    elif entry_rr_pkg.get("crv_entry") is not None and float(entry_rr_pkg.get("crv_entry") or 0) >= 1.5:
+        why_parts.append(f"CRV Entry {float(entry_rr_pkg.get('crv_entry')):.2f}")
     if not why_parts:
         why_parts.append("noch keine starke Bestätigungsgruppe")
 
@@ -5081,6 +5116,8 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "entry_distance_text": entry_rr_pkg.get("entry_distance_text"),
         "entry_quality_text": entry_rr_pkg.get("entry_text"),
         "crv": entry_rr_pkg.get("crv"),
+        "crv_entry": entry_rr_pkg.get("crv_entry"),
+        "crv_entry_reference": entry_rr_pkg.get("crv_entry_reference"),
         "crv_target_source": entry_rr_pkg.get("target_source"),
         "crv_kind": entry_rr_pkg.get("crv_kind"),
         "planning_crv": entry_rr_pkg.get("planning_crv"),
@@ -21430,7 +21467,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # hinter Shadow-/Diagnosespalten verschwinden.
                                 "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Chop-Risk", "Trader-Modus", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
-                                "CRV", "CRV-Basis", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
+                                "CRV", "CRV Entry", "CRV-Basis", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
                             optional_cols = [c for c in main_cols if c in live_df.columns]
                             live_display_df = live_df[optional_cols].copy() if optional_cols else live_df.copy()
@@ -28550,9 +28587,14 @@ if result is not None:
     tp1_source = result["tp1_source"]
     tp2_source = result["tp2_source"]
     tp3_source = result["tp3_source"]
-    structural_crv = result.get("structural_crv")
-    structural_target = result.get("structural_target")
-    structural_target_source = result.get("structural_target_source") or "kein belastbares strukturelles Ziel"
+    # v30.21aj: central CRV package shared with the Live-Screener.
+    structural_crv = result.get("technical_crv_now", result.get("structural_crv"))
+    structural_crv_entry = result.get("technical_crv_entry")
+    structural_crv_entry_reference = result.get("technical_crv_entry_reference")
+    structural_crv_entry_stop = result.get("technical_crv_stop_entry")
+    structural_crv_entry_stop_source = result.get("technical_crv_entry_stop_source") or result.get("stop_source") or "-"
+    structural_target = result.get("technical_crv_target", result.get("structural_target"))
+    structural_target_source = result.get("technical_crv_target_source") or result.get("structural_target_source") or "kein belastbares technisches Ziel"
     planning_crv = result.get("planning_crv", result.get("crv"))
     tp2_is_synthetic = bool(result.get("tp2_is_synthetic"))
     technical_target_1 = result["technical_target_1"]
@@ -32488,15 +32530,18 @@ if result is not None:
 
                 c7, c8, c9 = st.columns(3)
                 _structural_crv_v3021ai = _radar_v182_num(structural_crv, default=None)
+                _structural_crv_entry_v3021aj = _radar_v182_num(structural_crv_entry, default=None)
                 _planning_crv_v3021ai = _radar_v182_num(planning_crv, default=None)
                 _crv_display_v3021ai = "n/a" if _structural_crv_v3021ai is None else f"{_structural_crv_v3021ai:.2f}:1"
-                _crv_delta_v3021ai = None
+                _crv_delta_parts_v3021aj = []
+                if _structural_crv_entry_v3021aj is not None:
+                    _crv_delta_parts_v3021aj.append(f"Entry {_structural_crv_entry_v3021aj:.2f}:1")
                 if _planning_crv_v3021ai is not None:
-                    _crv_delta_v3021ai = (
-                        f"Plan {_planning_crv_v3021ai:.2f}:1 · synthetisch"
-                        if tp2_is_synthetic else f"Plan {_planning_crv_v3021ai:.2f}:1"
+                    _crv_delta_parts_v3021aj.append(
+                        f"Plan {_planning_crv_v3021ai:.2f}:1" + (" · synthetisch" if tp2_is_synthetic else "")
                     )
-                c7.metric("Technisches CRV", _crv_display_v3021ai, _crv_delta_v3021ai)
+                _crv_delta_v3021ai = " · ".join(_crv_delta_parts_v3021aj) if _crv_delta_parts_v3021aj else None
+                c7.metric("CRV jetzt", _crv_display_v3021ai, _crv_delta_v3021ai)
                 c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
                 c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
 
@@ -32515,10 +32560,14 @@ if result is not None:
                 tc5.metric("Setup-Confidence", fmt_num(setup_confidence, 0))
 
                 st.markdown("**Herleitung von Stop und Zielen**")
-                st.write(f"• Stop: {stop_source}")
+                st.write(f"• Stop jetzt: {stop_source}")
+                if _radar_v182_num(structural_crv_entry_stop, default=None) is not None:
+                    st.write(f"• Stop für CRV Entry: {float(structural_crv_entry_stop):.2f} {ccy} · {structural_crv_entry_stop_source}")
                 st.write(f"• TP1: {tp1_source}")
                 st.write(f"• TP2 / Plan-Ziel: {tp2_source}")
-                st.write(f"• Echtes CRV-Ziel: {structural_target_source}" + (f" · {float(structural_target):.2f} {ccy}" if _radar_v182_num(structural_target, default=None) is not None else " · n/a"))
+                st.write(f"• Technisches CRV-Ziel: {structural_target_source}" + (f" · {float(structural_target):.2f} {ccy}" if _radar_v182_num(structural_target, default=None) is not None else " · n/a"))
+                if _radar_v182_num(structural_crv_entry_reference, default=None) is not None:
+                    st.write(f"• CRV Entry rechnet konservativ mit oberem Entry-Zonenrand: {float(structural_crv_entry_reference):.2f} {ccy}")
                 st.write(f"• TP3: {tp3_source}")
 
                 td1, td2 = st.columns(2)

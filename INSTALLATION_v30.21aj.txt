@@ -1,0 +1,19 @@
+CHSM v30.21aj - Technisches CRV aus Chartstruktur
+
+Ersetzen / zusammenfuehren:
+- VERSION.txt
+- legacy_app.py
+- modules/analysis_engine.py
+- modules/live_monitor.py
+- modules/technical_crv.py (neu)
+
+Auf macOS den Ordner modules ZUSAMMENFUEHREN, nicht komplett ersetzen.
+
+Danach Streamlit neu starten und einen Vollscan ausfuehren.
+
+Aenderungen:
+- CRV jetzt: aktueller Kurs vs. produktiver Stop und naechstes reales technisches Ziel.
+- CRV Entry: oberer Rand der CHSM-Entry-Zone vs. konservativer Stop und dasselbe technische Ziel.
+- Zielquellen: CHSM-Chart-Widerstands-/aktive Zonen, Setup-Struktur, Wave-Ziele, 52W-Hoch.
+- Synthetische 1,8R/2R-Ziele bleiben nur Plan-Ziele und gelten nicht als technisches CRV.
+- CRV < 1,20 ist kein automatisches rotes Hard-Gate mehr; es bremst Timing/Entry und verhindert Gruen am aktuellen Kurs.

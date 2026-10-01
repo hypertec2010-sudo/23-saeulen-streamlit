@@ -1,3 +1,11 @@
+## v30.21aj — Technisches CRV aus Chartstruktur
+
+- CRV jetzt und CRV Entry getrennt.
+- Technisches Ziel wird konservativ aus realen CHSM-Chart-/Setup-Strukturen gewählt; synthetische 1,8R/2R-Ziele bleiben reine Planung.
+- Oberer Rand der Entry-Zone dient als konservativer Plan-Entry.
+- Niedriges CRV ist eine Timing-/Entry-Bremse und kein automatisches rotes Hard-Gate.
+- Live-Screener und Einzelanalyse nutzen dasselbe CRV-Paket.
+
 # v30.21ai - Echtes technisches CRV
 
 - Screener zeigt und bewertet jetzt das reale strukturelle CRV statt eines synthetischen 1,8R-/2R-Planungsfloors.

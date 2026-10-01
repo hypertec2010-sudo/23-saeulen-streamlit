@@ -319,6 +319,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             crv_float = float(str(crv).replace(",", "."))
     except Exception:
         crv_float = None
+    try:
+        _crv_entry_raw = d.get("crv_entry")
+        crv_entry_float = None if _crv_entry_raw in {"", "-", "n/a", None} else float(str(_crv_entry_raw).replace(",", "."))
+    except Exception:
+        crv_entry_float = None
 
     # v30.21ai: The displayed/scored Screener CRV is the real structural CRV.
     # Synthetic 1.8R/2R planning floors remain visible as a separate plan value.
@@ -328,9 +333,16 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     plan_source = str(d.get("planning_target_source") or r.get("tp2_source") or "-").strip() or "-"
     plan_is_synthetic = bool(d.get("planning_is_synthetic") or r.get("tp2_is_synthetic"))
     if crv_float is None:
-        crv_basis = f"Echtes Ziel: n/a · Stop: {crv_stop_source}"
+        crv_basis = f"Technisches Ziel: n/a · Stop: {crv_stop_source}"
     else:
-        crv_basis = f"Echtes Ziel: {crv_target_source} · Stop: {crv_stop_source}"
+        crv_basis = f"Technisches Ziel: {crv_target_source} · Stop: {crv_stop_source}"
+    if crv_entry_float is not None:
+        _crv_entry_ref = d.get("crv_entry_reference")
+        try:
+            _crv_entry_ref_txt = f" bei Entry {float(_crv_entry_ref):.2f}" if _crv_entry_ref not in {None, '', '-', 'n/a'} else ""
+        except Exception:
+            _crv_entry_ref_txt = ""
+        crv_basis += f" · CRV Entry {crv_entry_float:.2f}{_crv_entry_ref_txt}"
     try:
         if plan_crv is not None and str(plan_crv).strip().lower() not in {"", "none", "nan", "n/a", "-"}:
             _plan_crv_num = float(plan_crv)
@@ -366,7 +378,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "bewertung", "valuation", "fundamental", "qualität", "qualitaet"
     ]
     non_entry_fundamental_gate = bool(hard_gate and gate_low and any(t in gate_low for t in fundamental_gate_terms))
-    entry_hard_gate = bool(hard_gate and not non_entry_exit_gate and not non_entry_fundamental_gate)
+    # v30.21aj: low CRV is an entry/timing brake, never a hard red gate by
+    # itself. This also makes old cached gate strings safe until the next full scan.
+    non_entry_crv_gate = bool(hard_gate and gate_low and any(t in gate_low for t in ["crv unattraktiv", "crv zu eng"]))
+    entry_hard_gate = bool(hard_gate and not non_entry_exit_gate and not non_entry_fundamental_gate and not non_entry_crv_gate)
 
     # v28.6c: Gate Transparency. Die Logik, ob ein Gate hart ist, bleibt
     # unveraendert. Neu ist nur die nachvollziehbare Aufschluesselung der
@@ -416,9 +431,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             elif "crv unattraktiv" in low or "crv zu eng" in low:
                 name = "CRV zu niedrig"
                 if crv_float is not None:
-                    detail = f"CRV {crv_float:.2f} · harter Entry-Grenzwert >= 1.20; selektiv >= 1.50"
+                    detail = f"CRV jetzt {crv_float:.2f} · <1.20 Timing-Bremse; 1.20–1.49 selektiv; >=1.50 attraktiv · kein CRV-Hard-Gate"
                 else:
-                    detail = "CRV unter dem harten Entry-Grenzwert 1.20"
+                    detail = "CRV aktuell eng · Timing-/Entry-Bremse, aber kein automatisches Hard-Gate"
             elif "distribution dominiert" in low:
                 _acc = _v210_alert_num(r.get('accumulation_score'), default=None)
                 _dist = _v210_alert_num(r.get('distribution_pressure_score', r.get('distribution_score')), default=None)
@@ -1716,6 +1731,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Grade": grade,
         "Radar-Bucket": bucket,
         "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
+        "CRV Entry": "n/a" if crv_entry_float is None else round(float(crv_entry_float), 2),
         "CRV-Basis": crv_basis,
         "CRV-Zielquelle": crv_target_source,
         "CRV-Stopquelle": crv_stop_source,

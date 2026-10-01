@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Optional
 
+from modules.technical_crv import build_technical_crv_package
+
 
 COMMODITY_TICKERS = {
     "GC=F": ("Gold Future", "Gold"), "SI=F": ("Silber Future", "Silber"),
@@ -102,4 +104,14 @@ def analyze_stock(
         result["Analyse_Hinweis"] = (
             "Fallback-Analyse genutzt: einzelne Datenfelder hatten ein uneinheitliches Format."
         )
-    return postprocess_asset_mode(result, ticker=ticker, requested=asset_mode)
+    result = postprocess_asset_mode(result, ticker=ticker, requested=asset_mode)
+    # v30.21aj: attach one unified, chart-derived CRV package after either core
+    # engine. This guarantees that Live-Screener and Einzelanalyse see the same
+    # CRV-now / CRV-entry data without depending on render-time UI calculations.
+    if isinstance(result, dict):
+        try:
+            result.update(build_technical_crv_package(result))
+        except Exception:
+            # CRV enrichment must never make the whole stock analysis fail.
+            pass
+    return result

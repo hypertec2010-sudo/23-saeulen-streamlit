@@ -63,6 +63,7 @@ def select_operational_tp2(
             "source": "CRV-Ziel nicht berechenbar",
             "kind": "missing",
             "base_target": math.nan,
+            "base_source": None,
             "floor": math.nan,
             "synthetic": False,
         }
@@ -76,6 +77,7 @@ def select_operational_tp2(
                 "source": f"Primärziel aus Setup ({setup_type})",
                 "kind": "technical",
                 "base_target": technical,
+                "base_source": f"Setup-Ziel ({setup_type})",
                 "floor": floor,
                 "synthetic": False,
             }
@@ -84,6 +86,7 @@ def select_operational_tp2(
             "source": f"Synthetisches 1,8R-Mindestziel · Setup-Ziel ({setup_type}) lag näher",
             "kind": "synthetic_1_8r_floor",
             "base_target": technical,
+            "base_source": f"Setup-Ziel ({setup_type})",
             "floor": floor,
             "synthetic": True,
         }
@@ -96,6 +99,7 @@ def select_operational_tp2(
                 "source": "52W-Hoch",
                 "kind": "high52",
                 "base_target": yearly_high,
+                "base_source": "52W-Hoch",
                 "floor": floor,
                 "synthetic": False,
             }
@@ -104,6 +108,7 @@ def select_operational_tp2(
             "source": "Synthetisches 1,8R-Mindestziel · 52W-Hoch lag näher",
             "kind": "synthetic_1_8r_floor",
             "base_target": yearly_high,
+            "base_source": "52W-Hoch",
             "floor": floor,
             "synthetic": True,
         }
@@ -114,6 +119,23 @@ def select_operational_tp2(
         "source": "2R-Fallback · kein strukturelles TP2 verfügbar",
         "kind": "synthetic_2r_fallback",
         "base_target": math.nan,
+        "base_source": None,
         "floor": floor,
         "synthetic": True,
     }
+
+
+def structural_crv_from_plan(*, price: Any, risk_per_share: Any, plan: dict[str, Any]) -> dict[str, Any]:
+    """Return the measured structural CRV behind an operational TP2 plan.
+
+    Synthetic planning floors are intentionally ignored. The real target is the
+    plan's ``base_target`` (setup structure or 52W high). If no such target
+    exists, the technical CRV is unavailable rather than fabricated.
+    """
+    current = _finite(price)
+    risk = _finite(risk_per_share)
+    base = _finite((plan or {}).get("base_target"))
+    source = (plan or {}).get("base_source") or "kein belastbares strukturelles Ziel"
+    if current is None or risk is None or base is None or current <= 0 or risk <= 0 or base <= current:
+        return {"crv": math.nan, "target": math.nan, "source": "kein belastbares strukturelles Ziel"}
+    return {"crv": (base - current) / risk, "target": base, "source": str(source)}

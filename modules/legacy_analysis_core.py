@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from modules.crv_targeting import projected_breakout_target, select_operational_tp2
+from modules.crv_targeting import projected_breakout_target, select_operational_tp2, structural_crv_from_plan
 
 _REQUIRED_CONTEXT = frozenset(['adx14', 'ampel', 'analyst_label', 'bollinger_bands', 'build_chart_structures', 'build_company_summary', 'build_decision_explanation', 'build_market_fomo_package_v1525', 'build_red_flags', 'build_short_thesis', 'build_stock_fomo_package_v1525', 'calc_accumulation_distribution_days', 'calc_accumulation_score', 'calc_base_length_days', 'calc_base_quality_score', 'calc_breakout_day_volume_ratio', 'calc_breakout_volume_score', 'calc_cashflow_stability_score', 'calc_catalyst_score', 'calc_close_near_day_high', 'calc_correction_depth_pct', 'calc_distribution_pressure_score', 'calc_earnings_event_score', 'calc_event_risk_score', 'calc_higher_lows_score', 'calc_industry_strength_score', 'calc_institutional_quality_score', 'calc_leadership_score', 'calc_margin_stability_score', 'calc_post_earnings_reaction', 'calc_post_earnings_reaction_score', 'calc_pullback_dryup_score', 'calc_pullback_quality_score', 'calc_range_tightness_score', 'calc_recent_pullback_volume_ratio', 'calc_return_metrics', 'calc_revision_momentum_score', 'calc_rs_acceleration_score', 'calc_rs_benchmark_score', 'calc_sector_strength_score', 'calc_setup_priority_score', 'calc_setup_type_quality_score', 'calc_slope_pct', 'calc_trend_quality_score', 'calc_up_down_volume_ratio', 'calc_volatility_contraction_score', 'calc_volume_quality_proxy', 'calc_volume_quality_score', 'calc_volume_trend_score', 'catalyst_label', 'clamp', 'classify_event_phase', 'combine_fomo_packages_v1525', 'compute_chart_df', 'date', 'datetime', 'entry_quality_score', 'evaluate_chart_structure_bias', 'evaluate_market_filter', 'event_phase_text', 'fmt_num', 'format_price_zone', 'get_leadership_status', 'get_sector_etf_symbol', 'get_style_sector_adjustment', 'ideal_range_score', 'infer_data_source_flags', 'infer_display_currency', 'infer_market_bucket', 'infer_stock_style_advanced', 'institutional_quality_label', 'investment_case_label', 'is_hard_red_flag_v1604', 'known_ratio', 'linear_score', 'load_benchmark_data', 'load_data', 'load_extended_market_quote', 'load_sector_context', 'normalize_missing', 'normalize_tb_score_100', 'np', 'pd', 'rsi14', 'safe_last', 'sanitize_quality_red_flags_v1601', 'select_benchmark', 'setup_confidence_label', 'soften_growth_red_flag_item_v1604', 'stoch14', 'strength_text', 'tb_signal_label', 'timedelta', 'timezone', 'tradeability_label', 'trading_case_label', 'trading_timing_label', 'true_range', 'williams_r'])
 _CONTEXT: dict[str, Any] = {}
@@ -819,8 +819,20 @@ def _legacy_analyze_stock_impl(
         tp2_source = _tp2_plan["source"]
         tp2_target_kind = _tp2_plan["kind"]
         tp2_base_target = _tp2_plan["base_target"]
+        tp2_base_source = _tp2_plan.get("base_source")
         tp2_is_synthetic = bool(_tp2_plan["synthetic"])
         tp2_floor = _tp2_plan["floor"]
+
+        # v30.21ai: Keep the real structural CRV separate from the operational
+        # planning floor. A 1.8R/2R synthetic target is useful for trade planning,
+        # but must never masquerade as a measured technical opportunity.
+        planning_crv = (tp2 - price) / risk_per_share if risk_per_share > 0 else np.nan
+        _structural_crv_plan = structural_crv_from_plan(
+            price=price, risk_per_share=risk_per_share, plan=_tp2_plan
+        )
+        structural_target = _structural_crv_plan["target"]
+        structural_target_source = _structural_crv_plan["source"]
+        structural_crv = _structural_crv_plan["crv"]
 
         tp3_floor = max(price + 2.8 * risk_per_share, tp2 + 0.8 * risk_per_share)
         if pd.notna(technical_target_2) and technical_target_2 > tp2:
@@ -836,10 +848,17 @@ def _legacy_analyze_stock_impl(
             tp3 = round(max(price + 3 * risk_per_share, tp2 + risk_per_share), 2)
             tp3_source = "3R-Ziel"
 
-        crv = (tp2 - price) / (price - stop_used) if (price - stop_used) > 0 else 0
+        # Backward-compatible plan CRV remains in ``crv``; new displays and
+        # opportunity scoring use ``structural_crv``. Missing structure is neutral
+        # rather than being rewarded by a synthetic 1.8R floor.
+        crv = planning_crv if pd.notna(planning_crv) else 0
         timing_trade_score = round(clamp(s4 * 0.45 + s5 * 0.25 + rs_score * 0.20 + s6 * 0.10))
         stop_score = ideal_range_score(stop_dist, ideal_low=3.0, ideal_high=7.5, hard_low=1.0, hard_high=14.1)
-        crv_score = linear_score(crv, low=0.9, high=3.0, floor=15, ceiling=95)
+        crv_score = (
+            linear_score(float(structural_crv), low=0.9, high=3.0, floor=15, ceiling=95)
+            if pd.notna(structural_crv)
+            else 45
+        )
         market_trade_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 25)
         entry_score = entry_quality_score(entry_quality, price, entry_low, entry_high)
 
@@ -914,8 +933,13 @@ def _legacy_analyze_stock_impl(
         tp3_source = "-"
         tp2_target_kind = "missing"
         tp2_base_target = np.nan
+        tp2_base_source = None
         tp2_is_synthetic = False
         tp2_floor = np.nan
+        planning_crv = np.nan
+        structural_target = np.nan
+        structural_target_source = "kein belastbares strukturelles Ziel"
+        structural_crv = np.nan
         technical_target_1 = np.nan
         technical_target_2 = np.nan
         stop_source = "-"
@@ -2564,8 +2588,13 @@ def _legacy_analyze_stock_impl(
         "tp3_source": tp3_source,
         "tp2_target_kind": tp2_target_kind,
         "tp2_base_target": tp2_base_target,
+        "tp2_base_source": tp2_base_source,
         "tp2_is_synthetic": tp2_is_synthetic,
         "tp2_floor": tp2_floor,
+        "planning_crv": planning_crv,
+        "structural_target": structural_target,
+        "structural_target_source": structural_target_source,
+        "structural_crv": structural_crv,
         "technical_target_1": technical_target_1,
         "technical_target_2": technical_target_2,
         "stop_source": stop_source,

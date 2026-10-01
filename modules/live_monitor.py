@@ -320,12 +320,24 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     except Exception:
         crv_float = None
 
-    # v30.21z: Keep the productive CRV provenance visible on every scan so a
-    # changed CRV can be distinguished from a changed price. No scoring uses
-    # these strings; they are diagnostics/display only.
-    crv_target_source = str(r.get("tp2_source") or "-").strip() or "-"
+    # v30.21ai: The displayed/scored Screener CRV is the real structural CRV.
+    # Synthetic 1.8R/2R planning floors remain visible as a separate plan value.
+    crv_target_source = str(d.get("crv_target_source") or r.get("structural_target_source") or "-").strip() or "-"
     crv_stop_source = str(r.get("stop_source") or "-").strip() or "-"
-    crv_basis = f"Ziel: {crv_target_source} · Stop: {crv_stop_source}"
+    plan_crv = d.get("planning_crv")
+    plan_source = str(d.get("planning_target_source") or r.get("tp2_source") or "-").strip() or "-"
+    plan_is_synthetic = bool(d.get("planning_is_synthetic") or r.get("tp2_is_synthetic"))
+    if crv_float is None:
+        crv_basis = f"Echtes Ziel: n/a · Stop: {crv_stop_source}"
+    else:
+        crv_basis = f"Echtes Ziel: {crv_target_source} · Stop: {crv_stop_source}"
+    try:
+        if plan_crv is not None and str(plan_crv).strip().lower() not in {"", "none", "nan", "n/a", "-"}:
+            _plan_crv_num = float(plan_crv)
+            _plan_tag = "synthetisch" if plan_is_synthetic else "operativ"
+            crv_basis += f" · Plan-CRV {_plan_crv_num:.2f} ({_plan_tag}: {plan_source})"
+    except Exception:
+        pass
 
     alerts = build_setup_alerts_v210(r, style_name=style_name, decision=d)
     alert_types = [str(a.get("Alert-Typ") or "") for a in alerts]
@@ -1707,6 +1719,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "CRV-Basis": crv_basis,
         "CRV-Zielquelle": crv_target_source,
         "CRV-Stopquelle": crv_stop_source,
+        "Plan-CRV": None if plan_crv is None else plan_crv,
+        "Plan-CRV-Quelle": plan_source,
         "Entry-Abstand": d.get("entry_distance_text") or ("n/a" if entry_distance is None else f"{entry_distance:+.1f}%"),
         "Wann aktiv?": d.get("wave_trigger") or "-",
         "Setup-Alert": alert_text,

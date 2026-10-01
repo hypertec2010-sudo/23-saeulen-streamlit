@@ -1,0 +1,16 @@
+CHSM v30.21ai - Echtes technisches CRV
+
+Ersetzen/zusammenfuehren:
+- VERSION.txt
+- legacy_app.py
+- CHANGELOG.md
+- modules/crv_targeting.py
+- modules/legacy_analysis_core.py
+- modules/live_monitor.py
+
+Auf macOS beim Ordner modules: Zusammenfuehren, nicht den kompletten Ordner ersetzen.
+
+Wichtig:
+- CRV im Screener = reales strukturelles CRV.
+- Synthetische 1,8R-/2R-Ziele bleiben nur als Plan-CRV sichtbar.
+- Wenn kein echtes strukturelles Ziel existiert, wird CRV als n/a angezeigt.

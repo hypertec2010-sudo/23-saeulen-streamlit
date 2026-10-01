@@ -1,3 +1,11 @@
+# v30.21ai - Echtes technisches CRV
+
+- Screener zeigt und bewertet jetzt das reale strukturelle CRV statt eines synthetischen 1,8R-/2R-Planungsfloors.
+- Operatives Plan-CRV bleibt separat sichtbar und wird als synthetisch/operativ gekennzeichnet.
+- Fehlt ein belastbares strukturelles Ziel, zeigt das technische CRV `n/a` statt eines erfundenen Mindestwerts.
+- Einzelanalyse trennt Technisches CRV und Plan-CRV.
+- Keine Analystenziele im operativen technischen CRV.
+
 ## v30.15a - Chart-Stop Source Transparency
 - Risiko-Rechner trennt echte `Chart-Invalidierung`, `3,5%-Fallback`, `ATR-Schutz` und finalen `Empfohlenen Risiko-Stop`.
 - Numerische Chartquelle wird transparent ausgewiesen: Swing-/Higher-Low, Supportzonen-Unterkante, explizites Supportniveau oder Entry-/Reclaim-Zonen-Unterkante.

@@ -3899,6 +3899,62 @@ def _radar_v209_parse_price_zone(value):
     return None, None
 
 
+def _radar_v3021ai_real_target_value(result, price=None):
+    """Return the real structural target for CRV, never a synthetic R floor.
+
+    v30.21ai deliberately separates measured technical opportunity from planning
+    targets. New analysis results expose ``structural_target`` directly. Older
+    cached results are handled conservatively via tp2_base_target / genuine TP2.
+    Analyst targets and synthetic 1.8R/2R targets are never used here.
+    """
+    r = result or {}
+    if price is None:
+        price = _radar_v182_get_price(r)
+
+    def _valid(v):
+        num = _radar_v182_num(v, default=None)
+        if num is None or num <= 0:
+            return None
+        if price is not None and price > 0 and num <= price * 1.0001:
+            return None
+        return num
+
+    direct = _valid(r.get("structural_target"))
+    if direct is not None:
+        return direct, str(r.get("structural_target_source") or "Strukturelles Ziel")
+
+    base = _valid(r.get("tp2_base_target"))
+    if base is not None:
+        return base, str(r.get("tp2_base_source") or "Strukturelles Basisziel")
+
+    # Backward compatibility for older cached results: only accept TP2 when it
+    # is explicitly non-synthetic.
+    if not bool(r.get("tp2_is_synthetic")):
+        tp2 = _valid(_radar_v182_first_non_empty(r, "tp2", "TP2", "target2", "Target_2", default=""))
+        if tp2 is not None:
+            return tp2, str(r.get("tp2_source") or "TP2 / Hauptziel")
+
+    technical = _valid(_radar_v182_first_non_empty(r, "technical_target_1", "Technical_Target_1", "Setup_Target_1", default=""))
+    if technical is not None:
+        return technical, "technisches Setup-Ziel"
+
+    wave = r.get("wave_structure_pkg") or {}
+    if isinstance(wave, dict):
+        for key in ("wave_extension_127", "target_127", "wave_target_127"):
+            val = _valid(wave.get(key))
+            if val is not None:
+                return val, "Wave-Ziel"
+        low, high = _radar_v209_parse_price_zone(wave.get("wave_target_zone") or wave.get("wave_readable_target") or "")
+        val = _valid(low) or _valid(high)
+        if val is not None:
+            return val, "Wave-Ziel"
+
+    high52 = _valid(_radar_v182_first_non_empty(r, "high52", "52W_High", "high_52w", default=""))
+    if high52 is not None:
+        return high52, "52W-Hoch"
+    return None, "kein belastbares strukturelles Ziel"
+
+
 def _radar_v209_main_target_value(result, price=None):
     """Bestimmt ein sinnvolles Radar-Ziel fuer CRV.
 
@@ -3984,8 +4040,14 @@ def build_radar_entry_rr_package_v182(result):
     price = _radar_v182_get_price(r)
     entry_zone = _radar_v182_entry_zone_text(r)
     low, high = _radar_v182_parse_zone(entry_zone)
-    tp1, tp1_source = _radar_v209_main_target_value(r, price=price)
+    # v30.21ai: Screener CRV is the real structural CRV. The operational
+    # 1.8R/2R floor remains a separate planning value and can no longer make an
+    # opportunity look technically better than its actual target space.
+    tp1, tp1_source = _radar_v3021ai_real_target_value(r, price=price)
     stop = _radar_v182_stop_value(r)
+    plan_crv = _radar_v182_num(r.get("planning_crv"), default=_radar_v182_num(r.get("crv"), default=None))
+    plan_source = str(r.get("tp2_source") or "-")
+    plan_is_synthetic = bool(r.get("tp2_is_synthetic"))
 
     entry_distance_pct = None
     entry_position = "Keine Entry-Zone"
@@ -4019,7 +4081,7 @@ def build_radar_entry_rr_package_v182(result):
     crv = None
     rr_label = "CRV n/a"
     rr_score = 45.0
-    rr_text = "CRV nicht sauber berechenbar; Entry, Stop oder strukturelles Ziel fehlen."
+    rr_text = "Technisches CRV nicht berechenbar; Stop oder belastbares strukturelles Ziel fehlen."
     if price is not None and stop is not None and tp1 is not None and stop > 0 and tp1 > 0:
         risk = price - stop
         reward = tp1 - price
@@ -4040,7 +4102,7 @@ def build_radar_entry_rr_package_v182(result):
             else:
                 rr_label = "CRV unattraktiv"
                 rr_score = 24.0
-            rr_text = f"CRV {crv:.2f} · Stop {stop:.2f} · Ziel {tp1:.2f} ({tp1_source})"
+            rr_text = f"Technisches CRV {crv:.2f} · Stop {stop:.2f} · echtes Ziel {tp1:.2f} ({tp1_source})"
         elif risk <= 0:
             rr_label = "Stop unplausibel"
             rr_score = 25.0
@@ -4071,6 +4133,11 @@ def build_radar_entry_rr_package_v182(result):
         "stop": stop,
         "tp1": tp1,
         "target_source": tp1_source,
+        "crv_kind": "structural" if crv is not None else "missing",
+        "planning_crv": None if plan_crv is None else round(plan_crv, 2),
+        "planning_target": _radar_v182_num(r.get("tp2"), default=None),
+        "planning_target_source": plan_source,
+        "planning_is_synthetic": plan_is_synthetic,
     }
 
 
@@ -5014,6 +5081,11 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "entry_distance_text": entry_rr_pkg.get("entry_distance_text"),
         "entry_quality_text": entry_rr_pkg.get("entry_text"),
         "crv": entry_rr_pkg.get("crv"),
+        "crv_target_source": entry_rr_pkg.get("target_source"),
+        "crv_kind": entry_rr_pkg.get("crv_kind"),
+        "planning_crv": entry_rr_pkg.get("planning_crv"),
+        "planning_target_source": entry_rr_pkg.get("planning_target_source"),
+        "planning_is_synthetic": entry_rr_pkg.get("planning_is_synthetic"),
         "risk_reward_label": entry_rr_pkg.get("rr_label"),
         "risk_reward_text": entry_rr_pkg.get("rr_text"),
         "gate_reasons": "; ".join(gates) if gates else "keine harten Gates",
@@ -28478,6 +28550,11 @@ if result is not None:
     tp1_source = result["tp1_source"]
     tp2_source = result["tp2_source"]
     tp3_source = result["tp3_source"]
+    structural_crv = result.get("structural_crv")
+    structural_target = result.get("structural_target")
+    structural_target_source = result.get("structural_target_source") or "kein belastbares strukturelles Ziel"
+    planning_crv = result.get("planning_crv", result.get("crv"))
+    tp2_is_synthetic = bool(result.get("tp2_is_synthetic"))
     technical_target_1 = result["technical_target_1"]
     technical_target_2 = result["technical_target_2"]
     stop_source = result["stop_source"]
@@ -32410,7 +32487,16 @@ if result is not None:
                 )
 
                 c7, c8, c9 = st.columns(3)
-                c7.metric(f"Chance-Risiko-Verhältnis {ampel_crv(crv)}", f"{crv:.1f}:1")
+                _structural_crv_v3021ai = _radar_v182_num(structural_crv, default=None)
+                _planning_crv_v3021ai = _radar_v182_num(planning_crv, default=None)
+                _crv_display_v3021ai = "n/a" if _structural_crv_v3021ai is None else f"{_structural_crv_v3021ai:.2f}:1"
+                _crv_delta_v3021ai = None
+                if _planning_crv_v3021ai is not None:
+                    _crv_delta_v3021ai = (
+                        f"Plan {_planning_crv_v3021ai:.2f}:1 · synthetisch"
+                        if tp2_is_synthetic else f"Plan {_planning_crv_v3021ai:.2f}:1"
+                    )
+                c7.metric("Technisches CRV", _crv_display_v3021ai, _crv_delta_v3021ai)
                 c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
                 c9.metric("Zeitlicher Stop", time_stop, "wenn der Kurs nicht anschiebt")
 
@@ -32431,7 +32517,8 @@ if result is not None:
                 st.markdown("**Herleitung von Stop und Zielen**")
                 st.write(f"• Stop: {stop_source}")
                 st.write(f"• TP1: {tp1_source}")
-                st.write(f"• TP2: {tp2_source}")
+                st.write(f"• TP2 / Plan-Ziel: {tp2_source}")
+                st.write(f"• Echtes CRV-Ziel: {structural_target_source}" + (f" · {float(structural_target):.2f} {ccy}" if _radar_v182_num(structural_target, default=None) is not None else " · n/a"))
                 st.write(f"• TP3: {tp3_source}")
 
                 td1, td2 = st.columns(2)

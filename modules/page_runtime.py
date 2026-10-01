@@ -62,6 +62,48 @@ def _activate_page_context(
     return page_changed
 
 
+def _render_performance_sidebar(snapshot: dict | None) -> None:
+    """Render the last completed performance snapshot before legacy code runs.
+
+    Rendering before ``runpy.run_path`` keeps the diagnostic visible even when
+    legacy code ends the current Streamlit run via ``st.stop`` or ``st.rerun``.
+    The figures therefore intentionally describe the last *completed* page run.
+    """
+    try:
+        with st.sidebar.expander("⏱ Performance", expanded=False):
+            if not snapshot:
+                st.caption("Messung wird nach dem ersten vollständig abgeschlossenen Seitenlauf angezeigt.")
+                return
+
+            elapsed_s = float(snapshot.get("elapsed_s", 0.0) or 0.0)
+            storage_perf = snapshot.get("storage") or {}
+            st.caption(f"Letzter vollständiger Seitenlauf: {elapsed_s:.2f} s")
+            if storage_perf:
+                reads = int(storage_perf.get("backend_loads", 0) or 0)
+                hits = int(storage_perf.get("cache_hits", 0) or 0)
+                backend_ms = float(storage_perf.get("backend_ms", 0.0) or 0.0)
+                saves = int(storage_perf.get("save_calls", 0) or 0)
+                st.caption(
+                    f"Storage: {reads} Backend-Reads · {hits} Doppel-Reads vermieden · "
+                    f"{backend_ms/1000.0:.2f} s Remote-Zeit · {saves} Writes"
+                )
+                slow = list(storage_perf.get("slow_namespaces") or [])[:4]
+                if slow:
+                    st.caption("Langsamste Storage-Bereiche des letzten Laufs:")
+                    for row in slow:
+                        st.caption(
+                            f"• {row.get('namespace', '-')}: {float(row.get('ms', 0.0) or 0.0)/1000.0:.2f} s "
+                            f"({int(row.get('backend_loads', 0) or 0)} Read)"
+                        )
+            if elapsed_s >= 1.5:
+                st.caption(
+                    "Hinweis: Ein Streamlit-Widget löst weiterhin einen Seiten-Rerun aus. "
+                    "Die Messung zeigt, ob Storage oder der übrige Seitenaufbau dominiert."
+                )
+    except Exception:
+        pass
+
+
 def run_workspace_page(
     workspace: str,
     *,
@@ -84,6 +126,14 @@ def run_workspace_page(
         _clear_legacy_workspace_query()
 
     os.environ["CAPITAL_HILL_MULTIPAGE"] = "1"
+
+    # v30.21af: render the last completed measurement *before* legacy code.
+    # Some legacy paths legitimately call st.rerun()/st.stop(), which means any
+    # UI emitted after runpy.run_path may never be reached on that rerun.
+    try:
+        _render_performance_sidebar(st.session_state.get("_chsm_perf_last_run_v3021ae"))
+    except Exception:
+        _render_performance_sidebar(None)
 
     # v30.21ae: lightweight whole-page timing. The legacy bridge still runs the
     # complete page script on every Streamlit interaction, so this gives us an
@@ -111,35 +161,5 @@ def run_workspace_page(
         history = list(st.session_state.get("_chsm_perf_history_v3021ae") or [])
         history.append(snapshot)
         st.session_state["_chsm_perf_history_v3021ae"] = history[-12:]
-    except Exception:
-        pass
-
-    # Deliberately compact and collapsed: useful for diagnosis, but not another
-    # permanent content block in the already dense CHSM workspace.
-    try:
-        with st.sidebar.expander("⏱ Performance", expanded=False):
-            st.caption(f"Seitenlauf: {elapsed_s:.2f} s")
-            if storage_perf:
-                reads = int(storage_perf.get("backend_loads", 0) or 0)
-                hits = int(storage_perf.get("cache_hits", 0) or 0)
-                backend_ms = float(storage_perf.get("backend_ms", 0.0) or 0.0)
-                saves = int(storage_perf.get("save_calls", 0) or 0)
-                st.caption(
-                    f"Storage: {reads} Backend-Reads · {hits} Doppel-Reads vermieden · "
-                    f"{backend_ms/1000.0:.2f} s Remote-Zeit · {saves} Writes"
-                )
-                slow = list(storage_perf.get("slow_namespaces") or [])[:4]
-                if slow:
-                    st.caption("Langsamste Storage-Bereiche dieses Laufs:")
-                    for row in slow:
-                        st.caption(
-                            f"• {row.get('namespace', '-')}: {float(row.get('ms', 0.0) or 0.0)/1000.0:.2f} s "
-                            f"({int(row.get('backend_loads', 0) or 0)} Read)"
-                        )
-            if elapsed_s >= 1.5:
-                st.caption(
-                    "Hinweis: Ein Streamlit-Widget löst weiterhin einen Seiten-Rerun aus. "
-                    "Die Messung zeigt jetzt, ob Storage oder der übrige Seitenaufbau dominiert."
-                )
     except Exception:
         pass

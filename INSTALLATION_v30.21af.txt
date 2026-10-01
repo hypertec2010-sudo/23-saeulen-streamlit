@@ -1,0 +1,15 @@
+CHSM v30.21af - Performance-Anzeige persistent
+
+Ersetzen / zusammenfuehren:
+- VERSION.txt
+- modules/page_runtime.py
+- modules/storage/manager.py
+
+macOS: modules zusammenfuehren, nicht den gesamten Ordner ersetzen.
+
+Aenderung:
+- Performance-Expander wird vor dem Legacy-Seitenlauf aus dem letzten vollstaendigen Messwert gerendert.
+- Dadurch bleibt er auch sichtbar, wenn legacy_app.py st.rerun() oder st.stop() ausloest.
+- Beschriftung nennt bewusst "Letzter vollstaendiger Seitenlauf".
+- Performance-Phase-1-Storage-Optimierung bleibt unveraendert enthalten.
+- Keine Trading-, Score-, Ampel-, CRV-, Stop- oder Learning-Logik geaendert.

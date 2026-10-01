@@ -1,29 +1,24 @@
-CHSM v30.21aa - Pivot-Wenn-dann-Handlungshilfe
+CHSM v30.21ab - Trading 212 Broker-Korrektur
 
-Installation (macOS / Streamlit Cloud):
-1. Sicherung des aktuellen Projekts erstellen.
-2. VERSION.txt und legacy_app.py ersetzen.
+Installation auf macOS:
+1. CHSM beenden.
+2. VERSION.txt und legacy_app.py im Projektstamm ersetzen.
 3. Den Ordner modules in den vorhandenen modules-Ordner ZUSAMMENFUEHREN, nicht den gesamten Ordner ersetzen.
-4. Optional: tests ebenfalls zusammenfuehren.
-5. Streamlit neu starten / Cloud deployen.
+4. Optional kann tests/test_trading212_correction.py mitkopiert werden.
+5. Streamlit neu starten.
 
-Neu in v30.21aa:
-- Die bisherige technische Pivot-Zahlenbox wurde in eine klare Wenn-dann-Lesart umgebaut:
-  Aktuell -> Positiv, wenn -> Negativ, wenn -> Was jetzt?
-- Es werden standardmaessig nur die aktuell relevanten Pivot-Marken angezeigt.
-- R2/S2 erscheinen nur, wenn sie fuer die aktuelle Lage als naechste Marke relevant sind.
-- Konfluenz mit einer aktuell relevanten CHSM-S/R-Zone wird als verstaerkte technische Zone hervorgehoben.
-- Die Pivot-Basis wird lesbarer als Datum angezeigt.
-- Die komplette bisherige Pivot-Level-Tabelle wurde aus der Standardansicht entfernt, um den Charttechnik-Bereich kompakter zu halten.
+Neu:
+- Trading-212-CSV wird an ihrer charakteristischen Spaltenstruktur erkannt.
+- Neuer Korrekturmodus im Depot-Import mit Auswahlhaken pro CHSM-Ticker.
+- Ausgewaehlte Ticker werden chronologisch aus Trading-212-BUY/SELL neu aufgebaut.
+- Broker Action, Stueckzahl, Ausfuehrungskurs und Broker-ID sind fuer die Korrektur massgeblich.
+- Manuelle Exit-Buchungen im korrigierten Zeitraum werden NICHT geloescht, sondern audit-sicher als
+  "Storniert · Broker-Korrektur" markiert und dadurch aus Performance/Lernen herausgenommen.
+- Vorhandene CHSM-Metadaten (Stop, Ziel, Gruppe, Entry-Kontext etc.) werden soweit vorhanden erhalten.
+- Verlustfreie Position-vorher-Snapshots koennen eine versehentlich geschlossene Position als Metadatenquelle wiederherstellen.
+- Reine Trading-212-Pie/externe Ticker ohne CHSM-Bezug werden nicht zur Korrektur angeboten.
+- Unvollstaendige Zyklen (z. B. SELL vor ausreichend BUY in der Datei) werden blockiert.
+- Der Mindestvolumenfilter wirkt absichtlich NICHT im Broker-Korrekturmodus.
 
-Weiterhin unveraendert:
-- Pivot Points bleiben vollstaendig score-neutral.
-- Keine Aenderung an Ampel, Grade, CRV, Entry, Stop, Trigger oder produktiver Handelslogik.
-- Kein zusaetzlicher Provider-/Yahoo-Aufruf.
-- Berechnung weiterhin aus der vorherigen abgeschlossenen Tageskerze.
-- v30.21z CRV-Stabilitaetsfix bleibt enthalten.
-
-Tests:
-- Pivot-/CRV-/Change-Explainer gezielt: 17/17 bestanden.
-- Vollstaendiger Projektstand ohne bekannten Source-Guard: 37 bestanden, 1 uebersprungen.
-- Bekannter Source-Guard scheitert weiterhin nur, weil .github/workflows/quality.yml im gelieferten Projektstand fehlt.
+Hinweis:
+Der Benutzer muss vor der Korrektur bestaetigen, dass die CSV fuer die ausgewaehlten Ticker den vollstaendigen Broker-Zyklus enthaelt.

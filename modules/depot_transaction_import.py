@@ -152,6 +152,18 @@ def expected_columns() -> list[str]:
     return list(_EXPECTED_COLUMNS)
 
 
+def is_trading212_export(df: pd.DataFrame) -> bool:
+    """Return True only for the distinctive Trading 212 activity CSV/XLSX schema."""
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return False
+    cols = {_colkey(c) for c in df.columns}
+    required = {
+        "action", "time (utc)", "isin", "ticker", "id",
+        "no. of shares", "price / share", "gross total", "net total",
+    }
+    return required.issubset(cols)
+
+
 def _read_csv_bytes(raw: bytes) -> pd.DataFrame:
     errors = []
     for enc in ("utf-8-sig", "utf-8", "cp1252", "latin1"):
@@ -591,7 +603,8 @@ def _shares_display(value: float) -> str:
 
 def _journal_record(*, watchlist_name, ticker, name, typ, date_text, time_text, price, shares, remaining,
                     entry, realized_pnl, realized_pct, total_realized_pnl, currency, import_id,
-                    notes="", broker_result=None, broker_result_currency="", details=""):
+                    notes="", broker_result=None, broker_result_currency="", details="",
+                    broker_source="Depot-Excel"):
     return {
         "ID": "broker-" + hashlib.sha1(str(import_id).encode("utf-8")).hexdigest()[:24],
         "Zeit": time_text,
@@ -617,7 +630,7 @@ def _journal_record(*, watchlist_name, ticker, name, typ, date_text, time_text, 
         "Erkenntnis": "",
         "Details": details,
         "Broker Import ID": import_id,
-        "Broker Quelle": "Depot-Excel",
+        "Broker Quelle": _txt(broker_source, "Depot-Excel"),
         "Broker Preis-Währung": currency,
         "Realisiert P/L-Währung": currency,
         "Broker Result": broker_result,
@@ -645,7 +658,7 @@ def _parse_any_time(value: Any):
 
 def _is_broker_position(position: dict[str, Any] | None) -> bool:
     src = _txt((position or {}).get("broker_source")).lower().replace("_", " ").replace("-", " ")
-    return "depot" in src and "excel" in src
+    return ("depot" in src and "excel" in src) or ("trading" in src and "212" in src)
 
 
 def reconciliation_guard(
@@ -843,6 +856,7 @@ def apply_transactions(
     mode: str = "incremental",
     already_processed: set[str] | None = None,
     screener_only: bool = False,
+    broker_source: str = "Depot-Excel",
 ) -> dict[str, Any]:
     """Apply BUY/SELL rows to a copy of the position store.
 
@@ -943,7 +957,7 @@ def apply_transactions(
                 stats["external_rows"] += 1
                 applied_rows.append(row)
                 continue
-            if screener_only and open_qty > 1e-12 and _txt(pos.get("broker_source")).lower() != "depot-excel":
+            if screener_only and open_qty > 1e-12 and not _is_broker_position(pos):
                 row["Import-Hinweis"] = "Legacy-Bestand: Kauf ist bereits in der manuell geführten Screener-Stückzahl enthalten; nicht doppelt gebucht"
                 row["Screener-Klassifizierung"] = "BASELINE"
                 stats["baseline_rows"] += 1
@@ -978,7 +992,7 @@ def apply_transactions(
                 "portfolio_group": _txt(pos.get("portfolio_group")),
                 "price_currency": currency or _txt(pos.get("price_currency")),
                 "broker_isin": _txt(row.get("ISIN")) or _txt(pos.get("broker_isin")),
-                "broker_source": "Depot-Excel",
+                "broker_source": _txt(broker_source, "Depot-Excel"),
                 "broker_last_import_id": txid,
                 "strategy_origin": _txt(pos.get("strategy_origin"), "screener" if screener_only else ""),
                 "execution_status": "open",
@@ -1079,6 +1093,7 @@ def apply_transactions(
             broker_result=broker_result,
             broker_result_currency=broker_result_currency,
             details=details,
+            broker_source=broker_source,
         ))
         if is_close:
             current.pop(ticker, None)

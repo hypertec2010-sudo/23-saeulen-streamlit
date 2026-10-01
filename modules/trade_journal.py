@@ -1121,3 +1121,275 @@ def _v270_reset_trade_journal(watchlist_name=None) -> None:
         wl = str(watchlist_name)
         store["entries"] = [e for e in (store.get("entries") or []) if str(e.get("Watchlist")) != wl]
     _v270_save_trade_journal(store)
+
+# ---------- v30.21ab: Trading 212 authoritative correction ----------
+def _v3021ab_find_position_key(positions: dict, broker_ticker: str):
+    """Find one CHSM position matching a broker ticker, tolerant of exchange suffixes."""
+    positions = dict(positions or {})
+    target = _broker_ticker_key(broker_ticker)
+    exact = str(broker_ticker or "").strip().upper()
+    if exact in positions:
+        return exact
+    matches = [str(k) for k in positions if _broker_ticker_key(k) == target]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _v3021ab_manual_execution_rows(watchlist_name: str):
+    store = _v270_load_trade_journal()
+    rows = []
+    wl = str(watchlist_name or "Standard")
+    for idx, raw in enumerate(list(store.get("entries") or [])):
+        e = dict(raw or {})
+        if str(e.get("Watchlist") or "Standard") != wl:
+            continue
+        if str(e.get("Typ") or "") not in {"Teilverkauf", "Position geschlossen"}:
+            continue
+        # Only human/manual rows may be superseded. Existing broker rows remain immutable.
+        if str(e.get("Broker Import ID") or "").strip():
+            continue
+        rows.append((idx, e))
+    return rows
+
+
+def _v3021ab_latest_position_snapshot(watchlist_name: str, broker_ticker: str):
+    """Return the newest exact pre-close snapshot for a ticker, if one exists."""
+    target = _broker_ticker_key(broker_ticker)
+    candidates = []
+    for idx, e in _v3021ab_manual_execution_rows(watchlist_name):
+        if _broker_ticker_key(e.get("Ticker")) != target:
+            continue
+        snap = e.get("Position vorher")
+        if not isinstance(snap, dict) or not snap:
+            continue
+        ts = None
+        try:
+            ts = pd.to_datetime(e.get("Zeit"), dayfirst=True, errors="coerce")
+        except Exception:
+            ts = pd.NaT
+        candidates.append((ts, idx, dict(snap), e))
+    if not candidates:
+        return None, None
+    candidates.sort(key=lambda x: (pd.Timestamp.min if pd.isna(x[0]) else x[0], x[1]))
+    _, _, snap, entry = candidates[-1]
+    return snap, entry
+
+
+def _v3021ab_trading212_correction_preview(watchlist_name: str, normalized_broker: pd.DataFrame, positions: dict | None) -> dict:
+    """Read-only preview for selected-ticker Trading 212 authoritative rebuilds.
+
+    A ticker is offered only when CHSM has evidence that it belongs to the managed
+    Screener universe: an open position or at least one manual exit journal row.
+    The broker file must be chronologically replayable from zero for that ticker.
+    This deliberately excludes pure Pie/external tickers from the correction list.
+    """
+    broker = normalized_broker.copy() if isinstance(normalized_broker, pd.DataFrame) else pd.DataFrame()
+    current = {str(k).upper(): dict(v or {}) for k, v in dict(positions or {}).items()}
+    if broker.empty or "Action-Typ" not in broker.columns:
+        return {"table": pd.DataFrame(), "eligible_tickers": [], "blocked_tickers": [], "summary": {"candidates": 0, "blocked": 0, "consistent": 0}}
+
+    work = broker.copy()
+    if "Import-Status" in work.columns:
+        work = work[work["Import-Status"].astype(str).eq("OK")].copy()
+    work = work[work["Action-Typ"].astype(str).isin(["BUY", "SELL"])].copy()
+    if work.empty:
+        return {"table": pd.DataFrame(), "eligible_tickers": [], "blocked_tickers": [], "summary": {"candidates": 0, "blocked": 0, "consistent": 0}}
+    work["__time"] = pd.to_datetime(work.get("Zeit Berlin"), errors="coerce", utc=True)
+    work = work.sort_values(["Ticker", "__time", "Zeile"], ascending=[True, True, True], na_position="last")
+
+    manual_rows = _v3021ab_manual_execution_rows(watchlist_name)
+    out = []
+    eligible, blocked = [], []
+    consistent = 0
+    for ticker, part in work.groupby(work["Ticker"].astype(str).str.upper(), sort=True):
+        ticker = str(ticker or "").strip().upper()
+        if not ticker:
+            continue
+        part = part.sort_values(["__time", "Zeile"], ascending=[True, True], na_position="last")
+        pos_key = _v3021ab_find_position_key(current, ticker)
+        pos = dict(current.get(pos_key) or {}) if pos_key else {}
+        snap, snap_entry = _v3021ab_latest_position_snapshot(watchlist_name, ticker)
+
+        first_date = str(part.iloc[0].get("Datum Berlin") or "")
+        last_date = str(part.iloc[-1].get("Datum Berlin") or "")
+        affected = []
+        for idx, e in manual_rows:
+            if _broker_ticker_key(e.get("Ticker")) != _broker_ticker_key(ticker):
+                continue
+            d = str(e.get("Datum") or "")
+            if first_date and last_date and d and first_date <= d <= last_date:
+                affected.append((idx, e))
+
+        # Exclude unrelated Pie/external symbols: there must be CHSM state or a manual execution to correct.
+        tracked = bool(pos) or bool(affected) or bool(snap)
+        if not tracked:
+            continue
+
+        balance = 0.0
+        avg_entry = None
+        buy_qty = sell_qty = 0.0
+        buy_rows = sell_rows = 0
+        problem = ""
+        first_action = str(part.iloc[0].get("Action-Typ") or "")
+        for _, ser in part.iterrows():
+            act = str(ser.get("Action-Typ") or "")
+            qty = _num(ser.get("Stück"), 0.0) or 0.0
+            px = _num(ser.get("Preis/Aktie"), None)
+            if act == "BUY":
+                buy_rows += 1
+                buy_qty += qty
+                if px is None or qty <= 0:
+                    problem = "Ungültige Kaufzeile in der Brokerdatei."
+                    break
+                new_balance = balance + qty
+                avg_entry = px if balance <= 1e-12 or avg_entry is None else ((avg_entry * balance) + (px * qty)) / new_balance
+                balance = new_balance
+            elif act == "SELL":
+                sell_rows += 1
+                sell_qty += qty
+                if qty > balance + 1e-8:
+                    problem = (
+                        f"Datei beginnt nicht mit vollständigem Bestand: Verkauf {qty:.8f} Stück, "
+                        f"zuvor in Datei nur {balance:.8f} Stück aufgebaut."
+                    )
+                    break
+                balance = max(0.0, balance - qty)
+                if balance <= 1e-12:
+                    avg_entry = None
+
+        current_qty = _num(pos.get("shares"), None) if pos else None
+        current_entry = _num(pos.get("entry"), None) if pos else None
+        same_qty = current_qty is not None and abs(float(current_qty) - float(balance)) <= 1e-6
+        same_entry = (
+            (balance <= 1e-12 and current_qty is not None and float(current_qty) <= 1e-12)
+            or (avg_entry is not None and current_entry is not None and abs(float(avg_entry) - float(current_entry)) <= max(0.01, abs(float(avg_entry)) * 1e-5))
+        )
+        if problem:
+            status = "BLOCKIERT"
+            blocked.append(ticker)
+            hint = problem + " Bitte einen Trading-212-Export ab Beginn des Positionszyklus verwenden."
+        elif same_qty and same_entry and not affected:
+            status = "BEREITS KONSISTENT"
+            consistent += 1
+            hint = "Broker-Endbestand und CHSM stimmen bereits überein; keine Korrektur nötig."
+        else:
+            status = "KORREKTUR MÖGLICH"
+            eligible.append(ticker)
+            hint = "Ausgewählt: Broker BUY/SELL ersetzt die Ausführungsseite für diesen Ticker; manuelle Exit-Buchungen im Datei-Zeitraum werden storniert, nicht gelöscht."
+            seed = pos or snap or {}
+            opened = str(seed.get("broker_opened_at") or seed.get("opened_at_iso") or "").strip()
+            if opened and str(part.iloc[0].get("Zeit Berlin") or ""):
+                try:
+                    opened_ts = pd.to_datetime(opened, errors="coerce", utc=True)
+                    first_ts = pd.to_datetime(part.iloc[0].get("Zeit Berlin"), errors="coerce", utc=True)
+                    if pd.notna(opened_ts) and pd.notna(first_ts) and opened_ts < first_ts - pd.Timedelta(days=1):
+                        hint += " Hinweis: CHSM kennt einen früheren Positionsbeginn; bitte prüfen, ob der CSV-Zeitraum wirklich den kompletten Broker-Zyklus enthält."
+                except Exception:
+                    pass
+
+        out.append({
+            "Ticker": ticker,
+            "Status": status,
+            "CHSM Stück": None if current_qty is None else round(float(current_qty), 8),
+            "CHSM Entry": None if current_entry is None else round(float(current_entry), 6),
+            "Broker Endbestand": round(float(balance), 8),
+            "Broker Entry": None if avg_entry is None else round(float(avg_entry), 6),
+            "Broker Käufe": int(buy_rows),
+            "Broker Verkäufe": int(sell_rows),
+            "Kauf-Stück": round(float(buy_qty), 8),
+            "Verkauf-Stück": round(float(sell_qty), 8),
+            "Erste Broker-Aktion": first_action,
+            "Datei von": first_date,
+            "Datei bis": last_date,
+            "Manuelle Exit-Buchungen": int(len(affected)),
+            "Snapshot vorhanden": "Ja" if isinstance(snap, dict) and snap else "Nein",
+            "Hinweis": hint,
+        })
+
+    table = pd.DataFrame(out)
+    return {
+        "table": table,
+        "eligible_tickers": sorted(set(eligible)),
+        "blocked_tickers": sorted(set(blocked)),
+        "summary": {"candidates": len(set(eligible)), "blocked": len(set(blocked)), "consistent": int(consistent)},
+    }
+
+
+def _v3021ab_prepare_correction_positions(watchlist_name: str, positions: dict | None, tickers: list[str]) -> dict:
+    """Seed missing selected positions from lossless pre-close snapshots before broker rebuild."""
+    current = {str(k).upper(): dict(v or {}) for k, v in dict(positions or {}).items()}
+    seeded = []
+    aliases_removed = []
+    for ticker in [str(x or "").strip().upper() for x in (tickers or []) if str(x or "").strip()]:
+        pos_key = _v3021ab_find_position_key(current, ticker)
+        if pos_key and pos_key != ticker:
+            current[ticker] = dict(current[pos_key])
+            current.pop(pos_key, None)
+            aliases_removed.append(pos_key)
+            pos_key = ticker
+        if pos_key:
+            continue
+        snap, _ = _v3021ab_latest_position_snapshot(watchlist_name, ticker)
+        if isinstance(snap, dict) and snap:
+            seed = dict(snap)
+            seed["ticker"] = ticker
+            current[ticker] = seed
+            seeded.append(ticker)
+    return {"positions": current, "seeded_tickers": seeded, "aliases_removed": aliases_removed}
+
+
+def _v3021ab_supersede_manual_executions(watchlist_name: str, normalized_broker: pd.DataFrame, tickers: list[str]) -> dict:
+    """Audit-safe correction: manual exit executions are marked superseded, never deleted."""
+    broker = normalized_broker.copy() if isinstance(normalized_broker, pd.DataFrame) else pd.DataFrame()
+    selected = {_broker_ticker_key(x) for x in (tickers or []) if _broker_ticker_key(x)}
+    if broker.empty or not selected:
+        return {"ok": True, "updated": 0, "ids": []}
+    if "Action-Typ" in broker.columns:
+        broker = broker[broker["Action-Typ"].astype(str).isin(["BUY", "SELL"])].copy()
+    if "Import-Status" in broker.columns:
+        broker = broker[broker["Import-Status"].astype(str).eq("OK")].copy()
+    broker = broker[broker["Ticker"].map(_broker_ticker_key).isin(selected)].copy()
+    if broker.empty:
+        return {"ok": True, "updated": 0, "ids": []}
+
+    bounds = {}
+    for tk, part in broker.groupby(broker["Ticker"].map(_broker_ticker_key)):
+        dates = [str(x) for x in part.get("Datum Berlin", pd.Series(dtype=str)).tolist() if str(x)]
+        if dates:
+            bounds[tk] = (min(dates), max(dates))
+
+    store = _v270_load_trade_journal()
+    entries = list(store.get("entries") or [])
+    changed = 0
+    changed_ids = []
+    stamp = _now().strftime("%d.%m.%Y %H:%M:%S")
+    wl = str(watchlist_name or "Standard")
+    for i, raw in enumerate(entries):
+        e = dict(raw or {})
+        if str(e.get("Watchlist") or "Standard") != wl:
+            continue
+        old_type = str(e.get("Typ") or "")
+        if old_type not in {"Teilverkauf", "Position geschlossen"}:
+            continue
+        if str(e.get("Broker Import ID") or "").strip():
+            continue
+        tk = _broker_ticker_key(e.get("Ticker"))
+        if tk not in selected or tk not in bounds:
+            continue
+        d = str(e.get("Datum") or "")
+        lo, hi = bounds[tk]
+        if not d or not (lo <= d <= hi):
+            continue
+        e["Ursprünglicher Typ"] = old_type
+        e["Typ"] = "Storniert · Broker-Korrektur"
+        e["Broker Korrektur"] = "Trading 212 CSV"
+        e["Broker Korrektur am"] = stamp
+        details = str(e.get("Details") or "").strip()
+        marker = "Manuelle Ausführungsbuchung durch Trading-212-CSV ersetzt; Original bleibt nur für Audit erhalten."
+        if marker not in details:
+            e["Details"] = (details + " " + marker).strip()
+        entries[i] = e
+        changed += 1
+        changed_ids.append(str(e.get("ID") or ""))
+    store["entries"] = entries[-5000:]
+    ok = bool(_v270_save_trade_journal(store)) if changed else True
+    return {"ok": ok, "updated": changed if ok else 0, "ids": changed_ids if ok else []}

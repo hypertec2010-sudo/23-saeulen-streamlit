@@ -1,0 +1,21 @@
+CHSM v30.21ac - Trading 212 fehlende offene Positionen
+
+Ersetzen/zusammenfuehren:
+- legacy_app.py
+- VERSION.txt
+- modules/trade_journal.py
+
+Auf macOS beim Ordner modules: Zusammenfuehren, nicht Ersetzen.
+
+Neu:
+- Trading-212-CSV zeigt offene Broker-Positionen, die CHSM noch nicht kennt.
+- Nur explizit angehakte Ticker werden uebernommen.
+- Der aktuelle offene Positionszyklus wird aus der CSV rekonstruiert.
+- Unvollstaendige Zyklen werden blockiert.
+- Pie/externe Werte werden weiterhin nie automatisch angelegt.
+- Neue Broker-Positionen erhalten keine erfundenen Stop-/Ziel-/Grade-Werte.
+
+Beibehalten:
+- v30.21ab Broker-Korrekturmodus
+- v30.21aa Pivot-Wenn-Dann-Anzeige
+- v30.21z CRV-Stabilitaet

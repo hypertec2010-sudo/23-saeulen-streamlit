@@ -1314,6 +1314,134 @@ def _v3021ab_trading212_correction_preview(watchlist_name: str, normalized_broke
     }
 
 
+def _v3021ac_trading212_missing_positions_preview(normalized_broker: pd.DataFrame, positions: dict | None) -> dict:
+    """Find self-contained open Trading 212 positions that are missing in CHSM.
+
+    Nothing is imported automatically. A ticker is eligible only if the supplied
+    broker file can replay its BUY/SELL history from zero without a negative
+    balance and finishes with an open balance. Existing CHSM positions are omitted.
+    """
+    broker = normalized_broker.copy() if isinstance(normalized_broker, pd.DataFrame) else pd.DataFrame()
+    current = {str(k).upper(): dict(v or {}) for k, v in dict(positions or {}).items()}
+    if broker.empty or "Action-Typ" not in broker.columns:
+        return {"table": pd.DataFrame(), "eligible_tickers": [], "blocked_tickers": []}
+    work = broker.copy()
+    if "Import-Status" in work.columns:
+        work = work[work["Import-Status"].astype(str).eq("OK")].copy()
+    work = work[work["Action-Typ"].astype(str).isin(["BUY", "SELL"])].copy()
+    if work.empty:
+        return {"table": pd.DataFrame(), "eligible_tickers": [], "blocked_tickers": []}
+    work["__time"] = pd.to_datetime(work.get("Zeit Berlin"), errors="coerce", utc=True)
+    work = work.sort_values(["Ticker", "__time", "Zeile"], ascending=[True, True, True], na_position="last")
+
+    rows, eligible, blocked = [], [], []
+    for ticker, part in work.groupby(work["Ticker"].astype(str).str.upper(), sort=True):
+        ticker = str(ticker or "").strip().upper()
+        if not ticker or _v3021ab_find_position_key(current, ticker):
+            continue
+        part = part.sort_values(["__time", "Zeile"], ascending=[True, True], na_position="last")
+        balance = 0.0
+        avg_entry = None
+        problem = ""
+        cycle_start_time = None
+        cycle_start_row = None
+        for _, ser in part.iterrows():
+            act = str(ser.get("Action-Typ") or "")
+            qty = _num(ser.get("Stück"), 0.0) or 0.0
+            px = _num(ser.get("Preis/Aktie"), None)
+            if act == "BUY":
+                if qty <= 0 or px is None or px <= 0:
+                    problem = "Ungültige Kaufzeile in der Brokerdatei."
+                    break
+                if balance <= 1e-12:
+                    cycle_start_time = str(ser.get("Zeit Berlin") or "")
+                    cycle_start_row = ser.get("Zeile")
+                    avg_entry = float(px)
+                    balance = float(qty)
+                else:
+                    new_balance = balance + qty
+                    avg_entry = ((avg_entry * balance) + (float(px) * qty)) / new_balance if avg_entry is not None else float(px)
+                    balance = new_balance
+            elif act == "SELL":
+                if qty > balance + 1e-8:
+                    problem = (
+                        f"CSV-Zeitraum unvollständig: Verkauf {qty:.8f} Stück, "
+                        f"zuvor in der Datei nur {balance:.8f} Stück aufgebaut."
+                    )
+                    break
+                balance = max(0.0, balance - qty)
+                if balance <= 1e-12:
+                    avg_entry = None
+                    cycle_start_time = None
+                    cycle_start_row = None
+        if problem:
+            blocked.append(ticker)
+            rows.append({
+                "Ticker": ticker, "Name": str(part.iloc[-1].get("Name") or ticker),
+                "Status": "NICHT SICHER ÜBERNEHMBAR", "Broker Stück": None, "Broker Entry": None,
+                "Aktueller Zyklus ab": "-", "Hinweis": problem,
+            })
+            continue
+        if balance <= 1e-12:
+            continue
+        eligible.append(ticker)
+        rows.append({
+            "Ticker": ticker,
+            "Name": str(part.iloc[-1].get("Name") or ticker),
+            "Status": "FEHLT IN CHSM",
+            "Broker Stück": round(float(balance), 8),
+            "Broker Entry": None if avg_entry is None else round(float(avg_entry), 6),
+            "Aktueller Zyklus ab": cycle_start_time or "-",
+            "Hinweis": "Offene Broker-Position ist aus diesem CSV-Zeitraum vollständig rekonstruierbar. Nur bei Auswahl wird sie in CHSM angelegt.",
+        })
+    return {
+        "table": pd.DataFrame(rows),
+        "eligible_tickers": sorted(set(eligible)),
+        "blocked_tickers": sorted(set(blocked)),
+    }
+
+
+def _v3021ac_current_open_cycle_rows(normalized_broker: pd.DataFrame, tickers: list[str]) -> pd.DataFrame:
+    """Return only the current self-contained open cycle for selected tickers."""
+    broker = normalized_broker.copy() if isinstance(normalized_broker, pd.DataFrame) else pd.DataFrame()
+    selected = {_broker_ticker_key(x) for x in (tickers or []) if _broker_ticker_key(x)}
+    if broker.empty or not selected or "Action-Typ" not in broker.columns:
+        return pd.DataFrame(columns=list(broker.columns))
+    work = broker.copy()
+    if "Import-Status" in work.columns:
+        work = work[work["Import-Status"].astype(str).eq("OK")].copy()
+    work = work[work["Action-Typ"].astype(str).isin(["BUY", "SELL"])].copy()
+    work = work[work["Ticker"].map(_broker_ticker_key).isin(selected)].copy()
+    work["__time"] = pd.to_datetime(work.get("Zeit Berlin"), errors="coerce", utc=True)
+    work = work.sort_values(["Ticker", "__time", "Zeile"], ascending=[True, True, True], na_position="last")
+    chunks = []
+    for _, part in work.groupby(work["Ticker"].map(_broker_ticker_key), sort=True):
+        part = part.sort_values(["__time", "Zeile"], ascending=[True, True], na_position="last")
+        balance = 0.0
+        start_pos = None
+        invalid = False
+        for pos, (_, ser) in enumerate(part.iterrows()):
+            act = str(ser.get("Action-Typ") or "")
+            qty = _num(ser.get("Stück"), 0.0) or 0.0
+            if act == "BUY":
+                if balance <= 1e-12:
+                    start_pos = pos
+                balance += qty
+            elif act == "SELL":
+                if qty > balance + 1e-8:
+                    invalid = True
+                    break
+                balance = max(0.0, balance - qty)
+                if balance <= 1e-12:
+                    start_pos = None
+        if invalid or balance <= 1e-12 or start_pos is None:
+            continue
+        chunks.append(part.iloc[start_pos:].drop(columns=["__time"], errors="ignore"))
+    if not chunks:
+        return pd.DataFrame(columns=[c for c in broker.columns if c != "__time"])
+    return pd.concat(chunks, ignore_index=True)
+
+
 def _v3021ab_prepare_correction_positions(watchlist_name: str, positions: dict | None, tickers: list[str]) -> dict:
     """Seed missing selected positions from lossless pre-close snapshots before broker rebuild."""
     current = {str(k).upper(): dict(v or {}) for k, v in dict(positions or {}).items()}

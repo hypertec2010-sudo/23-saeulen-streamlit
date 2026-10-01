@@ -16009,6 +16009,8 @@ _v3018_currency_backfill_preview = _trade_journal_module._v3018_currency_backfil
 _v3018_apply_currency_backfill = _trade_journal_module._v3018_apply_currency_backfill
 _v3021ab_t212_correction_preview = _trade_journal_module._v3021ab_trading212_correction_preview
 _v3021ab_prepare_correction_positions = _trade_journal_module._v3021ab_prepare_correction_positions
+_v3021ac_t212_missing_preview = _trade_journal_module._v3021ac_trading212_missing_positions_preview
+_v3021ac_t212_open_cycle_rows = _trade_journal_module._v3021ac_current_open_cycle_rows
 _v3021ab_supersede_manual_executions = _trade_journal_module._v3021ab_supersede_manual_executions
 _v3019_set_manual_broker_execution = _trade_journal_module._v3019_set_manual_broker_execution
 _v270_reset_trade_journal = _trade_journal_module._v270_reset_trade_journal
@@ -16193,6 +16195,96 @@ def _v3013_render_depot_import(watchlist_name, positions):
                     "Dieser Korrekturmodus verwendet bewusst die vollständigen Trading-212-Transaktionen des ausgewählten Tickers; "
                     "der optionale Mindestvolumen-Filter weiter unten wirkt hier nicht. Bei einem unvollständigen Broker-Zyklus wird die Korrektur blockiert."
                 )
+                # v30.21ac: explicit adoption of broker-open positions that CHSM does not know yet.
+                _missing_pkg_v3021ac = _v3021ac_t212_missing_preview(_norm_df_full_v3018b, positions)
+                _missing_table_v3021ac = _missing_pkg_v3021ac.get("table")
+                _missing_eligible_v3021ac = list(_missing_pkg_v3021ac.get("eligible_tickers") or [])
+                _missing_selected_v3021ac = []
+                if _missing_eligible_v3021ac:
+                    st.markdown("**➕ Offene Trading-212-Positionen, die in CHSM fehlen**")
+                    st.caption(
+                        "Diese Werte werden nicht automatisch übernommen. Nur angehakte Ticker werden als offene Broker-Position angelegt. "
+                        "Damit bleiben Pie-/externe Bestände unter deiner Kontrolle. Stop, Ziel und Grade werden bei einer neuen Broker-Position nicht erfunden."
+                    )
+                    _missing_candidates_v3021ac = _missing_table_v3021ac[
+                        _missing_table_v3021ac["Ticker"].astype(str).isin(_missing_eligible_v3021ac)
+                    ].copy()
+                    _missing_candidates_v3021ac.insert(0, "Übernehmen", False)
+                    _missing_edit_v3021ac = st.data_editor(
+                        _missing_candidates_v3021ac,
+                        hide_index=True,
+                        use_container_width=True,
+                        key=f"v3021ac_t212_missing_editor_{watchlist_name}",
+                        disabled=[c for c in _missing_candidates_v3021ac.columns if c != "Übernehmen"],
+                        column_config={
+                            "Übernehmen": st.column_config.CheckboxColumn(
+                                "Übernehmen", help="Nur angehakte offene Broker-Positionen werden in CHSM angelegt.", default=False
+                            )
+                        },
+                    )
+                    _missing_selected_v3021ac = [
+                        str(x).strip().upper()
+                        for x in _missing_edit_v3021ac.loc[
+                            _missing_edit_v3021ac["Übernehmen"].fillna(False).astype(bool), "Ticker"
+                        ].tolist()
+                        if str(x).strip()
+                    ]
+                    if st.button(
+                        "Ausgewählte fehlende Broker-Positionen übernehmen",
+                        use_container_width=True,
+                        disabled=not _missing_selected_v3021ac,
+                        key=f"v3021ac_t212_missing_apply_{watchlist_name}",
+                    ):
+                        _missing_rows_v3021ac = _v3021ac_t212_open_cycle_rows(
+                            _norm_df_full_v3018b, _missing_selected_v3021ac
+                        )
+                        _missing_plan_v3021ac = _v3013_apply_depot_transactions(
+                            watchlist_name,
+                            _missing_rows_v3021ac,
+                            positions,
+                            mode="rebuild",
+                            already_processed=set(),
+                            screener_only=False,
+                            broker_source="Trading 212 CSV",
+                        )
+                        _missing_anom_v3021ac = _missing_plan_v3021ac.get("anomalies")
+                        if not _missing_plan_v3021ac.get("ok") or (isinstance(_missing_anom_v3021ac, pd.DataFrame) and not _missing_anom_v3021ac.empty):
+                            st.error("Übernahme nicht angewendet: Mindestens eine ausgewählte Position ist aus dem CSV-Zeitraum nicht sicher rekonstruierbar.")
+                            if isinstance(_missing_anom_v3021ac, pd.DataFrame) and not _missing_anom_v3021ac.empty:
+                                st.dataframe(_missing_anom_v3021ac, hide_index=True, use_container_width=True)
+                        else:
+                            _missing_newpos_v3021ac = dict(_missing_plan_v3021ac.get("positions") or {})
+                            for _tk_v3021ac in _missing_selected_v3021ac:
+                                if _tk_v3021ac in _missing_newpos_v3021ac:
+                                    _missing_newpos_v3021ac[_tk_v3021ac]["strategy_origin"] = "broker_import"
+                            _v244_save_positions(watchlist_name, _missing_newpos_v3021ac)
+                            _missing_ledger_ok_v3021ac = _v3013_mark_depot_imported(
+                                watchlist_name,
+                                _missing_plan_v3021ac.get("applied_rows") if isinstance(_missing_plan_v3021ac.get("applied_rows"), pd.DataFrame) else pd.DataFrame(),
+                                filename=upload.name,
+                                result_summary={
+                                    **dict(_missing_plan_v3021ac.get("stats") or {}),
+                                    "Modus": "Trading 212 fehlende offene Position übernommen",
+                                    "Übernommene Ticker": list(_missing_selected_v3021ac),
+                                },
+                            )
+                            if _missing_ledger_ok_v3021ac:
+                                st.success(
+                                    "Trading-212-Position(en) übernommen: " + ", ".join(_missing_selected_v3021ac) +
+                                    ". Broker-Stückzahl und Entry stammen aus der CSV; Stop/Ziel/Grade bleiben leer, bis CHSM-Kontext vorhanden ist."
+                                )
+                                st.rerun()
+                            else:
+                                st.warning("Positionen wurden gespeichert, aber das Import-Ledger konnte nicht vollständig aktualisiert werden. Bitte Importarchiv prüfen.")
+                _missing_blocked_v3021ac = list(_missing_pkg_v3021ac.get("blocked_tickers") or [])
+                if _missing_blocked_v3021ac:
+                    with st.expander("Nicht sicher rekonstruierbare fehlende Broker-Positionen", expanded=False):
+                        _blocked_table_v3021ac = _missing_table_v3021ac[
+                            _missing_table_v3021ac["Ticker"].astype(str).isin(_missing_blocked_v3021ac)
+                        ].copy()
+                        st.dataframe(_blocked_table_v3021ac, hide_index=True, use_container_width=True)
+                        st.caption("Für diese Werte bitte einen Trading-212-Export ab Beginn des Positionszyklus verwenden.")
+
                 _corr_pkg_v3021ab = _v3021ab_t212_correction_preview(
                     watchlist_name, _norm_df_full_v3018b, positions
                 )

@@ -273,6 +273,70 @@ def build_shadow_validation_v286a(history_df, live_df=None):
         current = pd.DataFrame()
     return summary, ep.sort_values(["Status", "Dauer h"], ascending=[True, False]), current
 
+def _v3021al_setup_readiness_package(
+    *, valid_trade_setup=False, grade="-", signal_packages_complete=False,
+    timing_score=None, conf_score=None, chart_score=None, trend_structure_ok=False,
+    crv_now=None, crv_entry=None, ma20_stretch_pct=None, entry_hard_gate=False,
+    invalidated=False, warning_bucket=False, context_flags=None,
+):
+    """Pure v30.21al readiness gate: actively reviewable is not equal to buy-now.
+
+    The final entry/structure trigger is intentionally NOT required here. Hard
+    gates, invalidation and strong overextension remain exclusions.
+    """
+    def _num(v):
+        try:
+            if v in {None, "", "-", "n/a"}:
+                return None
+            f = float(v)
+            return f if np.isfinite(f) and not pd.isna(f) else None
+        except Exception:
+            return None
+
+    timing = _num(timing_score)
+    conf = _num(conf_score)
+    chart = _num(chart_score)
+    crv_n = _num(crv_now)
+    crv_e = _num(crv_entry)
+    stretch = _num(ma20_stretch_pct)
+    flags = context_flags or {}
+
+    timing_ok = bool(signal_packages_complete and timing is not None and conf is not None and timing >= 55 and conf >= 50)
+    chart_ok = bool(trend_structure_ok or (chart is not None and chart >= 50))
+    context_ok = bool(
+        flags.get("bucket_active")
+        or flags.get("bucket_near")
+        or flags.get("entry_reached")
+        or flags.get("wave_active")
+        or trend_structure_ok
+        or (chart is not None and chart >= 58)
+    )
+    crv_ok = bool((crv_n is not None and crv_n >= 1.50) or (crv_e is not None and crv_e >= 1.50))
+    not_overextended = bool(stretch is None or stretch <= 20.0)
+    grade_ok = str(grade or "-").strip().upper() in {"A", "B", "C"}
+    ready = bool(
+        valid_trade_setup
+        and grade_ok
+        and timing_ok
+        and chart_ok
+        and context_ok
+        and crv_ok
+        and not_overextended
+        and not entry_hard_gate
+        and not invalidated
+        and not warning_bucket
+    )
+    return {
+        "ready": ready,
+        "timing_ok": timing_ok,
+        "chart_ok": chart_ok,
+        "context_ok": context_ok,
+        "crv_ok": crv_ok,
+        "not_overextended": not_overextended,
+        "grade_ok": grade_ok,
+    }
+
+
 def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None, live_horizon="Swing / 1-4 Wochen"):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
 
@@ -831,9 +895,12 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     monitor_action = next_step
 
     grade_ok = grade in {"A", "B", "C"}
-    # v30.21ak: Gruen bedeutet "jetzt handelbar". Deshalb muss das aktuelle
-    # technische CRV attraktiv sein. Ein gutes CRV erst in der Entry-Zone ist
-    # wertvoll, bleibt aber ein gelber Pullback-/Entry-Hinweis.
+    # v30.21al: Gruen hat zwei klar getrennte Bedeutungen:
+    # 1) "Setup pruefbereit" = gute Idee jetzt aktiv ansehen/planen; finaler Entry-
+    #    oder Strukturtrigger darf noch offen sein.
+    # 2) "Kauftrigger aktiv" = strengere operative Ausfuehrungsfreigabe.
+    # Das technische CRV bleibt ehrlich; fuer Pruefbereitschaft darf auch ein
+    # attraktives CRV in der vorgesehenen Entry-Zone genuegen.
     crv_ok = crv_float is not None and crv_float >= 1.5
     crv_entry_ok = crv_entry_float is not None and crv_entry_float >= 1.5
     entry_reached = "Entry-Zone erreicht" in alert_types
@@ -1161,6 +1228,38 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     # v30.21ak: dieselbe CRV-Schwelle in allen Gruen-Pfaden. 1.20-1.49 ist
     # bewusst selektiv/gelb; unbekanntes CRV darf Gruen ebenfalls nicht erzeugen.
     trend_quality_ok = grade in {"A", "B"} and crv_ok
+
+    # v30.21al: Vorstufe zur operativen Kauf-Freigabe. Diese Stufe ist bewusst
+    # nicht an final_release_ok gekoppelt, weil dessen Texte auch einen noch
+    # offenen Entry-/Strukturtrigger als Blocker fuehren. Genau solche sauberen,
+    # triggernahen Setups sollen im Screener frueh genug als "Jetzt pruefen"
+    # auftauchen, ohne bereits ein Kaufsignal zu behaupten.
+    _setup_ready_pkg = _v3021al_setup_readiness_package(
+        valid_trade_setup=bool(r.get("valid_trade_setup", False)),
+        grade=grade,
+        signal_packages_complete=signal_packages_complete,
+        timing_score=timing_score_lm,
+        conf_score=conf_score_lm,
+        chart_score=chart_score_lm,
+        trend_structure_ok=trend_structure_ok,
+        crv_now=crv_float,
+        crv_entry=crv_entry_float,
+        ma20_stretch_pct=ma20_stretch_pct,
+        entry_hard_gate=entry_hard_gate,
+        invalidated=("Invalidierung gebrochen" in alert_types),
+        warning_bucket=(bucket == "Warnsignale / meiden"),
+        context_flags={
+            "bucket_active": bucket_active,
+            "bucket_near": bucket_near,
+            "entry_reached": entry_reached,
+            "wave_active": wave_active,
+        },
+    )
+    setup_ready = bool(_setup_ready_pkg.get("ready"))
+    setup_ready_timing_ok = bool(_setup_ready_pkg.get("timing_ok"))
+    setup_ready_chart_ok = bool(_setup_ready_pkg.get("chart_ok"))
+    setup_ready_crv_ok = bool(_setup_ready_pkg.get("crv_ok"))
+
     trend_reason_tail = ""
     if ma20_stretch_pct is not None:
         trend_reason_tail = f" Abstand zu MA20 ca. {ma20_stretch_pct:.1f}%."
@@ -1216,10 +1315,37 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         status_icon, status, priority = "🟢", "Kurzfrist-Trigger aktiv", 0
         reason = "Kurzfrist-Setup ist charttechnisch aktiv: Trendstruktur, Timing/Konfluenz und Trigger-/Trendfolge-Kontext passen." + trend_reason_tail
         monitor_action = "Kurzfrist aktiv. Entry/Breakout nur mit klarer Invalidierung, Positionsgröße und Stop-Plan handeln."
+    elif setup_ready and not (final_release_ok and trend_timing_ok and crv_ok):
+        # v30.21al: Gruen = aktiv pruefenswert, NICHT automatisch kaufen.
+        # Der finale Entry-/Strukturtrigger bleibt eine strengere zweite Stufe.
+        status_icon, priority = "🟢", 0
+        if crv_ok:
+            status = "Setup prüfbereit"
+            reason = (
+                f"Sauberes Setup mit konstruktivem Timing/Konfluenz "
+                f"({timing_score_lm:.0f}/{conf_score_lm:.0f}) und technischem CRV jetzt {crv_float:.2f}. "
+                "Der finale Entry-/Strukturtrigger darf für diese Prüfstufe noch offen sein."
+            )
+            monitor_action = (
+                "Jetzt aktiv prüfen: Entry-Zone, Triggerregel und Stop/Invalidierung vorbereiten. "
+                "Ein Kauf bleibt an die konkrete Entry-/Triggerbestätigung gebunden."
+            )
+        else:
+            status = "Setup prüfbereit / Entry abwarten"
+            _crv_now_txt = f"{crv_float:.2f}" if crv_float is not None else "n/a"
+            reason = (
+                f"Sauberes Setup mit konstruktivem Timing/Konfluenz "
+                f"({timing_score_lm:.0f}/{conf_score_lm:.0f}). CRV jetzt {_crv_now_txt}, "
+                f"aber CRV in der geplanten Entry-Zone {crv_entry_float:.2f}."
+            )
+            monitor_action = (
+                "Jetzt aktiv prüfen, aber nicht hinterherlaufen: Rücklauf in die CHSM-Entry-Zone "
+                "und dort die konkrete Entry-/Triggerbestätigung abwarten."
+            )
     elif (bucket_active or entry_reached or wave_active) and not final_release_ok:
         status_icon, status, priority = "🟡", "Trigger offen / Abwarten", 2
-        reason = "Sofortanalyse bestätigt Grün noch nicht" + (f": {final_blocker_text}." if final_blocker_text else ".")
-        monitor_action = "Noch kein grünes Kaufsignal: erst finale Trigger-/Timing-Bestätigung abwarten. Risiko/Stückzahl erst festlegen, wenn die Sofortanalyse den Einstieg freigibt."
+        reason = "Sofortanalyse bestätigt die operative Kauf-Freigabe noch nicht" + (f": {final_blocker_text}." if final_blocker_text else ".")
+        monitor_action = "Setup beobachten/pruefen; für einen Kauf erst finale Trigger-/Timing-Bestätigung abwarten."
     elif final_release_ok and trend_quality_ok and trend_structure_ok and trend_timing_ok and trend_not_too_extended:
         status_icon, status, priority = "🟢", "Trendfolge aktiv", 0
         reason = "Trendfolge-Setup ist aktiv: Kurs hält oberhalb MA20, MA20 liegt über/nahe MA50 und Timing/Konfluenz passen." + trend_reason_tail
@@ -1396,7 +1522,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         live_score_raw -= 45.0
     if ma20_stretch_pct is not None and ma20_stretch_pct > 12.0:
         live_score_raw -= min(18.0, (ma20_stretch_pct - 12.0) * 1.6)
-    if not final_release_ok and status_icon == "🟢":
+    if not final_release_ok and status_icon == "🟢" and not setup_ready:
         live_score_raw -= 18.0
     # Performance seit Aufnahme ist Kontext, kein primaerer Entry-Trigger:
     # leichter Bonus fuer starke Entwicklung, aber nur bis gelb/stabil, nicht automatisch gruen.
@@ -1424,7 +1550,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         # Kurzfrist-Modus: Gruen darf nur dann bleiben, wenn der Trade wirklich
         # operativ planbar ist. Sonst wird auf Gelb zurueckgestuft.
         has_short_term_trigger = bool(bucket_active or wave_active or entry_reached or (trend_structure_ok and trend_timing_ok and trend_not_too_extended))
-        if status_icon == "🟢" and not has_short_term_trigger:
+        if status_icon == "🟢" and not has_short_term_trigger and not setup_ready:
             status_icon, status, priority = "🟡", "Setup interessant / Trigger prüfen", 2
             reason = "Kurzfrist-Modus: Qualität reicht nicht; es fehlt ein klarer aktueller Charttrigger."
             monitor_action = "Kurzfrist nur vorbereiten: Trigger, Volumenbestaetigung und engen Stop abwarten."
@@ -1743,6 +1869,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Timing-Signal": (f"{timing_score_lm:.1f}/100 · gemessen" if timing_signal_available else "n/a · nicht geliefert"),
         "Trigger-Konfluenz-Signal": (f"{conf_score_lm:.1f}/100 · gemessen" if conf_signal_available else "n/a · nicht geliefert"),
         "Signalpaket-Quelle": signal_package_source or "-",
+        "Setup-Reife": (
+            "Kauftrigger aktiv" if status in {"Kurzfrist-Trigger aktiv", "Kauftrigger aktiv", "Trendfolge aktiv"}
+            else "Prüfbereit" if setup_ready
+            else "Beobachten"
+        ),
         "Score-Treiber": _score_drivers,
         "Score-Bremsen": _score_brakes,
         "Aktive Einstiegsgates": active_entry_gates if entry_hard_gate else "-",
@@ -1785,6 +1916,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "__entry_hard_gate": bool(entry_hard_gate),
         "__invalidated": bool("Invalidierung gebrochen" in alert_types),
         "__final_release_ok": bool(final_release_ok),
+        "__setup_ready": bool(setup_ready),
+        "__setup_ready_timing_ok": bool(setup_ready_timing_ok),
+        "__setup_ready_chart_ok": bool(setup_ready_chart_ok),
+        "__setup_ready_crv_ok": bool(setup_ready_crv_ok),
         "__bucket_active": bool(bucket_active),
         "__bucket_near": bool(bucket_near),
         "__entry_reached": bool(entry_reached),

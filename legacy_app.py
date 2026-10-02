@@ -21609,11 +21609,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 combined = " ".join([status, state, setup, engine]).lower()
                                 if _v309_has_hard_gate(row) or "blockiert" in combined or "invalid" in combined:
                                     return "⛔ Blockiert"
+                                # v30.21al: Action Queue beantwortet "Was soll ich JETZT ansehen?"
+                                # und nicht "Was darf ich sofort kaufen?". Deshalb darf ein
+                                # sauber pruefbereites Setup bereits vor dem finalen Trigger
+                                # in die Queue, auch wenn die Ampel wegen Hysterese noch gelb ist.
+                                setup_ready = bool(row.get("__setup_ready", False))
                                 ready = any(token in combined for token in (
+                                    "setup prüfbereit", "setup pruefbereit",
                                     "jetzt prüfbar", "jetzt pruefbar", "trigger aktiv",
                                     "kurzfrist-trigger aktiv", "armed / bereit", "entry-zone erreicht"
                                 ))
-                                if "🟢" in ampel and ready:
+                                if setup_ready or ready:
                                     return "🎯 Jetzt prüfen"
                                 return "👀 Beobachten"
 

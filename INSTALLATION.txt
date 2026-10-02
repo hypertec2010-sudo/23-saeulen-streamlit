@@ -1,16 +1,15 @@
-CHSM v30.21ak - CRV/Hysterese-Konsistenz
-
-Voraussetzung: v30.21aj installiert.
+CHSM v30.21al - Setup pruefbereit vs. Kauftrigger aktiv
 
 Ersetzen:
 - VERSION.txt
+- legacy_app.py
 - modules/live_monitor.py
+- optional CHANGELOG.md
 
 Beim Kopieren des Ordners modules auf macOS: Zusammenfuehren, nicht Ersetzen.
 
-Aenderungen:
-- Gruen bedeutet jetzt konsistent: aktuelles technisches CRV >= 1,50.
-- CRV 1,20-1,49 bleibt selektiv/gelb; fehlendes CRV erzeugt kein Gruen.
-- Ein gutes CRV erst in der Entry-Zone wird als gelber Pullback-/Entry-Hinweis gefuehrt.
-- Die Hysterese darf ein altes Gruen nicht mehr halten, wenn CRV jetzt < 1,50 oder n/a ist.
-- Keine Aenderung an CRV-Zielberechnung, Score-Formel oder Trading-Stop-Logik.
+Neu:
+- Gruen kann jetzt "Setup pruefbereit" bedeuten: aktiv ansehen/planen, aber noch kein Kauf.
+- Finale Kauftrigger bleiben strenger und werden separat als Kauftrigger/Trendfolge aktiv gekennzeichnet.
+- Action Queue "Jetzt pruefen" ist von der finalen Kauf-Freigabe entkoppelt.
+- Setup pruefbereit verlangt: valides Setup, Timing >=55, Konfluenz >=50, konstruktive Chart-/Trendstruktur, CRV jetzt ODER CRV Entry >=1.50, kein hartes Gate/keine Invalidierung, keine starke Ueberdehnung.

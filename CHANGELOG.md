@@ -1,3 +1,10 @@
+
+## v30.21al – Setup prüfbereit vs. Kauftrigger aktiv
+- Live-Screener trennt aktive Prüfreife von der finalen Kauftrigger-Freigabe.
+- Prüfbereit ab validem Setup, Timing >=55, Trigger-Konfluenz >=50, konstruktiver Chart-/Trendstruktur und attraktivem CRV jetzt ODER in der Entry-Zone.
+- Offene Entry-/Strukturtrigger verhindern die Prüfreife nicht mehr automatisch; sie bleiben Voraussetzung für die strengere operative Kauf-Freigabe.
+- Action Queue kann prüfreife Setups bereits als „Jetzt prüfen“ priorisieren, auch wenn die Ampel-Hysterese den ersten grünen Zustand noch gelb darstellt.
+- Harte Gates, Invalidierung, Warnbucket und starke Überdehnung bleiben Ausschlusskriterien.
 ## v30.21aj — Technisches CRV aus Chartstruktur
 
 - CRV jetzt und CRV Entry getrennt.

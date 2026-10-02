@@ -1,0 +1,23 @@
+CHSM v30.21an - CRV-Transparenz im Screener
+
+Voraussetzung:
+- v30.21am ist installiert.
+
+Ersetzen / zusammenfuehren:
+- VERSION.txt
+- legacy_app.py
+- modules/live_monitor.py
+
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+
+Danach:
+1. Streamlit neu starten bzw. Cloud-Deploy abwarten.
+2. Einen Vollscan der Watchlist ausfuehren.
+3. Im Live-Screener stehen direkt nebeneinander:
+   - CRV jetzt
+   - CRV Entry
+   - Freiraum
+   - CRV-Ziel
+
+Wichtig:
+Dieser Patch aendert KEINE Handelslogik und KEINE CRV-Berechnung. Er macht nur sichtbar, warum ein Wert trotz engem CRV jetzt pruefbereit sein kann bzw. woher ein sehr hohes CRV kommt.

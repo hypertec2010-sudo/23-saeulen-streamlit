@@ -1,3 +1,11 @@
+## v30.21an — CRV-Transparenz im Screener
+
+- Keine Änderung an Trading-, Score-, Ampel- oder CRV-Berechnungslogik.
+- Haupttabelle zeigt jetzt explizit: CRV jetzt, CRV Entry, Freiraum und CRV-Ziel.
+- Die ausführliche CRV-Basis bleibt in Details/Diagnose verfügbar.
+- Mobile Ansicht zeigt dieselben vier CRV-Entscheidungsgrößen.
+- Interner Schlüssel `CRV` bleibt für Hysterese/Snapshots unverändert.
+
 ## v30.21am – Setupabhängiges Trade-CRV vs. Freiraum
 - Trennt `Freiraum bis zum nächsten technischen Hindernis` vom eigentlichen `Trade-CRV`.
 - Breakout-, Range-Breakout- und Breakout-Retest-Setups behandeln die gerade zu überwindende Widerstands-/Triggerzone nicht mehr automatisch als Gewinnziel.

@@ -1905,7 +1905,15 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Grade": grade,
         "Radar-Bucket": bucket,
         "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
+        # v30.21an: separate display aliases keep the operative/internal CRV
+        # key stable while making the screener meaning explicit for the user.
+        "CRV jetzt": "n/a" if crv_float is None else round(float(crv_float), 2),
         "CRV Entry": "n/a" if crv_entry_float is None else round(float(crv_entry_float), 2),
+        "Freiraum": (
+            "n/a" if clearance_pct_float is None
+            else f"{clearance_pct_float:.1f}%" + ("" if clearance_r_float is None else f" / {clearance_r_float:.2f}R")
+        ),
+        "CRV-Ziel": crv_target_source,
         "CRV-Basis": crv_basis,
         "CRV-Zielquelle": crv_target_source,
         "CRV-Stopquelle": crv_stop_source,
@@ -2073,7 +2081,7 @@ def build_live_watchlist_monitor_v212(tickers, *, style_name="Ausgewogen", max_i
               .reset_index(drop=True)
         )
     else:
-        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "Benchmark", "Primärbenchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Benchmark-Diagnose", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "Exit-Score", "Tactical-Exit-Risk", "Trendbruch-Score", "Momentum-Collapse-Score", "Distribution-Score", "Relative-Schwäche-Score", "Akkumulation-Score", "MA10-Abstand %", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "CRV-Basis", "CRV-Zielquelle", "CRV-Stopquelle", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
+        df = pd.DataFrame(columns=["Ampel", "Status", "Live-Score", "Kontext-Anpassung", "Engine-Score", "Guarded Engine-Score", "Shadow-Ampel", "Shadow-Abweichung", "Engine-Empfehlung", "Engine-Guardrail", "Kontext-Beiträge", "Kontext-Verlässlichkeit", "Kontext-Verlässlichkeit Details", "Engine-Erklärung", "Live-Horizont", "Ticker", "Name", "Kurs", "Volatilität", "Datenqualität", "Datenbasis", "Relative Stärke", "RS-Dynamik", "RS-Dynamik Details", "RS-Benchmark", "Benchmark", "Primärbenchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Benchmark-Diagnose", "RS-Details", "Volatilitätsregime", "Volatilitäts-Details", "Marktregime", "Marktregime-Details", "Exit-Score", "Tactical-Exit-Risk", "Trendbruch-Score", "Momentum-Collapse-Score", "Distribution-Score", "Relative-Schwäche-Score", "Akkumulation-Score", "MA10-Abstand %", "ATR-%", "Startkurs", "Seit Aufnahme", "Startquelle", "Grade", "Radar-Bucket", "CRV", "CRV jetzt", "CRV Entry", "Freiraum", "CRV-Ziel", "CRV-Basis", "CRV-Zielquelle", "CRV-Stopquelle", "Entry-Abstand", "Wann aktiv?", "Setup-Alert", "Warnhinweis", "Grund", "Nächste Handlung", "Letztes Update"])
     # v22.7: Keine NaN-Kurswerte in der Anzeige. Falls Pandas beim Zusammenbau
     # doch NaN erzeugt, sauber als n/a ausgeben.
     if not df.empty and "Kurs" in df.columns:

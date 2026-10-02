@@ -1,0 +1,14 @@
+CHSM v30.21ao - CRV-Spalten im Screener wieder sichtbar
+
+Voraussetzung: v30.21an installiert.
+
+Ersetzen:
+- VERSION.txt
+- legacy_app.py
+- CHANGELOG.md (optional)
+
+Keine modules-Datei muss fuer diesen Fix ersetzt werden.
+
+Danach Streamlit neu starten / Cloud-Deploy abwarten. Ein neuer Vollscan ist fuer die Berechnung nicht zwingend erforderlich, weil nur die Anzeige korrigiert wird. Falls der aktuelle Tabellenstand bereits im Browser geladen ist, Seite einmal neu laden.
+
+Es wird keinerlei Trading-, CRV-, Score-, Trigger- oder Ampellogik geaendert.

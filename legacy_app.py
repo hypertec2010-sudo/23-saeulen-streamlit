@@ -22146,10 +22146,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     # v30.21l: compact daily table. Full diagnostics remain in the
                                     # Diagnose view, so the main screener no longer carries dozens
                                     # of rarely used columns.
+                                    # v30.21ao: v30.21an introduced explicit CRV display aliases,
+                                    # but the compact desktop table still requested the old single
+                                    # "CRV" column. That silently filtered all new CRV transparency
+                                    # fields out of the visible screener. Keep the operative data
+                                    # untouched and expose the four user-facing CRV fields here.
                                     _compact_cols_v3021l = [
                                         "Ampel", "Ticker", "Name", "Live-Score", "Priorität",
-                                        "Decision-Confidence", "Kurs", "CRV", "Entry-Abstand",
-                                        "Status", "Harvest-Ampel",
+                                        "Decision-Confidence", "Kurs",
+                                        "CRV jetzt", "CRV Entry", "Freiraum", "CRV-Ziel",
+                                        "Entry-Abstand", "Status", "Harvest-Ampel",
                                     ]
                                     _compact_cols_v3021l = [c for c in _compact_cols_v3021l if c in _desktop_live_display_v304a.columns]
                                     if _compact_cols_v3021l:

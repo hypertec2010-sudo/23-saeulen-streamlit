@@ -1,3 +1,10 @@
+## v30.21ao — CRV-Spalten im kompakten Screener wieder sichtbar
+
+- Reiner Darstellungsfix auf Basis v30.21an.
+- Die kompakte Desktop-Tabelle zeigt wieder `CRV jetzt`, `CRV Entry`, `Freiraum` und `CRV-Ziel`.
+- Ursache: Die letzte kompakte Spaltenauswahl referenzierte noch die alte Spalte `CRV` und filterte dadurch die neuen Transparenzspalten aus.
+- Keine Änderung an CRV-Berechnung, Ampel-, Trigger-, Score- oder Handelslogik.
+
 ## v30.21an — CRV-Transparenz im Screener
 
 - Keine Änderung an Trading-, Score-, Ampel- oder CRV-Berechnungslogik.

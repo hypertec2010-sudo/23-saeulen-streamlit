@@ -4058,6 +4058,16 @@ def build_radar_entry_rr_package_v182(result):
     crv_entry_stop_v3021aj = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_stop_entry"), default=None)
     crv_stop_source_v3021aj = str(_crv_pkg_v3021aj.get("technical_crv_stop_source") or r.get("stop_source") or "-")
     crv_entry_stop_source_v3021aj = str(_crv_pkg_v3021aj.get("technical_crv_entry_stop_source") or crv_stop_source_v3021aj)
+    # v30.21am: separate the next chart obstacle (Freiraum) from the actual
+    # setup-aware trade target. Especially for breakouts, the trigger zone is
+    # not the profit target.
+    clearance_target_v3021am = _radar_v182_num(_crv_pkg_v3021aj.get("technical_clearance_target"), default=None)
+    clearance_pct_v3021am = _radar_v182_num(_crv_pkg_v3021aj.get("technical_clearance_pct"), default=None)
+    clearance_r_v3021am = _radar_v182_num(_crv_pkg_v3021aj.get("technical_clearance_r"), default=None)
+    clearance_source_v3021am = str(_crv_pkg_v3021aj.get("technical_clearance_source") or "kein nahes CHSM-Hindernis")
+    crv_setup_mode_v3021am = str(_crv_pkg_v3021aj.get("technical_crv_setup_mode") or "standard")
+    crv_trigger_ref_v3021am = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_trigger_reference"), default=None)
+    crv_trigger_source_v3021am = str(_crv_pkg_v3021aj.get("technical_crv_trigger_source") or "-")
     plan_crv = _radar_v182_num(r.get("planning_crv"), default=_radar_v182_num(r.get("crv"), default=None))
     plan_source = str(r.get("tp2_source") or "-")
     plan_is_synthetic = bool(r.get("tp2_is_synthetic"))
@@ -4112,9 +4122,14 @@ def build_radar_entry_rr_package_v182(result):
         if crv_entry is not None:
             _entry_part = f" · CRV Entry {crv_entry:.2f}"
         _entry_ref_part = "" if crv_entry_ref_v3021aj is None else f" bei Entry {crv_entry_ref_v3021aj:.2f}"
+        _clearance_part_v3021am = ""
+        if clearance_pct_v3021am is not None:
+            _clearance_r_txt_v3021am = "" if clearance_r_v3021am is None else f" / {clearance_r_v3021am:.2f}R"
+            _clearance_part_v3021am = f" · Freiraum {clearance_pct_v3021am:.1f}%{_clearance_r_txt_v3021am} ({clearance_source_v3021am})"
         rr_text = (
-            f"CRV jetzt {crv:.2f}{_entry_part}{_entry_ref_part} · "
-            f"Ziel {tp1:.2f} ({tp1_source}) · Stop jetzt {stop:.2f} ({crv_stop_source_v3021aj})"
+            f"Trade-CRV jetzt {crv:.2f}{_entry_part}{_entry_ref_part} · "
+            f"Trade-Ziel {tp1:.2f} ({tp1_source}){_clearance_part_v3021am} · "
+            f"Stop jetzt {stop:.2f} ({crv_stop_source_v3021aj})"
         )
     elif crv_entry is not None:
         rr_label = "CRV erst in Entry-Zone beurteilbar"
@@ -4148,6 +4163,13 @@ def build_radar_entry_rr_package_v182(result):
         "stop": stop,
         "tp1": tp1,
         "target_source": tp1_source,
+        "clearance_target": clearance_target_v3021am,
+        "clearance_pct": None if clearance_pct_v3021am is None else round(clearance_pct_v3021am, 2),
+        "clearance_r": None if clearance_r_v3021am is None else round(clearance_r_v3021am, 2),
+        "clearance_source": clearance_source_v3021am,
+        "crv_setup_mode": crv_setup_mode_v3021am,
+        "crv_trigger_reference": crv_trigger_ref_v3021am,
+        "crv_trigger_source": crv_trigger_source_v3021am,
         "crv_kind": "structural" if crv is not None else "missing",
         "planning_crv": None if plan_crv is None else round(plan_crv, 2),
         "planning_target": _radar_v182_num(r.get("tp2"), default=None),
@@ -5119,6 +5141,13 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "crv_entry": entry_rr_pkg.get("crv_entry"),
         "crv_entry_reference": entry_rr_pkg.get("crv_entry_reference"),
         "crv_target_source": entry_rr_pkg.get("target_source"),
+        "crv_clearance_target": entry_rr_pkg.get("clearance_target"),
+        "crv_clearance_pct": entry_rr_pkg.get("clearance_pct"),
+        "crv_clearance_r": entry_rr_pkg.get("clearance_r"),
+        "crv_clearance_source": entry_rr_pkg.get("clearance_source"),
+        "crv_setup_mode": entry_rr_pkg.get("crv_setup_mode"),
+        "crv_trigger_reference": entry_rr_pkg.get("crv_trigger_reference"),
+        "crv_trigger_source": entry_rr_pkg.get("crv_trigger_source"),
         "crv_kind": entry_rr_pkg.get("crv_kind"),
         "planning_crv": entry_rr_pkg.get("planning_crv"),
         "planning_target_source": entry_rr_pkg.get("planning_target_source"),
@@ -28601,6 +28630,13 @@ if result is not None:
     structural_crv_entry_stop_source = result.get("technical_crv_entry_stop_source") or result.get("stop_source") or "-"
     structural_target = result.get("technical_crv_target", result.get("structural_target"))
     structural_target_source = result.get("technical_crv_target_source") or result.get("structural_target_source") or "kein belastbares technisches Ziel"
+    technical_clearance_target = result.get("technical_clearance_target")
+    technical_clearance_pct = result.get("technical_clearance_pct")
+    technical_clearance_r = result.get("technical_clearance_r")
+    technical_clearance_source = result.get("technical_clearance_source") or "kein nahes CHSM-Hindernis"
+    technical_crv_setup_mode = result.get("technical_crv_setup_mode") or "standard"
+    technical_crv_trigger_reference = result.get("technical_crv_trigger_reference")
+    technical_crv_trigger_source = result.get("technical_crv_trigger_source") or "-"
     planning_crv = result.get("planning_crv", result.get("crv"))
     tp2_is_synthetic = bool(result.get("tp2_is_synthetic"))
     technical_target_1 = result["technical_target_1"]
@@ -32538,14 +32574,17 @@ if result is not None:
                 _structural_crv_v3021ai = _radar_v182_num(structural_crv, default=None)
                 _structural_crv_entry_v3021aj = _radar_v182_num(structural_crv_entry, default=None)
                 _planning_crv_v3021ai = _radar_v182_num(planning_crv, default=None)
+                _clearance_pct_v3021am = _radar_v182_num(technical_clearance_pct, default=None)
+                _clearance_r_v3021am = _radar_v182_num(technical_clearance_r, default=None)
                 _crv_display_v3021ai = "n/a" if _structural_crv_v3021ai is None else f"{_structural_crv_v3021ai:.2f}:1"
                 _crv_delta_parts_v3021aj = []
                 if _structural_crv_entry_v3021aj is not None:
                     _crv_delta_parts_v3021aj.append(f"Entry {_structural_crv_entry_v3021aj:.2f}:1")
-                if _planning_crv_v3021ai is not None:
-                    _crv_delta_parts_v3021aj.append(
-                        f"Plan {_planning_crv_v3021ai:.2f}:1" + (" · synthetisch" if tp2_is_synthetic else "")
-                    )
+                if _clearance_pct_v3021am is not None:
+                    _clearance_txt_v3021am = f"Freiraum {_clearance_pct_v3021am:.1f}%"
+                    if _clearance_r_v3021am is not None:
+                        _clearance_txt_v3021am += f"/{_clearance_r_v3021am:.2f}R"
+                    _crv_delta_parts_v3021aj.append(_clearance_txt_v3021am)
                 _crv_delta_v3021ai = " · ".join(_crv_delta_parts_v3021aj) if _crv_delta_parts_v3021aj else None
                 c7.metric("CRV jetzt", _crv_display_v3021ai, _crv_delta_v3021ai)
                 c8.metric("Positionsgroesse", f"{pos_size} Stueck", f"Risiko {risk_eur:.0f} EUR ({risk_pct}%)")
@@ -32571,7 +32610,16 @@ if result is not None:
                     st.write(f"• Stop für CRV Entry: {float(structural_crv_entry_stop):.2f} {ccy} · {structural_crv_entry_stop_source}")
                 st.write(f"• TP1: {tp1_source}")
                 st.write(f"• TP2 / Plan-Ziel: {tp2_source}")
-                st.write(f"• Technisches CRV-Ziel: {structural_target_source}" + (f" · {float(structural_target):.2f} {ccy}" if _radar_v182_num(structural_target, default=None) is not None else " · n/a"))
+                st.write(f"• Trade-CRV-Ziel: {structural_target_source}" + (f" · {float(structural_target):.2f} {ccy}" if _radar_v182_num(structural_target, default=None) is not None else " · n/a"))
+                if _radar_v182_num(technical_clearance_target, default=None) is not None:
+                    _clearance_detail_v3021am = f"• Nächstes technisches Hindernis / Freiraum: {float(technical_clearance_target):.2f} {ccy} · {technical_clearance_source}"
+                    if _radar_v182_num(technical_clearance_pct, default=None) is not None:
+                        _clearance_detail_v3021am += f" · {_radar_v182_num(technical_clearance_pct, default=0.0):.1f}%"
+                    if _radar_v182_num(technical_clearance_r, default=None) is not None:
+                        _clearance_detail_v3021am += f" / {_radar_v182_num(technical_clearance_r, default=0.0):.2f}R"
+                    st.write(_clearance_detail_v3021am)
+                if str(technical_crv_setup_mode).lower() == "breakout" and _radar_v182_num(technical_crv_trigger_reference, default=None) is not None:
+                    st.write(f"• Breakout-Referenz: {float(technical_crv_trigger_reference):.2f} {ccy} · {technical_crv_trigger_source}; diese Zone zählt als Trigger/Hindernis, nicht automatisch als Gewinnziel.")
                 if _radar_v182_num(structural_crv_entry_reference, default=None) is not None:
                     st.write(f"• CRV Entry rechnet konservativ mit oberem Entry-Zonenrand: {float(structural_crv_entry_reference):.2f} {ccy}")
                 st.write(f"• TP3: {tp3_source}")

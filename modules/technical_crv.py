@@ -1,14 +1,19 @@
-"""Unified technical CRV package for CHSM.
+"""Setup-aware technical CRV for CHSM (v30.21am).
 
-v30.21aj separates two questions that were previously mixed together:
+The module separates two different questions:
 
-* ``CRV jetzt``: is buying at the current market price attractive versus the
-  next credible technical obstacle and the productive risk stop?
-* ``CRV Entry``: what would the same setup look like at the conservative upper
-  edge of CHSM's planned entry zone?
+1. ``Freiraum``: distance from the current price to the next credible chart
+   obstacle / trigger zone.
+2. ``Trade-CRV``: reward/risk from the current price or planned entry to a
+   setup-appropriate technical profit target.
 
-Synthetic 1.8R/2R planning targets are never used as technical targets here.
-The target is selected conservatively from real chart/setup structure.
+This matters for breakout setups. The resistance that is about to be broken is
+an entry/trigger obstacle, not automatically the trade's profit target. For
+pullback / trend-following / rebound setups, by contrast, the next overhead
+resistance remains a conservative and valid first trade target.
+
+Synthetic 1.8R/2R planning floors and analyst targets are never technical CRV
+targets here.
 """
 from __future__ import annotations
 
@@ -19,9 +24,12 @@ from typing import Any
 try:
     import numpy as np
     import pandas as pd
-except Exception:  # pragma: no cover - runtime dependency in CHSM
+except Exception:  # pragma: no cover
     np = None
     pd = None
+
+
+BREAKOUT_SETUP_TOKENS = ("breakout", "range-breakout", "breakout-retest")
 
 
 def _finite(value: Any) -> float | None:
@@ -41,7 +49,6 @@ def _first_number(*values: Any) -> float | None:
 
 
 def parse_price_zone(value: Any) -> tuple[float | None, float | None]:
-    """Parse CHSM entry-zone text without assuming a specific currency suffix."""
     if value is None:
         return None, None
     if isinstance(value, (tuple, list)) and len(value) >= 2:
@@ -51,9 +58,6 @@ def parse_price_zone(value: Any) -> tuple[float | None, float | None]:
     text = str(value).strip()
     if not text or text.lower() in {"-", "n/a", "none", "nan"}:
         return None, None
-    # CHSM prices use decimal dots in the computed entry-zone strings. The
-    # regex is intentionally conservative so currency symbols / labels cannot
-    # become numbers.
     raw = re.findall(r"[-+]?\d+(?:[\.,]\d+)?", text)
     nums: list[float] = []
     for token in raw:
@@ -69,11 +73,7 @@ def parse_price_zone(value: Any) -> tuple[float | None, float | None]:
 
 
 def _pivot_zones_from_df(df: Any, *, tolerance_pct: float = 1.5, min_touches: int = 2) -> list[dict[str, Any]]:
-    """Compute the same style of swing-pivot clusters CHSM uses for S/R.
-
-    This helper lives outside the Streamlit UI so the core analysis, screener
-    and single-stock analysis can all use the same chart-derived CRV target.
-    """
+    """Headless equivalent of CHSM's pivot-zone clustering."""
     if pd is None or df is None or not hasattr(df, "empty") or df.empty:
         return []
     if "High" not in df.columns or "Low" not in df.columns:
@@ -90,13 +90,13 @@ def _pivot_zones_from_df(df: Any, *, tolerance_pct: float = 1.5, min_touches: in
         lo = lows.iloc[i]
         if pd.notna(hi):
             l = highs.iloc[i-left:i]
-            r = highs.iloc[i+1:i+1+right]
-            if len(l.dropna()) == left and len(r.dropna()) == right and hi >= l.max() and hi >= r.max():
+            rr = highs.iloc[i+1:i+1+right]
+            if len(l.dropna()) == left and len(rr.dropna()) == right and hi >= l.max() and hi >= rr.max():
                 points.append(float(hi))
         if pd.notna(lo):
             l = lows.iloc[i-left:i]
-            r = lows.iloc[i+1:i+1+right]
-            if len(l.dropna()) == left and len(r.dropna()) == right and lo <= l.min() and lo <= r.min():
+            rr = lows.iloc[i+1:i+1+right]
+            if len(l.dropna()) == left and len(rr.dropna()) == right and lo <= l.min() and lo <= rr.min():
                 points.append(float(lo))
     if not points:
         return []
@@ -139,92 +139,219 @@ def _zones_from_result(result: dict[str, Any]) -> list[dict[str, Any]]:
     return _pivot_zones_from_df(result.get("df"))
 
 
-def _wave_candidates(result: dict[str, Any]) -> list[tuple[float, str, str]]:
-    wave = result.get("wave_structure_pkg") or {}
-    if not isinstance(wave, dict):
-        return []
-    out: list[tuple[float, str, str]] = []
-    for key in ("wave_extension_127", "target_127", "wave_target_127"):
-        value = _finite(wave.get(key))
-        if value is not None:
-            out.append((value, "Wave-Ziel 1,27", "wave"))
-    zone = wave.get("wave_target_zone") or wave.get("wave_readable_target")
-    low, high = parse_price_zone(zone)
-    if low is not None:
-        out.append((low, "Wave-Zielzone", "wave"))
-    elif high is not None:
-        out.append((high, "Wave-Zielzone", "wave"))
-    return out
+def _is_breakout_setup(result: dict[str, Any]) -> bool:
+    texts = [
+        result.get("setup_type"),
+        result.get("candidate_type"),
+        result.get("preferred_entry"),
+        result.get("entry_source"),
+    ]
+    combined = " ".join(str(x or "").strip().lower() for x in texts)
+    return any(token in combined for token in BREAKOUT_SETUP_TOKENS) or "ausbruch" in combined
 
 
-def _technical_target_candidates(result: dict[str, Any], current_price: float) -> list[dict[str, Any]]:
-    candidates: list[dict[str, Any]] = []
-
-    # 1) Existing CHSM chart S/R: first contact with an overhead zone is the
-    # conservative target. If price is currently inside a zone, the upper edge
-    # is the immediate technical obstacle.
+def _chart_obstacles(result: dict[str, Any], current_price: float) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for zone in _zones_from_result(result):
         low = _finite(zone.get("low"))
         high = _finite(zone.get("high"))
         touches = int(_finite(zone.get("touches")) or 0)
-        if low is None or high is None:
+        if low is None or high is None or low <= 0 or high <= 0:
             continue
         if low <= current_price <= high and high > current_price * 1.001:
-            candidates.append({
+            out.append({
                 "value": high,
                 "source": f"Oberkante aktive CHSM-Chartzone ({max(touches, 2)} Berührungen)",
                 "kind": "chart_active_zone",
-                "priority": 0,
+                "zone_low": low,
+                "zone_high": high,
+                "touches": touches,
             })
         elif low > current_price * 1.001:
-            candidates.append({
+            out.append({
                 "value": low,
                 "source": f"CHSM-Widerstandszone ({max(touches, 2)} Berührungen)",
                 "kind": "chart_resistance",
-                "priority": 0,
+                "zone_low": low,
+                "zone_high": high,
+                "touches": touches,
             })
+    return sorted(out, key=lambda c: float(c["value"]))
 
-    # 2) Setup structure. tp2_base_target is the real target behind a synthetic
-    # floor and is therefore allowed; tp2 itself is not unless explicitly real.
-    setup_candidates = [
+
+def _wave_candidates(result: dict[str, Any]) -> list[dict[str, Any]]:
+    wave = result.get("wave_structure_pkg") or {}
+    if not isinstance(wave, dict):
+        return []
+    out: list[dict[str, Any]] = []
+    for key in ("wave_extension_127", "target_127", "wave_target_127"):
+        value = _finite(wave.get(key))
+        if value is not None:
+            out.append({"value": value, "source": "Wave-Ziel 1,27", "kind": "wave", "priority": 2})
+    zone = wave.get("wave_target_zone") or wave.get("wave_readable_target")
+    low, high = parse_price_zone(zone)
+    if low is not None:
+        out.append({"value": low, "source": "Wave-Zielzone", "kind": "wave", "priority": 2})
+    elif high is not None:
+        out.append({"value": high, "source": "Wave-Zielzone", "kind": "wave", "priority": 2})
+    return out
+
+
+def _breakout_measured_move(result: dict[str, Any], current_price: float, trigger_reference: float | None) -> dict[str, Any] | None:
+    """Conservative measured-move fallback from the pre-breakout 20T range.
+
+    Uses one full range height (classic measured move), but only for reasonably
+    formed ranges (2-25% height). It is a fallback behind actual overhead chart,
+    setup and wave targets, never a synthetic R multiple.
+    """
+    if pd is None:
+        return None
+    df = result.get("df")
+    if df is None or not hasattr(df, "empty") or df.empty or "High" not in df.columns or "Low" not in df.columns:
+        return None
+    basis = df.tail(25).copy()
+    if len(basis) < 12:
+        return None
+    # Exclude the newest bar so today's breakout spike does not inflate the base.
+    prior = basis.iloc[:-1].tail(20)
+    highs = pd.to_numeric(prior["High"], errors="coerce").dropna()
+    lows = pd.to_numeric(prior["Low"], errors="coerce").dropna()
+    if highs.empty or lows.empty:
+        return None
+    breakout_level = float(highs.max())
+    base_low = float(lows.min())
+    if trigger_reference is not None:
+        breakout_level = max(breakout_level, float(trigger_reference))
+    height = breakout_level - base_low
+    if breakout_level <= 0 or height <= 0:
+        return None
+    height_pct = height / breakout_level * 100.0
+    if height_pct < 2.0 or height_pct > 25.0:
+        return None
+    target = breakout_level + height
+    if target <= current_price * 1.01:
+        return None
+    return {
+        "value": target,
+        "source": f"Breakout-Projektion aus 20T-Range ({height_pct:.1f}% Range-Höhe)",
+        "kind": "breakout_measured_move",
+        "priority": 3,
+    }
+
+
+def _setup_candidates(result: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = [
         (result.get("structural_target"), result.get("structural_target_source") or "Strukturelles Setup-Ziel"),
         (result.get("tp2_base_target"), result.get("tp2_base_source") or "Setup-Basisziel"),
         (result.get("technical_target_1"), "Technisches Setup-Ziel"),
+        (result.get("technical_target_2"), "Technisches Sekundärziel"),
     ]
-    for value, source in setup_candidates:
+    out: list[dict[str, Any]] = []
+    for value, source in raw:
         num = _finite(value)
-        if num is not None and num > current_price * 1.001:
-            candidates.append({"value": num, "source": str(source), "kind": "setup", "priority": 1})
-
-    # Explicitly non-synthetic TP2 is also a real target for older result sets.
+        if num is not None:
+            out.append({"value": num, "source": str(source), "kind": "setup", "priority": 1})
     if not bool(result.get("tp2_is_synthetic")):
         num = _finite(result.get("tp2"))
-        if num is not None and num > current_price * 1.001:
-            candidates.append({"value": num, "source": str(result.get("tp2_source") or "TP2"), "kind": "setup", "priority": 1})
+        if num is not None:
+            out.append({"value": num, "source": str(result.get("tp2_source") or "TP2"), "kind": "setup", "priority": 1})
+    return out
 
-    # 3) Wave structure.
-    for value, source, kind in _wave_candidates(result):
-        if value > current_price * 1.001:
-            candidates.append({"value": value, "source": source, "kind": kind, "priority": 2})
 
-    # 4) 52-week high as a last structural orientation, never analyst target.
-    high52 = _first_number(result.get("high52"), result.get("52W_High"), result.get("high_52w"))
-    if high52 is not None and high52 > current_price * 1.001:
-        candidates.append({"value": high52, "source": "52W-Hoch", "kind": "high52", "priority": 3})
-
-    # Deduplicate near-identical levels while preferring chart/setup provenance.
-    ordered = sorted(candidates, key=lambda c: (float(c["value"]), int(c["priority"])))
-    deduped: list[dict[str, Any]] = []
+def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ordered = sorted(candidates, key=lambda c: (float(c["value"]), int(c.get("priority", 9))))
+    out: list[dict[str, Any]] = []
     for cand in ordered:
         value = float(cand["value"])
-        if any(abs(value - float(x["value"])) / max(value, 1e-9) < 0.002 for x in deduped):
-            continue
-        deduped.append(cand)
-    return deduped
+        duplicate = False
+        for existing in out:
+            ev = float(existing["value"])
+            if abs(value - ev) / max(value, 1e-9) < 0.002:
+                duplicate = True
+                # Keep the more direct / higher-priority provenance.
+                if int(cand.get("priority", 9)) < int(existing.get("priority", 9)):
+                    existing.update(cand)
+                break
+        if not duplicate:
+            out.append(dict(cand))
+    return sorted(out, key=lambda c: float(c["value"]))
+
+
+def _trade_target_package(result: dict[str, Any], current_price: float, entry_ref: float | None) -> dict[str, Any]:
+    breakout_mode = _is_breakout_setup(result)
+    obstacles = _chart_obstacles(result, current_price)
+    clearance = obstacles[0] if obstacles else None
+
+    # Freiraum is always the nearest obstacle. It is informative even when it
+    # is not the correct profit target for the current setup.
+    clearance_target = _finite(clearance.get("value")) if clearance else None
+    clearance_source = str(clearance.get("source")) if clearance else "kein nahes CHSM-Hindernis"
+
+    chart_trade_candidates: list[dict[str, Any]] = []
+    trigger_reference = None
+    trigger_source = "-"
+
+    if breakout_mode:
+        # For breakout / retest setups the near resistance or active zone is the
+        # trigger obstacle. The trade target must sit meaningfully beyond it.
+        trigger_values = [v for v in (clearance_target, entry_ref, current_price) if v is not None and v > 0]
+        trigger_reference = max(trigger_values) if trigger_values else current_price
+        trigger_source = clearance_source if clearance_target is not None and clearance_target >= current_price else "Breakout-/Entry-Referenz"
+        min_trade_target = trigger_reference * 1.01
+        for obstacle in obstacles:
+            value = float(obstacle["value"])
+            if value > min_trade_target:
+                chart_trade_candidates.append({
+                    "value": value,
+                    "source": str(obstacle["source"]),
+                    "kind": "chart_resistance_above_breakout",
+                    "priority": 0,
+                })
+    else:
+        min_trade_target = current_price * 1.001
+        for obstacle in obstacles:
+            value = float(obstacle["value"])
+            if value > min_trade_target:
+                chart_trade_candidates.append({
+                    "value": value,
+                    "source": str(obstacle["source"]),
+                    "kind": str(obstacle.get("kind") or "chart_resistance"),
+                    "priority": 0,
+                })
+
+    candidates = list(chart_trade_candidates)
+    for cand in _setup_candidates(result) + _wave_candidates(result):
+        if float(cand["value"]) > min_trade_target:
+            candidates.append(cand)
+
+    high52 = _first_number(result.get("high52"), result.get("52W_High"), result.get("high_52w"))
+    if high52 is not None and high52 > min_trade_target:
+        candidates.append({"value": high52, "source": "52W-Hoch", "kind": "high52", "priority": 4})
+
+    # Only when real structure above the trigger is sparse do we add the
+    # technical measured-move projection. It competes by distance with 52W etc.
+    if breakout_mode:
+        measured = _breakout_measured_move(result, current_price, trigger_reference)
+        if measured is not None and float(measured["value"]) > min_trade_target:
+            candidates.append(measured)
+
+    candidates = _dedupe_candidates(candidates)
+    chosen = candidates[0] if candidates else None
+    return {
+        "breakout_mode": breakout_mode,
+        "clearance_target": clearance_target,
+        "clearance_source": clearance_source,
+        "trigger_reference": trigger_reference,
+        "trigger_source": trigger_source,
+        "target": _finite(chosen.get("value")) if chosen else None,
+        "target_source": str(chosen.get("source")) if chosen else "kein belastbares setupgerechtes Trade-Ziel",
+        "target_kind": str(chosen.get("kind")) if chosen else "missing",
+        "candidates": candidates,
+    }
 
 
 def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]:
-    """Return CRV-now / CRV-entry using real chart and setup structure."""
+    """Return setup-aware Trade-CRV plus chart clearance diagnostics."""
     r = result or {}
     price = _first_number(r.get("price"), r.get("current_price"), r.get("live_price"))
     stop = _first_number(r.get("stop_used"), r.get("stop"), r.get("risk_stop"))
@@ -237,7 +364,7 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
         "technical_crv_now": math.nan,
         "technical_crv_entry": math.nan,
         "technical_crv_target": math.nan,
-        "technical_crv_target_source": "kein belastbares technisches Ziel",
+        "technical_crv_target_source": "kein belastbares setupgerechtes Trade-Ziel",
         "technical_crv_target_kind": "missing",
         "technical_crv_entry_reference": entry_ref if entry_ref is not None else math.nan,
         "technical_crv_entry_reference_source": entry_source,
@@ -247,35 +374,52 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
         "technical_crv_entry_stop_source": stop_source,
         "technical_crv_target_candidates": [],
         "technical_crv_status": "missing",
+        "technical_crv_setup_mode": "breakout" if _is_breakout_setup(r) else "standard",
+        "technical_clearance_target": math.nan,
+        "technical_clearance_source": "kein nahes CHSM-Hindernis",
+        "technical_clearance_pct": math.nan,
+        "technical_clearance_r": math.nan,
+        "technical_crv_trigger_reference": math.nan,
+        "technical_crv_trigger_source": "-",
     }
     if price is None or price <= 0:
         return base
 
-    candidates = _technical_target_candidates(r, price)
+    target_pkg = _trade_target_package(r, price, entry_ref)
+    clearance_target = target_pkg["clearance_target"]
+    base["technical_clearance_target"] = clearance_target if clearance_target is not None else math.nan
+    base["technical_clearance_source"] = target_pkg["clearance_source"]
+    if clearance_target is not None and clearance_target > price:
+        base["technical_clearance_pct"] = (clearance_target - price) / price * 100.0
+        if stop is not None and 0 < stop < price:
+            risk_now = price - stop
+            if risk_now > 0:
+                base["technical_clearance_r"] = (clearance_target - price) / risk_now
+
+    trigger_reference = target_pkg["trigger_reference"]
+    base["technical_crv_trigger_reference"] = trigger_reference if trigger_reference is not None else math.nan
+    base["technical_crv_trigger_source"] = target_pkg["trigger_source"]
+
+    target = target_pkg["target"]
+    base["technical_crv_target"] = target if target is not None else math.nan
+    base["technical_crv_target_source"] = target_pkg["target_source"]
+    base["technical_crv_target_kind"] = target_pkg["target_kind"]
     base["technical_crv_target_candidates"] = [
         {"value": round(float(c["value"]), 4), "source": c["source"], "kind": c["kind"]}
-        for c in candidates[:4]
+        for c in target_pkg["candidates"][:5]
     ]
-    if not candidates:
-        return base
 
-    # The nearest credible overhead obstacle is intentionally used. This is
-    # more conservative than choosing the farthest target and better reflects
-    # what price has to clear first.
-    target = float(candidates[0]["value"])
-    base["technical_crv_target"] = target
-    base["technical_crv_target_source"] = str(candidates[0]["source"])
-    base["technical_crv_target_kind"] = str(candidates[0]["kind"])
+    if target is None:
+        return base
 
     if stop is not None and 0 < stop < price and target > price:
         risk_now = price - stop
         base["technical_crv_now"] = (target - price) / risk_now if risk_now > 0 else math.nan
 
     if entry_ref is not None and entry_ref > 0 and target > entry_ref:
-        # Reuse the productive stop, but never understate risk merely because the
-        # current-price 3.5% floor would sit too close to a lower planned entry.
-        # If available, a real chart invalidation below the planned entry is an
-        # even better base than a stop that ended up above the entry zone.
+        # Planned-entry CRV uses the same productive stop unless that stop sits
+        # above / too close to the lower planned entry. Then use a genuine chart
+        # invalidation if available, otherwise enforce the 3.5% practice floor.
         entry_stop = stop
         entry_stop_source = stop_source
         invalidation = _first_number(r.get("chart_invalidation_level"), r.get("structure_stop"))
@@ -303,14 +447,12 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
 
 
 def crv_soft_gate_state(crv_now: Any, crv_entry: Any = None) -> dict[str, Any]:
-    """Decision helper: low CRV is a timing brake, not an automatic hard gate."""
+    """CRV remains a timing / entry-quality brake, not an automatic hard gate."""
     now = _finite(crv_now)
     entry = _finite(crv_entry)
     evaluation = entry if entry is not None else now
     if now is None and entry is None:
         return {"severity": "unknown", "hard_gate": False, "score": 45.0, "evaluation_crv": None}
-    if evaluation is None:
-        evaluation = now
     if evaluation is not None and evaluation >= 3.0:
         score = 94.0
     elif evaluation is not None and evaluation >= 2.0:

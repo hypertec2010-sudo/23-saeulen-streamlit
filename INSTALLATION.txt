@@ -1,15 +1,22 @@
-CHSM v30.21al - Setup pruefbereit vs. Kauftrigger aktiv
+CHSM v30.21am - Setupabhaengiges Trade-CRV vs. Freiraum
 
-Ersetzen:
+Voraussetzung: v30.21al installiert.
+
+Ersetzen / zusammenfuehren:
 - VERSION.txt
 - legacy_app.py
+- CHANGELOG.md (optional)
 - modules/live_monitor.py
-- optional CHANGELOG.md
+- modules/technical_crv.py
 
-Beim Kopieren des Ordners modules auf macOS: Zusammenfuehren, nicht Ersetzen.
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+
+Danach Streamlit neu starten und einen Vollscan ausfuehren.
 
 Neu:
-- Gruen kann jetzt "Setup pruefbereit" bedeuten: aktiv ansehen/planen, aber noch kein Kauf.
-- Finale Kauftrigger bleiben strenger und werden separat als Kauftrigger/Trendfolge aktiv gekennzeichnet.
-- Action Queue "Jetzt pruefen" ist von der finalen Kauf-Freigabe entkoppelt.
-- Setup pruefbereit verlangt: valides Setup, Timing >=55, Konfluenz >=50, konstruktive Chart-/Trendstruktur, CRV jetzt ODER CRV Entry >=1.50, kein hartes Gate/keine Invalidierung, keine starke Ueberdehnung.
+- Freiraum = Abstand bis zum naechsten echten Chart-Hindernis / Triggerbereich.
+- Trade-CRV = Entry/Kurs -> Stop -> setupgerechtes technisches Gewinnziel.
+- Bei Breakout / Range-Breakout / Breakout-Retest wird die aktuelle Triggerzone nicht mehr als Gewinnziel verwendet.
+- Bei Pullback / Trendfolge / Rebound bleibt der naechste Widerstand bewusst ein konservatives Trade-Ziel.
+- Wenn oberhalb eines Breakouts kein belastbares Ziel existiert, kann eine klassische technische Measured-Move-Projektion aus der 20T-Range verwendet werden.
+- Keine Aenderung an CRV-Schwellen (1,20/1,50), Setup-pruefbereit-Schwellen oder finalen Kauftriggern.

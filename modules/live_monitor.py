@@ -393,13 +393,32 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     # Synthetic 1.8R/2R planning floors remain visible as a separate plan value.
     crv_target_source = str(d.get("crv_target_source") or r.get("structural_target_source") or "-").strip() or "-"
     crv_stop_source = str(r.get("stop_source") or "-").strip() or "-"
+    # v30.21am: Freiraum is the next chart obstacle; CRV is the setup-aware
+    # trade target. They are intentionally different for breakout setups.
+    try:
+        _clearance_pct_raw = d.get("crv_clearance_pct")
+        clearance_pct_float = None if _clearance_pct_raw in {"", "-", "n/a", None} else float(str(_clearance_pct_raw).replace(",", "."))
+    except Exception:
+        clearance_pct_float = None
+    try:
+        _clearance_r_raw = d.get("crv_clearance_r")
+        clearance_r_float = None if _clearance_r_raw in {"", "-", "n/a", None} else float(str(_clearance_r_raw).replace(",", "."))
+    except Exception:
+        clearance_r_float = None
+    clearance_source = str(d.get("crv_clearance_source") or "kein nahes CHSM-Hindernis").strip() or "kein nahes CHSM-Hindernis"
+    crv_setup_mode = str(d.get("crv_setup_mode") or "standard").strip() or "standard"
     plan_crv = d.get("planning_crv")
     plan_source = str(d.get("planning_target_source") or r.get("tp2_source") or "-").strip() or "-"
     plan_is_synthetic = bool(d.get("planning_is_synthetic") or r.get("tp2_is_synthetic"))
     if crv_float is None:
-        crv_basis = f"Technisches Ziel: n/a · Stop: {crv_stop_source}"
+        crv_basis = f"Trade-Ziel: n/a · Stop: {crv_stop_source}"
     else:
-        crv_basis = f"Technisches Ziel: {crv_target_source} · Stop: {crv_stop_source}"
+        crv_basis = f"Trade-Ziel: {crv_target_source} · Stop: {crv_stop_source}"
+    if clearance_pct_float is not None:
+        _clearance_r_txt = "" if clearance_r_float is None else f" / {clearance_r_float:.2f}R"
+        crv_basis += f" · Freiraum {clearance_pct_float:.1f}%{_clearance_r_txt} ({clearance_source})"
+    if crv_setup_mode.lower() == "breakout":
+        crv_basis += " · Breakout: Triggerzone != Gewinnziel"
     if crv_entry_float is not None:
         _crv_entry_ref = d.get("crv_entry_reference")
         try:
@@ -495,7 +514,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             elif "crv unattraktiv" in low or "crv zu eng" in low:
                 name = "CRV zu niedrig"
                 if crv_float is not None:
-                    detail = f"CRV jetzt {crv_float:.2f} · <1.20 Timing-Bremse; 1.20–1.49 selektiv; >=1.50 attraktiv · kein CRV-Hard-Gate"
+                    detail = f"Trade-CRV jetzt {crv_float:.2f} · <1.20 Timing-Bremse; 1.20–1.49 selektiv; >=1.50 attraktiv · kein CRV-Hard-Gate"
                 else:
                     detail = "CRV aktuell eng · Timing-/Entry-Bremse, aber kein automatisches Hard-Gate"
             elif "distribution dominiert" in low:
@@ -1890,6 +1909,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "CRV-Basis": crv_basis,
         "CRV-Zielquelle": crv_target_source,
         "CRV-Stopquelle": crv_stop_source,
+        "Freiraum %": "n/a" if clearance_pct_float is None else round(float(clearance_pct_float), 2),
+        "Freiraum R": "n/a" if clearance_r_float is None else round(float(clearance_r_float), 2),
+        "Freiraum-Quelle": clearance_source,
+        "CRV-Setupmodus": crv_setup_mode,
         "Plan-CRV": None if plan_crv is None else plan_crv,
         "Plan-CRV-Quelle": plan_source,
         "Entry-Abstand": d.get("entry_distance_text") or ("n/a" if entry_distance is None else f"{entry_distance:+.1f}%"),

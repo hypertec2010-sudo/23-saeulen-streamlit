@@ -1,3 +1,11 @@
+## v30.21am – Setupabhängiges Trade-CRV vs. Freiraum
+- Trennt `Freiraum bis zum nächsten technischen Hindernis` vom eigentlichen `Trade-CRV`.
+- Breakout-, Range-Breakout- und Breakout-Retest-Setups behandeln die gerade zu überwindende Widerstands-/Triggerzone nicht mehr automatisch als Gewinnziel.
+- Breakout-Trade-Ziel wird oberhalb der Triggerzone aus nächster höherer CHSM-Widerstandszone, Setup-/Wave-Ziel, 52W-Hoch oder – nur als technische Fallback-Projektion – aus der 20T-Range abgeleitet.
+- Pullback-, Trendfolge- und Rebound-Setups bleiben konservativ: der nächste echte Widerstand darf weiterhin das erste Trade-Ziel sein.
+- Synthetische 1,8R-/2R-Plan-Ziele und Analystenziele bleiben aus dem technischen Trade-CRV ausgeschlossen.
+- Screener-/Einzelanalyse-CRV-Basis nennt jetzt Trade-Ziel und Freiraum getrennt; keine Änderung an CRV-Schwellen, Setup-Readiness-Schwellen oder Hard-Gates.
+
 
 ## v30.21al – Setup prüfbereit vs. Kauftrigger aktiv
 - Live-Screener trennt aktive Prüfreife von der finalen Kauftrigger-Freigabe.

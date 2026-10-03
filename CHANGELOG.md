@@ -1,3 +1,13 @@
+## v30.21aq — MA-Cross als weiche technische Bestätigung
+
+- Neue zentrale MA-Cross-Auswertung für MA20/50 und MA50/200 auf Tagesbasis.
+- MA20/50 ist die schnellere Swing-/Trendfolge-Bestätigung; ein Cross gilt 10 Handelstage als frisch.
+- MA50/200 dient als langsamere Struktur-Bestätigung; ein Cross gilt 25 Handelstage als frisch.
+- Nur frische Cross-Ereignisse beeinflussen die Trigger-Konfluenz weich. Alte Crosses sind rein informativ, weil MA-Reihenfolge und MA-Steigungen bereits im Trend-Score enthalten sind.
+- Bullische und bärische Crosses werden symmetrisch berücksichtigt; MA-Cross ist weder Hard Gate noch eigenständiges Kauf-/Verkaufssignal.
+- Technische Chartdetails zeigen Richtung, Alter des letzten Crosses, MA-Steigungen über 5 Handelstage und die CHSM-Wirkung.
+- Live-Screener und Einzelanalyse verwenden dasselbe zentrale MA-Cross-Paket.
+
 ## v30.21ap — Jetzt-prüfen/CRV-Konsistenz
 
 - `🎯 Jetzt prüfen` verlangt jetzt mindestens ein berechenbares `CRV jetzt` oder `CRV Entry`.

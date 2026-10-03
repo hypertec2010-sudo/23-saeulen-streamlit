@@ -188,6 +188,7 @@ from modules import live_scan_batches as _live_scan_batches
 from modules.stop_shadow import build_hybrid_stop_shadow as _build_hybrid_stop_shadow_v3021t
 from modules.classic_pivots import build_classic_daily_pivot_package
 from modules.technical_crv import build_technical_crv_package as _build_technical_crv_package_v3021aj, crv_soft_gate_state as _crv_soft_gate_state_v3021aj
+from modules.ma_cross import build_ma_cross_package as _build_ma_cross_package_v3021aq, pair_display_row as _ma_cross_pair_display_row_v3021aq
 import yfinance as yf
 
 # v28.4.5a: zentraler Marktdaten-Provider. Yahoo/yfinance bleibt in dieser
@@ -447,7 +448,7 @@ def postprocess_asset_mode_v1534(result, ticker=None, requested="Auto"):
 def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, smart_money_default, strict_mode):
     """Zentrale Analyse über Facade und den ausgelagerten v28.3 Legacy-Core."""
     _legacy_analysis_core.configure_context(globals())
-    return _analysis_engine.analyze_stock(
+    result = _analysis_engine.analyze_stock(
         ticker=ticker,
         horizon=horizon,
         depot=depot,
@@ -460,6 +461,22 @@ def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, s
         legacy_engine=_legacy_analysis_core.legacy_analyze_stock,
         asset_mode=_asset_mode_setting_v1534(),
     )
+    # v30.21aq: fresh MA-cross events are computed centrally so Live-Screener
+    # and Einzelanalyse use exactly the same signal. Standing MA order already
+    # belongs to the trend score; only recent cross events may add soft
+    # confluence and they never create a hard gate on their own.
+    if isinstance(result, dict):
+        try:
+            result["ma_cross_pkg"] = _build_ma_cross_package_v3021aq(result.get("df"))
+        except Exception as exc:
+            result["ma_cross_pkg"] = {
+                "available": False,
+                "summary": "MA-Cross konnte nicht berechnet werden.",
+                "pairs": {},
+                "confluence_components": [],
+                "error": type(exc).__name__,
+            }
+    return result
 
 
 # ---------- v26.0: zentrale Cache-Schicht ----------
@@ -1900,6 +1917,20 @@ def build_trigger_confluence_v1537(
             neutral_terms=["gedehnt", "prüfen", "pruefen", "neutral"],
         )
         components.append(_v1537_component("MA10", ma10_dir, result.get("ma10_timing_text") or f"MA10: {ma10_label}.", 0.75))
+
+    # v30.21aq: only *fresh crossover events* add soft confluence. The
+    # standing MA20>MA50 / MA50>MA200 structure is already scored in trend
+    # quality and must not be counted twice.
+    ma_cross_pkg = result.get("ma_cross_pkg") if isinstance(result.get("ma_cross_pkg"), dict) else {}
+    for _ma_cross_component in (ma_cross_pkg.get("confluence_components") or []):
+        if not isinstance(_ma_cross_component, dict):
+            continue
+        components.append(_v1537_component(
+            str(_ma_cross_component.get("name") or "MA-Cross"),
+            str(_ma_cross_component.get("direction") or "neutral"),
+            str(_ma_cross_component.get("text") or "MA-Cross ohne belastbare Lesart."),
+            float(_ma_cross_component.get("weight") or 0.4),
+        ))
 
     fomo_label = str(fomo_pkg.get("label") or "")
     if fomo_label:
@@ -29387,6 +29418,30 @@ if result is not None:
 
     with st.expander("Technische Chartdetails", expanded=False):
         st.caption("Diese technische Einordnung wird unabhängig von der gewählten Chart-Ansicht vollständig berechnet. Kompakt/Setup/Vollanalyse steuert nur die sichtbaren Overlays im Chart.")
+
+        # v30.21aq: MA-Cross als sichtbare technische Bestätigung. Der aktuelle
+        # MA-Zustand steckt bereits im Trend-Score; nur frische Cross-Ereignisse
+        # wirken zusätzlich und weich auf die Trigger-Konfluenz.
+        _ma_cross_pkg_v3021aq = (result or {}).get("ma_cross_pkg", {}) if isinstance(result, dict) else {}
+        if not isinstance(_ma_cross_pkg_v3021aq, dict) or not _ma_cross_pkg_v3021aq.get("pairs"):
+            try:
+                _ma_cross_pkg_v3021aq = _build_ma_cross_package_v3021aq(df if "df" in locals() else chart_sr_basis_df)
+                if isinstance(result, dict):
+                    result["ma_cross_pkg"] = _ma_cross_pkg_v3021aq
+            except Exception:
+                _ma_cross_pkg_v3021aq = {"available": False, "pairs": {}, "summary": "MA-Cross nicht berechenbar."}
+        st.markdown("**MA-Cross / Trendbestätigung**")
+        _ma_cross_pairs_v3021aq = _ma_cross_pkg_v3021aq.get("pairs", {}) or {}
+        _ma_cross_rows_v3021aq = [
+            _ma_cross_pair_display_row_v3021aq(_ma_cross_pairs_v3021aq.get("ma20_50")),
+            _ma_cross_pair_display_row_v3021aq(_ma_cross_pairs_v3021aq.get("ma50_200")),
+        ]
+        st.dataframe(pd.DataFrame(_ma_cross_rows_v3021aq), hide_index=True, use_container_width=True)
+        st.caption(
+            "MA20/50 dient als schnellere Swing-/Trendfolge-Bestätigung, MA50/200 als langsamere Struktur-Bestätigung. "
+            "Nur ein frischer Cross beeinflusst die Trigger-Konfluenz weich; ein alter Cross wird nicht doppelt gewertet, "
+            "weil die MA-Reihenfolge bereits im Trend-Score enthalten ist. Kein MA-Cross ist ein Hard Gate oder eigenständiges Kaufsignal."
+        )
         if chart_structures:
             chart_text_items = summarize_chart_structures(chart_df, chart_structures)
             if chart_text_items:

@@ -1,0 +1,19 @@
+CHSM v30.21aq - MA-Cross / Trendbestaetigung
+
+Voraussetzung: v30.21ap ist installiert.
+
+Ersetzen / zusammenfuehren:
+- VERSION.txt
+- legacy_app.py
+- modules/ma_cross.py (neu)
+
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+
+Danach Streamlit neu starten. Fuer die neuen MA-Cross-Signale einmal einen neuen Scan / eine neue Einzelanalyse ausfuehren, damit keine alten Cache-Ergebnisse verwendet werden.
+
+Logik:
+- MA20/50: frischer Cross bis 10 Handelstage, weiche Swing-/Trendfolge-Konfluenz.
+- MA50/200: frischer Cross bis 25 Handelstage, weiche Struktur-Konfluenz.
+- Bestehende MA-Reihenfolge wird NICHT doppelt gewertet.
+- Kein Hard Gate, kein eigenstaendiges Kauf-/Verkaufssignal.
+- Technische Chartdetails zeigen Cross, Alter, MA-Steigungen und Wirkung.

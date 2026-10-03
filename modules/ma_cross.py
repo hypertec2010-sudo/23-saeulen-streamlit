@@ -273,6 +273,7 @@ def pair_display_row(pair: dict[str, Any] | None) -> dict[str, str]:
             "Alter": "-",
             "MA-Steigung (5T)": "-",
             "Wirkung": "keine",
+            "Konkrete Handlung": "Kein belastbarer MA-Cross: keine Sonderhandlung; normale Trend-/Triggerlogik verwenden.",
         }
     days = p.get("days_since")
     if days is None:
@@ -291,14 +292,27 @@ def pair_display_row(pair: dict[str, Any] | None) -> dict[str, str]:
     ])
     if p.get("fresh") and p.get("direction") == "bullish":
         effect = "positive Konfluenz"
+        if p.get("confirmed_by_slopes"):
+            action = "Trendwechsel wird bestätigt: Long-Setup auf Entry-Zone, CRV und Preis-/Volumentrigger prüfen; dem Cross nicht hinterherlaufen."
+        else:
+            action = "Bullischer Cross ist frisch, aber noch nicht voll bestätigt: MA-Steigungen und Preis-Trigger abwarten."
     elif p.get("fresh") and p.get("direction") == "bearish":
         effect = "bremsende Konfluenz"
+        action = "Longs defensiver behandeln; Reclaim, Stabilisierung oder neuen bullischen Cross abwarten."
+    elif p.get("structure") == "bullish":
+        effect = "nur Struktur · bereits im Trend berücksichtigt"
+        action = "Trendstruktur ist positiv; für einen neuen Entry separaten CHSM-Trigger und passendes CRV verlangen."
+    elif p.get("structure") == "bearish":
+        effect = "nur Struktur · bereits im Trend berücksichtigt"
+        action = "Trendstruktur bleibt negativ; neue Longs erst nach Reclaim/Trendwende aufwerten."
     else:
         effect = "nur Struktur · bereits im Trend berücksichtigt"
+        action = "Keine klare MA-Richtung; Struktur-/Preis-Trigger abwarten."
     return {
         "Cross": str(p.get("label") or "-"),
         "Status": str(p.get("status") or "-"),
         "Alter": age,
         "MA-Steigung (5T)": slope,
         "Wirkung": effect,
+        "Konkrete Handlung": action,
     }

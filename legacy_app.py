@@ -189,6 +189,7 @@ from modules.stop_shadow import build_hybrid_stop_shadow as _build_hybrid_stop_s
 from modules.classic_pivots import build_classic_daily_pivot_package
 from modules.technical_crv import build_technical_crv_package as _build_technical_crv_package_v3021aj, crv_soft_gate_state as _crv_soft_gate_state_v3021aj
 from modules.ma_cross import build_ma_cross_package as _build_ma_cross_package_v3021aq, pair_display_row as _ma_cross_pair_display_row_v3021aq
+from modules.technical_action_indicators import build_technical_action_package as _build_technical_action_package_v3021ar, action_rows as _technical_action_rows_v3021ar
 import yfinance as yf
 
 # v28.4.5a: zentraler Marktdaten-Provider. Yahoo/yfinance bleibt in dieser
@@ -473,6 +474,18 @@ def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, s
                 "available": False,
                 "summary": "MA-Cross konnte nicht berechnet werden.",
                 "pairs": {},
+                "confluence_components": [],
+                "error": type(exc).__name__,
+            }
+        # v30.21ar: complementary short-term/swing context. AVWAP, Squeeze and
+        # Gap stay informational/Shadow. Only a fresh DMI +DI/-DI cross may
+        # contribute a small soft confluence component.
+        try:
+            result["technical_action_pkg"] = _build_technical_action_package_v3021ar(result.get("df"), result)
+        except Exception as exc:
+            result["technical_action_pkg"] = {
+                "available": False,
+                "dmi": {}, "avwap": {}, "squeeze": {}, "gap": {},
                 "confluence_components": [],
                 "error": type(exc).__name__,
             }
@@ -1930,6 +1943,20 @@ def build_trigger_confluence_v1537(
             str(_ma_cross_component.get("direction") or "neutral"),
             str(_ma_cross_component.get("text") or "MA-Cross ohne belastbare Lesart."),
             float(_ma_cross_component.get("weight") or 0.4),
+        ))
+
+    # v30.21ar: DMI direction complements ADX strength. Only a fresh +DI/-DI
+    # cross is allowed to add soft confluence; standing DMI direction is shown
+    # in technical chart analysis but does not duplicate existing trend score.
+    _tech_action_pkg_v3021ar = result.get("technical_action_pkg") if isinstance(result.get("technical_action_pkg"), dict) else {}
+    for _tech_component_v3021ar in (_tech_action_pkg_v3021ar.get("confluence_components") or []):
+        if not isinstance(_tech_component_v3021ar, dict):
+            continue
+        components.append(_v1537_component(
+            str(_tech_component_v3021ar.get("name") or "DMI"),
+            str(_tech_component_v3021ar.get("direction") or "neutral"),
+            str(_tech_component_v3021ar.get("text") or "DMI ohne belastbare Lesart."),
+            float(_tech_component_v3021ar.get("weight") or 0.4),
         ))
 
     fomo_label = str(fomo_pkg.get("label") or "")
@@ -29441,6 +29468,33 @@ if result is not None:
             "MA20/50 dient als schnellere Swing-/Trendfolge-Bestätigung, MA50/200 als langsamere Struktur-Bestätigung. "
             "Nur ein frischer Cross beeinflusst die Trigger-Konfluenz weich; ein alter Cross wird nicht doppelt gewertet, "
             "weil die MA-Reihenfolge bereits im Trend-Score enthalten ist. Kein MA-Cross ist ein Hard Gate oder eigenständiges Kaufsignal."
+        )
+
+        # v30.21ar: complementary short-term/swing indicators with an explicit
+        # next-action interpretation. These rows are intentionally compact and
+        # action-oriented instead of adding another raw-indicator wall.
+        _tech_action_pkg_v3021ar = (result or {}).get("technical_action_pkg", {}) if isinstance(result, dict) else {}
+        if not isinstance(_tech_action_pkg_v3021ar, dict) or not _tech_action_pkg_v3021ar.get("available"):
+            try:
+                _tech_action_pkg_v3021ar = _build_technical_action_package_v3021ar(df if "df" in locals() else chart_sr_basis_df, result if isinstance(result, dict) else {})
+                if isinstance(result, dict):
+                    result["technical_action_pkg"] = _tech_action_pkg_v3021ar
+            except Exception:
+                _tech_action_pkg_v3021ar = {"available": False}
+        st.markdown("**Kurzfrist-/Swing-Indikatoren · konkrete Handlung**")
+        _tech_action_rows_v3021ar = _technical_action_rows_v3021ar(_tech_action_pkg_v3021ar)
+        for _tech_row_v3021ar in _tech_action_rows_v3021ar:
+            _ind = html.escape(str(_tech_row_v3021ar.get("Indikator") or "-"))
+            _sig = html.escape(str(_tech_row_v3021ar.get("Signal") or "n/a"))
+            _meaning = html.escape(str(_tech_row_v3021ar.get("Bedeutung") or "-"))
+            _action = html.escape(str(_tech_row_v3021ar.get("Konkrete Handlung") or "-"))
+            st.markdown(
+                f"**{_ind} · {_sig}**  \n{_meaning}  \n**Handlung:** {_action}",
+                unsafe_allow_html=False,
+            )
+        st.caption(
+            "DMI ergänzt den vorhandenen ADX um die Trendrichtung; nur ein frischer +DI/-DI-Cross wirkt weich auf die Konfluenz. "
+            "Anchored VWAP, TTM-Squeeze und Gap Hold/Fill sind in v30.21ar bewusst informativ/Shadow und verändern Score, Ampel, Grade, CRV oder Hard Gates nicht."
         )
         if chart_structures:
             chart_text_items = summarize_chart_structures(chart_df, chart_structures)

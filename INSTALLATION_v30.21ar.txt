@@ -1,0 +1,26 @@
+CHSM v30.21ar - Kurzfrist-/Swing-Indikatoren mit konkreter Handlung
+
+Voraussetzung: v30.21aq bzw. aktueller Stand installiert.
+
+Ersetzen / zusammenfuehren:
+- VERSION.txt
+- legacy_app.py
+- CHANGELOG.md
+- modules/ma_cross.py
+- modules/technical_action_indicators.py (neu)
+
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+
+Danach Streamlit neu starten und eine Analyse / einen Vollscan neu berechnen.
+
+Neu im Bereich Technische Chartdetails:
+- MA20/50 und MA50/200 mit konkreter Handlung
+- DMI (+DI/-DI) + ADX-Richtung
+- Anchored VWAP
+- TTM-Squeeze / Keltner
+- Gap Hold / Gap Fill
+
+Wertung:
+- Nur ein frischer DMI +DI/-DI Cross darf eine kleine weiche Konfluenz beitragen.
+- AVWAP, TTM-Squeeze und Gap sind in v30.21ar rein informativ/Shadow.
+- Kein neuer Hard Gate; CRV-, Ampel-, Grade- und Stop-Logik bleiben unveraendert.

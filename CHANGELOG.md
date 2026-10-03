@@ -1,3 +1,14 @@
+## v30.21ar — Kurzfrist-/Swing-Indikatoren mit konkreter Handlung
+
+- Neuer Technik-Handlungsblock in `Technische Chartdetails`: DMI (+DI/-DI), Anchored VWAP, TTM-Squeeze und Gap Hold/Fill.
+- Jeder Indikator zeigt Signal, Bedeutung und eine konkrete nächste Handlung statt nur Rohwerte.
+- DMI ergänzt den vorhandenen ADX um Trendrichtung und frische +DI/-DI-Crosses. Nur frische DMI-Crosses wirken weich auf die Trigger-Konfluenz; kein Hard Gate.
+- Anchored VWAP wird auf Tagesbasis ab dem letzten bestätigten Swing-Low (Fallback 60T-Tief) berechnet und dient als Pullback-/Reclaim-Referenz.
+- TTM-Squeeze nutzt Bollinger 20/2 innerhalb Keltner EMA20/1,5xATR20 und kennzeichnet aktive Kompression bzw. frischen Release.
+- Gap-Analyse erkennt relevante True Gaps, Hold/Fill/Reclaim-Kontext und formuliert die passende Handlung.
+- AVWAP, TTM-Squeeze und Gap bleiben bewusst informativ/Shadow: keine Änderung an Score, Ampel, Grade, CRV oder Hard Gates.
+- MA-Cross-Anzeige aus v30.21aq erhält ebenfalls eine Spalte `Konkrete Handlung`.
+
 ## v30.21aq — MA-Cross als weiche technische Bestätigung
 
 - Neue zentrale MA-Cross-Auswertung für MA20/50 und MA50/200 auf Tagesbasis.

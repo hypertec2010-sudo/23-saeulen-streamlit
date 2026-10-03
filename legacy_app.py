@@ -21632,6 +21632,23 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     return False
                                 return True
 
+                            def _v309_has_trade_crv(row):
+                                # v30.21ap: Ein Queue-Callout "Jetzt prüfen" braucht wenigstens
+                                # eine berechenbare Chance/Risiko-Basis. CRV jetzt ODER CRV Entry
+                                # reicht; wenn beide fehlen, ist das Setup zwar ggf. nahe am Trigger,
+                                # aber noch nicht belastbar genug für die aktive Prüf-Queue.
+                                for key in ("CRV", "CRV jetzt", "CRV Entry"):
+                                    raw = row.get(key)
+                                    try:
+                                        if raw in {None, "", "-", "n/a", "N/A", "nan", "None"}:
+                                            continue
+                                        val = float(str(raw).replace(",", "."))
+                                        if np.isfinite(val) and not pd.isna(val) and val > 0:
+                                            return True
+                                    except Exception:
+                                        continue
+                                return False
+
                             def _v309_queue_category(row):
                                 ampel = _v243_clean_cell(row.get("Ampel"))
                                 status = _v243_clean_cell(row.get("Status"))
@@ -21651,7 +21668,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     "jetzt prüfbar", "jetzt pruefbar", "trigger aktiv",
                                     "kurzfrist-trigger aktiv", "armed / bereit", "entry-zone erreicht"
                                 ))
-                                if setup_ready or ready:
+                                # v30.21ap: Trigger-Nähe allein genügt nicht mehr, wenn weder
+                                # CRV jetzt noch CRV Entry berechenbar ist.
+                                if (setup_ready or ready) and _v309_has_trade_crv(row):
                                     return "🎯 Jetzt prüfen"
                                 return "👀 Beobachten"
 
@@ -21663,6 +21682,17 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     engine = _v243_clean_cell(row.get("Engine-Empfehlung"))
                                     if engine not in {"", "-"}:
                                         return engine
+                                if category == "👀 Beobachten" and not _v309_has_trade_crv(row):
+                                    status = _v243_clean_cell(row.get("Status"))
+                                    state = _v243_clean_cell(row.get("Trade-State"))
+                                    setup = _v243_clean_cell(row.get("Setup-Alert"))
+                                    engine = _v243_clean_cell(row.get("Engine-Empfehlung"))
+                                    combined = " ".join([status, state, setup, engine]).lower()
+                                    if bool(row.get("__setup_ready", False)) or any(token in combined for token in (
+                                        "setup prüfbereit", "setup pruefbereit", "jetzt prüfbar", "jetzt pruefbar",
+                                        "trigger aktiv", "kurzfrist-trigger aktiv", "armed / bereit", "entry-zone erreicht"
+                                    )):
+                                        return "Kein belastbares Trade-CRV/Ziel: trotz Setup-Nähe nur beobachten."
                                 change_state = _v243_clean_cell(row.get("Änderung"))
                                 change_why = _v243_clean_cell(row.get("Warum geändert?"))
                                 if change_state not in {"", "-", "Unverändert", "Unveraendert"} and change_why not in {"", "-"}:
@@ -21699,6 +21729,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Status": _v243_clip_cell(raw.get("Status"), 34),
                                         "Trade-State": _v243_clip_cell(raw.get("Trade-State"), 30),
                                         "CRV": _v243_clean_cell(raw.get("CRV")),
+                                        "CRV Entry": _v243_clean_cell(raw.get("CRV Entry")),
                                         "Entry-Abstand": _v243_clean_cell(raw.get("Entry-Abstand")),
                                         "Harvest": None if harvest_num is None else float(harvest_num),
                                         "Änderung": change_state if changed else "-",
@@ -21749,7 +21780,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     ])
                                     _queue_cols_v309 = [
                                         "Ticker", "Name", "Ampel", "Live-Score", "Decision-Confidence",
-                                        "Status", "Trade-State", "CRV", "Entry-Abstand", "Harvest",
+                                        "Status", "Trade-State", "CRV", "CRV Entry", "Entry-Abstand", "Harvest",
                                         "Änderung", "Fokus-Grund", "Nächste Handlung",
                                     ]
                                     for _tab_v309, _cat_v309 in [

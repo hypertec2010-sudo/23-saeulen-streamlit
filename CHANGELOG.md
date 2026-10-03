@@ -1,3 +1,11 @@
+## v30.21ap — Jetzt-prüfen/CRV-Konsistenz
+
+- `🎯 Jetzt prüfen` verlangt jetzt mindestens ein berechenbares `CRV jetzt` oder `CRV Entry`.
+- Fehlen beide CRVs, bleibt ein triggernahes Setup `👀 Beobachten` statt einen aktiven Prüf-Callout zu erhalten.
+- Der Fokus-Grund erklärt in diesem Fall: `Kein belastbares Trade-CRV/Ziel: trotz Setup-Nähe nur beobachten.`
+- Niedriges `CRV jetzt` mit attraktivem `CRV Entry` bleibt weiterhin prüfbereit.
+- Keine Änderung an CRV-Berechnung, Ampel-Schwellen, Triggern oder Trading-Score.
+
 ## v30.21ao — CRV-Spalten im kompakten Screener wieder sichtbar
 
 - Reiner Darstellungsfix auf Basis v30.21an.

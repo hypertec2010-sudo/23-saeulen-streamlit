@@ -1,0 +1,15 @@
+CHSM v30.21ap - Jetzt-pruefen/CRV-Konsistenz
+
+Voraussetzung: v30.21ao installiert.
+
+Ersetzen:
+- VERSION.txt
+- legacy_app.py
+- optional CHANGELOG.md
+
+Kein modules-Ordner muss geaendert werden.
+
+Aenderung:
+- "Jetzt pruefen" nur noch, wenn CRV jetzt oder CRV Entry berechenbar ist.
+- Triggernahe Setups ohne belastbares Trade-CRV bleiben "Beobachten".
+- Keine Aenderung an CRV-Berechnung, Ampel-Logik oder Scores.

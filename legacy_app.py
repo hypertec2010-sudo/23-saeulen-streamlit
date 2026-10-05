@@ -29446,6 +29446,87 @@ if result is not None:
     with st.expander("Technische Chartdetails", expanded=False):
         st.caption("Diese technische Einordnung wird unabhängig von der gewählten Chart-Ansicht vollständig berechnet. Kompakt/Setup/Vollanalyse steuert nur die sichtbaren Overlays im Chart.")
 
+        # v30.21as: Im aufgeklappten Technikbereich zuerst die Entscheidung,
+        # dann die operativen Levels und erst danach die Detailindikatoren.
+        # Rein darstellerisch: keine Score-/Ampel-/CRV-/Gate-Aenderung.
+        _tech_crv_now_v3021as = _radar_v182_num(structural_crv, default=None)
+        _tech_crv_entry_v3021as = _radar_v182_num(structural_crv_entry, default=None)
+        _tech_target_v3021as = _radar_v182_num(structural_target, default=None)
+        _tech_stop_v3021as = _radar_v182_num(stop_used, default=None)
+        _tech_entry_zone_v3021as = str(suggested_entry_zone or "-").strip() or "-"
+        _tech_trigger_v3021as = str(next_trigger or trigger_status or "-").strip() or "-"
+        _tech_setup_v3021as = str(setup_type or "Setup").strip() or "Setup"
+
+        if not bool(valid_trade_setup):
+            _tech_verdict_v3021as = "🟡 Technisch noch nicht freigegeben"
+            _tech_action_v3021as = "Setup weiter beobachten; Entry erst bei belastbarem Trigger und passender Risiko-/Zielstruktur aktiv prüfen."
+        elif _tech_crv_now_v3021as is not None and _tech_crv_now_v3021as >= 1.50:
+            _tech_verdict_v3021as = "🟢 Technisch aktiv prüfbar"
+            _tech_action_v3021as = "Aktueller Zielraum ist attraktiv. Trigger/Bestätigung prüfen und Stop/Invalidierung konsequent beachten; nicht allein wegen eines Indikators handeln."
+        elif _tech_crv_entry_v3021as is not None and _tech_crv_entry_v3021as >= 1.50:
+            _tech_verdict_v3021as = "🟢 Setup gut · besserer Entry bevorzugt"
+            _tech_action_v3021as = "Nicht hinterherlaufen: Rücklauf in bzw. nahe der CHSM-Entry-Zone bevorzugen; dort Trigger und Halt der technischen Struktur neu bestätigen."
+        elif _tech_crv_now_v3021as is None and _tech_crv_entry_v3021as is None:
+            _tech_verdict_v3021as = "🟡 Technisches Ziel/CRV noch nicht belastbar"
+            _tech_action_v3021as = "Keinen Entry aus der Charttechnik erzwingen. Erst belastbares Ziel/CRV oder einen klareren Strukturtrigger abwarten."
+        else:
+            _tech_verdict_v3021as = "🟡 Technisch selektiv"
+            _tech_action_v3021as = "Setup nicht verwerfen, aber Entry nur selektiv prüfen; besseres CRV, Pullback oder zusätzliche Trigger-Konfluenz abwarten."
+
+        _tech_context_bits_v3021as = []
+        if _tech_setup_v3021as and _tech_setup_v3021as != "-":
+            _tech_context_bits_v3021as.append(f"Setup: {_tech_setup_v3021as}")
+        if str(trigger_status or "-").strip() not in {"", "-", "None", "nan"}:
+            _tech_context_bits_v3021as.append(f"Triggerstatus: {trigger_status}")
+        if str(entry_quality or "-").strip() not in {"", "-", "None", "nan"}:
+            _tech_context_bits_v3021as.append(f"Entry-Lage: {entry_quality}")
+        _tech_context_v3021as = " · ".join(_tech_context_bits_v3021as) or "Technische Gesamtlage aus bestehender CHSM-Logik."
+
+        st.markdown(
+            f'''
+            <div class="section-card" style="padding:0.95rem 1rem;margin:0.35rem 0 0.85rem 0;border-left:5px solid rgba(96,165,250,.78);">
+                <div class="premium-title">Technisches Fazit · Was jetzt?</div>
+                <div class="premium-value" style="font-size:1.08rem;margin-top:4px;">{html.escape(_tech_verdict_v3021as)}</div>
+                <div class="premium-sub" style="margin-top:7px;"><b>Handlung:</b> {html.escape(_tech_action_v3021as)}</div>
+                <div class="premium-sub" style="margin-top:7px;">{html.escape(_tech_context_v3021as)}</div>
+            </div>
+            ''',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("**Operative Technik-Level**")
+        _tech_stop_text_v3021as = f"{_tech_stop_v3021as:.2f} {ccy} · {stop_source}" if _tech_stop_v3021as is not None else str(stop_source or "n/a")
+        _tech_target_text_v3021as = f"{_tech_target_v3021as:.2f} {ccy} · {structural_target_source}" if _tech_target_v3021as is not None else str(structural_target_source or "n/a")
+        _tech_crv_now_text_v3021as = f"{_tech_crv_now_v3021as:.2f}" if _tech_crv_now_v3021as is not None else "n/a"
+        _tech_crv_entry_text_v3021as = f"{_tech_crv_entry_v3021as:.2f}" if _tech_crv_entry_v3021as is not None else "n/a"
+        _tech_level_cards_v3021as = [
+            ("Entry-Zone", _tech_entry_zone_v3021as),
+            ("Stop / Invalidierung", _tech_stop_text_v3021as),
+            ("Trade-Ziel", _tech_target_text_v3021as),
+            ("CRV jetzt", _tech_crv_now_text_v3021as),
+            ("CRV Entry", _tech_crv_entry_text_v3021as),
+            ("Nächster Trigger", _tech_trigger_v3021as),
+        ]
+        _tech_level_html_v3021as = "".join(
+            "<div class=\"tech-level-card-v3021as\"><div class=\"tech-level-label-v3021as\">{}</div><div class=\"tech-level-value-v3021as\">{}</div></div>".format(
+                html.escape(str(_label)), html.escape(str(_value))
+            )
+            for _label, _value in _tech_level_cards_v3021as
+        )
+        _tech_level_shell_v3021as = (
+            "<style>"
+            ".tech-level-grid-v3021as{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.55rem;margin:.45rem 0 .35rem 0;}"
+            ".tech-level-card-v3021as{border:1px solid rgba(148,163,184,.16);border-radius:14px;padding:.68rem .75rem;background:rgba(15,23,42,.24);min-height:78px;}"
+            ".tech-level-label-v3021as{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;font-weight:850;}"
+            ".tech-level-value-v3021as{font-size:.84rem;color:#e5e7eb;font-weight:760;line-height:1.32;margin-top:.35rem;overflow-wrap:anywhere;}"
+            "@media(max-width:850px){.tech-level-grid-v3021as{grid-template-columns:1fr;}}"
+            "</style><div class=\"tech-level-grid-v3021as\">" + _tech_level_html_v3021as + "</div>"
+        )
+        st.markdown(_tech_level_shell_v3021as, unsafe_allow_html=True)
+        st.caption("Diese Level stammen aus der bestehenden CHSM-Analyse. Der Block ordnet nur die bereits berechneten Informationen neu und verändert keine Entscheidungsschwelle.")
+
+        st.markdown("**Technische Bestätigungen & Kurzfrist-/Swing-Signale**")
+
         # v30.21aq: MA-Cross als sichtbare technische Bestätigung. Der aktuelle
         # MA-Zustand steckt bereits im Trend-Score; nur frische Cross-Ereignisse
         # wirken zusätzlich und weich auf die Trigger-Konfluenz.
@@ -29457,7 +29538,7 @@ if result is not None:
                     result["ma_cross_pkg"] = _ma_cross_pkg_v3021aq
             except Exception:
                 _ma_cross_pkg_v3021aq = {"available": False, "pairs": {}, "summary": "MA-Cross nicht berechenbar."}
-        st.markdown("**MA-Cross / Trendbestätigung**")
+        st.markdown("##### MA-Cross / Trendbestätigung")
         _ma_cross_pairs_v3021aq = _ma_cross_pkg_v3021aq.get("pairs", {}) or {}
         _ma_cross_rows_v3021aq = [
             _ma_cross_pair_display_row_v3021aq(_ma_cross_pairs_v3021aq.get("ma20_50")),
@@ -29481,7 +29562,7 @@ if result is not None:
                     result["technical_action_pkg"] = _tech_action_pkg_v3021ar
             except Exception:
                 _tech_action_pkg_v3021ar = {"available": False}
-        st.markdown("**Kurzfrist-/Swing-Indikatoren · konkrete Handlung**")
+        st.markdown("##### DMI · Anchored VWAP · TTM-Squeeze · Gap")
         _tech_action_rows_v3021ar = _technical_action_rows_v3021ar(_tech_action_pkg_v3021ar)
         for _tech_row_v3021ar in _tech_action_rows_v3021ar:
             _ind = html.escape(str(_tech_row_v3021ar.get("Indikator") or "-"))
@@ -29496,6 +29577,10 @@ if result is not None:
             "DMI ergänzt den vorhandenen ADX um die Trendrichtung; nur ein frischer +DI/-DI-Cross wirkt weich auf die Konfluenz. "
             "Anchored VWAP, TTM-Squeeze und Gap Hold/Fill sind in v30.21ar bewusst informativ/Shadow und verändern Score, Ampel, Grade, CRV oder Hard Gates nicht."
         )
+        st.markdown("---")
+        st.markdown("**Weitere technische Details**")
+        st.caption("Vertiefung und Transparenz: Die folgenden Blöcke bleiben vollständig erhalten, sind aber nach der operativen Handlung und den wichtigsten Signalen eingeordnet.")
+
         if chart_structures:
             chart_text_items = summarize_chart_structures(chart_df, chart_structures)
             if chart_text_items:

@@ -1,0 +1,18 @@
+CHSM v30.21as - Technikbereich priorisiert
+
+Voraussetzung: aktueller Stand v30.21ar.
+
+Ersetzen:
+- VERSION.txt
+- legacy_app.py
+- CHANGELOG.md optional
+
+Kein modules-Ordner muss geaendert werden.
+
+Aenderungen nur an der Darstellung im bereits vorhandenen Expander "Technische Chartdetails":
+1. Technisches Fazit / Was jetzt?
+2. Operative Technik-Level (Entry, Stop, Trade-Ziel, CRV jetzt/Entry, Trigger)
+3. MA-Cross + DMI/AVWAP/TTM-Squeeze/Gap mit Handlung
+4. Alle bisherigen technischen Details vollstaendig darunter
+
+Keine Aenderung an Trading-Logik, Score, Ampel, CRV, Gates oder Triggern.

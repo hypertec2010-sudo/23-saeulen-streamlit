@@ -1,3 +1,12 @@
+## v30.21as — Technikbereich priorisiert
+
+- Technische Chartdetails bleiben standardmäßig eingeklappt und vollständig erhalten.
+- Im geöffneten Expander steht jetzt zuerst „Technisches Fazit · Was jetzt?“.
+- Danach folgen kompakte operative Technik-Level: Entry-Zone, Stop/Invalidierung, Trade-Ziel, CRV jetzt, CRV Entry und nächster Trigger.
+- MA-Cross sowie DMI/Anchored VWAP/TTM-Squeeze/Gap stehen direkt danach mit ihren Handlungshinweisen.
+- Alle bisherigen Detailblöcke bleiben unverändert darunter erhalten.
+- Reine UI-/Priorisierungsänderung: keine Änderung an Score, Ampel, CRV-Berechnung, Gates oder Triggerlogik.
+
 ## v30.21ar — Kurzfrist-/Swing-Indikatoren mit konkreter Handlung
 
 - Neuer Technik-Handlungsblock in `Technische Chartdetails`: DMI (+DI/-DI), Anchored VWAP, TTM-Squeeze und Gap Hold/Fill.

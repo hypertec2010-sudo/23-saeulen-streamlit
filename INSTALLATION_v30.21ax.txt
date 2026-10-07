@@ -1,0 +1,26 @@
+CHSM v30.21ax - Hotfix Live-Screener
+
+Voraussetzung: v30.21aw installiert.
+
+Ersetzen / zusammenfuehren:
+- VERSION.txt
+- legacy_app.py
+- modules/live_monitor.py
+- CHANGELOG.md optional
+
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+Auf dem Server dieselben Dateien an denselben Stellen ersetzen.
+
+Danach Streamlit komplett neu starten und einen neuen Vollscan der Watchlist ausfuehren.
+
+Behoben:
+1. `keine harten Gates` konnte seit v30.21au faelschlich selbst als hartes Gate gelten -> fast alles rot / Setup blockiert.
+2. Streamlit Cloud konnte bei der neu eingeblendeten Volatilitaets-Spalte im Checkbox-data_editor einen Mixed-Type-Fehler werfen.
+
+Unveraendert:
+- CRV-Logik
+- echte Hard Gates
+- Triggerlogik
+- Score-Formeln
+- Watchlist-Mehrfachloeschung
+- Volatilitaetsanzeige bleibt sichtbar

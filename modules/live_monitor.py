@@ -507,6 +507,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         low = str(item or "").lower().strip()
         if not low:
             return True
+        if low in {"keine harten gates", "keine harten gate", "-", "nan", "none"}:
+            return True
         if any(t in low for t in exit_gate_terms):
             return True
         if any(t in low for t in fundamental_gate_terms):
@@ -521,7 +523,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _hard_entry_gate_items_v3021au = [x for x in _gate_items_v3021au if not _v3021au_soft_gate_item(x)]
     non_entry_crv_gate = bool(hard_gate and gate_low and any(t in gate_low for t in ["crv unattraktiv", "crv zu eng"]))
     non_entry_distance_gate = bool(hard_gate and any("entry-abstand" in str(x).lower() and "fomo" not in str(x).lower() for x in _gate_items_v3021au))
-    entry_hard_gate = bool(_hard_entry_gate_items_v3021au)
+    # v30.21ax hotfix: only evaluate itemized reasons when the original gate
+    # detector actually found a hard gate. The sentinel text "keine harten Gates"
+    # must never become an entry gate merely because it is a non-empty string.
+    entry_hard_gate = bool(hard_gate and _hard_entry_gate_items_v3021au)
 
     # v28.6c: Gate Transparency. Die Logik, ob ein Gate hart ist, bleibt
     # unveraendert. Neu ist nur die nachvollziehbare Aufschluesselung der

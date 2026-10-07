@@ -22450,6 +22450,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         st.rerun()
 
                                     _desktop_rescan_editor_v3021e = _desktop_live_display_v304a.copy()
+                                    # v30.21ax: st.data_editor is stricter than st.dataframe
+                                    # about mixed object dtypes. The newly visible Volatilitaet
+                                    # column is display-only (e.g. "4.4% · normal") and may still
+                                    # contain numeric NaN values for individual rows. Normalize it
+                                    # to pure text before adding the checkbox editor column.
+                                    if "Volatilität" in _desktop_rescan_editor_v3021e.columns:
+                                        _desktop_rescan_editor_v3021e["Volatilität"] = _desktop_rescan_editor_v3021e["Volatilität"].map(_v243_clean_cell).astype(str)
                                     _desktop_rescan_editor_v3021e.insert(
                                         0,
                                         "🔄",

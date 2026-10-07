@@ -1,3 +1,11 @@
+## v30.21ax – Hotfix Live-Screener Gate + Volatilitaets-Editor
+
+- Kritischer v30.21au-Regressionsfehler behoben: Der Sentinel `keine harten Gates` konnte durch die neue Einzelklassifizierung faelschlich selbst zu `entry_hard_gate=True` werden. Dadurch konnten praktisch alle Live-Screener-Zeilen rot als `Setup blockiert` erscheinen.
+- `entry_hard_gate` wird jetzt nur gesetzt, wenn die urspruengliche Gate-Erkennung tatsaechlich ein hartes Gate gefunden hat und nach der Soft-Gate-Klassifizierung mindestens ein harter Grund uebrig bleibt.
+- Sentinelwerte wie `keine harten Gates`, `-`, `nan`, `none` werden zusaetzlich defensiv als weich/leer behandelt.
+- Streamlit-Cloud-Hotfix fuer den selektiven Re-Scan: Die sichtbare Spalte `Volatilitaet` wird vor `st.data_editor` als reiner Anzeigetext normalisiert. Dadurch entsteht kein Mixed-Type-Konflikt bei fehlenden ATR-Werten.
+- Keine Aenderung an CRV-Berechnung, Score-Modell, Triggerregeln oder echter Hard-Gate-Logik.
+
 ## v30.21aw — Mehrfachauswahl beim Entfernen aus Watchlists
 
 - In der Watchlist-Verwaltung steht jetzt direkt vor jedem Ticker eine Checkbox `Auswahl`.

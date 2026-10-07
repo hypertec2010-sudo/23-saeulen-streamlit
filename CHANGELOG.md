@@ -1,3 +1,14 @@
+## v30.21at – Kandidaten-Radar Provider-Schutz
+
+- Kandidaten-Radar arbeitet zweistufig: OHLCV-/Kurstechnik-Vorscan fuer das komplette Universum, danach maximal 10–15 Vollanalysen.
+- Radar-Light nutzt keine Fundamentals, Analysten, Earnings, Statements, Benchmark- oder Sektor-Zusatzdaten und veraendert keine produktiven Scores/Gates.
+- Erfolgreiche 3J-Historie wird 15 Minuten pro Prozess gecacht und von der anschliessenden Vollanalyse wiederverwendet.
+- Radar-Light ist mit mindestens 0,75 s Abstand zwischen Yahoo-History-Aufrufen bewusst langsamer als normale Einzelabfragen.
+- Bei erstem bestaetigten Yahoo-Rate-Limit wird der Radar-Light-Lauf sofort beendet; die bestehende 30-Minuten-Quarantaene bleibt Schutzmechanismus.
+- Sektor-Kontext laeuft jetzt ueber den zentralen Provider statt direktem `yf.download`, damit Throttle/Quarantaene greifen.
+- Radar-Snapshot-Scheduler respektiert jetzt die sichtbaren `run_at`-Zeiten; ein Slot startet nicht mehr alle neun Jobs gleichzeitig.
+- Radar-UI zeigt Vorscan-/Vollanalyse-Zahlen und Light-Ausfaelle getrennt.
+
 ## v30.21as — Technikbereich priorisiert
 
 - Technische Chartdetails bleiben standardmäßig eingeklappt und vollständig erhalten.

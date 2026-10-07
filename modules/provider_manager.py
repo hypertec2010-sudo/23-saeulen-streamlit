@@ -266,6 +266,15 @@ class MarketDataProvider:
         self._health_lock = threading.Lock()
         self._health_cache: Optional[ProviderHealth] = None
         self._health_cache_ttl = 15 * 60.0
+        # v30.21at: short in-process history cache. The Kandidaten-Radar first
+        # performs a price-only light scan; finalists are then sent through the
+        # full CHSM analysis. Keeping the exact same 3y history in memory avoids
+        # fetching it a second time for those finalists. The cache is deliberately
+        # short-lived and process-local so normal freshness semantics stay intact.
+        self._history_cache_lock = threading.Lock()
+        self._history_cache: Dict[Any, tuple[float, pd.DataFrame]] = {}
+        self._history_cache_ttl = 15 * 60.0
+        self._history_cache_max_items = 600
         # v30.21s: a confirmed Yahoo rate limit quarantines the provider for
         # 30 minutes. This is intentionally much longer than the old per-request
         # retry sleep and prevents Live-Screener, Radar and Sofortanalyse from
@@ -312,12 +321,13 @@ class MarketDataProvider:
                 f"Yahoo Provider-Cooldown aktiv; noch ca. {minutes} Min. Keine neue Provider-Abfrage gestartet."
             )
 
-    def _pace_request(self, *, allow_probe: bool = False) -> None:
+    def _pace_request(self, *, allow_probe: bool = False, min_gap: Optional[float] = None) -> None:
         self.ensure_available(allow_probe=allow_probe)
         with self._request_lock:
             now = time.monotonic()
             cooldown_wait = 0.0 if allow_probe else (self._cooldown_until - now)
-            wait_for = max(0.0, cooldown_wait, self._min_request_gap - (now - self._last_request_at))
+            effective_gap = self._min_request_gap if min_gap is None else max(self._min_request_gap, float(min_gap))
+            wait_for = max(0.0, cooldown_wait, effective_gap - (now - self._last_request_at))
             if wait_for > 0:
                 time.sleep(min(wait_for, 12.0))
             self._last_request_at = time.monotonic()
@@ -568,6 +578,97 @@ class MarketDataProvider:
                 raise MarketDataRateLimitError(str(exc)) from exc
             raise MarketDataError(str(exc)) from exc
 
+    @staticmethod
+    def _clean_history_frame(frame: Any) -> pd.DataFrame:
+        if not isinstance(frame, pd.DataFrame):
+            return pd.DataFrame()
+        out = frame.copy()
+        try:
+            if hasattr(out.columns, "nlevels") and out.columns.nlevels > 1:
+                out.columns = [c[0] if isinstance(c, tuple) else c for c in out.columns]
+        except Exception:
+            pass
+        try:
+            out = out[~out.index.duplicated(keep="last")].sort_index()
+        except Exception:
+            pass
+        return out
+
+    @staticmethod
+    def _history_cache_key(resolved: str, request_kwargs: Dict[str, Any]) -> tuple:
+        items = []
+        for key, value in sorted((request_kwargs or {}).items(), key=lambda kv: str(kv[0])):
+            try:
+                token = value.isoformat() if hasattr(value, "isoformat") else repr(value)
+            except Exception:
+                token = str(value)
+            items.append((str(key), token))
+        return (str(resolved or "").upper(), tuple(items))
+
+    def _history_cache_get(self, resolved: str, request_kwargs: Dict[str, Any]) -> Optional[pd.DataFrame]:
+        key = self._history_cache_key(resolved, request_kwargs)
+        now = time.time()
+        with self._history_cache_lock:
+            hit = self._history_cache.get(key)
+            if not hit:
+                return None
+            stamp, frame = hit
+            if now - float(stamp) > self._history_cache_ttl:
+                self._history_cache.pop(key, None)
+                return None
+            return frame.copy()
+
+    def _history_cache_put(self, resolved: str, request_kwargs: Dict[str, Any], frame: pd.DataFrame) -> None:
+        if not isinstance(frame, pd.DataFrame) or frame.empty:
+            return
+        key = self._history_cache_key(resolved, request_kwargs)
+        now = time.time()
+        with self._history_cache_lock:
+            self._history_cache[key] = (now, frame.copy())
+            if len(self._history_cache) > self._history_cache_max_items:
+                oldest = sorted(self._history_cache.items(), key=lambda kv: kv[1][0])[: max(1, len(self._history_cache) - self._history_cache_max_items)]
+                for old_key, _ in oldest:
+                    self._history_cache.pop(old_key, None)
+
+    def get_history_light(self, symbol: str, **kwargs) -> pd.DataFrame:
+        """One-request history path for broad discovery scans.
+
+        Unlike ``get_history`` this deliberately skips the young-listing/raw-chart/
+        max-history recovery chain. A discovery prefilter should never spend three
+        or four Yahoo calls proving one weak/invalid symbol. Successful frames are
+        written into the same 15-minute history cache used by the full analysis.
+        """
+        self.ensure_available()
+        clean = self.normalize_symbol(symbol)
+        resolution = self.resolve(clean)
+        resolved = resolution.provider_symbol
+        if not resolved:
+            return pd.DataFrame()
+        request_kwargs = dict(kwargs)
+        if resolution.history_start and not request_kwargs.get("interval"):
+            request_kwargs.pop("period", None)
+            request_kwargs["start"] = resolution.history_start
+        cached = self._history_cache_get(resolved, request_kwargs)
+        if cached is not None:
+            self._record(clean, "history_light", True, f"cache; provider_symbol={resolved}; rows={len(cached)}")
+            return cached
+        try:
+            # Broad Radar-Light scans are deliberately slower than normal
+            # single-stock calls to avoid a 100-symbol burst against Yahoo.
+            self._pace_request(min_gap=0.75)
+            frame = self._clean_history_frame(self.primary.history(resolved, **request_kwargs))
+            if not frame.empty:
+                self._history_cache_put(resolved, request_kwargs, frame)
+            self._record(clean, "history_light", True, f"provider_symbol={resolved}; rows={len(frame)}")
+            return frame
+        except MarketDataRateLimitError as exc:
+            self.mark_rate_limited(clean, source="Radar-Light")
+            self._record(clean, "history_light", False, f"rate_limit: {exc}")
+            raise
+        except Exception as exc:
+            self._record(clean, "history_light", False, str(exc))
+            raise MarketDataError(str(exc)) from exc
+
     def get_history(self, symbol: str, **kwargs) -> pd.DataFrame:
         self.ensure_available()
         clean = self.normalize_symbol(symbol)
@@ -585,20 +686,10 @@ class MarketDataProvider:
             request_kwargs.pop("period", None)
             request_kwargs["start"] = resolution.history_start
 
-        def _clean_frame(frame):
-            if not isinstance(frame, pd.DataFrame):
-                return pd.DataFrame()
-            out = frame.copy()
-            try:
-                if hasattr(out.columns, "nlevels") and out.columns.nlevels > 1:
-                    out.columns = [c[0] if isinstance(c, tuple) else c for c in out.columns]
-            except Exception:
-                pass
-            try:
-                out = out[~out.index.duplicated(keep="last")].sort_index()
-            except Exception:
-                pass
-            return out
+        cached = self._history_cache_get(resolved, request_kwargs)
+        if cached is not None:
+            self._record(clean, "history", True, f"cache; provider_symbol={resolved}; rows={len(cached)}; start={resolution.history_start or '-'}")
+            return cached
 
         try:
             frame = pd.DataFrame()
@@ -608,7 +699,7 @@ class MarketDataProvider:
             for attempt in range(3):
                 try:
                     self._pace_request()
-                    frame = _clean_frame(self.primary.history(resolved, **request_kwargs))
+                    frame = self._clean_history_frame(self.primary.history(resolved, **request_kwargs))
                     if not frame.empty:
                         break
                 except MarketDataRateLimitError as exc:
@@ -625,7 +716,7 @@ class MarketDataProvider:
             if is_daily and len(frame) < 10:
                 try:
                     self._pace_request()
-                    raw = _clean_frame(_raw_yahoo_chart_history(resolved, **request_kwargs))
+                    raw = self._clean_history_frame(_raw_yahoo_chart_history(resolved, **request_kwargs))
                     if len(raw) > len(frame):
                         frame = raw
                 except MarketDataRateLimitError as exc:
@@ -644,7 +735,7 @@ class MarketDataProvider:
                 retry_kwargs.setdefault("threads", False)
                 try:
                     self._pace_request()
-                    alt = _clean_frame(self.primary.download(resolved, **retry_kwargs))
+                    alt = self._clean_history_frame(self.primary.download(resolved, **retry_kwargs))
                     if len(alt) > len(frame):
                         frame = alt
                 except MarketDataRateLimitError:
@@ -662,7 +753,7 @@ class MarketDataProvider:
                     fallback_kwargs.pop("end", None)
                     fallback_kwargs["period"] = "max"
                     self._pace_request()
-                    alt = _clean_frame(self.primary.history(resolved, **fallback_kwargs))
+                    alt = self._clean_history_frame(self.primary.history(resolved, **fallback_kwargs))
                     if len(alt) > len(frame):
                         frame = alt
                 except MarketDataRateLimitError:
@@ -673,6 +764,8 @@ class MarketDataProvider:
             if len(frame) == 0 and last_rate_exc is not None:
                 raise last_rate_exc
 
+            if not frame.empty:
+                self._history_cache_put(resolved, request_kwargs, frame)
             self._record(
                 clean,
                 "history",

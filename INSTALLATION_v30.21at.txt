@@ -1,0 +1,24 @@
+CHSM v30.21at - Kandidaten-Radar Provider-Schutz
+
+Voraussetzung: v30.21as installiert.
+
+Ersetzen / zusammenfuehren:
+- VERSION.txt
+- legacy_app.py
+- modules/candidate_radar.py
+- modules/candidate_radar_ui.py
+- modules/provider_manager.py
+
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+
+Danach Streamlit neu starten.
+
+Was sich aendert:
+- Komplettes Radar-Universum: nur preisbasierter Radar-Light-Vorscan.
+- Danach maximal 10 oder 15 Vollanalysen (je Radar-Job; manuell maximal 15).
+- Keine Aenderung an produktiven CHSM-Scores, Gates, CRV oder Tradingregeln.
+- Yahoo-Rate-Limit beendet den Radar sofort; Quarantaene bleibt aktiv.
+- Auto-Radar respektiert die 10-Minuten-run_at-Zeiten statt alle Jobs gleichzeitig zu starten.
+
+Hinweis:
+Der erste Scan nach dem Update wird als neuer App-/Radar-Stand neu berechnet.

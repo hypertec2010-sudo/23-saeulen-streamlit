@@ -133,6 +133,9 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
         st.write("Qualit\u00e4t ist nicht Einstiegsfreigabe. Sperren bleiben unabh\u00e4ngig von der Note wirksam. "
                  "CRV-Zielherkunft wird beschrieben, keine Ziel- oder Stopformel ge\u00e4ndert. "
                  "Nicht gelieferte MTF-/Wellenpr\u00fcfungen gelten als nicht berechnet.")
+        st.write("Provider-Schutz: Die komplette Liste wird zuerst nur mit OHLCV/Kurstechnik vorsortiert. "
+                 "Maximal 15 technisch auffällige Werte erhalten danach die volle CHSM-Analyse mit Zusatzdaten. "
+                 "Der Vorscan ist nur Ressourcenauswahl und verändert keine produktiven Scores, Gates oder CRV-Regeln.")
         st.write("Kursdaten d\u00fcrfen f\u00fcr die Kategorie 'Im Live-Screener pr\u00fcfen' h\u00f6chstens "
                  f"{radar.MAX_QUOTE_AGE_DAYS} Kalendertage alt sein. Das ist keine Zusicherung eines Echtzeitkurses.")
         max_age = st.number_input("Scan-Frischegrenze in Stunden", min_value=1, max_value=72, value=24, step=1, key="radar_v3021_max_age")
@@ -141,7 +144,10 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
         st.code(", ".join(entries) or "Keine Eingaben")
         for note in universe_notes(universe):
             st.write(f"{note['input']}: {note['action']} \u2014 {note['detail']}")
-    st.write(f"**Scanumfang: {len(entries)} Listeneintr\u00e4ge** \u00b7 Anzeigelimit {limit} begrenzt nur die Karten, nicht die Analyse.")
+    st.write(
+        f"**Radar-Light: {len(entries)} Listeneinträge** · anschließend maximal 15 Vollanalysen · "
+        f"Anzeigelimit {limit} begrenzt nur die Karten."
+    )
     key = radar.request_key(universe, style, entries, model_version)
     owner = radar.text(getattr(storage, "user_id", None), "no-user")
     session_key = "radar_v3021_result_" + owner + "_" + key
@@ -166,7 +172,7 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
             bar.progress(done / total)
             status_line.write(f"{done}/{total} gepr\u00fcft \u00b7 {ticker}")
         try:
-            with st.spinner("Gemeinsame Aktienanalyse l\u00e4uft ..."):
+            with st.spinner("Radar-Light vorsortiert; danach laufen nur die besten Kandidaten durch die Vollanalyse ..."):
                 fresh = scan(universe=universe, style=style, entries=entries, source="manual", progress=progress)
             if not radar.snapshot_valid(fresh, key) or not fresh.get("rows"):
                 raise ValueError("Vollst\u00e4ndiger Radar-Scan fehlt")
@@ -189,6 +195,17 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
                     "Provider-Quarantaene: Kein weiterer Yahoo-Traffic aus dem Radar, bis der Cooldown abgelaufen "
                     "oder ein manueller Provider-Test wieder erfolgreich ist."
                 )
+            elif isinstance(fresh, Mapping) and fresh.get("abort_reason") == "provider_rate_limit":
+                light_done = int(fresh.get("light_processed") or 0)
+                light_total = int(fresh.get("light_requested") or len(entries))
+                st.error(
+                    f"Yahoo hat den Radar-Light-Vorscan nach {light_done}/{light_total} Werten begrenzt. "
+                    "Der Lauf wurde sofort beendet; es wurden keine weiteren Vollanalysen gestartet. "
+                    "Ein vorhandener Radar-Snapshot bleibt unverändert."
+                )
+                st.caption("Provider-Schutz aktiv: Nach dem ersten bestätigten Rate-Limit wird nicht weiter durch die Liste probiert.")
+                if fresh.get("light_errors"):
+                    _render_error_diagnostics(st, fresh.get("light_errors"), title="Radar-Light-Fehler", expanded=True)
             elif isinstance(fresh, Mapping) and fresh.get("errors"):
                 processed = int(fresh.get("processed") or 0)
                 requested = int(fresh.get("requested") or len(entries))
@@ -245,7 +262,12 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
                 "nicht automatisch einem Nutzer zugeordnet; Watchlists und Trades bleiben erhalten.")
         return
     fresh, freshness_text = radar.snapshot_freshness(payload, now=clock(), max_scan_hours=max_age)
-    st.write(f"**Scanstand:** {payload['completed_at']} \u00b7 {payload['scan_id']} \u00b7 Quelle: {payload['source']}")
+    st.write(f"**Scanstand:** {payload['completed_at']} · {payload['scan_id']} · Quelle: {payload['source']}")
+    if payload.get("provider_strategy") == "radar-light -> full-analysis":
+        st.caption(
+            f"Provider-Schutz: Radar-Light {int(payload.get('light_processed', 0) or 0)}/{int(payload.get('light_requested', 0) or 0)} "
+            f"· Vollanalyse {int(payload.get('processed', 0) or 0)}/{int(payload.get('requested', 0) or 0)}."
+        )
     if fresh:
         st.caption(freshness_text)
     else:
@@ -272,7 +294,13 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
     if not fresh:
         st.write(f"**Historische Beobachtungen: {len(rows)}. Keine aktuelle Radar-Freigabe.**")
     else:
-        st.write(f"Weitere Beobachtungsideen: {counts[radar.WATCH]} \u00b7 Abfragefehler: {len(payload['errors'])}")
+        st.write(
+            f"Weitere Beobachtungsideen: {counts[radar.WATCH]} · Vollanalyse-Fehler: {len(payload['errors'])} "
+            f"· Radar-Light-Ausfälle: {len(payload.get('light_errors') or [])}"
+        )
+    if payload.get("light_errors"):
+        with st.expander(f"Radar-Light: {len(payload.get('light_errors') or [])} nicht vorselektierbare Werte", expanded=False):
+            _render_error_diagnostics(st, payload.get("light_errors") or [], title="Radar-Light-Fehlerdetails", expanded=False)
     if payload["errors"]:
         st.warning("Nicht auswertbar: " + ", ".join(e["ticker"] for e in payload["errors"]))
         _render_error_diagnostics(st, payload["errors"], title="Abfragefehler im Detail", expanded=False)
@@ -292,8 +320,15 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
         symbols = [r["ticker"] for r in rows if reason in r.get("gates", [])]
         st.write(f"**{_md(reason)} ({count}):** " + ", ".join(symbols[:15]) + (" ..." if len(symbols) > 15 else ""))
     with st.expander("Scan-Details, vollst\u00e4ndige Ergebnisse & Export", expanded=False):
-        st.write(f"Vollst\u00e4ndig durchlaufen: {payload['processed']}/{payload['requested']}. "
-                 "Ausgewertet umfasst auch gesperrte Kandidaten; es bedeutet nicht kaufbar.")
+        if payload.get("provider_strategy") == "radar-light -> full-analysis":
+            st.write(
+                f"Radar-Light durchlaufen: {int(payload.get('light_processed', 0) or 0)}/{int(payload.get('light_requested', 0) or 0)}. "
+                f"Danach Vollanalyse: {payload['processed']}/{payload['requested']} vorselektierte Werte."
+            )
+            st.caption("Nur die Vollanalyse erzeugt die angezeigten CHSM-Kandidaten; der Light-Score ist keine Handelsnote.")
+        else:
+            st.write(f"Vollständig durchlaufen: {payload['processed']}/{payload['requested']}. "
+                     "Ausgewertet umfasst auch gesperrte Kandidaten; es bedeutet nicht kaufbar.")
         if rows:
             if mtf_missing == len(rows) and wave_missing == len(rows):
                 st.caption("Zusatzanalysen MTF/Welle: im schnellen Radar-Scan nicht aktiv.")

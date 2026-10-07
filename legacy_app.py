@@ -3432,9 +3432,31 @@ def get_radar_snapshot_jobs():
             jobs.append(job)
     return jobs
 
-def get_due_radar_jobs_for_slot(slot_label):
+def get_due_radar_jobs_for_slot(slot_label, now=None):
+    """Return only the radar job actually due in the current 10-minute window.
+
+    v30.21at fixes the old behaviour where selecting a slot group (e.g. 10:30)
+    launched all nine jobs immediately even though their visible ``run_at``
+    values were staggered by 10 minutes.
+    """
     slot_label = str(slot_label or "").strip()
-    jobs = [j for j in get_radar_snapshot_jobs() if j.get("enabled") and str(j.get("slot_group", "")).strip() == slot_label]
+    current = now or _v305b_berlin_now()
+    try:
+        current_minutes = int(current.hour) * 60 + int(current.minute)
+    except Exception:
+        current_minutes = None
+    jobs = []
+    for job in get_radar_snapshot_jobs():
+        if not job.get("enabled") or str(job.get("slot_group", "")).strip() != slot_label:
+            continue
+        run_at = str(job.get("run_at", "") or "").strip()
+        try:
+            hh, mm = [int(x) for x in run_at.split(":")[:2]]
+            due_minutes = hh * 60 + mm
+        except Exception:
+            continue
+        if current_minutes is not None and 0 <= (current_minutes - due_minutes) < 10:
+            jobs.append(job)
     return jobs
 
 
@@ -6035,12 +6057,12 @@ def compute_radar_style_sort_shared(row, result_map, style_name):
     return radar_professional_sort_score(row, result_map, style_name)
 
 
-def _v3021_run_radar_scan(*, universe, style, entries, source="manual", progress=None):
-    from modules.candidate_radar import run_scan
+def _v3021_run_radar_scan(*, universe, style, entries, source="manual", progress=None, full_analysis_limit=15):
+    from modules.candidate_radar import run_two_stage_scan
 
-    # v30.21q: Radar nutzt denselben 15-Minuten-Analysecache wie der Live-Screener.
-    # Dadurch werden kurz zuvor bereits analysierte Titel nicht erneut bei Yahoo
-    # abgefragt. Der Bucket bleibt fuer den gesamten Radar-Lauf stabil.
+    # v30.21at: broad universes receive a price-only technical prefilter first.
+    # Only 10-15 finalists are allowed into the expensive full CHSM path with
+    # info/statements/analysts/earnings/benchmark context.
     radar_analysis_bucket = _v2414_market_bucket(15)
 
     def _radar_analyze_cached(**kwargs):
@@ -6049,18 +6071,26 @@ def _v3021_run_radar_scan(*, universe, style, entries, source="manual", progress
             market_bucket=radar_analysis_bucket,
         )
 
-    return run_scan(
-        universe=universe, style=style, entries=entries, analyze=_radar_analyze_cached,
+    def _radar_light_history(ticker):
+        # Same 3y request shape as load_data(), so finalists reuse the provider's
+        # new 15-minute in-process history cache during their full analysis.
+        return _market_provider_v2845a.get_history_light(ticker, period="3y", auto_adjust=True)
+
+    return run_two_stage_scan(
+        universe=universe, style=style, entries=entries,
+        analyze=_radar_analyze_cached,
         decide=build_professional_radar_decision_v18,
         entry_package=build_radar_entry_rr_package_v182,
+        history_loader=_radar_light_history,
+        full_analysis_limit=max(1, min(int(full_analysis_limit or 15), 15)),
         resolver=resolve_input_to_ticker, model_version=APP_VERSION,
         source=source, progress=progress,
-        # Kleine Pause reduziert Burst-Last. Nach Rate-Limits wird deutlicher
-        # gebremst; nach drei aufeinanderfolgenden Limits beendet der Radar den
-        # Lauf, statt die komplette Kandidatenliste weiter anzufragen.
-        per_ticker_pause_seconds=0.50,
+        # Full-analysis finalists still keep a small pause. Radar-Light itself
+        # is paced centrally by provider_manager and aborts immediately on a
+        # confirmed Yahoo rate limit/quarantine.
+        per_ticker_pause_seconds=0.35,
         rate_limit_pause_seconds=4.0,
-        rate_limit_abort_after=3,
+        rate_limit_abort_after=1,
     )
 
 
@@ -6070,16 +6100,35 @@ def run_radar_snapshot_job(job):
         universe = str(job.get("universe", ""))
         style = str(job.get("style", "Leader"))
         entries = split_batch_input(job.get("custom_text", "")) if universe == "Eigene Liste" else list((get_radar_universe_map().get(universe) or ([],))[0])
-        payload = _v3021_run_radar_scan(universe=universe, style=style, entries=entries,
-                                       source=str(job.get("source", "auto_run")))
+        payload = _v3021_run_radar_scan(
+            universe=universe, style=style, entries=entries,
+            source=str(job.get("source", "auto_run")),
+            full_analysis_limit=int(job.get("max_candidates", 15) or 15),
+        )
         if not payload["rows"]:
-            return False, "Keine Aktie auswertbar; vorheriger Radar-Snapshot bleibt erhalten.", {"analyzed_count": 0, "errors": payload["errors"]}
+            if payload.get("abort_reason") in {"provider_quarantine", "provider_rate_limit"}:
+                msg = "Yahoo Provider-Schutz aktiv; Radar früh beendet, vorheriger Snapshot bleibt erhalten."
+            else:
+                msg = "Keine Aktie auswertbar; vorheriger Radar-Snapshot bleibt erhalten."
+            return False, msg, {
+                "analyzed_count": 0, "errors": payload.get("errors") or [],
+                "light_requested": int(payload.get("light_requested", len(entries)) or 0),
+                "light_processed": int(payload.get("light_processed", 0) or 0),
+                "light_errors": payload.get("light_errors") or [],
+                "abort_reason": payload.get("abort_reason"),
+            }
         ok, message = save_snapshot(globals().get("_storage_v280"), payload)
         if ok:
             owner = str(getattr(globals().get("_storage_v280"), "user_id", ""))
             st.session_state["radar_v3021_result_" + owner + "_" + payload["key"]] = payload
-        return ok, message, {"analyzed_count": len(payload["rows"]), "errors": payload["errors"],
-                              "resolution_rows": payload["resolution"], "signature": payload["key"]}
+        return ok, message, {
+            "analyzed_count": len(payload["rows"]), "errors": payload["errors"],
+            "resolution_rows": payload["resolution"], "signature": payload["key"],
+            "light_requested": int(payload.get("light_requested", len(entries)) or 0),
+            "light_processed": int(payload.get("light_processed", 0) or 0),
+            "preselected_count": len(payload.get("preselected_symbols") or []),
+            "light_errors": payload.get("light_errors") or [],
+        }
     except Exception as exc:
         return False, "Radar-Job fehlgeschlagen (" + type(exc).__name__ + ")", {"analyzed_count": 0}
 
@@ -11410,7 +11459,10 @@ def load_sector_context(symbol):
     if not symbol:
         return None
     try:
-        df = yf.download(symbol, period="2y", auto_adjust=True, progress=False)
+        # v30.21at: use the central provider facade so sector context obeys the
+        # same pacing/quarantine/cache as all other Yahoo calls. The previous
+        # direct yf.download path could burst outside provider protection.
+        df = _market_provider_v2845a.get_history(symbol, period="2y", auto_adjust=True)
         if df is None or df.empty or len(df) < 120:
             return None
         close = df["Close"]
@@ -26608,7 +26660,7 @@ if workspace_mode:
         try:
             from modules.candidate_radar_ui import render_candidate_radar
             from modules.candidate_radar import RADAR_VERSION as _radar_version_v3021
-            if _radar_version_v3021 != "v30.21n":
+            if _radar_version_v3021 != "v30.21at":
                 raise ImportError("Mixed Radar deployment")
         except ImportError:
             st.error("Radar-Update unvollstaendig. legacy_app.py sowie candidate_radar.py, candidate_radar_ui.py und radar_universe.py gemeinsam hochladen.")
@@ -26883,7 +26935,7 @@ if st.session_state.get("auto_run_requested", False):
     slot_label = st.session_state.get("auto_run_slot_label", "")
     berlin_now = _v305b_berlin_now()
     due_df, due_err = get_due_watchlists_for_slot(slot_label)
-    due_radar_jobs = get_due_radar_jobs_for_slot(slot_label)
+    due_radar_jobs = get_due_radar_jobs_for_slot(slot_label, now=berlin_now)
 
     if due_err:
         st.error(f"Auto-Run fehlgeschlagen: {due_err}")
@@ -27001,7 +27053,7 @@ if st.session_state.get("auto_run_requested", False):
                 "Watchlist_Type": "Radar Snapshot",
                 "Alert_Mode": radar_job.get("style", "-"),
                 "Check_Frequency": radar_job.get("run_at", radar_job.get("slot_group", slot_label)),
-                "Ticker_Count": 0,
+                "Ticker_Count": int((meta or {}).get("light_requested", 0) or 0),
                 "Analyzed_Count": analyzed_count,
                 "Sent_Count": 0,
                 "Status": "OK" if ok else "Fehler",

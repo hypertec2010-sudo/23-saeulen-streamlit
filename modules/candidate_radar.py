@@ -16,11 +16,13 @@ import math
 import re
 import time
 from typing import Any, Callable
+
+import pandas as pd
 from uuid import uuid4
 
 from .radar_universe import CATALOG_VERSION, normalize_entries, universe_digest
 
-RADAR_VERSION = "v30.21n"
+RADAR_VERSION = "v30.21at"
 SCHEMA_VERSION = 1
 DEFAULT_MAX_SCAN_HOURS = 24
 MAX_QUOTE_AGE_DAYS = 7
@@ -526,6 +528,248 @@ def run_scan(*, universe, style, entries, analyze, decide, entry_package,
         "symbols": symbols, "symbols_hash": universe_digest(symbols),
         "rows": candidates, "errors": errors, "resolution": resolution,
     }
+
+
+def _light_last(series, default=None):
+    try:
+        values = pd.to_numeric(series, errors="coerce").dropna()
+        if len(values):
+            value = float(values.iloc[-1])
+            return value if math.isfinite(value) else default
+    except Exception:
+        pass
+    return default
+
+
+def _light_rsi(close, period=14):
+    diff = close.diff()
+    gain = diff.where(diff > 0, 0.0).rolling(period).mean()
+    loss = (-diff.where(diff < 0, 0.0)).rolling(period).mean()
+    rs = gain / loss.replace(0, pd.NA)
+    return 100 - (100 / (1 + rs))
+
+
+def _light_clip(value, low=0.0, high=100.0):
+    try:
+        return max(low, min(high, float(value)))
+    except Exception:
+        return low
+
+
+def build_light_candidate(frame, *, ticker, style):
+    """Price-only prefilter used before the expensive full CHSM analysis.
+
+    This function deliberately uses only OHLCV data. It does not touch info,
+    statements, analysts, earnings, benchmark or sector data and never decides
+    whether a trade is allowed. Its only purpose is to choose which symbols are
+    worth spending a full Yahoo/CHSM analysis on.
+    """
+    if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
+        raise ValueError("Keine Kursdaten fuer Radar-Light")
+    required = {"High", "Low", "Close"}
+    if not required.issubset(set(frame.columns)):
+        raise ValueError("OHLC-Kursdaten fuer Radar-Light unvollstaendig")
+    df = frame.copy()
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    high = pd.to_numeric(df["High"], errors="coerce")
+    low = pd.to_numeric(df["Low"], errors="coerce")
+    volume = pd.to_numeric(df["Volume"], errors="coerce") if "Volume" in df.columns else pd.Series(index=df.index, dtype=float)
+    valid = close.dropna()
+    if len(valid) < 60:
+        raise ValueError("Zu wenig Historie fuer Radar-Light")
+
+    price = float(valid.iloc[-1])
+    ma20 = _light_last(close.rolling(20).mean())
+    ma50 = _light_last(close.rolling(50).mean())
+    ma200 = _light_last(close.rolling(200).mean())
+    ma20_prev = _light_last(close.rolling(20).mean().shift(5))
+    ma50_prev = _light_last(close.rolling(50).mean().shift(5))
+    ret20 = _light_last(close.pct_change(20) * 100, 0.0)
+    ret60 = _light_last(close.pct_change(60) * 100, 0.0)
+    high20 = _light_last(high.rolling(20).max())
+    high252 = _light_last(high.rolling(min(252, len(df))).max())
+    low60 = _light_last(low.rolling(60).min())
+    rsi = _light_last(_light_rsi(close), 50.0)
+    tr = pd.concat([(high-low), (high-close.shift()).abs(), (low-close.shift()).abs()], axis=1).max(axis=1)
+    atr = _light_last(tr.rolling(14).mean())
+    atr_pct = (atr / price * 100.0) if atr is not None and price > 0 else None
+    avg_vol20 = _light_last(volume.rolling(20).mean()) if len(volume.dropna()) else None
+    vol_last = _light_last(volume) if len(volume.dropna()) else None
+    vol_ratio = (vol_last / avg_vol20) if avg_vol20 and avg_vol20 > 0 and vol_last is not None else 1.0
+    dist_high20 = ((price / high20) - 1.0) * 100.0 if high20 and high20 > 0 else None
+    dist_high252 = ((price / high252) - 1.0) * 100.0 if high252 and high252 > 0 else None
+    dist_ma20 = ((price / ma20) - 1.0) * 100.0 if ma20 and ma20 > 0 else None
+    rebound60 = ((price / low60) - 1.0) * 100.0 if low60 and low60 > 0 else 0.0
+
+    trend = 0.0
+    trend += 18 if ma20 is not None and price > ma20 else 0
+    trend += 20 if ma50 is not None and price > ma50 else 0
+    trend += 17 if ma200 is not None and price > ma200 else 0
+    trend += 15 if ma20 is not None and ma50 is not None and ma20 > ma50 else 0
+    trend += 15 if ma50 is not None and ma200 is not None and ma50 > ma200 else 0
+    trend += 8 if ma20 is not None and ma20_prev is not None and ma20 > ma20_prev else 0
+    trend += 7 if ma50 is not None and ma50_prev is not None and ma50 > ma50_prev else 0
+    trend = _light_clip(trend)
+
+    momentum = _light_clip(50 + 1.4 * float(ret20 or 0) + 0.45 * float(ret60 or 0))
+    high_proximity = _light_clip(100 + 4.0 * float(dist_high252 if dist_high252 is not None else -25.0))
+    breakout_proximity = _light_clip(100 + 12.0 * float(dist_high20 if dist_high20 is not None else -10.0))
+    pullback_quality = 30.0
+    if dist_ma20 is not None:
+        pullback_quality = _light_clip(100 - abs(dist_ma20 - 1.0) * 12.0)
+    volume_score = _light_clip(50 + (float(vol_ratio or 1.0) - 1.0) * 45.0)
+    rsi_balance = _light_clip(100 - abs(float(rsi or 50.0) - 58.0) * 2.4)
+    volatility_fit = 60.0 if atr_pct is None else _light_clip(100 - abs(float(atr_pct) - 4.5) * 9.0)
+    turnaround = _light_clip(
+        30
+        + (22 if ma20 is not None and price > ma20 else 0)
+        + (18 if ma20 is not None and ma20_prev is not None and ma20 > ma20_prev else 0)
+        + min(max(float(ret20 or 0), -10.0), 15.0) * 1.5
+        + min(max(float(rebound60 or 0), 0.0), 30.0) * 0.5
+    )
+
+    style_name = str(style or "Ausgewogen")
+    if style_name == "Leader":
+        score = trend * 0.34 + momentum * 0.23 + high_proximity * 0.20 + volume_score * 0.13 + rsi_balance * 0.10
+    elif style_name == "Charttechnik":
+        setup = max(breakout_proximity, pullback_quality)
+        score = setup * 0.30 + trend * 0.25 + momentum * 0.18 + volume_score * 0.15 + volatility_fit * 0.12
+    elif style_name == "Turnaround":
+        score = turnaround * 0.35 + momentum * 0.22 + pullback_quality * 0.15 + volume_score * 0.13 + rsi_balance * 0.15
+    else:
+        score = trend * 0.25 + momentum * 0.20 + max(breakout_proximity, pullback_quality) * 0.20 + high_proximity * 0.15 + volume_score * 0.10 + rsi_balance * 0.10
+
+    return {
+        "ticker": str(ticker or "").upper(),
+        "light_score": round(_light_clip(score), 2),
+        "price": price,
+        "trend": round(trend, 1),
+        "momentum": round(momentum, 1),
+        "ret20": round(float(ret20 or 0.0), 2),
+        "ret60": round(float(ret60 or 0.0), 2),
+        "dist_high20_pct": None if dist_high20 is None else round(dist_high20, 2),
+        "dist_high252_pct": None if dist_high252 is None else round(dist_high252, 2),
+        "dist_ma20_pct": None if dist_ma20 is None else round(dist_ma20, 2),
+        "volume_ratio20": round(float(vol_ratio or 1.0), 2),
+        "rsi14": round(float(rsi or 50.0), 1),
+        "atr_pct": None if atr_pct is None else round(float(atr_pct), 2),
+    }
+
+
+def run_two_stage_scan(*, universe, style, entries, analyze, decide, entry_package,
+                       history_loader, full_analysis_limit=15, resolver=None,
+                       model_version=RADAR_VERSION, progress=None, clock=utcnow,
+                       source="manual", rate_limit_abort_after=1,
+                       per_ticker_pause_seconds=0.0, rate_limit_pause_seconds=0.0,
+                       sleeper=None):
+    """Provider-friendly Radar: OHLCV prefilter -> full CHSM finalists only."""
+    if style not in STYLES:
+        raise ValueError("Unbekannter Radar-Suchstil")
+    entries = list(entries)
+    symbols, resolution = resolve_entries(entries, resolver if universe == "Eigene Liste" else None)
+    if not symbols:
+        raise ValueError("Keine gueltigen Kandidaten. Tickerliste pruefen.")
+    if len(symbols) > 500:
+        raise ValueError("Maximal 500 unterschiedliche Ticker pro bewusster Scan-Anforderung.")
+    start = parse_time(clock()) or utcnow()
+
+    try:
+        from modules.provider_manager import get_market_data_provider
+        q = get_market_data_provider().quarantine_state()
+    except Exception:
+        q = None
+    if q is not None and getattr(q, "active", False):
+        end = parse_time(clock()) or utcnow()
+        return {
+            "schema_version": SCHEMA_VERSION, "radar_version": RADAR_VERSION,
+            "model_version": model_version, "catalog_version": CATALOG_VERSION,
+            "key": request_key(universe, style, entries, model_version),
+            "scan_id": "radar-" + start.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8],
+            "universe": universe, "style": style, "source": source,
+            "started_at": start.isoformat(), "completed_at": end.isoformat(),
+            "completed": False, "requested": 0, "processed": 0,
+            "skipped": len(symbols), "skipped_symbols": list(symbols),
+            "abort_reason": "provider_quarantine", "rate_limit_streak": 0,
+            "quarantine_remaining_seconds": int(getattr(q, "remaining_seconds", 0) or 0),
+            "symbols": [], "symbols_hash": universe_digest(symbols),
+            "rows": [], "errors": [], "resolution": resolution,
+            "light_requested": len(symbols), "light_processed": 0,
+            "light_errors": [], "preselected_symbols": [],
+        }
+
+    light_rows, light_errors = [], []
+    aborted = False
+    abort_reason = ""
+    total_light = len(symbols)
+    try:
+        limit = max(1, min(int(full_analysis_limit or 15), len(symbols)))
+    except Exception:
+        limit = min(15, len(symbols))
+
+    for index, ticker in enumerate(symbols):
+        try:
+            frame = history_loader(ticker)
+            light_rows.append(build_light_candidate(frame, ticker=ticker, style=style))
+        except Exception as exc:
+            info = safe_scan_error(exc)
+            light_errors.append({"ticker": ticker, "stage": "Radar-Light", **info})
+            if info.get("category") == "Provider-Limit":
+                aborted = True
+                abort_reason = "provider_rate_limit"
+        if progress is not None:
+            progress(index + 1, total_light + limit, "Vorscan · " + ticker)
+        if aborted:
+            break
+
+    if aborted:
+        end = parse_time(clock()) or utcnow()
+        return {
+            "schema_version": SCHEMA_VERSION, "radar_version": RADAR_VERSION,
+            "model_version": model_version, "catalog_version": CATALOG_VERSION,
+            "key": request_key(universe, style, entries, model_version),
+            "scan_id": "radar-" + start.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8],
+            "universe": universe, "style": style, "source": source,
+            "started_at": start.isoformat(), "completed_at": end.isoformat(),
+            "completed": False, "requested": 0, "processed": 0,
+            "skipped": max(0, len(symbols) - len(light_rows)), "skipped_symbols": symbols[len(light_rows):],
+            "abort_reason": abort_reason, "rate_limit_streak": 1,
+            "symbols": [], "symbols_hash": universe_digest(symbols),
+            "rows": [], "errors": [], "resolution": resolution,
+            "light_requested": len(symbols), "light_processed": len(light_rows),
+            "light_errors": light_errors, "preselected_symbols": [],
+        }
+
+    ranked_light = sorted(light_rows, key=lambda r: (-float(r.get("light_score") or 0), str(r.get("ticker") or "")))
+    selected = [r["ticker"] for r in ranked_light[:limit]]
+    if not selected:
+        raise ValueError("Radar-Light konnte keine Kandidaten vorselektieren.")
+
+    base_offset = total_light
+    def full_progress(done, total, ticker):
+        if progress is not None:
+            progress(base_offset + done, total_light + len(selected), "Vollanalyse · " + ticker)
+
+    full = run_scan(
+        universe=universe, style=style, entries=selected, analyze=analyze,
+        decide=decide, entry_package=entry_package, resolver=None,
+        model_version=model_version, progress=full_progress, clock=clock,
+        source=source, rate_limit_abort_after=rate_limit_abort_after,
+        per_ticker_pause_seconds=per_ticker_pause_seconds,
+        rate_limit_pause_seconds=rate_limit_pause_seconds, sleeper=sleeper,
+    )
+    # Analytical identity stays tied to the complete requested universe even
+    # though only finalists receive the expensive full analysis.
+    full["key"] = request_key(universe, style, entries, model_version)
+    full["symbols_hash"] = universe_digest(symbols)
+    full["started_at"] = start.isoformat()
+    full["resolution"] = resolution
+    full["light_requested"] = len(symbols)
+    full["light_processed"] = len(light_rows)
+    full["light_errors"] = light_errors
+    full["preselected_symbols"] = selected
+    full["preselection"] = ranked_light[: min(30, len(ranked_light))]
+    full["provider_strategy"] = "radar-light -> full-analysis"
+    return full
 
 
 def rank_candidates(rows):

@@ -204,6 +204,52 @@ class WatchlistRepository:
             return False, "Ticker konnte nicht entfernt werden."
         return True, f"{symbol} wurde aus '{name}' entfernt."
 
+    def remove_tickers_from_watchlist(self, watchlist_name, tickers):
+        """Remove several symbols with one repository write."""
+        name = self._normalise_name(watchlist_name)
+        cleaned = []
+        seen = set()
+        for raw in tickers or []:
+            symbol = self._normalise_ticker(raw)
+            if symbol and symbol not in seen:
+                cleaned.append(symbol)
+                seen.add(symbol)
+        if not name or not cleaned:
+            return False, "Bitte Watchlist und mindestens einen Ticker auswählen."
+
+        remove_set = set(cleaned)
+        rows = self._load_rows()
+        actual_type, alert_mode, actual_frequency = self._settings_for(
+            rows, name, "Watchlist", "4x täglich"
+        )
+        kept = [
+            row for row in rows
+            if not (
+                self._normalise_name(row.get("Watchlist_Name")).lower() == name.lower()
+                and self._normalise_ticker(row.get("Ticker")) in remove_set
+            )
+        ]
+        removed = len(rows) - len(kept)
+        if removed <= 0:
+            return False, "Keiner der ausgewählten Ticker wurde in der Watchlist gefunden."
+        if not any(
+            self._normalise_name(row.get("Watchlist_Name")).lower() == name.lower()
+            for row in kept
+        ):
+            # Auch beim Entfernen des letzten importierten Titels bleibt die
+            # Watchlist als leere Liste mit ihren Einstellungen bestehen.
+            kept.append({
+                "Watchlist_Name": name,
+                "Watchlist_Type": actual_type,
+                "Ticker": "",
+                "Added_At": self._now(),
+                "Alert_Mode": alert_mode,
+                "Check_Frequency": actual_frequency,
+            })
+        if not self._save_rows(kept):
+            return False, "Ticker konnten nicht entfernt werden."
+        return True, f"{removed} Ticker aus '{name}' entfernt."
+
     def _first_setting(self, name: str, field: str, default: str) -> str:
         for row in self._load_rows():
             if self._normalise_name(row.get("Watchlist_Name")).lower() == name.lower():

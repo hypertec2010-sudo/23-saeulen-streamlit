@@ -1,3 +1,12 @@
+## v30.21aw — Mehrfachauswahl beim Entfernen aus Watchlists
+
+- In der Watchlist-Verwaltung steht jetzt direkt vor jedem Ticker eine Checkbox `Auswahl`.
+- Mehrere Werte können markiert und gemeinsam über `Ausgewählte entfernen (n)` gelöscht werden.
+- Vor dem endgültigen Löschen erscheint eine kompakte Bestätigung mit Anzahl und Vorschau der markierten Ticker.
+- Die Watchlist selbst bleibt bestehen, auch wenn der letzte Ticker entfernt wird.
+- Batch-Löschung schreibt die Watchlist nur einmal zurück und funktioniert sowohl mit dem Repository-/Supabase-Pfad als auch mit dem bisherigen Legacy-/lokalen Speicherpfad.
+- Keine Änderung an Screener-, Score-, CRV-, Trigger- oder Providerlogik.
+
 ## v30.21av — Volatilität zurück im kompakten Screener
 
 - Die bestehende Spalte `Volatilität` ist im kompakten Desktop-Live-Screener wieder sichtbar.

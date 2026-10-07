@@ -1,0 +1,24 @@
+CHSM v30.21aw - Mehrfachauswahl beim Watchlist-Loeschen
+
+Voraussetzung: v30.21av installiert.
+
+Ersetzen / zusammenfuehren:
+- VERSION.txt
+- legacy_app.py
+- logging_utils.py
+- modules/storage/watchlist_repository.py
+- CHANGELOG.md optional
+
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+
+Danach Streamlit neu starten.
+
+Neue Bedienung:
+1. Watchlist oeffnen.
+2. Unter "Inhalt der aktuellen Watchlist" die Checkboxen vor den Tickern setzen.
+3. "Ausgewaehlte entfernen (n)" klicken.
+4. Auswahl einmal bestaetigen.
+
+Die Watchlist selbst wird dabei nicht geloescht. Auch beim Entfernen des letzten Titels bleibt sie als leere Watchlist bestehen.
+
+Keine Aenderung an Trading-/Screener-Logik.

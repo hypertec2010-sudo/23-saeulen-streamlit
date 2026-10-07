@@ -207,6 +207,50 @@ def remove_ticker_from_watchlist(watchlist_name, ticker):
     return False, msg
 
 
+def remove_tickers_from_watchlist(watchlist_name, tickers):
+    """Entfernt mehrere Ticker in einem einzigen Speicherlauf."""
+    name = str(watchlist_name or "").strip()
+    cleaned = []
+    seen = set()
+    for raw in tickers or []:
+        tkr = str(raw or "").strip().upper()
+        if tkr and tkr not in seen:
+            cleaned.append(tkr)
+            seen.add(tkr)
+    if not name or not cleaned:
+        return False, "Bitte Watchlist und mindestens einen Ticker auswählen."
+
+    df, err = load_watchlists_df()
+    if err:
+        return False, err
+
+    name_mask = df["Watchlist_Name"].astype(str).str.strip().str.lower() == name.lower()
+    ticker_norm = df["Ticker"].astype(str).str.strip().str.upper()
+    remove_mask = name_mask & ticker_norm.isin(set(cleaned))
+    removed = int(remove_mask.sum())
+    if removed <= 0:
+        return False, "Keiner der ausgewählten Ticker wurde in der Watchlist gefunden."
+
+    new_df = df[~remove_mask].copy()
+    remaining_rows = new_df[new_df["Watchlist_Name"].astype(str).str.strip().str.lower() == name.lower()]
+    if remaining_rows.empty:
+        # Watchlist selbst erhalten, auch wenn der letzte Ticker gelöscht wurde.
+        new_df = pd.concat([new_df, pd.DataFrame([{
+            "Watchlist_Name": name,
+            "Watchlist_Type": "Watchlist",
+            "Ticker": "",
+            "Added_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Alert_Mode": "Standard",
+            "Check_Frequency": "4x täglich",
+        }])], ignore_index=True)
+
+    ok, msg = save_watchlists_df(new_df)
+    if ok:
+        suffix = "Ticker" if removed == 1 else "Ticker"
+        return True, f"{removed} {suffix} aus '{name}' entfernt."
+    return False, msg
+
+
 def delete_watchlist(watchlist_name):
     name = str(watchlist_name or "").strip()
     if not name:

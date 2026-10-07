@@ -214,6 +214,7 @@ from logging_utils import (
     get_watchlist_tickers,
     load_watchlists_df,
     remove_ticker_from_watchlist,
+    remove_tickers_from_watchlist,
     update_watchlist_alert_mode,
     update_watchlist_check_frequency,
 )
@@ -271,6 +272,7 @@ _legacy_create_watchlist_v280 = create_watchlist
 _legacy_delete_watchlist_v280 = delete_watchlist
 _legacy_add_entries_to_watchlist_v280 = add_entries_to_watchlist
 _legacy_remove_ticker_from_watchlist_v280 = remove_ticker_from_watchlist
+_legacy_remove_tickers_from_watchlist_v3021aw = remove_tickers_from_watchlist
 _legacy_update_watchlist_alert_mode_v280 = update_watchlist_alert_mode
 _legacy_update_watchlist_check_frequency_v280 = update_watchlist_check_frequency
 _legacy_get_watchlist_alert_mode_v280 = get_watchlist_alert_mode
@@ -15295,6 +15297,7 @@ if _use_database_watchlists_v280:
     delete_watchlist = _watchlist_repository_v280.delete_watchlist
     add_entries_to_watchlist = _watchlist_repository_v280.add_entries_to_watchlist
     remove_ticker_from_watchlist = _watchlist_repository_v280.remove_ticker_from_watchlist
+    remove_tickers_from_watchlist = _watchlist_repository_v280.remove_tickers_from_watchlist
     update_watchlist_alert_mode = _watchlist_repository_v280.update_watchlist_alert_mode
     update_watchlist_check_frequency = _watchlist_repository_v280.update_watchlist_check_frequency
     get_watchlist_alert_mode = _watchlist_repository_v280.get_watchlist_alert_mode
@@ -19984,23 +19987,63 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                 st.markdown("**Inhalt der aktuellen Watchlist**")
                 st.caption(f"Anzahl Werte: {len(current_tickers)}")
                 if current_tickers:
-                    preview_df = pd.DataFrame({"Ticker": current_tickers})
-                    st.dataframe(preview_df, hide_index=True, use_container_width=True, height=min(320, 45 * len(preview_df) + 40))
+                    # v30.21aw: Mehrfachauswahl direkt vor dem Ticker. Damit lassen sich
+                    # mehrere Watchlist-Werte in einem einzigen Speicherlauf entfernen.
+                    _selection_key_v3021aw = f"watchlist_remove_selection_v3021aw::{selected_watchlist_name}"
+                    _selection_state_v3021aw = st.session_state.get(_selection_key_v3021aw, {})
+                    if not isinstance(_selection_state_v3021aw, dict):
+                        _selection_state_v3021aw = {}
+                    _selection_df_v3021aw = pd.DataFrame({
+                        "Auswahl": [bool(_selection_state_v3021aw.get(_tk, False)) for _tk in current_tickers],
+                        "Ticker": current_tickers,
+                    })
+                    _edited_selection_v3021aw = st.data_editor(
+                        _selection_df_v3021aw,
+                        hide_index=True,
+                        use_container_width=True,
+                        height=min(360, 45 * len(_selection_df_v3021aw) + 40),
+                        disabled=["Ticker"],
+                        column_config={
+                            "Auswahl": st.column_config.CheckboxColumn(
+                                "Auswahl",
+                                help="Mehrere Werte markieren und anschließend gemeinsam entfernen.",
+                                default=False,
+                            ),
+                            "Ticker": st.column_config.TextColumn("Ticker"),
+                        },
+                        key=f"watchlist_remove_editor_v3021aw::{selected_watchlist_name}",
+                    )
+                    _selected_remove_v3021aw = []
+                    try:
+                        _selected_remove_v3021aw = [
+                            str(_row.get("Ticker") or "").strip().upper()
+                            for _, _row in _edited_selection_v3021aw.iterrows()
+                            if bool(_row.get("Auswahl")) and str(_row.get("Ticker") or "").strip()
+                        ]
+                    except Exception:
+                        _selected_remove_v3021aw = []
+                    st.session_state[_selection_key_v3021aw] = {
+                        _tk: (_tk in set(_selected_remove_v3021aw)) for _tk in current_tickers
+                    }
 
-                    rem1, rem2, rem3 = st.columns([1.7, 0.8, 0.9])
+                    _pending_key_v3021aw = f"watchlist_remove_pending_v3021aw::{selected_watchlist_name}"
+                    rem1, rem2, rem3 = st.columns([1.2, 1.0, 0.9])
                     with rem1:
-                        ticker_to_remove = st.selectbox("Ticker entfernen", options=current_tickers, key="remove_watchlist_ticker_widget")
+                        st.caption(
+                            f"{len(_selected_remove_v3021aw)} ausgewählt"
+                            if _selected_remove_v3021aw
+                            else "Häkchen vor den Werten setzen, die entfernt werden sollen."
+                        )
                     with rem2:
-                        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-                        if st.button("Ticker entfernen", use_container_width=True, key="remove_watchlist_ticker_btn"):
-                            ok, msg = remove_ticker_from_watchlist(selected_watchlist_name, ticker_to_remove)
-                            if ok:
-                                st.success(msg)
-                                trigger_ui_refresh()
-                            else:
-                                st.error(msg)
+                        if st.button(
+                            f"Ausgewählte entfernen ({len(_selected_remove_v3021aw)})",
+                            use_container_width=True,
+                            disabled=not bool(_selected_remove_v3021aw),
+                            key="remove_selected_watchlist_tickers_v3021aw",
+                        ):
+                            st.session_state[_pending_key_v3021aw] = list(_selected_remove_v3021aw)
+                            st.rerun()
                     with rem3:
-                        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
                         if st.button("Watchlist löschen", use_container_width=True, key="delete_watchlist_btn"):
                             ok, msg = delete_watchlist(selected_watchlist_name)
                             if ok:
@@ -20010,6 +20053,50 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 trigger_ui_refresh()
                             else:
                                 st.error(msg)
+
+                    _pending_remove_v3021aw = st.session_state.get(_pending_key_v3021aw, [])
+                    if _pending_remove_v3021aw:
+                        _pending_remove_v3021aw = [
+                            _tk for _tk in _pending_remove_v3021aw if _tk in set(current_tickers)
+                        ]
+                        if _pending_remove_v3021aw:
+                            _preview_remove_v3021aw = ", ".join(_pending_remove_v3021aw[:12])
+                            if len(_pending_remove_v3021aw) > 12:
+                                _preview_remove_v3021aw += f" … (+{len(_pending_remove_v3021aw) - 12})"
+                            st.warning(
+                                f"{len(_pending_remove_v3021aw)} Wert(e) aus '{selected_watchlist_name}' entfernen? "
+                                f"{_preview_remove_v3021aw}"
+                            )
+                            _confirm1_v3021aw, _confirm2_v3021aw, _confirm3_v3021aw = st.columns([1.1, 1.0, 1.2])
+                            with _confirm1_v3021aw:
+                                if st.button(
+                                    f"Ja, {len(_pending_remove_v3021aw)} entfernen",
+                                    type="primary",
+                                    use_container_width=True,
+                                    key="confirm_remove_selected_watchlist_tickers_v3021aw",
+                                ):
+                                    ok, msg = remove_tickers_from_watchlist(
+                                        selected_watchlist_name, _pending_remove_v3021aw
+                                    )
+                                    if ok:
+                                        st.session_state.pop(_pending_key_v3021aw, None)
+                                        st.session_state.pop(_selection_key_v3021aw, None)
+                                        st.success(msg)
+                                        trigger_ui_refresh()
+                                    else:
+                                        st.error(msg)
+                            with _confirm2_v3021aw:
+                                if st.button(
+                                    "Abbrechen",
+                                    use_container_width=True,
+                                    key="cancel_remove_selected_watchlist_tickers_v3021aw",
+                                ):
+                                    st.session_state.pop(_pending_key_v3021aw, None)
+                                    st.rerun()
+                            with _confirm3_v3021aw:
+                                st.caption("Die Watchlist selbst bleibt bestehen; nur die markierten Ticker werden gelöscht.")
+                        else:
+                            st.session_state.pop(_pending_key_v3021aw, None)
                 else:
                     st.markdown(
                         '<div class="empty-state"><div class="empty-state-title">Diese Watchlist ist noch leer</div><div class="empty-state-text">Füge im Verwaltungsbereich Werte hinzu oder übernimm den aktuell ausgewählten Ticker.</div></div>',

@@ -1,3 +1,10 @@
+## v30.21av — Volatilität zurück im kompakten Screener
+
+- Die bestehende Spalte `Volatilität` ist im kompakten Desktop-Live-Screener wieder sichtbar.
+- Position direkt hinter `Kurs`, damit Schwankungsrisiko vor CRV/Entry-Entscheidung sichtbar ist.
+- Inhalt bleibt die bereits vorhandene ATR(14)-Volatilität in % des Kurses inklusive Einordnung (z. B. niedrig/normal/erhöht/hoch).
+- Reine UI-Änderung: keine neue Berechnung und keine Änderung an Score, Ampel, CRV, Gates oder Triggerlogik.
+
 ## v30.21au — Entry-Abstand als Soft Gate
 
 - Entry-Abstand >5 % ist allein kein Hard Gate mehr, sondern eine Timing-/Chase-Bremse.

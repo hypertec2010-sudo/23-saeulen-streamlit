@@ -22299,7 +22299,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     # untouched and expose the four user-facing CRV fields here.
                                     _compact_cols_v3021l = [
                                         "Ampel", "Ticker", "Name", "Live-Score", "Priorität",
-                                        "Decision-Confidence", "Kurs",
+                                        "Decision-Confidence", "Kurs", "Volatilität",
                                         "CRV jetzt", "CRV Entry", "Freiraum", "CRV-Ziel",
                                         "Entry-Abstand", "Status", "Harvest-Ampel",
                                     ]

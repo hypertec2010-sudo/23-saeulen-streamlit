@@ -1,0 +1,19 @@
+CHSM v30.21av - Volatilität zurück im Screener
+
+Voraussetzung: v30.21au installiert.
+
+Ersetzen:
+- VERSION.txt
+- legacy_app.py
+
+Optional:
+- CHANGELOG.md
+
+Kein modules-Ordner muss geändert werden.
+
+Änderung:
+- Im kompakten Desktop-Live-Screener steht die Spalte "Volatilität" wieder direkt hinter "Kurs".
+- Angezeigt wird der bereits vorhandene ATR(14) in % des Kurses inklusive Einordnung.
+- Keine Änderung an Score, Ampel, CRV, Gates oder Triggerlogik.
+
+Danach Streamlit neu starten und den Screener neu öffnen bzw. neu laden.

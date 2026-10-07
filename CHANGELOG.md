@@ -1,3 +1,14 @@
+## v30.21ay — Screener/Sofortanalyse operative Signale vereinheitlicht
+
+- Eine zentrale operative Timing-/Trigger-Konfluenz-Pipeline wird jetzt von Live-Screener und Sofortanalyse gemeinsam verwendet.
+- Operative Signalbasis ist stabil und chart-range-unabhaengig: 1 Jahr Tagesdaten + bestehende CHSM-Chartstruktur, Tageskerze, Ultra/SR, Fibonacci, Wellen- und Setup-Muster-Kontext.
+- Fuer den Screener entstehen dabei keine neuen Intraday-/Provider-Abfragen. Stundenkerzen werden nur genutzt, wenn sie bereits geladen sind.
+- Die Sofortanalyse darf ihre operativen Timing-/Konfluenzwerte nicht mehr durch einen zweiten Detailpfad ueberschreiben; Stundenkerzen/Detailcharts bleiben als Diagnose sichtbar.
+- Zentrale operative Aktion (`kaufen`/`aufstocken`) + valides Setup + Timing >=70 + Konfluenz >=65 wird im Screener aktiv sichtbar, solange kein Hard Gate, keine Invalidierung und kein Warnbucket greift.
+- Bei CRV jetzt >=1.50 kann der Screener `Kauftrigger aktiv` zeigen; bei schwachem CRV jetzt, aber CRV Entry >=1.50 wird `Setup pruefbereit / Entry abwarten` gezeigt.
+- BE-artiger Referenzfall (Timing 100, Konfluenz 88, Aktion kaufen, CRV jetzt 0.42, CRV Entry 1.62) wird als pruefbereit/Entry abwarten erkannt und nicht mehr nur als Beobachten.
+- Keine Aenderung an Hard Gates, Invalidierungslogik oder CRV-Schwellen.
+
 ## v30.21ax – Hotfix Live-Screener Gate + Volatilitaets-Editor
 
 - Kritischer v30.21au-Regressionsfehler behoben: Der Sentinel `keine harten Gates` konnte durch die neue Einzelklassifizierung faelschlich selbst zu `entry_hard_gate=True` werden. Dadurch konnten praktisch alle Live-Screener-Zeilen rot als `Setup blockiert` erscheinen.

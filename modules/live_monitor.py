@@ -375,6 +375,54 @@ def _v3021au_strong_pullback_package(
     }
 
 
+def _v3021ay_operational_readiness_package(
+    *, action_label="", valid_trade_setup=False, signal_packages_complete=False,
+    timing_score=None, conf_score=None, crv_now=None, crv_entry=None,
+    entry_hard_gate=False, invalidated=False, warning_bucket=False,
+):
+    """Pure shared-release bridge between Sofortanalyse and Live-Screener.
+
+    An offensive central action with strong timing/confluence must be surfaced as
+    actively reviewable in the Screener. CRV still decides whether that means
+    buy-now capable or entry-zone readiness; hard gates always win.
+    """
+    def _num(v):
+        try:
+            if v in {None, "", "-", "n/a"}:
+                return None
+            f = float(v)
+            return f if np.isfinite(f) and not pd.isna(f) else None
+        except Exception:
+            return None
+
+    action_low = str(action_label or "").strip().lower()
+    offensive = any(x in action_low for x in ["kaufen", "buy", "aufstocken"])
+    timing = _num(timing_score)
+    conf = _num(conf_score)
+    crv_n = _num(crv_now)
+    crv_e = _num(crv_entry)
+    strong_signals = bool(
+        signal_packages_complete and timing is not None and conf is not None
+        and timing >= 70 and conf >= 65
+    )
+    crv_now_ok = bool(crv_n is not None and crv_n >= 1.50)
+    crv_entry_ok = bool(crv_e is not None and crv_e >= 1.50)
+    ready = bool(
+        offensive and valid_trade_setup and strong_signals
+        and (crv_now_ok or crv_entry_ok)
+        and not entry_hard_gate and not invalidated and not warning_bucket
+    )
+    return {
+        "ready": ready,
+        "offensive": offensive,
+        "timing": timing,
+        "conf": conf,
+        "crv_now_ok": crv_now_ok,
+        "crv_entry_ok": crv_entry_ok,
+        "mode": "now" if ready and crv_now_ok else "entry" if ready and crv_entry_ok else "none",
+    }
+
+
 def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None, live_horizon="Swing / 1-4 Wochen"):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
 
@@ -1283,6 +1331,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         or conf_pkg_lm.get("source")
         or ("analysis-result" if signal_packages_complete else "nicht geliefert")
     ).strip()
+    # v30.21ay: central operative action is shared with Sofortanalyse.
+    operational_action_lm = str(r.get("operational_action_label") or "").strip()
+    operational_action_low_lm = operational_action_lm.lower()
+    operational_buy_signal_lm = any(x in operational_action_low_lm for x in ["kaufen", "buy", "aufstocken"])
+    operational_prepare_signal_lm = any(x in operational_action_low_lm for x in ["vorbereiten", "prüfen", "pruefen"])
     chart_pkg_lm = r.get("charttechnik_setup_pkg") if isinstance(r.get("charttechnik_setup_pkg"), dict) else {}
     chart_score_lm = _v210_alert_num(chart_pkg_lm.get("score"), default=None)
     chart_text_lm = " ".join([
@@ -1354,6 +1407,19 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     )
     strong_pullback_setup = bool(_strong_pullback_pkg_v3021au.get("ready"))
 
+    # v30.21ay: same central release bridge as Sofortanalyse.
+    _shared_operational_pkg_v3021ay = _v3021ay_operational_readiness_package(
+        action_label=operational_action_lm,
+        valid_trade_setup=bool(r.get("valid_trade_setup", False)),
+        signal_packages_complete=signal_packages_complete,
+        timing_score=timing_score_lm, conf_score=conf_score_lm,
+        crv_now=crv_float, crv_entry=crv_entry_float,
+        entry_hard_gate=entry_hard_gate,
+        invalidated=("Invalidierung gebrochen" in alert_types),
+        warning_bucket=(bucket == "Warnsignale / meiden"),
+    )
+    shared_operational_ready_v3021ay = bool(_shared_operational_pkg_v3021ay.get("ready"))
+
     trend_reason_tail = ""
     if ma20_stretch_pct is not None:
         trend_reason_tail = f" Abstand zu MA20 ca. {ma20_stretch_pct:.1f}%."
@@ -1399,6 +1465,29 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         status_icon, status, priority = "🔴", "Setup blockiert", 1
         reason = brake if brake and brake != "-" else "Hartes Einstiegsgate aktiv."
         monitor_action = "Kein Kauf: Einstiegsgate zuerst klären."
+    elif shared_operational_ready_v3021ay:
+        status_icon, priority = "🟢", 0
+        if crv_ok:
+            status = "Kauftrigger aktiv"
+            reason = (
+                f"Zentrale Sofortanalyse ist offensiv ({operational_action_lm}) und Screener nutzt dieselbe "
+                f"Timing-/Konfluenzbasis ({timing_score_lm:.0f}/{conf_score_lm:.0f}). "
+                f"Trade-CRV jetzt {crv_float:.2f}."
+            )
+            monitor_action = "Jetzt aktiv prüfen: Entry, Positionsgröße und Stop/Invalidierung festlegen."
+        else:
+            status = "Setup prüfbereit / Entry abwarten"
+            _crv_now_txt_v3021ay = f"{crv_float:.2f}" if crv_float is not None else "n/a"
+            _crv_entry_txt_v3021ay = f"{crv_entry_float:.2f}" if crv_entry_float is not None else "n/a"
+            reason = (
+                f"Zentrale Sofortanalyse ist offensiv ({operational_action_lm}); Timing/Konfluenz "
+                f"{timing_score_lm:.0f}/{conf_score_lm:.0f}. CRV jetzt {_crv_now_txt_v3021ay}, "
+                f"aber CRV Entry {_crv_entry_txt_v3021ay}."
+            )
+            monitor_action = (
+                "Aktiv prüfen, aber wegen aktuellem CRV nicht hinterherlaufen: geplante Entry-Zone bzw. "
+                "bessere Risiko-/Zielrelation abwarten und dort Stop/Trigger erneut bestätigen."
+            )
     elif (
         live_short_term
         and trend_quality_ok
@@ -1629,7 +1718,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         live_score_raw -= 45.0
     if ma20_stretch_pct is not None and ma20_stretch_pct > 12.0:
         live_score_raw -= min(18.0, (ma20_stretch_pct - 12.0) * 1.6)
-    if not final_release_ok and status_icon == "🟢" and not setup_ready:
+    if not final_release_ok and status_icon == "🟢" and not (setup_ready or shared_operational_ready_v3021ay):
         live_score_raw -= 18.0
     # Performance seit Aufnahme ist Kontext, kein primaerer Entry-Trigger:
     # leichter Bonus fuer starke Entwicklung, aber nur bis gelb/stabil, nicht automatisch gruen.
@@ -1657,7 +1746,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         # Kurzfrist-Modus: Gruen darf nur dann bleiben, wenn der Trade wirklich
         # operativ planbar ist. Sonst wird auf Gelb zurueckgestuft.
         has_short_term_trigger = bool(bucket_active or wave_active or entry_reached or (trend_structure_ok and trend_timing_ok and trend_not_too_extended))
-        if status_icon == "🟢" and not has_short_term_trigger and not setup_ready:
+        if status_icon == "🟢" and not has_short_term_trigger and not (setup_ready or shared_operational_ready_v3021ay):
             status_icon, status, priority = "🟡", "Setup interessant / Trigger prüfen", 2
             reason = "Kurzfrist-Modus: Qualität reicht nicht; es fehlt ein klarer aktueller Charttrigger."
             monitor_action = "Kurzfrist nur vorbereiten: Trigger, Volumenbestaetigung und engen Stop abwarten."
@@ -1976,9 +2065,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Timing-Signal": (f"{timing_score_lm:.1f}/100 · gemessen" if timing_signal_available else "n/a · nicht geliefert"),
         "Trigger-Konfluenz-Signal": (f"{conf_score_lm:.1f}/100 · gemessen" if conf_signal_available else "n/a · nicht geliefert"),
         "Signalpaket-Quelle": signal_package_source or "-",
+        "Operative Aktion": operational_action_lm or "-",
+        "Operatives Timing": str(r.get("operational_timing_label") or "-"),
         "Setup-Reife": (
             "Kauftrigger aktiv" if status in {"Kurzfrist-Trigger aktiv", "Kauftrigger aktiv", "Trendfolge aktiv"}
-            else "Prüfbereit" if setup_ready
+            else "Prüfbereit" if (setup_ready or strong_pullback_setup or shared_operational_ready_v3021ay)
             else "Beobachten"
         ),
         "Score-Treiber": _score_drivers,
@@ -2035,7 +2126,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "__entry_hard_gate": bool(entry_hard_gate),
         "__invalidated": bool("Invalidierung gebrochen" in alert_types),
         "__final_release_ok": bool(final_release_ok),
-        "__setup_ready": bool(setup_ready or strong_pullback_setup),
+        "__setup_ready": bool(setup_ready or strong_pullback_setup or shared_operational_ready_v3021ay),
         "__setup_ready_timing_ok": bool(setup_ready_timing_ok),
         "__setup_ready_chart_ok": bool(setup_ready_chart_ok),
         "__setup_ready_crv_ok": bool(setup_ready_crv_ok),

@@ -1,0 +1,21 @@
+CHSM v30.21ay - Screener/Sofortanalyse konsistent
+
+Voraussetzung: v30.21ax installiert.
+
+Ersetzen:
+- VERSION.txt
+- legacy_app.py
+- modules/live_monitor.py
+- CHANGELOG.md optional
+
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+Auf dem Server dieselben Dateien ersetzen.
+
+Danach Streamlit komplett neu starten und einen neuen Vollscan ausfuehren.
+
+Was sich aendert:
+- Live-Screener und Sofortanalyse verwenden dieselbe operative Timing-/Trigger-Konfluenz-Pipeline.
+- Stundenkerzen/Detailcharts bleiben informativ, ueberschreiben aber die operative Entscheidung nicht mehr.
+- Eine zentrale offensive Aktion mit starkem Timing/Konfluenz und validem Setup wird im Screener aktiv sichtbar.
+- CRV bleibt Sicherheits-/Entry-Filter: schwaches CRV jetzt + gutes CRV Entry => pruefbereit / Entry abwarten, nicht blind kaufen.
+- Hard Gates und Invalidierungen bleiben unveraendert blockierend.

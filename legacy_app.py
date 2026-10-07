@@ -491,6 +491,18 @@ def analyze_stock(ticker, horizon, depot, risk_pct, override, buy_in_override, s
                 "confluence_components": [],
                 "error": type(exc).__name__,
             }
+        # v30.21ay: one authoritative operative signal package is attached
+        # centrally so Live-Screener and Sofortanalyse consume identical
+        # timing/confluence/action context. Name resolution happens at call
+        # time; the helper is defined later during app bootstrap.
+        try:
+            _shared_builder = globals().get("_v3021ah_attach_shared_signal_packages")
+            if callable(_shared_builder):
+                result = _shared_builder(result)
+        except Exception:
+            # The live module still calls the same helper defensively. Never
+            # turn an optional enrichment failure into a failed stock analysis.
+            pass
     return result
 
 
@@ -18034,26 +18046,93 @@ def _v303g_sync_atomic_marks_into_positions(all_positions, live_df):
         new_store[store_key] = new_positions
     return new_store, changed
 
-# ---------- v30.21ah: shared headless Timing-/Konfluenz-Pakete ----------
-def _v3021ah_attach_shared_signal_packages(result):
-    """Attach the same timing/confluence builders to headless/live analyses.
+def _v3021ay_operational_candle_signal(df):
+    """Small provider-free daily/hourly candle bias available before page rendering.
 
-    The detailed single-analysis UI can later enrich/overwrite these packages with
-    candle/chart context. For the live screener, however, missing packages must
-    never be interpreted as positive evidence. This bridge derives a conservative
-    package from the central analysis result only and marks its provenance.
+    The detailed candlestick module is defined later in the legacy UI file. Live
+    scans execute earlier, so the shared operative package needs a lightweight
+    evaluator that depends only on already loaded OHLCV data.
+    """
+    neutral = {
+        "pattern": "Kein klares Muster", "bias": "Neutral", "tone": "neutral",
+        "strength": 20, "confirmation": "fehlt",
+    }
+    try:
+        if not isinstance(df, pd.DataFrame) or len(df) < 3:
+            return dict(neutral)
+        cols = {str(c).lower(): c for c in df.columns}
+        for req in ("open", "high", "low", "close"):
+            if req not in cols:
+                return dict(neutral)
+        o = pd.to_numeric(df[cols["open"]], errors="coerce")
+        h = pd.to_numeric(df[cols["high"]], errors="coerce")
+        l = pd.to_numeric(df[cols["low"]], errors="coerce")
+        c = pd.to_numeric(df[cols["close"]], errors="coerce")
+        if any(x.dropna().empty for x in (o, h, l, c)):
+            return dict(neutral)
+        o0, h0, l0, c0 = map(float, (o.iloc[-1], h.iloc[-1], l.iloc[-1], c.iloc[-1]))
+        op, cp = float(o.iloc[-2]), float(c.iloc[-2])
+        rng = max(h0 - l0, 1e-9)
+        body = abs(c0 - o0) / rng
+        upper = (h0 - max(o0, c0)) / rng
+        lower = (min(o0, c0) - l0) / rng
+        close_pos = (c0 - l0) / rng
+        recent = [float(x) for x in c.tail(4).tolist()]
+        three_up = len(recent) >= 4 and recent[-1] > recent[-2] > recent[-3]
+        three_down = len(recent) >= 4 and recent[-1] < recent[-2] < recent[-3]
+
+        if c0 > o0 and cp < op and c0 >= op and o0 <= cp:
+            return {"pattern": "Bullish Engulfing", "bias": "Bestaetigt bullish", "tone": "bullish", "strength": 64, "confirmation": "vorhanden"}
+        if c0 < o0 and cp > op and c0 <= op and o0 >= cp:
+            return {"pattern": "Bearish Engulfing", "bias": "Bestaetigt bearish", "tone": "bearish", "strength": 66, "confirmation": "vorhanden"}
+        if lower >= 0.45 and body <= 0.35 and c0 >= o0:
+            return {"pattern": "Hammer", "bias": "Leicht bullisch", "tone": "bullish", "strength": 48, "confirmation": "teilweise"}
+        if upper >= 0.45 and body <= 0.35 and c0 <= o0:
+            return {"pattern": "Shooting Star", "bias": "Leicht bearish", "tone": "bearish", "strength": 50, "confirmation": "teilweise"}
+        if c0 > o0 and body >= 0.45 and close_pos >= 0.70:
+            return {"pattern": "Bullische Momentumkerze", "bias": "Leicht bullisch", "tone": "bullish", "strength": 48 if three_up else 42, "confirmation": "teilweise" if three_up else "fehlt"}
+        if c0 < o0 and body >= 0.45 and close_pos <= 0.30:
+            return {"pattern": "Baerische Momentumkerze", "bias": "Leicht bearish", "tone": "bearish", "strength": 48 if three_down else 42, "confirmation": "teilweise" if three_down else "fehlt"}
+        if three_up:
+            return {"pattern": "3-Tage-Aufwaertsfolge", "bias": "Leicht bullisch", "tone": "bullish", "strength": 40, "confirmation": "teilweise"}
+        if three_down:
+            return {"pattern": "3-Tage-Abwaertsfolge", "bias": "Leicht bearish", "tone": "bearish", "strength": 40, "confirmation": "teilweise"}
+        return dict(neutral)
+    except Exception:
+        return dict(neutral)
+
+
+# ---------- v30.21ay: zentrale operative Timing-/Konfluenz-Pakete ----------
+def _v3021ah_attach_shared_signal_packages(result):
+    """Build one authoritative operative signal package for all surfaces.
+
+    v30.21ay removes the remaining split between Live-Screener and Sofortanalyse.
+    The operative decision uses a fixed 1-year daily/chart basis from the already
+    loaded central analysis result. It adds daily candle, S/R ultra signal,
+    Fibonacci, wave and setup-pattern context without any extra provider request.
+
+    Intraday/hourly candles may still be shown in the detailed single-analysis UI,
+    but they are informational and no longer overwrite the operative timing /
+    trigger-confluence decision. This keeps Screener and Sofortanalyse identical.
     """
     if not isinstance(result, dict):
         return result
 
     existing_timing = result.get("timing_action_confidence_pkg")
     existing_conf = result.get("trigger_confluence_pkg")
+    existing_source = str(
+        result.get("signal_package_source")
+        or (existing_timing.get("source") if isinstance(existing_timing, dict) else "")
+        or (existing_conf.get("source") if isinstance(existing_conf, dict) else "")
+        or ""
+    ).strip()
     try:
-        if isinstance(existing_timing, dict) and existing_timing.get("score") is not None \
-                and isinstance(existing_conf, dict) and existing_conf.get("score") is not None:
-            existing_timing.setdefault("source", "analysis-result")
-            existing_conf.setdefault("source", "analysis-result")
-            result.setdefault("signal_package_source", "analysis-result")
+        if (
+            existing_source == "shared-operational-v30.21ay"
+            and isinstance(existing_timing, dict) and existing_timing.get("score") is not None
+            and isinstance(existing_conf, dict) and existing_conf.get("score") is not None
+        ):
+            result["signal_package_complete"] = True
             return result
     except Exception:
         pass
@@ -18062,6 +18141,95 @@ def _v3021ah_attach_shared_signal_packages(result):
         position_mode = str(result.get("mode_label") or "").strip().lower() == "position"
         market_info = result.get("market_info") if isinstance(result.get("market_info"), dict) else {}
         regime_ctx = get_market_regime_context(market_info)
+
+        # Fixed operative chart basis: 1-year daily history. This is deliberately
+        # independent of the user's visible chart-range selector.
+        _df_v3021ay = result.get("df")
+        _chart_df_v3021ay = None
+        if isinstance(_df_v3021ay, pd.DataFrame) and not _df_v3021ay.empty:
+            try:
+                _chart_df_v3021ay = compute_chart_df(_df_v3021ay, "1 Jahr")
+            except Exception:
+                _chart_df_v3021ay = _df_v3021ay.tail(252).copy()
+
+        _structures_v3021ay = result.get("chart_structures_analysis")
+        if not isinstance(_structures_v3021ay, dict) and isinstance(_chart_df_v3021ay, pd.DataFrame) and not _chart_df_v3021ay.empty:
+            try:
+                _structures_v3021ay = build_chart_structures(_chart_df_v3021ay)
+                result["chart_structures_analysis"] = _structures_v3021ay
+            except Exception:
+                _structures_v3021ay = {}
+        if not isinstance(_structures_v3021ay, dict):
+            _structures_v3021ay = {}
+
+        # Daily candle and S/R ultra context are computed from already loaded
+        # OHLCV data only. No hourly/provider call is made for broad screeners.
+        _daily_sig_v3021ay = None
+        _ultra_signal_v3021ay = None
+        _final_ultra_label_v3021ay = "-"
+        if isinstance(_chart_df_v3021ay, pd.DataFrame) and not _chart_df_v3021ay.empty:
+            try:
+                _daily_sig_v3021ay = _v3021ay_operational_candle_signal(_chart_df_v3021ay)
+                if isinstance(_daily_sig_v3021ay, dict):
+                    _daily_sig_v3021ay = apply_regime_to_candle_reading(_daily_sig_v3021ay, regime_ctx)
+            except Exception:
+                _daily_sig_v3021ay = None
+            try:
+                if _structures_v3021ay:
+                    _ultra_signal_v3021ay = compute_ultra_short_term_zone_signal(_chart_df_v3021ay, _structures_v3021ay)
+                    if isinstance(_ultra_signal_v3021ay, dict):
+                        _final_ultra_label_v3021ay, _ = apply_regime_to_ultra_short_term_label(
+                            _ultra_signal_v3021ay.get("label", "Kein Signal"),
+                            regime_ctx,
+                            confirmation=_ultra_signal_v3021ay.get("confirmation", "-"),
+                            bias_label=_ultra_signal_v3021ay.get("reason", "-"),
+                        )
+            except Exception:
+                _ultra_signal_v3021ay = None
+                _final_ultra_label_v3021ay = "-"
+
+        # Use an hourly candle only when it is already present in the central
+        # result. Never trigger a new intraday provider request from the Screener.
+        _hourly_sig_v3021ay = None
+        try:
+            _hourly_df_v3021ay = result.get("intraday_hourly_df")
+            if isinstance(_hourly_df_v3021ay, pd.DataFrame) and not _hourly_df_v3021ay.empty:
+                _hourly_sig_v3021ay = _v3021ay_operational_candle_signal(_hourly_df_v3021ay)
+                if isinstance(_hourly_sig_v3021ay, dict):
+                    _hourly_sig_v3021ay = apply_regime_to_candle_reading(_hourly_sig_v3021ay, regime_ctx)
+        except Exception:
+            _hourly_sig_v3021ay = None
+
+        # The same soft chart-context builders used by the detailed analysis are
+        # attached here from the fixed daily basis, again without provider calls.
+        fib_pkg = result.get("fibonacci_context_pkg") if isinstance(result.get("fibonacci_context_pkg"), dict) else {}
+        wave_pkg = result.get("wave_structure_pkg") if isinstance(result.get("wave_structure_pkg"), dict) else {}
+        pattern_pkg = result.get("setup_pattern_pkg") if isinstance(result.get("setup_pattern_pkg"), dict) else {}
+        if isinstance(_chart_df_v3021ay, pd.DataFrame) and not _chart_df_v3021ay.empty:
+            if not fib_pkg:
+                try:
+                    fib_pkg = build_fibonacci_context_v1533(_chart_df_v3021ay, result)
+                    if isinstance(fib_pkg, dict):
+                        result["fibonacci_context_pkg"] = fib_pkg
+                except Exception:
+                    fib_pkg = {}
+            if not wave_pkg:
+                try:
+                    wave_pkg = build_wave_structure_context_v190(_chart_df_v3021ay, result)
+                    if isinstance(wave_pkg, dict):
+                        result["wave_structure_pkg"] = wave_pkg
+                        result["wave_structure_label"] = wave_pkg.get("label")
+                        result["wave_structure_summary"] = wave_pkg.get("summary")
+                        result["wave_structure_action"] = wave_pkg.get("action_hint")
+                except Exception:
+                    wave_pkg = {}
+            if not pattern_pkg:
+                try:
+                    pattern_pkg = build_setup_pattern_context_v162(_chart_df_v3021ay, result)
+                    if isinstance(pattern_pkg, dict):
+                        result["setup_pattern_pkg"] = pattern_pkg
+                except Exception:
+                    pattern_pkg = {}
 
         final_investment_case = investment_case_label_phase1(result.get("investment_case_score"))
         base_timing = timing_label_phase1(
@@ -18082,14 +18250,14 @@ def _v3021ah_attach_shared_signal_packages(result):
             main_action = display_emp_label(result.get("emp", "-"))
         base_action = action_label_phase1(main_action, position_mode=position_mode)
 
-        final_timing, _ = apply_regime_to_timing(
+        final_timing, final_timing_reason = apply_regime_to_timing(
             base_timing, regime_ctx, risk_label=base_risk,
             trigger_status=result.get("trigger_status", "-"), setup_priority=base_priority,
         )
-        final_risk, _ = apply_regime_to_risk(
+        final_risk, final_risk_reason = apply_regime_to_risk(
             base_risk, regime_ctx, tactical_exit_risk=result.get("tactical_exit_risk", 0),
         )
-        final_priority, _ = apply_regime_to_priority(
+        final_priority, final_priority_reason = apply_regime_to_priority(
             base_priority, regime_ctx, investment_case=final_investment_case,
             timing_label=final_timing, risk_label=final_risk,
         )
@@ -18104,7 +18272,7 @@ def _v3021ah_attach_shared_signal_packages(result):
         )
 
         base_tactical = tactical_label_phase2(result.get("tactical_exit_risk", 0))
-        final_tactical, _ = apply_regime_to_tactical_label(
+        final_tactical, final_tactical_reason = apply_regime_to_tactical_label(
             base_tactical, regime_ctx,
             tactical_exit_risk=result.get("tactical_exit_risk", 0),
             title_risk_score=result.get("short_term_gap_risk_score", result.get("title_risk_score", 0)),
@@ -18112,25 +18280,25 @@ def _v3021ah_attach_shared_signal_packages(result):
         conflict_pkg = compute_signal_conflict_phase_ui(
             investment_case=final_investment_case, timing_label=final_timing,
             risk_label=final_risk, action_label=final_action,
-            candle_daily=None, candle_hourly=None, ultra_label="-", tactical_label=final_tactical,
+            candle_daily=_daily_sig_v3021ay, candle_hourly=_hourly_sig_v3021ay,
+            ultra_label=_final_ultra_label_v3021ay if _final_ultra_label_v3021ay not in {"", "-"} else ((_ultra_signal_v3021ay or {}).get("label", "-")),
+            tactical_label=final_tactical,
         )
 
         stock_fomo = result.get("stock_fomo_pkg") if isinstance(result.get("stock_fomo_pkg"), dict) else {}
         market_fomo = result.get("market_fomo_pkg") if isinstance(result.get("market_fomo_pkg"), dict) else {}
         fomo_pkg = result.get("fomo_smart_money_pkg") if isinstance(result.get("fomo_smart_money_pkg"), dict) else {}
-        fib_pkg = result.get("fibonacci_context_pkg") if isinstance(result.get("fibonacci_context_pkg"), dict) else {}
-        wave_pkg = result.get("wave_structure_pkg") if isinstance(result.get("wave_structure_pkg"), dict) else {}
-        pattern_pkg = result.get("setup_pattern_pkg") if isinstance(result.get("setup_pattern_pkg"), dict) else {}
 
         conf_pkg = build_trigger_confluence_v1537(
             final_action_label=final_action, final_timing_label=final_timing,
             final_risk_label=final_risk, conflict_pkg=conflict_pkg,
-            daily_sig=None, hourly_sig=None, ultra_signal=None, final_ultra_label="-",
+            daily_sig=_daily_sig_v3021ay, hourly_sig=_hourly_sig_v3021ay,
+            ultra_signal=_ultra_signal_v3021ay, final_ultra_label=_final_ultra_label_v3021ay,
             regime_ctx=regime_ctx, fomo_pkg=fomo_pkg, stock_fomo_pkg=stock_fomo,
             market_fomo_pkg=market_fomo, fibonacci_pkg=fib_pkg, wave_pkg=wave_pkg,
             setup_pattern_pkg=pattern_pkg, result=result,
         )
-        conf_pkg["source"] = "shared-headless-v30.21ah"
+        conf_pkg["source"] = "shared-operational-v30.21ay"
 
         timing_pkg = build_timing_action_confidence_v163(
             trigger_confluence_pkg=conf_pkg, final_action_label=final_action,
@@ -18138,18 +18306,34 @@ def _v3021ah_attach_shared_signal_packages(result):
             valid_trade_setup=bool(result.get("valid_trade_setup", False)),
             conflict_pkg=conflict_pkg, fomo_pkg=fomo_pkg, fibonacci_pkg=fib_pkg,
             wave_pkg=wave_pkg, setup_pattern_pkg=pattern_pkg, regime_ctx=regime_ctx,
-            daily_sig=None, ultra_signal=None, final_ultra_label="-", result=result,
+            daily_sig=_daily_sig_v3021ay, ultra_signal=_ultra_signal_v3021ay,
+            final_ultra_label=_final_ultra_label_v3021ay, result=result,
             entry_zone=result.get("suggested_entry_zone", "-"),
-            current_price=result.get("price"),
-            structures=result.get("chart_structures_analysis") or {},
+            current_price=result.get("price"), structures=_structures_v3021ay,
             ccy=result.get("ccy", ""),
         )
-        timing_pkg["source"] = "shared-headless-v30.21ah"
+        timing_pkg["source"] = "shared-operational-v30.21ay"
 
         result["trigger_confluence_pkg"] = conf_pkg
         result["timing_action_confidence_pkg"] = timing_pkg
-        result["signal_package_source"] = "shared-headless-v30.21ah"
+        result["signal_package_source"] = "shared-operational-v30.21ay"
         result["signal_package_complete"] = True
+        result["operational_signal_basis"] = "1y-daily-fixed; hourly-only-if-already-loaded"
+        result["operational_action_label"] = final_action
+        result["operational_action_reason"] = final_action_reason
+        result["operational_timing_label"] = final_timing
+        result["operational_timing_reason"] = final_timing_reason
+        result["operational_risk_label"] = final_risk
+        result["operational_risk_reason"] = final_risk_reason
+        result["operational_priority_label"] = final_priority
+        result["operational_priority_reason"] = final_priority_reason
+        result["operational_tactical_label"] = final_tactical
+        result["operational_tactical_reason"] = final_tactical_reason
+        result["operational_conflict_pkg"] = conflict_pkg
+        result["operational_daily_sig"] = _daily_sig_v3021ay or {}
+        result["operational_hourly_sig"] = _hourly_sig_v3021ay or {}
+        result["operational_ultra_signal"] = _ultra_signal_v3021ay or {}
+        result["operational_final_ultra_label"] = _final_ultra_label_v3021ay
     except Exception as exc:
         result["signal_package_complete"] = False
         result["signal_package_error"] = type(exc).__name__
@@ -30260,7 +30444,11 @@ if result is not None:
     market_fomo_pkg_ui = result.get("market_fomo_pkg") or build_market_fomo_package_v1525(market_info if "market_info" in locals() else {})
     fomo_pkg_ui = result.get("fomo_smart_money_pkg") or combine_fomo_packages_v1525(stock_fomo_pkg_ui, market_fomo_pkg_ui)
 
-    trigger_confluence_pkg = build_trigger_confluence_v1537(
+    # v30.21ay: Detailed candles/hourly remain visible diagnostics, but the
+    # operative Timing/Trigger-Konfluenz shown to the user must be exactly the
+    # same package used by the Live-Screener. This removes the former second
+    # decision path where hourly/chart details could overwrite Screener values.
+    _detailed_trigger_confluence_pkg_v3021ay = build_trigger_confluence_v1537(
         final_action_label=final_action_label if "final_action_label" in locals() else "-",
         final_timing_label=final_timing_label if "final_timing_label" in locals() else "-",
         final_risk_label=final_risk_label if "final_risk_label" in locals() else "-",
@@ -30278,11 +30466,10 @@ if result is not None:
         setup_pattern_pkg=result.get("setup_pattern_pkg") or {},
         result=result,
     )
-    trigger_confluence_pkg["source"] = "single-analysis-detailed-v30.21ah"
-    result["trigger_confluence_pkg"] = trigger_confluence_pkg
+    _detailed_trigger_confluence_pkg_v3021ay["source"] = "single-analysis-detailed-shadow-v30.21ay"
 
-    timing_action_confidence_pkg = build_timing_action_confidence_v163(
-        trigger_confluence_pkg=trigger_confluence_pkg,
+    _detailed_timing_pkg_v3021ay = build_timing_action_confidence_v163(
+        trigger_confluence_pkg=_detailed_trigger_confluence_pkg_v3021ay,
         final_action_label=final_action_label if "final_action_label" in locals() else "-",
         final_timing_label=final_timing_label if "final_timing_label" in locals() else "-",
         final_risk_label=final_risk_label if "final_risk_label" in locals() else "-",
@@ -30302,10 +30489,44 @@ if result is not None:
         structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
         ccy=ccy if "ccy" in locals() else "",
     )
-    timing_action_confidence_pkg["source"] = "single-analysis-detailed-v30.21ah"
-    result["timing_action_confidence_pkg"] = timing_action_confidence_pkg
-    result["signal_package_source"] = "single-analysis-detailed-v30.21ah"
-    result["signal_package_complete"] = True
+    _detailed_timing_pkg_v3021ay["source"] = "single-analysis-detailed-shadow-v30.21ay"
+    result["detailed_trigger_confluence_pkg"] = _detailed_trigger_confluence_pkg_v3021ay
+    result["detailed_timing_action_confidence_pkg"] = _detailed_timing_pkg_v3021ay
+
+    # Re-attach defensively in case this result came from an old cache payload.
+    result = _v3021ah_attach_shared_signal_packages(result)
+    _shared_conf_v3021ay = result.get("trigger_confluence_pkg") if isinstance(result.get("trigger_confluence_pkg"), dict) else {}
+    _shared_timing_v3021ay = result.get("timing_action_confidence_pkg") if isinstance(result.get("timing_action_confidence_pkg"), dict) else {}
+
+    if _shared_conf_v3021ay.get("score") is not None and _shared_timing_v3021ay.get("score") is not None:
+        trigger_confluence_pkg = _shared_conf_v3021ay
+        timing_action_confidence_pkg = _shared_timing_v3021ay
+        # The operative action/timing/risk labels feeding the rest of the single
+        # analysis are also taken from the central package.
+        if str(result.get("operational_action_label") or "").strip():
+            final_action_label = result.get("operational_action_label")
+            final_action_reason = result.get("operational_action_reason") or final_action_reason
+        if str(result.get("operational_timing_label") or "").strip():
+            final_timing_label = result.get("operational_timing_label")
+            final_timing_reason = result.get("operational_timing_reason") or final_timing_reason
+        if str(result.get("operational_risk_label") or "").strip():
+            final_risk_label = result.get("operational_risk_label")
+            final_risk_reason = result.get("operational_risk_reason") or final_risk_reason
+        if str(result.get("operational_priority_label") or "").strip():
+            final_priority_label = result.get("operational_priority_label")
+            final_priority_reason = result.get("operational_priority_reason") or final_priority_reason
+        if str(result.get("operational_tactical_label") or "").strip():
+            final_tactical_label = result.get("operational_tactical_label")
+            final_tactical_reason = result.get("operational_tactical_reason") or final_tactical_reason
+    else:
+        # Safe fallback: only if the central package could not be built at all.
+        trigger_confluence_pkg = _detailed_trigger_confluence_pkg_v3021ay
+        timing_action_confidence_pkg = _detailed_timing_pkg_v3021ay
+        result["trigger_confluence_pkg"] = trigger_confluence_pkg
+        result["timing_action_confidence_pkg"] = timing_action_confidence_pkg
+        result["signal_package_source"] = "single-analysis-detailed-fallback-v30.21ay"
+        result["signal_package_complete"] = True
+
 
     # ---------- v17.6: klare operative Empfehlung + verdichtetes Charttechnik-Setup ----------
     action_clarity_pkg = build_action_clarity_v176(
@@ -30446,8 +30667,9 @@ if result is not None:
             """,
             unsafe_allow_html=True,
         )
+        st.caption("v30.21ay: Trigger-Konfluenz und Timing verwenden dieselbe operative Entscheidungsbasis wie der Live-Screener. Stundenkerzen/zusätzliche Detailcharts bleiben informativ und überschreiben diese Werte nicht mehr.")
         with st.expander("Trigger-Konfluenz im Detail", expanded=False):
-            st.caption("Prüft, ob Aktion, Timing, Candles, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime in dieselbe Richtung zeigen. Nicht als eigener Score-Ersatz, sondern als Richtungscheck.")
+            st.caption("Prüft, ob Aktion, Timing, Tageskerze, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime in dieselbe Richtung zeigen. Nicht als eigener Score-Ersatz, sondern als Richtungscheck.")
             _rows = []
             for _c in (_tc.get("components") or []):
                 _rows.append({

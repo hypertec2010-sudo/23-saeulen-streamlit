@@ -1,0 +1,25 @@
+CHSM v30.21au - Entry-Abstand Soft Gate
+
+Basis: dein aktueller Projektstand v30.21at aus 23-saeulen-streamlit-main-4.zip.
+
+Zu ersetzen:
+- VERSION.txt
+- legacy_app.py
+- modules/live_monitor.py
+- CHANGELOG.md optional
+
+Mac / lokal:
+- Die Dateien aus dieser ZIP in deinen bestehenden CHSM-Projektordner kopieren.
+- Beim Ordner modules: ZUSAMMENFUEHREN, NICHT den kompletten Ordner ersetzen.
+- Danach Streamlit neu starten und einen Vollscan ausfuehren.
+
+Server:
+- Dieselben Dateien an die entsprechenden Stellen im bestehenden Projekt kopieren/deployen.
+- modules/live_monitor.py nur ersetzen; den modules-Ordner nicht komplett loeschen/ersetzen.
+
+Aenderung:
+- Entry-Abstand >5 % allein ist kein Hard Gate mehr.
+- Stattdessen Timing-/Chase-Bremse: starkes Setup kann gelb als
+  "Setup stark / Pullback abwarten" sichtbar bleiben.
+- Entry-Abstand + FOMO sowie andere echte Hard Gates bleiben blockierend.
+- Keine Aenderung an CRV-Berechnung, Invalidierung oder finalem Kauftrigger.

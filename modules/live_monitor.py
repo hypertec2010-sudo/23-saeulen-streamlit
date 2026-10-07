@@ -337,6 +337,44 @@ def _v3021al_setup_readiness_package(
     }
 
 
+def _v3021au_strong_pullback_package(
+    *, valid_trade_setup=False, signal_packages_complete=False, timing_score=None,
+    conf_score=None, chart_score=None, trend_structure_ok=False, crv_entry=None,
+    entry_distance_pct=None, ma20_stretch_pct=None, entry_hard_gate=False, invalidated=False,
+):
+    """Strong setup, bad current location: reviewable but not buy-now."""
+    def _num(v):
+        try:
+            if v in {None, "", "-", "n/a"}:
+                return None
+            f = float(v)
+            return f if np.isfinite(f) and not pd.isna(f) else None
+        except Exception:
+            return None
+    timing = _num(timing_score)
+    conf = _num(conf_score)
+    chart = _num(chart_score)
+    crv_e = _num(crv_entry)
+    distance = _num(entry_distance_pct)
+    stretch = _num(ma20_stretch_pct)
+    chart_ok = bool(trend_structure_ok or (chart is not None and chart >= 50))
+    strong_signals = bool(
+        signal_packages_complete and timing is not None and conf is not None
+        and timing >= 70 and conf >= 65
+    )
+    ready = bool(
+        valid_trade_setup and strong_signals and chart_ok
+        and crv_e is not None and crv_e >= 1.50
+        and distance is not None and distance > 5.0
+        and (stretch is None or stretch <= 20.0)
+        and not entry_hard_gate and not invalidated
+    )
+    return {
+        "ready": ready, "timing": timing, "conf": conf, "chart_ok": chart_ok,
+        "crv_entry": crv_e, "entry_distance_pct": distance,
+    }
+
+
 def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None, live_horizon="Swing / 1-4 Wochen"):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
 
@@ -461,10 +499,29 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "bewertung", "valuation", "fundamental", "qualität", "qualitaet"
     ]
     non_entry_fundamental_gate = bool(hard_gate and gate_low and any(t in gate_low for t in fundamental_gate_terms))
-    # v30.21aj: low CRV is an entry/timing brake, never a hard red gate by
-    # itself. This also makes old cached gate strings safe until the next full scan.
+    # v30.21au: Gate-Gründe einzeln klassifizieren. So kann ein alter
+    # "Entry-Abstand zu groß"-Cache weich behandelt werden, ohne ein anderes
+    # echtes Hard Gate im selben String versehentlich zu neutralisieren.
+    _gate_items_v3021au = [x.strip() for x in str(gate or "").split(";") if x.strip()]
+    def _v3021au_soft_gate_item(item):
+        low = str(item or "").lower().strip()
+        if not low:
+            return True
+        if any(t in low for t in exit_gate_terms):
+            return True
+        if any(t in low for t in fundamental_gate_terms):
+            return True
+        if any(t in low for t in ["crv unattraktiv", "crv zu eng"]):
+            return True
+        # Distanz allein = Chase-/Timing-Bremse. Die kombinierte FOMO-Regel
+        # "Nicht hinterherlaufen: Entry-Abstand + FOMO" bleibt hart.
+        if "entry-abstand" in low and "fomo" not in low and "nicht hinterherlaufen" not in low:
+            return True
+        return False
+    _hard_entry_gate_items_v3021au = [x for x in _gate_items_v3021au if not _v3021au_soft_gate_item(x)]
     non_entry_crv_gate = bool(hard_gate and gate_low and any(t in gate_low for t in ["crv unattraktiv", "crv zu eng"]))
-    entry_hard_gate = bool(hard_gate and not non_entry_exit_gate and not non_entry_fundamental_gate and not non_entry_crv_gate)
+    non_entry_distance_gate = bool(hard_gate and any("entry-abstand" in str(x).lower() and "fomo" not in str(x).lower() for x in _gate_items_v3021au))
+    entry_hard_gate = bool(_hard_entry_gate_items_v3021au)
 
     # v28.6c: Gate Transparency. Die Logik, ob ein Gate hart ist, bleibt
     # unveraendert. Neu ist nur die nachvollziehbare Aufschluesselung der
@@ -506,11 +563,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
                 _fomo_show = str(((r.get('fomo_smart_money_pkg') or {}) if isinstance(r.get('fomo_smart_money_pkg'), dict) else {}).get('label') or 'kritisch')
                 detail = f"FOMO = {_fomo_show} · erforderlich: unter kritisch"
             elif "entry-abstand" in low and "fomo" not in low:
-                name = "Entry-Abstand zu gross"
+                name = "Entry-Abstand / Chase-Bremse"
                 if _entry_distance is not None:
-                    detail = f"Entry-Abstand {float(_entry_distance):+.1f}% · erlaubt <= 5.0%"
+                    detail = f"Entry-Abstand {float(_entry_distance):+.1f}% · >5% = Pullback bevorzugt, kein Hard Gate allein"
                 else:
-                    detail = "Entry-Abstand oberhalb der erlaubten 5.0%-Schwelle"
+                    detail = "Entry-Abstand >5% = Pullback-/Chase-Bremse; allein kein Hard Gate"
             elif "crv unattraktiv" in low or "crv zu eng" in low:
                 name = "CRV zu niedrig"
                 if crv_float is not None:
@@ -1279,6 +1336,19 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     setup_ready_chart_ok = bool(_setup_ready_pkg.get("chart_ok"))
     setup_ready_crv_ok = bool(_setup_ready_pkg.get("crv_ok"))
 
+    # v30.21au: starke Sofortanalyse + attraktives CRV in der Entry-Zone, aber
+    # Kurs >5% oberhalb der Zone. Das ist ein gelber Pullback-Kandidat, kein
+    # technisch blockiertes/weißes Setup.
+    _strong_pullback_pkg_v3021au = _v3021au_strong_pullback_package(
+        valid_trade_setup=bool(r.get("valid_trade_setup", False)),
+        signal_packages_complete=signal_packages_complete,
+        timing_score=timing_score_lm, conf_score=conf_score_lm, chart_score=chart_score_lm,
+        trend_structure_ok=trend_structure_ok, crv_entry=crv_entry_float,
+        entry_distance_pct=entry_distance, ma20_stretch_pct=ma20_stretch_pct,
+        entry_hard_gate=entry_hard_gate, invalidated=("Invalidierung gebrochen" in alert_types),
+    )
+    strong_pullback_setup = bool(_strong_pullback_pkg_v3021au.get("ready"))
+
     trend_reason_tail = ""
     if ma20_stretch_pct is not None:
         trend_reason_tail = f" Abstand zu MA20 ca. {ma20_stretch_pct:.1f}%."
@@ -1287,6 +1357,19 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         status_icon, status, priority = "🔴", "Invalidiert / meiden", 1
         reason = "Invalidierung aktiv."
         monitor_action = "Kein Kauf: These/Setup zuerst neu prüfen; Stop-/Invalidierungsbruch beachten."
+    elif strong_pullback_setup:
+        status_icon, status, priority = "🟡", "Setup stark / Pullback abwarten", 2
+        _dist_txt_v3021au = f"{entry_distance:+.1f}%" if entry_distance is not None else ">5%"
+        _entry_crv_txt_v3021au = f"{crv_entry_float:.2f}" if crv_entry_float is not None else "n/a"
+        reason = (
+            f"Sofortanalyse ist technisch stark (Timing {timing_score_lm:.0f}/100, Konfluenz {conf_score_lm:.0f}/100, "
+            f"valides Setup), aber der Kurs liegt {_dist_txt_v3021au} zur geplanten Entry-Zone. "
+            f"CRV Entry {_entry_crv_txt_v3021au} bleibt attraktiv."
+        )
+        monitor_action = (
+            "Nicht hinterherlaufen: Pullback/Rückkehr zur CHSM-Entry-Zone oder eine neue enge Base abwarten; "
+            "dort Trigger, Stop und CRV erneut bestätigen."
+        )
     elif bucket == "Warnsignale / meiden" and grade in {"A", "B"} and crv_ok:
         # v22.1: Warnbucket ist nur ein Diagnose-/Vorsichtssignal, wenn Grade A/B und CRV passen.
         # entry_hard_gate wird hier bewusst nicht mehr als Ausschluss verwendet,
@@ -1947,7 +2030,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "__entry_hard_gate": bool(entry_hard_gate),
         "__invalidated": bool("Invalidierung gebrochen" in alert_types),
         "__final_release_ok": bool(final_release_ok),
-        "__setup_ready": bool(setup_ready),
+        "__setup_ready": bool(setup_ready or strong_pullback_setup),
         "__setup_ready_timing_ok": bool(setup_ready_timing_ok),
         "__setup_ready_chart_ok": bool(setup_ready_chart_ok),
         "__setup_ready_crv_ok": bool(setup_ready_crv_ok),

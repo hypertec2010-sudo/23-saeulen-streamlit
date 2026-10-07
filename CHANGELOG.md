@@ -1,3 +1,13 @@
+## v30.21au — Entry-Abstand als Soft Gate
+
+- Entry-Abstand >5 % ist allein kein Hard Gate mehr, sondern eine Timing-/Chase-Bremse.
+- Die bestehende Kombination „Entry-Abstand + erhöhte/kritische FOMO“ bleibt ein echtes Hard Gate.
+- Starke Setups mit validem Trade-Setup, Timing >=70, Trigger-Konfluenz >=65 und CRV Entry >=1,50 werden bei zu großem Abstand als „🟡 Setup stark / Pullback abwarten“ sichtbar.
+- Der aktuelle Kauf wird dadurch nicht freigegeben; Pullback, neue Base oder Rückkehr zur Entry-Zone bleibt erforderlich.
+- Alte gecachte Gate-Strings „Entry-Abstand zu groß“ werden im Live-Monitor weich klassifiziert, ohne andere echte Hard Gates im selben Gate-String zu neutralisieren.
+- Action Queue behandelt solche starken Pullback-Setups als prüfenswert, ohne die Ampel auf grün zu setzen.
+- Keine Änderung an Invalidierungs-Gates, anderen Hard Gates, CRV-Berechnung oder Kauftrigger-Logik.
+
 ## v30.21at – Kandidaten-Radar Provider-Schutz
 
 - Kandidaten-Radar arbeitet zweistufig: OHLCV-/Kurstechnik-Vorscan fuer das komplette Universum, danach maximal 10–15 Vollanalysen.

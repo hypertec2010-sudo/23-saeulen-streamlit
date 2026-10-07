@@ -4859,8 +4859,13 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     crv = entry_rr_pkg.get("crv")
     crv_entry = entry_rr_pkg.get("crv_entry")
     rr_label = str(entry_rr_pkg.get("rr_label", "") or "")
-    if entry_distance_pct is not None and entry_distance_pct > 5.0:
-        penalty += 12; gates.append("Entry-Abstand zu groß"); brakes.append(f"{entry_rr_pkg.get('entry_position')} ({entry_rr_pkg.get('entry_distance_text')})")
+    # v30.21au: Ein grosser Entry-Abstand allein ist kein Hard Gate. Er sagt
+    # "jetzt nicht hinterherlaufen", nicht "Setup technisch schlecht". Erst die
+    # bereits vorhandene Kombination mit erhoehter/kritischer FOMO bleibt hart.
+    entry_distance_soft_brake = bool(entry_distance_pct is not None and entry_distance_pct > 5.0)
+    if entry_distance_soft_brake:
+        penalty += 6
+        brakes.append(f"Entry-Abstand/Chase-Bremse: {entry_rr_pkg.get('entry_position')} ({entry_rr_pkg.get('entry_distance_text')})")
     elif entry_distance_pct is not None and entry_distance_pct > 1.5:
         penalty += 5; brakes.append(f"oberhalb Entry ({entry_rr_pkg.get('entry_distance_text')})")
     # v30.21aj: CRV ist eine Timing-/Entry-Bremse, aber kein automatisches

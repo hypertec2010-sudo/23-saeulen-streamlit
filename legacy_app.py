@@ -1837,16 +1837,16 @@ def build_trigger_confluence_v1537(
     setup_pattern_pkg = setup_pattern_pkg or {}
     components = []
 
-    # 1) Operative Aktion / Timing
-    action_t = _v1537_norm_text(final_action_label)
-    if any(x in action_t for x in ["kaufen", "aufstocken"]):
-        components.append(_v1537_component("Aktion", "bullish", f"Aktion steht auf {final_action_label}.", 1.2))
-    elif any(x in action_t for x in ["vorbereiten", "prüfen", "pruefen"]):
-        components.append(_v1537_component("Aktion", "neutral", f"Aktion ist {final_action_label}: Setup beobachten, Trigger abwarten.", 1.0))
-    elif any(x in action_t for x in ["reduz", "exit", "verkauf", "absichern"]):
-        components.append(_v1537_component("Aktion", "bearish", f"Aktion ist defensiv: {final_action_label}.", 1.2))
+    # v30.21bc: A recommendation is the OUTPUT of the Decision-State, not
+    # positive or negative evidence for the input confluence. Evaluate the
+    # genuinely measured core trigger instead. This removes the old feedback
+    # loop "vorbereiten -> neutraler Aktion-Baustein -> schlechtere Konfluenz".
+    _core_status_v3021bc = str(result.get("trigger_status") or "").strip()
+    if _core_status_v3021bc.casefold() == "aktiv":
+        components.append(_v1537_component("Kerntrigger", "bullish", "Technischer Kerntrigger ist bestätigt (Aktiv).", 1.2))
     else:
-        components.append(_v1537_component("Aktion", "neutral", f"Aktion: {final_action_label}.", 0.8))
+        _core_txt_v3021bc = _core_status_v3021bc if _core_status_v3021bc else "nicht geliefert"
+        components.append(_v1537_component("Kerntrigger", "neutral", f"Technischer Kerntrigger noch offen: {_core_txt_v3021bc}.", 1.0))
 
     timing_dir = _v1537_eval_label_text(
         final_timing_label,
@@ -2240,19 +2240,17 @@ def build_timing_action_confidence_v163(
     elif confluence_score < 45:
         missing.append(f"Trigger-Konfluenz noch schwach/gemischt ({confluence_score:.0f}/100)")
 
-    action_low = _v163_low(final_action_label)
-    if any(x in action_low for x in ["kaufen", "aufstocken"]):
+    # v30.21bc: Raw technical core trigger, not an older recommendation,
+    # determines the confirmation contribution. Keep the actual action
+    # completely outside the numeric timing confidence: it is decided later.
+    _core_raw_v3021bc = str(result.get("trigger_status") or "").strip()
+    _core_active_v3021bc = (_core_raw_v3021bc.casefold() == "aktiv")
+    if _core_active_v3021bc:
         score += 10
-        fits.append(f"Aktion ist bereits offensiv: {final_action_label}")
-    elif any(x in action_low for x in ["vorbereiten", "prüfen", "pruefen"]):
+        fits.append("Technischer Kerntrigger bestätigt (Aktiv)")
+    else:
         score += 2
-        missing.append("Einstiegstrigger noch nicht aktiv")
-    elif any(x in action_low for x in ["abwarten", "warten", "reduz", "exit", "verkauf"]):
-        score -= 12
-        if bool(valid_trade_setup):
-            missing.append("Einstieg noch nicht aktiviert")
-        else:
-            missing.append("Einstieg noch nicht freigegeben")
+        missing.append(f"Technischer Kerntrigger noch offen ({_core_raw_v3021bc or 'kein Rohstatus'})")
 
     if bool(valid_trade_setup):
         score += 12
@@ -2406,7 +2404,10 @@ def build_timing_action_confidence_v163(
         if in_zone:
             if not any("Entry-Zone" in x for x in fits + missing):
                 fits.append(f"Kurs liegt in der Entry-Zone {entry_txt}")
-            missing.append("Bestätigung in der Entry-Zone fehlt")
+            # Being inside the zone is a location fact. Confirmation is a
+            # different fact, delivered by the technical core-trigger status.
+            if not _core_active_v3021bc:
+                missing.append("Technische Bestätigung in der Entry-Zone noch offen")
         elif below_zone:
             missing.append(f"Entry-Zone knapp verfehlt / Reclaim nötig")
         elif above_zone:
@@ -2416,20 +2417,13 @@ def build_timing_action_confidence_v163(
     if invalidation:
         defensive.append(invalidation)
 
-    # Gating: nicht zu offensiv, wenn Setup/FOMO nicht passt.
+    # v30.21bc: Guard only independent safety/context factors. There is no
+    # preparation-action ceiling (66/69) any more. The central decision state
+    # separately requires the exact technical trigger and entry/CRV conditions.
     score = _v163_clip(score)
     setup_is_valid = bool(valid_trade_setup)
-    action_is_offensive = any(x in action_low for x in ["kaufen", "aufstocken"])
-    action_is_preparing = any(x in action_low for x in ["vorbereiten", "prüfen", "pruefen"])
-    needs_entry_confirmation = any(
-        any(term in _v163_low(item) for term in [
-            "reclaim", "stabilisierung", "bestätigung", "bestaetigung",
-            "entry-zone", "struktur-trigger noch nicht", "pivot/trigger noch nicht"
-        ])
-        for item in (missing or [])
-    )
-    fomo_is_elevated = ("erhöht" in fomo_low or "erhoeht" in fomo_low or "kritisch" in fomo_low)
-
+    action_is_offensive = _core_active_v3021bc
+    action_is_preparing = not _core_active_v3021bc
     if not setup_is_valid:
         score = min(score, 64.0)
     if "kritisch" in fomo_low:
@@ -2437,27 +2431,17 @@ def build_timing_action_confidence_v163(
     if "widers" in conflict_low:
         score = min(score, 55.0)
 
-    # v17.0.1: Eine hohe Konfidenz darf nur wie ein aktiver Timing-Vorteil klingen,
-    # wenn der Einstieg wirklich freigegeben/aktiv ist. Bei "vorbereiten" plus fehlendem
-    # Entry-/Strukturtrigger wird die Anzeige auf "nahe am Trigger" gedeckelt.
-    if action_is_preparing and needs_entry_confirmation:
-        score = min(score, 66.0 if not fomo_is_elevated else 62.0)
-    elif action_is_preparing and not action_is_offensive:
-        score = min(score, 69.0)
-
     # v17.0.1: Erste Fib-/Strukturreaktionen sollen nicht wie ein komplett
     # unattraktiver Timing-Kontext wirken. Sie reichen nicht fuer ein Kaufsignal,
     # heben aber "sehr niedrig" auf "niedrig" an.
     if early_reaction_visible and score < 40:
         score = 40.0
 
-    if setup_is_valid and action_is_preparing and needs_entry_confirmation:
-        label = "Mittel - nahe am Trigger"
-        summary = "Konstruktiv, aber der operative Einstieg ist noch nicht aktiviert."
-        action = "Noch kein klares Kaufsignal; operative Bedingungen stehen in „Nächste Handlung“."
+    label = _v163_label(score, valid_trade_setup=setup_is_valid)
+    if not _core_active_v3021bc and setup_is_valid and score >= 70:
+        summary = "Timing ist konstruktiv; der eigenständige technische Kerntrigger ist noch offen."
+        action = "Setup planen; Kauf erst nach Kerntrigger, CRV und Freigabe-Check."
     else:
-        label = _v163_label(score, valid_trade_setup=setup_is_valid)
-
         if score >= 82 and action_is_offensive:
             summary = "Mehrere Bausteine bestätigen das Timing gleichzeitig."
             action = "Timing wirkt stark; konkrete Umsetzung über „Nächste Handlung“ prüfen."
@@ -2484,11 +2468,9 @@ def build_timing_action_confidence_v163(
     if not setup_is_valid and score >= 55:
         action = "Noch nicht als Kaufsignal werten; Trade-Setup ist nicht ausreichend freigegeben."
 
-    # v17.2.3: Wenn die Kernaktion bereits "kaufen" ist, darf ein offener
-    # Strukturtrigger nicht mehr wie eine harte Einstiegssperre wirken. In diesem
-    # Zustand ist der Einstieg grundsätzlich freigegeben; die Struktur ist nur
-    # noch eine Zusatzbestätigung/Qualitätsverbesserung.
-    if action_is_offensive and setup_is_valid:
+    # v30.21bc: Pattern/wave confirmation remains optional when the actual
+    # technical core trigger is active. This is not an execution approval.
+    if _core_active_v3021bc and setup_is_valid:
         missing = [
             m for m in (missing or [])
             if not any(term in _v163_low(m) for term in [
@@ -2499,7 +2481,7 @@ def build_timing_action_confidence_v163(
             ])
         ]
         if score >= 82:
-            action = "Einstieg grundsätzlich freigegeben; Ausführung, Positionsgröße und Stop über „Nächste Handlung“ prüfen."
+            action = "Kerntrigger bestätigt; CRV, Entry-Lage und finale Freigabe unter „Nächste Handlung“ prüfen."
 
     fits = _v163_short_list(fits, 4)
     missing = _v163_short_list(missing, 5)
@@ -18128,7 +18110,7 @@ def _v3021ah_attach_shared_signal_packages(result):
     ).strip()
     try:
         if (
-            existing_source == "shared-operational-v30.21ay"
+            existing_source == "shared-operational-v30.21bc"
             and isinstance(existing_timing, dict) and existing_timing.get("score") is not None
             and isinstance(existing_conf, dict) and existing_conf.get("score") is not None
         ):
@@ -18277,9 +18259,14 @@ def _v3021ah_attach_shared_signal_packages(result):
             tactical_exit_risk=result.get("tactical_exit_risk", 0),
             title_risk_score=result.get("short_term_gap_risk_score", result.get("title_risk_score", 0)),
         )
+        # v30.21bc: even the conflict subscore must not depend on an older
+        # action recommendation. A bearish candle only conflicts with an
+        # objectively active technical core trigger, not with "vorbereiten".
+        _raw_core_active_v3021bc = (str(result.get("trigger_status") or "").strip().casefold() == "aktiv")
+        _conflict_action_v3021bc = "kaufen" if _raw_core_active_v3021bc else "beobachten"
         conflict_pkg = compute_signal_conflict_phase_ui(
             investment_case=final_investment_case, timing_label=final_timing,
-            risk_label=final_risk, action_label=final_action,
+            risk_label=final_risk, action_label=_conflict_action_v3021bc,
             candle_daily=_daily_sig_v3021ay, candle_hourly=_hourly_sig_v3021ay,
             ultra_label=_final_ultra_label_v3021ay if _final_ultra_label_v3021ay not in {"", "-"} else ((_ultra_signal_v3021ay or {}).get("label", "-")),
             tactical_label=final_tactical,
@@ -18298,7 +18285,7 @@ def _v3021ah_attach_shared_signal_packages(result):
             market_fomo_pkg=market_fomo, fibonacci_pkg=fib_pkg, wave_pkg=wave_pkg,
             setup_pattern_pkg=pattern_pkg, result=result,
         )
-        conf_pkg["source"] = "shared-operational-v30.21ay"
+        conf_pkg["source"] = "shared-operational-v30.21bc"
 
         timing_pkg = build_timing_action_confidence_v163(
             trigger_confluence_pkg=conf_pkg, final_action_label=final_action,
@@ -18312,11 +18299,11 @@ def _v3021ah_attach_shared_signal_packages(result):
             current_price=result.get("price"), structures=_structures_v3021ay,
             ccy=result.get("ccy", ""),
         )
-        timing_pkg["source"] = "shared-operational-v30.21ay"
+        timing_pkg["source"] = "shared-operational-v30.21bc"
 
         result["trigger_confluence_pkg"] = conf_pkg
         result["timing_action_confidence_pkg"] = timing_pkg
-        result["signal_package_source"] = "shared-operational-v30.21ay"
+        result["signal_package_source"] = "shared-operational-v30.21bc"
         result["signal_package_complete"] = True
         result["operational_signal_basis"] = "1y-daily-fixed; hourly-only-if-already-loaded"
         result["operational_action_label"] = final_action
@@ -30542,6 +30529,13 @@ if result is not None:
         _invalidated_v3021az = any(str(a.get("Alert-Typ") or "") == "Invalidierung gebrochen" for a in (_alerts_v3021az or []))
     except Exception:
         _invalidated_v3021az = False
+    # v30.21bc: one CRV source for state + displayed values. Live-Screener
+    # already takes d["crv"] / d["crv_entry"] from the same Radar builder.
+    structural_crv = _radar_v182_num(_radar_decision_v3021az.get("crv"), default=None)
+    structural_crv_entry = _radar_v182_num(_radar_decision_v3021az.get("crv_entry"), default=None)
+    result["technical_crv_now"] = structural_crv
+    result["technical_crv_entry"] = structural_crv_entry
+    result["technical_crv_source_v3021bc"] = "radar-shared"
     _timing_score_v3021az = _radar_v182_num((timing_action_confidence_pkg or {}).get("score"), default=None)
     _conf_score_v3021az = _radar_v182_num((trigger_confluence_pkg or {}).get("score"), default=None)
     _ma20_v3021az = _radar_v182_num(result.get("ma20"), default=None)
@@ -30554,8 +30548,8 @@ if result is not None:
         signal_packages_complete=bool(_timing_score_v3021az is not None and _conf_score_v3021az is not None),
         timing_score=_timing_score_v3021az,
         conf_score=_conf_score_v3021az,
-        crv_now=structural_crv if "structural_crv" in locals() else result.get("technical_crv_now"),
-        crv_entry=structural_crv_entry if "structural_crv_entry" in locals() else result.get("technical_crv_entry"),
+        crv_now=structural_crv,
+        crv_entry=structural_crv_entry,
         action_label=final_action_label if "final_action_label" in locals() else result.get("operational_action_label", ""),
         trigger_status=result.get("trigger_status", ""),
         entry_distance_pct=_radar_decision_v3021az.get("entry_distance_pct"),
@@ -30742,9 +30736,11 @@ if result is not None:
             f"Zentraler Kerntrigger: {'✅ aktiv' if _core_trigger_active_v3021ba else '⏳ offen'} · "
             f"Rohstatus: {_core_trigger_raw_v3021ba} · Decision-State: {_core_queue_v3021ba}"
         )
-        st.caption("v30.21bb: Nur der bestätigte technische Rohstatus 'Aktiv' schaltet den Kerntrigger frei. Eine Empfehlung 'kaufen' allein genügt nicht.")
+        # v30.21bc: show the exact same release matrix used by the Screener.
+        st.caption("Freigabe-Check: " + str(_decision_state_pkg_v3021az.get("release_check") or "Keine offene Freigabebedingung"))
+        st.caption("Nur ein technischer Rohstatus 'Aktiv' bestätigt den Kerntrigger. Die Kaufstufe prüft zusätzlich Timing, Konfluenz, CRV und Entry-Lage.")
         with st.expander("Trigger-Konfluenz im Detail", expanded=False):
-            st.caption("Prüft, ob Aktion, Timing, Tageskerze, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime in dieselbe Richtung zeigen. Nicht als eigener Score-Ersatz, sondern als Richtungscheck.")
+            st.caption("Prüft Kerntrigger, Timing, Tageskerze, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime. Die spätere Handlungsempfehlung wird nicht erneut als positive Eingabe gezählt.")
             _rows = []
             for _c in (_tc.get("components") or []):
                 _rows.append({

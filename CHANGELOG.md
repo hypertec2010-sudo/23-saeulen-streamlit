@@ -1,3 +1,16 @@
+## v30.21bc – Timing-Zirkelschluss aufgelöst, Freigabe-Check präzisiert
+
+- Die Timing-/Handlungs-Konfidenz bewertet den **tatsächlichen technischen Kerntrigger** (`trigger_status == "Aktiv"`), nicht die vorherige Handlungsempfehlung `vorbereiten`/`kaufen`. So beeinflusst die eigene Empfehlung den Score nicht erneut.
+- Alte Score-Deckel **66/69 allein wegen „vorbereiten“** entfernt. Die eigenständigen FOMO-, ungültiges-Trade-Setup- und ausdrücklichen Widerspruchsbremsen bleiben bestehen.
+- Trigger-Konfluenz-Baustein „Aktion“ wurde durch „Kerntrigger“ ersetzt (Aktiv = bestätigend; anderer/fehlender Status = offen/neutral), um die Aktion nicht doppelt als positiven oder negativen Eingabefaktor zu zählen.
+- Auch der Konflikt-Unterbaustein benutzt für den zentralen Signalpfad den technischen Kerntrigger statt einer alten Aktionsformulierung; so kann ein späteres „vorbereiten“ die Konfluenz/Timing-Konfidenz nicht indirekt nochmals abwerten.
+- Liegt der Kurs in der Entry-Zone, wird „technische Bestätigung fehlt“ nur noch gezeigt, wenn der Kerntrigger tatsächlich **nicht** `Aktiv` ist.
+- Die Sofortanalyse verwendet für `CRV jetzt` und `CRV Entry` das **gleiche Radar-CRV-Ergebnis** wie der Live-Screener, sowohl in der Entscheidung als auch in der angezeigten CRV-Auswertung.
+- Neue präzise `Freigabe-Check`-Diagnose auf Basis der gemeinsamen zentralen Decision-State-Funktion: nennt getrennt Setupvalidität, Timing (<60/<70), Konfluenz (<60/<65), CRV jetzt/Entry, Kerntrigger-Rohstatus, Entry-Abstand, MA20-Überdehnung und echte Sperren.
+- Die Sofortanalyse zeigt den Freigabe-Check direkt unter `Zentraler Kerntrigger`; Screener-Zeilen tragen das entsprechende Diagnosefeld ebenfalls.
+- Alter Signalpaket-Cache aus v30.21ay wird beim nächsten Lauf auf `shared-operational-v30.21bc` neu berechnet, damit die neuen Score-Regeln tatsächlich greifen.
+- **Keine Absenkung** der Trading-Schwellen 60/60 (Planung), 70/65 (Kauf), CRV ≥1,50 oder der echten Hard Gates. Keine zusätzlichen Provider-Abfragen.
+
 ## v30.21bb – Technischer Kerntrigger statt Aktionswort
 
 - Kritische Freigabeabweichung aus v30.21ba korrigiert: `kaufen` / `buy` / `aufstocken` als operative Handlung aktiviert den technischen Kerntrigger nicht mehr selbst.

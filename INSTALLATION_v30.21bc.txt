@@ -1,0 +1,33 @@
+CHSM v30.21bc - Timing-Zirkelschluss und CRV-Freigabe-Check
+
+Voraussetzung: v30.21bb installiert.
+
+Dies ist ein kleines klassisches Austausch-Patch, kein Gesamtprojekt.
+Dateien aus der ZIP an den jeweiligen Stellen ersetzen:
+- VERSION.txt
+- legacy_app.py
+- modules/live_monitor.py
+- CHANGELOG.md (optional)
+
+WICHTIG (macOS): den Ordner modules ZUSAMMENFUEHREN, nicht ersetzen.
+Fuer Streamlit Cloud dieselben beiden Python-Dateien an denselben Stellen einspielen.
+Danach Streamlit vollstaendig neu starten und einen neuen Vollscan ausfuehren.
+
+Aenderungen:
+- Die Timing-/Handlungs-Konfidenz nutzt den echten technischen Rohstatus
+  trigger_status = Aktiv; das fruehere Handlungswort vorbereiten/kaufen
+  beeinflusst den numerischen Timing-Score nicht mehr.
+- Die Vorbereitungscaps 66/69 wurden aus der Timing-Funktion entfernt.
+- Die Trigger-Konfluenz zaehlt den realen Kerntrigger statt die alte Aktion
+  und vermeidet so eine Rueckkopplung alter Handlungsempfehlungen.
+- In der Entry-Zone wird nur dann eine technische Bestaetigung als fehlend
+  markiert, wenn der echte Kerntrigger noch offen ist.
+- Screener und Sofortanalyse verwenden das CRV aus demselben Radar-Paket.
+- Der Freigabe-Check nennt konkrete fehlende Kauf-/Planungsbedingungen
+  in der Sofortanalyse unter dem Kerntrigger; die Screener-Zeile fuehrt
+  die entsprechende Diagnose als Feld Freigabe-Check mit.
+- Bestehende CRV-, Timing- und Konfluenz-Grenzen sowie echte Hard Gates
+  bleiben gleich. Keine zusaetzlichen Datenprovider-Abfragen.
+
+Hinweis: Testergebnisse basieren auf Code- und Regressionstests; die
+Live-Darstellung muss nach Deployment mit echtem neuen Scan kontrolliert werden.

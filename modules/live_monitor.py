@@ -540,17 +540,41 @@ def build_decision_state_v3021az(
     )
     setup_ready=bool(valid_trade_setup and setup_signal_ok and setup_crv_ok and not hard and not invalidated)
 
+    # v30.21bc: independent, exact release diagnostics, no duplicate gates.
+    # The same dict is returned to Live-Screener and Sofortanalyse.
     missing=[]
     if not valid_trade_setup:
-        missing.append("valides Trade-Setup")
+        missing.append("Valides Trade-Setup fehlt")
     if not signal_packages_complete:
-        missing.append("vollständige Timing-/Konfluenzdaten")
-    elif timing is None or timing < 60:
-        missing.append("Timing >=60")
-    elif conf is None or conf < 60:
-        missing.append("Trigger-Konfluenz >=60")
+        missing.append("Timing-/Konfluenzdaten fehlen")
+    else:
+        if timing is None:
+            missing.append("Timing nicht verfügbar")
+        elif timing < 60:
+            missing.append(f"Timing {timing:.1f} < 60 (Setup planen)")
+        elif timing < 70:
+            missing.append(f"Timing {timing:.1f} < 70 (Kaufstufe)")
+        if conf is None:
+            missing.append("Trigger-Konfluenz nicht verfügbar")
+        elif conf < 60:
+            missing.append(f"Konfluenz {conf:.1f} < 60 (Setup planen)")
+        elif conf < 65:
+            missing.append(f"Konfluenz {conf:.1f} < 65 (Kaufstufe)")
     if not setup_crv_ok:
-        missing.append("CRV jetzt oder CRV Entry >=1.50")
+        missing.append("CRV jetzt und CRV Entry unter 1,50 oder nicht verfügbar")
+    elif not crv_now_ok:
+        missing.append(f"CRV jetzt {crv_n:.2f} < 1,50; CRV Entry {crv_e:.2f} erlaubt nur Entry-Planung" if crv_n is not None else f"CRV jetzt nicht verfügbar; CRV Entry {crv_e:.2f} erlaubt nur Entry-Planung")
+    if not trigger_active:
+        missing.append(f"Kerntrigger {str(trigger_status or 'nicht verfügbar').strip()} (nicht Aktiv)")
+    if location_too_far:
+        missing.append(f"Entry-Abstand {distance:+.1f}% > +5,0%")
+    if trend_overextended:
+        missing.append(f"MA20-Abstand {stretch:+.1f}% > +12,0%")
+    if invalidated:
+        missing.insert(0, "Invalidierung gebrochen")
+    if hard:
+        missing.insert(0, "Hard Gate: " + "; ".join(gate_pkg.get("hard_items") or ["aktives Einstiegsgate"]))
+    release_check = " · ".join(missing) if missing else "Keine offene Freigabebedingung"
 
     if invalidated or hard:
         state="blocked"
@@ -569,7 +593,7 @@ def build_decision_state_v3021az(
         queue="👀 Beobachten"
         reason="Setup ist noch nicht planungsreif."
         if missing:
-            reason += " Offen: " + ", ".join(missing[:3]) + "."
+            reason += " Offen: " + ", ".join(missing[:4]) + "."
         action="Beobachten; erst bei planungsreifem Setup, Timing/Konfluenz und belastbarem CRV aktiv werden."
         prio=4
     elif wait_for_entry:
@@ -589,6 +613,8 @@ def build_decision_state_v3021az(
         if parts:
             reason += ": " + " · ".join(parts)
         reason += "."
+        if not trigger_active:
+            reason += f" Kerntrigger {str(trigger_status or 'nicht verfügbar').strip()} bleibt offen."
         action="Setup planen, aber nicht hinterherlaufen: bessere Entry-Zone/Pullback bzw. neues enges Setup abwarten."
         prio=2
     elif buy_signal_ok and trigger_active and crv_now_ok:
@@ -611,7 +637,8 @@ def build_decision_state_v3021az(
         if not trigger_active:
             why.append("konkreter Kauftrigger noch offen")
         if not buy_signal_ok:
-            why.append("Kaufstufe braucht Timing >=70 und Konfluenz >=65")
+            _threshold_misses = [x for x in missing if "(Kaufstufe)" in x]
+            why.extend(_threshold_misses or ["Kaufstufe braucht Timing >=70 und Konfluenz >=65"])
         # Warning/risk context is already reflected inside timing/confluence.
         # It remains visible in details but does not form another release gate.
         reason="Setup ist planungsreif."
@@ -628,6 +655,8 @@ def build_decision_state_v3021az(
         "priority": prio,
         "reason": reason,
         "action": action,
+        "release_check": release_check,
+        "release_missing": list(missing),
         "setup_ready": setup_ready,
         "buy_now": state == "buy",
         "trigger_active": trigger_active,
@@ -2317,6 +2346,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Priorität": str(_decision_state_v3021az.get("queue_category") or "👀 Beobachten"),
         "Kerntrigger": "✅ aktiv" if bool(_decision_state_v3021az.get("trigger_active")) else "⏳ offen",
         "Trigger-Rohstatus": str(_decision_state_v3021az.get("trigger_status") or "-"),
+        "Freigabe-Check": str(_decision_state_v3021az.get("release_check") or "-"),
         "Setup-Reife": (
             "Kauftrigger aktiv" if _decision_state_v3021az.get("state") == "buy"
             else "Prüfbereit" if bool(_decision_state_v3021az.get("setup_ready"))

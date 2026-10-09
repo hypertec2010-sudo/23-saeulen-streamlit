@@ -1,0 +1,21 @@
+CHSM v30.21bb – Technischer Kerntrigger (Hotfix nach v30.21ba)
+
+Voraussetzung: v30.21ba ist bereits installiert.
+
+Dateien zum Ersetzen:
+- VERSION.txt
+- legacy_app.py
+- modules/live_monitor.py
+- CHANGELOG.md (optional)
+
+Auf dem Mac im Ordner modules nur die Datei live_monitor.py austauschen bzw. Ordner ZUSAMMENFUEHREN – NICHT den gesamten modules-Ordner ersetzen.
+Auf Streamlit Cloud/Server die gleichen Dateien aktualisieren.
+
+Streamlit nach dem Update vollständig neu starten und einen neuen Vollscan ausführen (alte Screener-Zeilen können gecacht sein).
+
+Regel ab v30.21bb:
+- Rohstatus "Aktiv" + bestehende Kaufvoraussetzungen => Kauftrigger aktiv / 🎯 Jetzt prüfen.
+- Rohstatus "Nahe dran", "Warten", "Passiv", "offen" oder fehlend => technischer Kerntrigger offen; bei planungsreifem Setup 🔎 Setup planen.
+- Das Wort "kaufen" allein gilt NICHT als Bestätigung des technischen Kerntriggers.
+
+Die bestehende Prioritaet/Kerntrigger-Anzeige aus v30.21ba bleibt erhalten.

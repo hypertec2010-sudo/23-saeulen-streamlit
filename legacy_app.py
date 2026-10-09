@@ -30742,6 +30742,7 @@ if result is not None:
             f"Zentraler Kerntrigger: {'✅ aktiv' if _core_trigger_active_v3021ba else '⏳ offen'} · "
             f"Rohstatus: {_core_trigger_raw_v3021ba} · Decision-State: {_core_queue_v3021ba}"
         )
+        st.caption("v30.21bb: Nur der bestätigte technische Rohstatus 'Aktiv' schaltet den Kerntrigger frei. Eine Empfehlung 'kaufen' allein genügt nicht.")
         with st.expander("Trigger-Konfluenz im Detail", expanded=False):
             st.caption("Prüft, ob Aktion, Timing, Tageskerze, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime in dieselbe Richtung zeigen. Nicht als eigener Score-Ersatz, sondern als Richtungscheck.")
             _rows = []

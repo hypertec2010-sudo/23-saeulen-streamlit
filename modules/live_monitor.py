@@ -513,14 +513,13 @@ def build_decision_state_v3021az(
     gate_pkg=classify_entry_hard_gate_v3021az(gate_reasons)
     hard=bool(gate_pkg.get("hard")) if entry_hard_gate is None else bool(entry_hard_gate)
 
-    action_low=str(action_label or "").strip().lower()
-    trigger_low=str(trigger_status or "").strip().lower()
-    _trigger_positive=any(x in trigger_low for x in ["aktiv", "jetzt prüfbar", "jetzt pruefbar", "bestätigt", "bestaetigt"])
-    _trigger_negative=any(x in trigger_low for x in ["nicht aktiv", "kein", "offen", "nahe", "fast"])
-    trigger_active=bool(
-        any(x in action_low for x in ["kaufen", "buy", "aufstocken"])
-        or (_trigger_positive and not _trigger_negative)
-    )
+    # v30.21bb: A buy recommendation is a CONSEQUENCE of the decision state,
+    # never evidence that the technical core trigger has fired. The central
+    # analysis_core emits exactly "Aktiv" for a confirmed watchlist trigger;
+    # "Nahe dran", "Warten", "Passiv", missing values etc. stay open.
+    # Exact equality also avoids accidental matches such as "inaktiv".
+    trigger_low=str(trigger_status or "").strip().casefold()
+    trigger_active=(trigger_low == "aktiv")
     setup_signal_ok=bool(
         signal_packages_complete and timing is not None and conf is not None
         and timing >= 60.0 and conf >= 60.0

@@ -1,3 +1,13 @@
+## v30.21bb – Technischer Kerntrigger statt Aktionswort
+
+- Kritische Freigabeabweichung aus v30.21ba korrigiert: `kaufen` / `buy` / `aufstocken` als operative Handlung aktiviert den technischen Kerntrigger nicht mehr selbst.
+- Als **bestätigt** gilt ausschließlich der technische Rohstatus `trigger_status == "Aktiv"` aus der bestehenden CHSM-Watchlist-/Trigger-Analyse (Groß-/Kleinschreibung und Rand-Leerzeichen werden normalisiert).
+- `offen`, `Nahe dran`, `Warten`, `Passiv`, `Frühe Beobachtung`, fehlende Rohstatuswerte und `inaktiv` bleiben **offen**, auch wenn die Handlungsempfehlung `kaufen` lautet.
+- Entsprechend bleiben diese Titel bei sonst planungsreifem Setup in `🔎 Setup planen / Trigger abwarten`, statt irrtümlich `🎯 Jetzt prüfen / Kauftrigger aktiv` zu melden.
+- Bei bestätigtem `Aktiv` und passendem Timing, Trigger-Konfluenz, aktuellem CRV sowie akzeptabler Entry-Lage bleibt `🎯 Jetzt prüfen / Kauftrigger aktiv` möglich.
+- Die Sofortanalyse zeigt unter der bestehenden Kerntrigger-Diagnose eine kurze Erklärung der Freigaberegel. Die v30.21ba-Prioritätsspalte und die Kerntrigger-/Rohstatusfelder bleiben erhalten.
+- Keine Änderungen an Score, CRV, Timing-/Konfluenz-Schwellen, Hard Gates, Volatilität, Watchlist-Verwaltung oder Datenprovider-Abfragen.
+
 ## v30.21ba — Priorität + Kerntrigger konsistent sichtbar
 
 - Behebt den verbliebenen Prioritätsfehler nach v30.21az: Der zentrale Queue-State lag bisher nur in einem `__...`-Feld und wurde vor dem UI-Aufbau als internes Feld entfernt. Dadurch fiel die sichtbare Priorität trotz korrektem Decision-State wieder auf `👀 Beobachten` zurück.

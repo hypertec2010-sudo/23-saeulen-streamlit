@@ -1,3 +1,18 @@
+## v30.21az — Decision-State-Cleanup: eine Entscheidung für Screener und Sofortanalyse
+
+- Neue zentrale Entscheidungsstufe für Live-Screener und Sofortanalyse: `Blockiert` → `Beobachten` → `Setup planen / Trigger abwarten` → `Entry/Pullback abwarten` → `Kauftrigger aktiv`.
+- `🎯 Jetzt prüfen` ist ab jetzt ausschließlich für einen tatsächlich aktiven Kauftrigger reserviert. Gute, aber noch nicht ausführbare Setups laufen unter `🔎 Setup planen`.
+- Einheitliche Planungs-Schwelle: valides Trade-Setup + vollständige Signale + Timing >=60 + Trigger-Konfluenz >=60 + CRV jetzt ODER CRV Entry >=1,50.
+- Einheitliche Kauf-Schwelle: Planungsreife + Timing >=70 + Trigger-Konfluenz >=65 + aktiver Kerntrigger + CRV jetzt >=1,50 + akzeptable Entry-Lage.
+- Einheitliche Chase-Schwelle: Entry-Abstand >5 % führt zu `Entry/Pullback abwarten`; die bisherige 3-%-Sonderbremse der Sofortanalyse entfällt.
+- MA20-Überdehnung >12 % führt bei ansonsten planungsreifem Setup ebenfalls zu `Entry/Pullback abwarten`, nicht zu einem Hard Gate.
+- Allgemeines `Risiko hoch`, FOMO kritisch allein, Hype/Riskant-Typ, Risk-off-Kontext sowie Wave-/MTF-Hinweise bleiben Score-/Konfluenzkontext und sind keine eigenen Hard Gates mehr.
+- Hart blockierend bleiben konkrete echte Risiken, insbesondere Invalidierung, `Entry-Abstand + FOMO` und dominante Distribution; unbekannte zukünftige Gate-Gründe bleiben aus Sicherheitsgründen hart.
+- Die zentrale Entscheidung zählt Marktregime/FOMO/Chartdetails nicht nochmals als separate Freigabestufen; diese Faktoren wirken bereits über Timing/Trigger-Konfluenz.
+- Die Live-Hysterese darf die zentrale Entscheidungsstufe nicht mehr in `Fast grün`, altes Grün oder andere widersprüchliche Handlungszustände umschreiben.
+- Die Sofortanalyse verwendet dieselbe Entscheidungsstufe für `Nächste Handlung`; die Detailbox heißt jetzt `Noch offen / Zusatzbestätigungen`, weil nicht jedes fehlende Fib-/Wellen-/Muster-Signal eine Freigabebedingung ist.
+- Live-Score bleibt als Priorisierungs-/Diagnosewert erhalten, wird aber an die vier Handlungsbänder gekoppelt: Blockiert <40, Beobachten <=54, Setup planen/Entry abwarten 55-74, Kauftrigger aktiv >=75.
+
 ## v30.21ay — Screener/Sofortanalyse operative Signale vereinheitlicht
 
 - Eine zentrale operative Timing-/Trigger-Konfluenz-Pipeline wird jetzt von Live-Screener und Sofortanalyse gemeinsam verwendet.

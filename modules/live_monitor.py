@@ -423,6 +423,233 @@ def _v3021ay_operational_readiness_package(
     }
 
 
+def classify_entry_hard_gate_v3021az(gate_text):
+    """Classify only genuine entry blockers as hard gates.
+
+    v30.21az deliberately demotes generic risk, FOMO, wave/MTF and quality
+    warnings to soft context. Hard remains reserved for concrete combinations
+    such as distribution dominance or chase/FOMO, plus unknown future gates.
+    """
+    raw_items = [x.strip() for x in str(gate_text or "").split(";") if x.strip()]
+    sentinels = {"keine harten gates", "keine harten gate", "-", "nan", "none", ""}
+    exit_terms = [
+        "exit", "schutz", "stop prüfen", "stop pruefen", "gewinnschutz",
+        "tactical", "de-risk", "derisk", "teilverkauf", "risikoabbau",
+    ]
+    fundamental_terms = [
+        "cashflow", "cash flow", "free cash", "fcf", "bilanz", "liquiditaet",
+        "liquidität", "verschuld", "debt", "verwässer", "verwaesser",
+        "profitabil", "marge", "margen", "earnings", "guidance", "umsatz",
+        "bewertung", "valuation", "fundamental", "qualität", "qualitaet",
+    ]
+    soft_terms = [
+        "crv unattraktiv", "crv zu eng", "risiko hoch", "risiko erhöht", "risiko erhoeht",
+        "fomo kritisch", "fomo erhöht", "fomo erhoeht", "typ hype", "typ riskant",
+        "risk-off bremst", "wave", "welle", "mtf", "multi-timeframe",
+        "datenqualität", "datenqualitaet", "stil-fit",
+    ]
+    hard_items = []
+    soft_items = []
+    for item in raw_items:
+        low = str(item or "").lower().strip()
+        if low in sentinels:
+            soft_items.append(item)
+            continue
+        # Explicit combinations that remain genuinely blocking.
+        if ("entry-abstand" in low and "fomo" in low) or "nicht hinterherlaufen" in low and "fomo" in low:
+            hard_items.append(item)
+            continue
+        if "distribution dominiert" in low or "invalid" in low:
+            hard_items.append(item)
+            continue
+        if any(t in low for t in exit_terms + fundamental_terms + soft_terms):
+            soft_items.append(item)
+            continue
+        # Distance alone is a wait-for-entry state, not a blocker.
+        if "entry-abstand" in low:
+            soft_items.append(item)
+            continue
+        # Unknown future gate reasons stay hard by default (fail safe).
+        hard_items.append(item)
+    return {
+        "hard": bool(hard_items),
+        "hard_items": hard_items,
+        "soft_items": soft_items,
+    }
+
+
+def build_decision_state_v3021az(
+    *, valid_trade_setup=False, signal_packages_complete=False,
+    timing_score=None, conf_score=None, crv_now=None, crv_entry=None,
+    action_label="", trigger_status="", entry_distance_pct=None, ma20_stretch_pct=None,
+    gate_reasons="", entry_hard_gate=None, invalidated=False,
+    warning_bucket=False,
+):
+    """Single authoritative decision state for Screener and Sofortanalyse.
+
+    States intentionally answer two different questions only once:
+    - Is the setup worth active planning?  timing/conf >= 60 and CRV now OR entry >= 1.50
+    - Is it executable now?               timing >= 70, conf >= 65, active buy action,
+                                          CRV now >= 1.50 and acceptable location.
+
+    Fibonacci/wave/pattern/candle details remain inside timing/confluence but do
+    not create additional release gates here.
+    """
+    def _num(v):
+        try:
+            if v in {None, "", "-", "n/a", "nan"}:
+                return None
+            f=float(v)
+            return f if np.isfinite(f) and not pd.isna(f) else None
+        except Exception:
+            return None
+
+    timing=_num(timing_score)
+    conf=_num(conf_score)
+    crv_n=_num(crv_now)
+    crv_e=_num(crv_entry)
+    distance=_num(entry_distance_pct)
+    stretch=_num(ma20_stretch_pct)
+    gate_pkg=classify_entry_hard_gate_v3021az(gate_reasons)
+    hard=bool(gate_pkg.get("hard")) if entry_hard_gate is None else bool(entry_hard_gate)
+
+    action_low=str(action_label or "").strip().lower()
+    trigger_low=str(trigger_status or "").strip().lower()
+    _trigger_positive=any(x in trigger_low for x in ["aktiv", "jetzt prüfbar", "jetzt pruefbar", "bestätigt", "bestaetigt"])
+    _trigger_negative=any(x in trigger_low for x in ["nicht aktiv", "kein", "offen", "nahe", "fast"])
+    trigger_active=bool(
+        any(x in action_low for x in ["kaufen", "buy", "aufstocken"])
+        or (_trigger_positive and not _trigger_negative)
+    )
+    setup_signal_ok=bool(
+        signal_packages_complete and timing is not None and conf is not None
+        and timing >= 60.0 and conf >= 60.0
+    )
+    buy_signal_ok=bool(
+        signal_packages_complete and timing is not None and conf is not None
+        and timing >= 70.0 and conf >= 65.0
+    )
+    crv_now_ok=bool(crv_n is not None and crv_n >= 1.50)
+    crv_entry_ok=bool(crv_e is not None and crv_e >= 1.50)
+    setup_crv_ok=bool(crv_now_ok or crv_entry_ok)
+    location_too_far=bool(distance is not None and distance > 5.0)
+    trend_overextended=bool(stretch is not None and stretch > 12.0)
+    wait_for_entry=bool(
+        location_too_far
+        or (not crv_now_ok and crv_entry_ok)
+        or trend_overextended
+    )
+    setup_ready=bool(valid_trade_setup and setup_signal_ok and setup_crv_ok and not hard and not invalidated)
+
+    missing=[]
+    if not valid_trade_setup:
+        missing.append("valides Trade-Setup")
+    if not signal_packages_complete:
+        missing.append("vollständige Timing-/Konfluenzdaten")
+    elif timing is None or timing < 60:
+        missing.append("Timing >=60")
+    elif conf is None or conf < 60:
+        missing.append("Trigger-Konfluenz >=60")
+    if not setup_crv_ok:
+        missing.append("CRV jetzt oder CRV Entry >=1.50")
+
+    if invalidated or hard:
+        state="blocked"
+        icon="🔴"
+        status="Blockiert"
+        queue="⛔ Blockiert"
+        reason="Echter Hard-Gate-/Invalidierungsgrund aktiv."
+        if gate_pkg.get("hard_items"):
+            reason += " " + "; ".join(gate_pkg.get("hard_items")[:2])
+        action="Kein neuer Einstieg: Hard Gate bzw. Invalidierung zuerst klären."
+        prio=5
+    elif not setup_ready:
+        state="observe"
+        icon="⚪"
+        status="Beobachten"
+        queue="👀 Beobachten"
+        reason="Setup ist noch nicht planungsreif."
+        if missing:
+            reason += " Offen: " + ", ".join(missing[:3]) + "."
+        action="Beobachten; erst bei planungsreifem Setup, Timing/Konfluenz und belastbarem CRV aktiv werden."
+        prio=4
+    elif wait_for_entry:
+        state="wait_entry"
+        icon="🟡"
+        status="Entry/Pullback abwarten"
+        queue="🔎 Setup planen"
+        parts=[]
+        if not crv_now_ok and crv_entry_ok:
+            parts.append(f"CRV jetzt {crv_n:.2f}" if crv_n is not None else "CRV jetzt n/a")
+            parts.append(f"CRV Entry {crv_e:.2f}")
+        if location_too_far:
+            parts.append(f"Entry-Abstand {distance:+.1f}%")
+        if trend_overextended:
+            parts.append(f"MA20-Abstand {stretch:.1f}%")
+        reason="Setup ist planungsreif, aber der aktuelle Einstieg ist nicht attraktiv genug"
+        if parts:
+            reason += ": " + " · ".join(parts)
+        reason += "."
+        action="Setup planen, aber nicht hinterherlaufen: bessere Entry-Zone/Pullback bzw. neues enges Setup abwarten."
+        prio=2
+    elif buy_signal_ok and trigger_active and crv_now_ok:
+        state="buy"
+        icon="🟢"
+        status="Kauftrigger aktiv"
+        queue="🎯 Jetzt prüfen"
+        reason=(
+            f"Ausführbares Setup: Timing {timing:.0f}/100, Konfluenz {conf:.0f}/100, "
+            f"aktiver Trigger und CRV jetzt {crv_n:.2f}."
+        )
+        action="Entry jetzt aktiv prüfen: Positionsgröße, Stop/Invalidierung und Ausführung festlegen."
+        prio=0
+    else:
+        state="plan"
+        icon="🟡"
+        status="Setup planen / Trigger abwarten"
+        queue="🔎 Setup planen"
+        why=[]
+        if not trigger_active:
+            why.append("konkreter Kauftrigger noch offen")
+        if not buy_signal_ok:
+            why.append("Kaufstufe braucht Timing >=70 und Konfluenz >=65")
+        # Warning/risk context is already reflected inside timing/confluence.
+        # It remains visible in details but does not form another release gate.
+        reason="Setup ist planungsreif."
+        if why:
+            reason += " " + "; ".join(why) + "."
+        action="Setup aktiv planen: Entry-Zone, Triggerregel und Stop vorbereiten; Kauf erst bei aktiver Kaufstufe."
+        prio=2
+
+    return {
+        "state": state,
+        "icon": icon,
+        "status": status,
+        "queue_category": queue,
+        "priority": prio,
+        "reason": reason,
+        "action": action,
+        "setup_ready": setup_ready,
+        "buy_now": state == "buy",
+        "trigger_active": trigger_active,
+        "trigger_status": str(trigger_status or ""),
+        "timing": timing,
+        "conf": conf,
+        "crv_now": crv_n,
+        "crv_entry": crv_e,
+        "crv_now_ok": crv_now_ok,
+        "crv_entry_ok": crv_entry_ok,
+        "entry_distance_pct": distance,
+        "location_too_far": location_too_far,
+        "trend_overextended": trend_overextended,
+        "hard_gate": hard,
+        "hard_gate_items": gate_pkg.get("hard_items", []),
+        "soft_gate_items": gate_pkg.get("soft_items", []),
+        "warning_bucket": bool(warning_bucket),
+        "thresholds": {"plan_timing": 60, "plan_conf": 60, "buy_timing": 70, "buy_conf": 65, "crv": 1.50, "entry_distance": 5.0},
+    }
+
+
 def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen", watchlist_meta=None, live_horizon="Swing / 1-4 Wochen"):
     """Verdichtet Radar-/Alert-Logik zu einer Live-Watchlist-Ampel.
 
@@ -547,34 +774,14 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "bewertung", "valuation", "fundamental", "qualität", "qualitaet"
     ]
     non_entry_fundamental_gate = bool(hard_gate and gate_low and any(t in gate_low for t in fundamental_gate_terms))
-    # v30.21au: Gate-Gründe einzeln klassifizieren. So kann ein alter
-    # "Entry-Abstand zu groß"-Cache weich behandelt werden, ohne ein anderes
-    # echtes Hard Gate im selben String versehentlich zu neutralisieren.
+    # v30.21az: one shared hard-gate classifier for Screener and Sofortanalyse.
+    # Generic risk/FOMO/wave/MTF/quality warnings are context, not separate release gates.
+    _gate_pkg_v3021az = classify_entry_hard_gate_v3021az(gate)
     _gate_items_v3021au = [x.strip() for x in str(gate or "").split(";") if x.strip()]
-    def _v3021au_soft_gate_item(item):
-        low = str(item or "").lower().strip()
-        if not low:
-            return True
-        if low in {"keine harten gates", "keine harten gate", "-", "nan", "none"}:
-            return True
-        if any(t in low for t in exit_gate_terms):
-            return True
-        if any(t in low for t in fundamental_gate_terms):
-            return True
-        if any(t in low for t in ["crv unattraktiv", "crv zu eng"]):
-            return True
-        # Distanz allein = Chase-/Timing-Bremse. Die kombinierte FOMO-Regel
-        # "Nicht hinterherlaufen: Entry-Abstand + FOMO" bleibt hart.
-        if "entry-abstand" in low and "fomo" not in low and "nicht hinterherlaufen" not in low:
-            return True
-        return False
-    _hard_entry_gate_items_v3021au = [x for x in _gate_items_v3021au if not _v3021au_soft_gate_item(x)]
-    non_entry_crv_gate = bool(hard_gate and gate_low and any(t in gate_low for t in ["crv unattraktiv", "crv zu eng"]))
-    non_entry_distance_gate = bool(hard_gate and any("entry-abstand" in str(x).lower() and "fomo" not in str(x).lower() for x in _gate_items_v3021au))
-    # v30.21ax hotfix: only evaluate itemized reasons when the original gate
-    # detector actually found a hard gate. The sentinel text "keine harten Gates"
-    # must never become an entry gate merely because it is a non-empty string.
-    entry_hard_gate = bool(hard_gate and _hard_entry_gate_items_v3021au)
+    _hard_entry_gate_items_v3021au = list(_gate_pkg_v3021az.get("hard_items") or [])
+    non_entry_crv_gate = bool(any("crv" in str(x).lower() for x in (_gate_pkg_v3021az.get("soft_items") or [])))
+    non_entry_distance_gate = bool(any("entry-abstand" in str(x).lower() for x in (_gate_pkg_v3021az.get("soft_items") or [])))
+    entry_hard_gate = bool(_gate_pkg_v3021az.get("hard"))
 
     # v28.6c: Gate Transparency. Die Logik, ob ein Gate hart ist, bleibt
     # unveraendert. Neu ist nur die nachvollziehbare Aufschluesselung der
@@ -1420,6 +1627,26 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     )
     shared_operational_ready_v3021ay = bool(_shared_operational_pkg_v3021ay.get("ready"))
 
+    # v30.21az: authoritative state machine. Everything below may still compute
+    # diagnostic score context, but visible status/action is overwritten by this
+    # single state before the row leaves the monitor.
+    _decision_state_v3021az = build_decision_state_v3021az(
+        valid_trade_setup=bool(r.get("valid_trade_setup", False)),
+        signal_packages_complete=signal_packages_complete,
+        timing_score=timing_score_lm,
+        conf_score=conf_score_lm,
+        crv_now=crv_float,
+        crv_entry=crv_entry_float,
+        action_label=operational_action_lm,
+        trigger_status=r.get("trigger_status", ""),
+        entry_distance_pct=entry_distance,
+        ma20_stretch_pct=ma20_stretch_pct,
+        gate_reasons=gate,
+        entry_hard_gate=entry_hard_gate,
+        invalidated=("Invalidierung gebrochen" in alert_types),
+        warning_bucket=(bucket == "Warnsignale / meiden"),
+    )
+
     trend_reason_tail = ""
     if ma20_stretch_pct is not None:
         trend_reason_tail = f" Abstand zu MA20 ca. {ma20_stretch_pct:.1f}%."
@@ -1795,6 +2022,24 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
 
     live_score_int = int(round(live_score))
 
+    # v30.21az: final visible state comes from the single decision-state engine.
+    # Legacy branches above remain temporarily as diagnostics for score continuity,
+    # but no longer decide what the user should do.
+    _ds_state_v3021az = str(_decision_state_v3021az.get("state") or "observe")
+    status_icon = str(_decision_state_v3021az.get("icon") or "⚪")
+    status = str(_decision_state_v3021az.get("status") or "Beobachten")
+    priority = int(_decision_state_v3021az.get("priority", 4))
+    reason = str(_decision_state_v3021az.get("reason") or reason)
+    monitor_action = str(_decision_state_v3021az.get("action") or monitor_action)
+    if _ds_state_v3021az == "blocked":
+        live_score_int = int(round(_v2210_clip(live_score_int, 0.0, 39.0)))
+    elif _ds_state_v3021az == "observe":
+        live_score_int = int(round(_v2210_clip(live_score_int, 0.0, 54.0)))
+    elif _ds_state_v3021az in {"plan", "wait_entry"}:
+        live_score_int = int(round(_v2210_clip(live_score_int, 55.0, 74.0)))
+    elif _ds_state_v3021az == "buy":
+        live_score_int = int(round(_v2210_clip(live_score_int, 75.0, 98.0)))
+
     # v28.4.6: Explainable Trading. Die Komponenten werden nicht nur intern
     # gespeichert, sondern in eine kompakte, handlungsorientierte Erklaerung
     # uebersetzt. Das aendert den Score nicht.
@@ -2067,9 +2312,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Signalpaket-Quelle": signal_package_source or "-",
         "Operative Aktion": operational_action_lm or "-",
         "Operatives Timing": str(r.get("operational_timing_label") or "-"),
+        "Entscheidungsstufe": str(_decision_state_v3021az.get("status") or "Beobachten"),
         "Setup-Reife": (
-            "Kauftrigger aktiv" if status in {"Kurzfrist-Trigger aktiv", "Kauftrigger aktiv", "Trendfolge aktiv"}
-            else "Prüfbereit" if (setup_ready or strong_pullback_setup or shared_operational_ready_v3021ay)
+            "Kauftrigger aktiv" if _decision_state_v3021az.get("state") == "buy"
+            else "Prüfbereit" if bool(_decision_state_v3021az.get("setup_ready"))
             else "Beobachten"
         ),
         "Score-Treiber": _score_drivers,
@@ -2126,7 +2372,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "__entry_hard_gate": bool(entry_hard_gate),
         "__invalidated": bool("Invalidierung gebrochen" in alert_types),
         "__final_release_ok": bool(final_release_ok),
-        "__setup_ready": bool(setup_ready or strong_pullback_setup or shared_operational_ready_v3021ay),
+        "__setup_ready": bool(_decision_state_v3021az.get("setup_ready")),
+        "__decision_state_v3021az": str(_decision_state_v3021az.get("state") or "observe"),
+        "__decision_queue_v3021az": str(_decision_state_v3021az.get("queue_category") or "👀 Beobachten"),
         "__setup_ready_timing_ok": bool(setup_ready_timing_ok),
         "__setup_ready_chart_ok": bool(setup_ready_chart_ok),
         "__setup_ready_crv_ok": bool(setup_ready_crv_ok),
@@ -2371,6 +2619,14 @@ def _v237_apply_live_signal_hysteresis(row, prev):
     row["__raw_ampel"] = raw_ampel
     row["__raw_status"] = raw_status
 
+    # v30.21az: the central decision state is already deliberately coarse and
+    # stable. Hysteresis may annotate stability, but must not invent a different
+    # action such as "Fast grün" or keep stale green against the new state.
+    _central_state_v3021az = str(row.get("__decision_state_v3021az") or "").strip()
+    if _central_state_v3021az:
+        row["Signal-Stabilität"] = "Bestätigt" if prev_ampel == raw_ampel and prev_status == raw_status and prev_status else "Frisch"
+        return row
+
     # Harte rote Signale nicht weichzeichnen.
     if raw_ampel == "🔴" or "invalid" in raw_status.lower() or "blockiert" in raw_status.lower() or "meiden" in raw_status.lower():
         return _v237_set_live_row(row, stability="Defensiv", prio=5)
@@ -2509,6 +2765,17 @@ def _v240_live_trade_state(row):
         except Exception:
             confirmations = 1
         low = " ".join([status, stability, reason, action]).lower()
+        _central_state_v3021az = str(row.get("__decision_state_v3021az") or "").strip()
+        if _central_state_v3021az == "blocked":
+            return "Invalidiert / kein Trade", "Kein neuer Trade. Hard Gate/Invalidierung zuerst klären."
+        if _central_state_v3021az == "observe":
+            return "Beobachten", "Noch nicht planungsreif; Setup, Timing/Konfluenz und CRV weiter beobachten."
+        if _central_state_v3021az == "plan":
+            return "Vorbereiten", "Setup aktiv planen; Triggerregel, Entry-Zone und Stop vorbereiten."
+        if _central_state_v3021az == "wait_entry":
+            return "Vorbereiten / Entry abwarten", "Setup gut, aber besseren Entry/Pullback bzw. attraktiveres CRV jetzt abwarten."
+        if _central_state_v3021az == "buy":
+            return "Trigger aktiv / bereit", "Entry jetzt aktiv prüfen; Positionsgröße und Stop/Invalidierung festlegen."
 
         if ampel == "🔴" or any(x in low for x in ["invalidiert", "meiden", "blockiert", "kein kauf"]):
             return "Invalidiert / kein Trade", "Kein neuer Trade. These, Trigger und Invalidierung zuerst neu prüfen."

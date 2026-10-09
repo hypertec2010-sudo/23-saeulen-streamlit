@@ -1,0 +1,45 @@
+CHSM v30.21az - Decision-State-Cleanup
+
+Voraussetzung: bisheriger aktueller Projektstand.
+
+Ersetzen / zusammenfuehren:
+- VERSION.txt
+- legacy_app.py
+- modules/live_monitor.py
+- CHANGELOG.md optional
+
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+Auf dem Server dieselben Dateien an denselben Stellen ersetzen.
+
+Danach Streamlit komplett neu starten und einen neuen Vollscan ausfuehren.
+
+Neue einheitliche Entscheidungslogik:
+1. Blockiert
+   Nur echte Hard Gates / Invalidierung.
+
+2. Beobachten
+   Setup noch nicht planungsreif.
+
+3. Setup planen / Trigger abwarten
+   Valides Setup + Timing >=60 + Konfluenz >=60 + CRV jetzt oder Entry >=1,50,
+   aber der konkrete Kauftrigger bzw. die Kaufstufe ist noch nicht aktiv.
+
+4. Entry/Pullback abwarten
+   Setup ist gut, aber aktueller Entry ist unattraktiv: z.B. CRV jetzt <1,50 bei
+   CRV Entry >=1,50, Entry-Abstand >5% oder deutliche MA20-Ueberdehnung.
+
+5. Kauftrigger aktiv
+   Timing >=70 + Konfluenz >=65 + aktiver Kerntrigger + CRV jetzt >=1,50 +
+   akzeptable Entry-Lage und kein echtes Hard Gate.
+
+Prioritaet im Screener:
+- 🎯 Jetzt pruefen = nur Kauftrigger aktiv
+- 🔎 Setup planen = gutes Setup, aber noch nicht ausfuehrbar
+- 👀 Beobachten = noch nicht planungsreif
+- ⛔ Blockiert = echtes Hard Gate / Invalidierung
+
+Wichtig:
+- Allgemeines Risiko hoch, FOMO allein, Welle/MTF/Fibonacci/Spezialmuster sind
+  keine separaten Freigabestufen mehr. Sie bleiben in Timing/Konfluenz/Details sichtbar.
+- Einheitliche Entry-Abstandsgrenze: 5%.
+- Keine zusaetzlichen Provider-Abfragen.

@@ -4862,11 +4862,11 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     brakes = []
     gates = []
     if risk == "hoch":
-        penalty += 18; gates.append("Risiko hoch"); brakes.append("Risiko/Volatilität hoch")
+        penalty += 18; brakes.append("Risiko/Volatilität hoch (Kontext, kein Hard Gate)")
     elif risk == "erhöht":
         penalty += 8; brakes.append("Risiko erhöht")
     if "kritisch" in fomo_label:
-        penalty += 16; gates.append("FOMO kritisch"); brakes.append("FOMO kritisch")
+        penalty += 16; brakes.append("FOMO kritisch (allein kein Hard Gate; hart nur mit deutlicher Chase-Situation)")
     elif "erhöht" in fomo_label or "erhoeht" in fomo_label:
         penalty += 8; brakes.append("FOMO erhöht")
     entry_distance_pct = entry_rr_pkg.get("entry_distance_pct")
@@ -4919,9 +4919,9 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
                 f"Differenz +{distribution_gap:.0f}; Warnzone, kein hartes Gate)"
             )
     if typ in {"Hype / Event", "Riskant"}:
-        penalty += 10; gates.append(f"Typ {typ}"); brakes.append("Hype-/Risikotyp")
+        penalty += 10; brakes.append("Hype-/Risikotyp (Kontext, kein Hard Gate allein)")
     if regime_raw == "NEGATIV" and typ in {"Bounce", "Hype / Event", "Riskant"}:
-        penalty += 10; gates.append("Risk-off bremst Setup-Typ")
+        penalty += 10; brakes.append("Risk-off bremst Setup-Typ (Kontext)")
     if entry_position in {"zu weit gelaufen", "Zu weit über Entry"}:
         penalty += 9; brakes.append("Kurs zu weit über sinnvoller Zone")
     if data_quality < 45:
@@ -4931,11 +4931,11 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
     elif style_fit_score < 52:
         penalty += 3
     if wave_impact_pkg.get("gate"):
-        penalty += 6; gates.append(str(wave_impact_pkg.get("gate"))); brakes.append(str(wave_impact_pkg.get("gate")))
+        penalty += 6; brakes.append(str(wave_impact_pkg.get("gate")) + " (Wellenkontext, kein eigenes Hard Gate)")
     elif wave_impact < -4:
         penalty += 3; brakes.append(str(wave_impact_pkg.get("label", "Wave bremst")))
     if mtf_impact_pkg.get("gate"):
-        penalty += 5; gates.append(str(mtf_impact_pkg.get("gate"))); brakes.append(str(mtf_impact_pkg.get("gate")))
+        penalty += 5; brakes.append(str(mtf_impact_pkg.get("gate")) + " (MTF-Kontext, kein eigenes Hard Gate)")
     elif mtf_impact < -4:
         penalty += 3; brakes.append(str(mtf_impact_pkg.get("label", "MTF bremst")))
 
@@ -22036,6 +22036,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 return False
 
                             def _v309_queue_category(row):
+                                # v30.21az: the Action Queue mirrors the same authoritative
+                                # state as Screener and Sofortanalyse. "Jetzt prüfen" is now
+                                # reserved for an active executable buy trigger.
+                                central = _v243_clean_cell(row.get("__decision_queue_v3021az"))
+                                if central in {"🎯 Jetzt prüfen", "🔎 Setup planen", "👀 Beobachten", "⛔ Blockiert"}:
+                                    return central
                                 ampel = _v243_clean_cell(row.get("Ampel"))
                                 status = _v243_clean_cell(row.get("Status"))
                                 state = _v243_clean_cell(row.get("Trade-State"))
@@ -22044,20 +22050,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 combined = " ".join([status, state, setup, engine]).lower()
                                 if _v309_has_hard_gate(row) or "blockiert" in combined or "invalid" in combined:
                                     return "⛔ Blockiert"
-                                # v30.21al: Action Queue beantwortet "Was soll ich JETZT ansehen?"
-                                # und nicht "Was darf ich sofort kaufen?". Deshalb darf ein
-                                # sauber pruefbereites Setup bereits vor dem finalen Trigger
-                                # in die Queue, auch wenn die Ampel wegen Hysterese noch gelb ist.
-                                setup_ready = bool(row.get("__setup_ready", False))
-                                ready = any(token in combined for token in (
-                                    "setup prüfbereit", "setup pruefbereit",
-                                    "jetzt prüfbar", "jetzt pruefbar", "trigger aktiv",
-                                    "kurzfrist-trigger aktiv", "armed / bereit", "entry-zone erreicht"
-                                ))
-                                # v30.21ap: Trigger-Nähe allein genügt nicht mehr, wenn weder
-                                # CRV jetzt noch CRV Entry berechenbar ist.
-                                if (setup_ready or ready) and _v309_has_trade_crv(row):
-                                    return "🎯 Jetzt prüfen"
+                                if bool(row.get("__setup_ready", False)) and _v309_has_trade_crv(row):
+                                    return "🔎 Setup planen"
                                 return "👀 Beobachten"
 
                             def _v309_queue_reason(row, category):
@@ -22125,7 +22119,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Grenzen": _v243_clip_cell(limits, 80),
                                         "Aktualität": _v243_clip_cell(_v308a_row_freshness(raw), 54),
                                         "__changed_rank": 0 if changed else 1,
-                                        "__category_rank": {"🎯 Jetzt prüfen": 0, "👀 Beobachten": 1, "⛔ Blockiert": 2}.get(category, 9),
+                                        "__category_rank": {"🎯 Jetzt prüfen": 0, "🔎 Setup planen": 1, "👀 Beobachten": 2, "⛔ Blockiert": 3}.get(category, 9),
                                         "__conf_rank": {"Hoch": 0, "Mittel": 1, "Niedrig": 2, "Nicht bewertet": 3}.get(conf, 3),
                                         "__live_sort": -(float(live_num) if live_num is not None else -1.0),
                                     })
@@ -22144,6 +22138,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     return queue
                                 counts = queue["Priorität"].value_counts().to_dict()
                                 n_ready = int(counts.get("🎯 Jetzt prüfen", 0))
+                                n_plan = int(counts.get("🔎 Setup planen", 0))
                                 n_watch = int(counts.get("👀 Beobachten", 0))
                                 n_block = int(counts.get("⛔ Blockiert", 0))
                                 n_high_conf = int((queue["Decision-Confidence"].astype(str) == "Hoch").sum())
@@ -22153,14 +22148,16 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Es wird kein neuer Trading-Score berechnet: Kategorie → Decision-Confidence → bestehender Live-Score → Änderung. "
                                         "Harte Einstiegsgates bleiben blockierend."
                                     )
-                                    q1, q2, q3, q4 = st.columns(4)
-                                    q1.metric("Jetzt prüfen", n_ready)
-                                    q2.metric("Beobachten", n_watch)
-                                    q3.metric("Blockiert", n_block)
-                                    q4.metric("Confidence hoch", n_high_conf)
+                                    q1, q2, q3, q4, q5 = st.columns(5)
+                                    q1.metric("Kauftrigger aktiv", n_ready)
+                                    q2.metric("Setup planen", n_plan)
+                                    q3.metric("Beobachten", n_watch)
+                                    q4.metric("Blockiert", n_block)
+                                    q5.metric("Confidence hoch", n_high_conf)
 
-                                    tab_ready, tab_watch, tab_block = st.tabs([
-                                        f"🎯 Jetzt prüfen ({n_ready})",
+                                    tab_ready, tab_plan, tab_watch, tab_block = st.tabs([
+                                        f"🎯 Kauftrigger aktiv ({n_ready})",
+                                        f"🔎 Setup planen ({n_plan})",
                                         f"👀 Beobachten ({n_watch})",
                                         f"⛔ Blockiert ({n_block})",
                                     ])
@@ -22171,6 +22168,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     ]
                                     for _tab_v309, _cat_v309 in [
                                         (tab_ready, "🎯 Jetzt prüfen"),
+                                        (tab_plan, "🔎 Setup planen"),
                                         (tab_watch, "👀 Beobachten"),
                                         (tab_block, "⛔ Blockiert"),
                                     ]:
@@ -22188,7 +22186,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.dataframe(part[detail_cols].head(30), hide_index=True, use_container_width=True)
 
                                     st.caption(
-                                        "Lesart: 'Jetzt prüfen' bedeutet nicht automatisch kaufen. Entry-Regeln, Gates, CRV und die bestehende Live-/Shadow-Logik bleiben maßgeblich."
+                                        "Lesart: 'Jetzt prüfen' ist ab v30.21az für einen aktiven Kauftrigger reserviert. 'Setup planen' bedeutet: gute Idee, aber Trigger/Entry/Ausführung noch offen."
                                     )
                                 return queue
 
@@ -22199,7 +22197,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             if _live_view_v3021l == "📡 Live-Screener" and isinstance(_queue_snapshot_v3010, pd.DataFrame) and not _queue_snapshot_v3010.empty:
                                 _q_counts_v3021l = _queue_snapshot_v3010["Priorität"].value_counts().to_dict()
                                 st.caption(
-                                    f"🎯 {int(_q_counts_v3021l.get('🎯 Jetzt prüfen', 0))} jetzt prüfen · "
+                                    f"🎯 {int(_q_counts_v3021l.get('🎯 Jetzt prüfen', 0))} Kauftrigger aktiv · "
+                                    f"🔎 {int(_q_counts_v3021l.get('🔎 Setup planen', 0))} Setup planen · "
                                     f"👀 {int(_q_counts_v3021l.get('👀 Beobachten', 0))} beobachten · "
                                     f"⛔ {int(_q_counts_v3021l.get('⛔ Blockiert', 0))} blockiert"
                                 )
@@ -30528,6 +30527,52 @@ if result is not None:
         result["signal_package_complete"] = True
 
 
+    # ---------- v30.21az: eine zentrale Entscheidungsstufe fuer Screener + Sofortanalyse ----------
+    try:
+        _radar_decision_v3021az = build_professional_radar_decision_v18(result, "Ausgewogen")
+    except Exception:
+        _radar_decision_v3021az = {}
+    try:
+        _alerts_v3021az = _live_module.build_setup_alerts_v210(result, style_name="Ausgewogen", decision=_radar_decision_v3021az)
+        _invalidated_v3021az = any(str(a.get("Alert-Typ") or "") == "Invalidierung gebrochen" for a in (_alerts_v3021az or []))
+    except Exception:
+        _invalidated_v3021az = False
+    _timing_score_v3021az = _radar_v182_num((timing_action_confidence_pkg or {}).get("score"), default=None)
+    _conf_score_v3021az = _radar_v182_num((trigger_confluence_pkg or {}).get("score"), default=None)
+    _ma20_v3021az = _radar_v182_num(result.get("ma20"), default=None)
+    _price_v3021az = _radar_v182_num(price if "price" in locals() else result.get("price"), default=None)
+    _ma20_stretch_v3021az = None
+    if _price_v3021az is not None and _ma20_v3021az not in {None, 0}:
+        _ma20_stretch_v3021az = ((_price_v3021az / _ma20_v3021az) - 1.0) * 100.0
+    _decision_state_pkg_v3021az = _live_module.build_decision_state_v3021az(
+        valid_trade_setup=bool(valid_trade_setup if "valid_trade_setup" in locals() else result.get("valid_trade_setup", False)),
+        signal_packages_complete=bool(_timing_score_v3021az is not None and _conf_score_v3021az is not None),
+        timing_score=_timing_score_v3021az,
+        conf_score=_conf_score_v3021az,
+        crv_now=structural_crv if "structural_crv" in locals() else result.get("technical_crv_now"),
+        crv_entry=structural_crv_entry if "structural_crv_entry" in locals() else result.get("technical_crv_entry"),
+        action_label=final_action_label if "final_action_label" in locals() else result.get("operational_action_label", ""),
+        trigger_status=result.get("trigger_status", ""),
+        entry_distance_pct=_radar_decision_v3021az.get("entry_distance_pct"),
+        ma20_stretch_pct=_ma20_stretch_v3021az,
+        gate_reasons=_radar_decision_v3021az.get("gate_reasons", ""),
+        invalidated=_invalidated_v3021az,
+        warning_bucket=(str(_radar_decision_v3021az.get("bucket") or "") == "Warnsignale / meiden"),
+    )
+    result["decision_state_pkg_v3021az"] = _decision_state_pkg_v3021az
+    result["decision_state_v3021az"] = _decision_state_pkg_v3021az.get("state")
+    result["decision_status_v3021az"] = _decision_state_pkg_v3021az.get("status")
+    _central_state_v3021az = str(_decision_state_pkg_v3021az.get("state") or "observe")
+    _central_action_map_v3021az = {
+        "blocked": "abwarten",
+        "observe": "beobachten",
+        "plan": "vorbereiten",
+        "wait_entry": "abwarten",
+        "buy": "kaufen",
+    }
+    final_action_label = _central_action_map_v3021az.get(_central_state_v3021az, final_action_label)
+    final_action_reason = str(_decision_state_pkg_v3021az.get("reason") or final_action_reason)
+
     # ---------- v17.6: klare operative Empfehlung + verdichtetes Charttechnik-Setup ----------
     action_clarity_pkg = build_action_clarity_v176(
         result,
@@ -30555,16 +30600,28 @@ if result is not None:
         ccy=ccy if "ccy" in locals() else "",
         structures=chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
     )
+    _central_label_map_v3021az = {
+        "blocked": "Kein Einstieg / blockiert",
+        "observe": "Beobachten",
+        "plan": "Setup planen",
+        "wait_entry": "Entry/Pullback abwarten",
+        "buy": "Kaufen / Entry jetzt prüfen",
+    }
+    if isinstance(action_clarity_pkg, dict):
+        action_clarity_pkg["label"] = _central_label_map_v3021az.get(_central_state_v3021az, action_clarity_pkg.get("label", "-"))
+        action_clarity_pkg["summary"] = str(_decision_state_pkg_v3021az.get("reason") or action_clarity_pkg.get("summary") or "-")
+        action_clarity_pkg["action"] = str(_decision_state_pkg_v3021az.get("action") or action_clarity_pkg.get("action") or "-")
+        action_clarity_pkg["decision_state"] = _central_state_v3021az
     result["action_clarity_pkg"] = action_clarity_pkg
     result["charttechnik_setup_pkg"] = charttechnik_setup_pkg
     result["exit_protection_pkg"] = exit_protection_pkg
 
-    # FOMO/Smart-Money-Warnungen sollen nicht nur dekorativ sein: Bei kritischer
-    # Lage wird ein Sofortkauf in der Anzeige defensiver auf "vorbereiten" gesetzt.
-    if not position_mode and str(final_action_label).strip().lower() in {"kaufen", "buy"}:
-        if str(fomo_pkg_ui.get("label", "")).lower() == "kritisch":
-            final_action_label = "vorbereiten"
-            final_action_reason = "FOMO-/Smart-Money-Risiko ist kritisch; kein Hinterherlaufen trotz grundsätzlich gutem Setup."
+    # v30.21az: FOMO kritisch allein ist nur Kontext und darf die zentrale
+    # Entscheidungsstufe nicht nachtraeglich umschreiben. Hart bleibt nur die
+    # konkrete Kombination aus deutlichem Entry-Abstand + FOMO, die bereits im
+    # gemeinsamen Hard-Gate-/Decision-State-Pfad behandelt wird.
+    if str(fomo_pkg_ui.get("label", "")).lower() == "kritisch":
+        result["decision_fomo_context_v3021az"] = "kritisch"
 
     # v17.9: Standardansicht auf die drei wirklich entscheidenden Aussagen verdichten.
     # Setup-Qualitaet und Signal-Konflikt bleiben intern/exportiert erhalten,
@@ -30727,7 +30784,7 @@ if result is not None:
             <div class="timing-confidence-summary">{html.escape(_tcfg_summary)}</div>
             <div class="timing-confidence-grid">
                 <div class="timing-confidence-card"><div class="timing-confidence-card-title">Was aktuell passt</div>{_v163_items_html(_tcfg_fits)}</div>
-                <div class="timing-confidence-card"><div class="timing-confidence-card-title">Was noch fehlt</div>{_v163_items_html(_tcfg_missing)}</div>
+                <div class="timing-confidence-card"><div class="timing-confidence-card-title">Noch offen / Zusatzbestätigungen</div>{_v163_items_html(_tcfg_missing)}</div>
             </div>
             <div class="timing-confidence-action"><strong>Einordnung:</strong> {html.escape(_tcfg_action)}</div>
         </div>
@@ -30904,7 +30961,7 @@ if result is not None:
             _dist_no_chase = None
             if _price_no_chase is not None and _high_no_chase is not None and _high_no_chase > 0 and _price_no_chase > _high_no_chase:
                 _dist_no_chase = ((_price_no_chase - _high_no_chase) / _high_no_chase) * 100.0
-            if _dist_no_chase is not None and _dist_no_chase > 3.0:
+            if _dist_no_chase is not None and _dist_no_chase > 5.0:
                 final_action_label = "abwarten"
                 final_action_reason = (
                     f"Kurs liegt ca. {_dist_no_chase:.1f}% ueber der Entry-Zone; "
@@ -30931,6 +30988,13 @@ if result is not None:
                 _why_txt = "Setup valide; Einstieg erst bei bestätigter Entry-Zone oder klarem kurzfristigem Trigger."
     except Exception:
         pass
+
+    # v30.21az: after all legacy display helpers, re-assert the single central
+    # wording so the action bridge cannot say something different from the
+    # Screener/primary summary.
+    if isinstance(result.get("decision_state_pkg_v3021az"), dict):
+        _now_do_value = _central_label_map_v3021az.get(_central_state_v3021az, _now_do_value)
+        _why_txt = str(_decision_state_pkg_v3021az.get("reason") or _why_txt)
 
     if not position_mode:
         _action_low_bridge = str(final_action_label or "").lower()

@@ -22036,9 +22036,12 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 return False
 
                             def _v309_queue_category(row):
-                                # v30.21az: the Action Queue mirrors the same authoritative
-                                # state as Screener and Sofortanalyse. "Jetzt prüfen" is now
-                                # reserved for an active executable buy trigger.
+                                # v30.21ba: public "Priorität" is the durable alias of the
+                                # authoritative central state. The old __decision_queue field
+                                # is ephemeral and is stripped before the UI queue is built.
+                                public_central = _v243_clean_cell(row.get("Priorität"))
+                                if public_central in {"🎯 Jetzt prüfen", "🔎 Setup planen", "👀 Beobachten", "⛔ Blockiert"}:
+                                    return public_central
                                 central = _v243_clean_cell(row.get("__decision_queue_v3021az"))
                                 if central in {"🎯 Jetzt prüfen", "🔎 Setup planen", "👀 Beobachten", "⛔ Blockiert"}:
                                     return central
@@ -22571,7 +22574,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Ampel", "Ticker", "Name", "Live-Score", "Priorität",
                                         "Decision-Confidence", "Kurs", "Volatilität",
                                         "CRV jetzt", "CRV Entry", "Freiraum", "CRV-Ziel",
-                                        "Entry-Abstand", "Status", "Harvest-Ampel",
+                                        "Entry-Abstand", "Kerntrigger", "Status", "Harvest-Ampel",
                                     ]
                                     _compact_cols_v3021l = [c for c in _compact_cols_v3021l if c in _desktop_live_display_v304a.columns]
                                     if _compact_cols_v3021l:
@@ -22579,7 +22582,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                                     _live_filter_v3021l = st.radio(
                                         "Screener-Filter",
-                                        ["Alle", "🟢 Grün", "🟡 Gelb", "🔴 Rot", "🎯 Jetzt prüfen"],
+                                        ["Alle", "🟢 Grün", "🟡 Gelb", "🔴 Rot", "🔎 Setup planen", "🎯 Jetzt prüfen"],
                                         horizontal=True,
                                         key="v3021l_live_table_filter",
                                         label_visibility="collapsed",
@@ -22590,6 +22593,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _desktop_live_display_v304a = _desktop_live_display_v304a[_desktop_live_display_v304a["Ampel"].astype(str) == "🟡"].reset_index(drop=True)
                                     elif _live_filter_v3021l == "🔴 Rot" and "Ampel" in _desktop_live_display_v304a.columns:
                                         _desktop_live_display_v304a = _desktop_live_display_v304a[_desktop_live_display_v304a["Ampel"].astype(str) == "🔴"].reset_index(drop=True)
+                                    elif _live_filter_v3021l == "🔎 Setup planen" and "Priorität" in _desktop_live_display_v304a.columns:
+                                        _desktop_live_display_v304a = _desktop_live_display_v304a[_desktop_live_display_v304a["Priorität"].astype(str) == "🔎 Setup planen"].reset_index(drop=True)
                                     elif _live_filter_v3021l == "🎯 Jetzt prüfen" and "Priorität" in _desktop_live_display_v304a.columns:
                                         _desktop_live_display_v304a = _desktop_live_display_v304a[_desktop_live_display_v304a["Priorität"].astype(str) == "🎯 Jetzt prüfen"].reset_index(drop=True)
 
@@ -30562,6 +30567,11 @@ if result is not None:
     result["decision_state_pkg_v3021az"] = _decision_state_pkg_v3021az
     result["decision_state_v3021az"] = _decision_state_pkg_v3021az.get("state")
     result["decision_status_v3021az"] = _decision_state_pkg_v3021az.get("status")
+    # v30.21ba: same public diagnostics as the Screener row. This makes the
+    # remaining trigger question directly comparable between both surfaces.
+    result["decision_queue_v3021ba"] = _decision_state_pkg_v3021az.get("queue_category")
+    result["decision_trigger_active_v3021ba"] = bool(_decision_state_pkg_v3021az.get("trigger_active"))
+    result["decision_trigger_status_v3021ba"] = str(_decision_state_pkg_v3021az.get("trigger_status") or "-")
     _central_state_v3021az = str(_decision_state_pkg_v3021az.get("state") or "observe")
     _central_action_map_v3021az = {
         "blocked": "abwarten",
@@ -30725,6 +30735,13 @@ if result is not None:
             unsafe_allow_html=True,
         )
         st.caption("v30.21ay: Trigger-Konfluenz und Timing verwenden dieselbe operative Entscheidungsbasis wie der Live-Screener. Stundenkerzen/zusätzliche Detailcharts bleiben informativ und überschreiben diese Werte nicht mehr.")
+        _core_trigger_active_v3021ba = bool(result.get("decision_trigger_active_v3021ba", False))
+        _core_trigger_raw_v3021ba = str(result.get("decision_trigger_status_v3021ba") or "-")
+        _core_queue_v3021ba = str(result.get("decision_queue_v3021ba") or "-")
+        st.caption(
+            f"Zentraler Kerntrigger: {'✅ aktiv' if _core_trigger_active_v3021ba else '⏳ offen'} · "
+            f"Rohstatus: {_core_trigger_raw_v3021ba} · Decision-State: {_core_queue_v3021ba}"
+        )
         with st.expander("Trigger-Konfluenz im Detail", expanded=False):
             st.caption("Prüft, ob Aktion, Timing, Tageskerze, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime in dieselbe Richtung zeigen. Nicht als eigener Score-Ersatz, sondern als Richtungscheck.")
             _rows = []

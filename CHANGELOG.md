@@ -1,3 +1,13 @@
+## v30.21ba — Priorität + Kerntrigger konsistent sichtbar
+
+- Behebt den verbliebenen Prioritätsfehler nach v30.21az: Der zentrale Queue-State lag bisher nur in einem `__...`-Feld und wurde vor dem UI-Aufbau als internes Feld entfernt. Dadurch fiel die sichtbare Priorität trotz korrektem Decision-State wieder auf `👀 Beobachten` zurück.
+- Der zentrale Decision-State wird jetzt zusätzlich als öffentliches Feld `Priorität` ausgegeben und von der Action Queue bevorzugt verwendet.
+- Gelbe States `plan` und `wait_entry` erscheinen damit sichtbar als `🔎 Setup planen`; `🎯 Jetzt prüfen` bleibt exklusiv für `buy`.
+- Der kompakte Screener zeigt zusätzlich `Kerntrigger` (`✅ aktiv` / `⏳ offen`).
+- Die Sofortanalyse zeigt denselben zentralen Kerntrigger samt Rohstatus und Decision-State direkt unter der Trigger-Konfluenz. Damit lassen sich Fälle wie META/MSFT/ACN ohne Interpretation zwischen beiden Ansichten vergleichen.
+- Neuer Screener-Filter `🔎 Setup planen`.
+- Keine Änderung an Schwellen, CRV, Hard Gates oder der v30.21az-Decision-State-Matrix.
+
 ## v30.21az — Decision-State-Cleanup: eine Entscheidung für Screener und Sofortanalyse
 
 - Neue zentrale Entscheidungsstufe für Live-Screener und Sofortanalyse: `Blockiert` → `Beobachten` → `Setup planen / Trigger abwarten` → `Entry/Pullback abwarten` → `Kauftrigger aktiv`.

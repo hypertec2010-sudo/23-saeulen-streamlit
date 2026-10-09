@@ -1,0 +1,25 @@
+CHSM v30.21ba - Prioritaet + Kerntrigger konsistent sichtbar
+
+Voraussetzung: v30.21az installiert.
+
+Ersetzen:
+- VERSION.txt
+- legacy_app.py
+- modules/live_monitor.py
+- CHANGELOG.md optional
+
+Auf macOS beim Ordner modules: ZUSAMMENFUEHREN, nicht den kompletten Ordner ersetzen.
+Auf dem Server dieselben Dateien ersetzen.
+
+Danach Streamlit komplett neu starten und einen neuen Vollscan ausfuehren.
+
+Erwartete sichtbare Aenderungen:
+- plan / wait_entry => Prioritaet "🔎 Setup planen"
+- buy => Prioritaet "🎯 Jetzt prüfen"
+- observe => "👀 Beobachten"
+- blocked => "⛔ Blockiert"
+- neue kompakte Screener-Spalte "Kerntrigger": ✅ aktiv / ⏳ offen
+- Sofortanalyse zeigt denselben zentralen Kerntrigger inkl. Rohstatus und Decision-State
+- neuer Filter "🔎 Setup planen"
+
+Keine Schwellen- oder Tradinglogik-Aenderung.

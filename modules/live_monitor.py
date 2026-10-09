@@ -2313,6 +2313,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Operative Aktion": operational_action_lm or "-",
         "Operatives Timing": str(r.get("operational_timing_label") or "-"),
         "Entscheidungsstufe": str(_decision_state_v3021az.get("status") or "Beobachten"),
+        # v30.21ba: public aliases survive the generic stripping of __internals.
+        # The UI/Action Queue must consume the authoritative central state directly.
+        "Priorität": str(_decision_state_v3021az.get("queue_category") or "👀 Beobachten"),
+        "Kerntrigger": "✅ aktiv" if bool(_decision_state_v3021az.get("trigger_active")) else "⏳ offen",
+        "Trigger-Rohstatus": str(_decision_state_v3021az.get("trigger_status") or "-"),
         "Setup-Reife": (
             "Kauftrigger aktiv" if _decision_state_v3021az.get("state") == "buy"
             else "Prüfbereit" if bool(_decision_state_v3021az.get("setup_ready"))

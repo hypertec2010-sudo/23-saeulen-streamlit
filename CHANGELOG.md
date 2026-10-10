@@ -1,3 +1,13 @@
+## v30.21bd – Structural CRV Audit & Pullback Continuity (konservativer erster Schritt)
+
+- **Tatsächlich verwendete Stop-Quelle korrigiert:** `analysis_core.py` benennt jetzt den gewählten Stop-Kandidaten passend zur Auswahl (ATR, MA20/50, Range, Retest, 20T-Tief) und überschreibt die Quelle weiterhin korrekt, wenn der Praxis-Mindestabstand bzw. Fallback greift. Bislang konnte trotz ATR-Auswahl eine strukturelle Setup-Bezeichnung stehen bleiben.
+- **Stop-Qualitätsaudit:** `modules/structural_trade_plan.py` ermittelt bestätigte Pivot-Supports ausschließlich bei mindestens zwei getrennten Swing-Tief-Berührungen. Ein Stop auf einer solchen Struktur wird als separate, volatilitätsgepufferte Referenz gezeigt; ein ATR-, MA- oder Mindestabstands-Stop wird nicht zu einem scheinbar bestätigten Strukturstop erklärt.
+- **CRV bleibt konservativ:** Das bestehende operative CRV jetzt und CRV Entry bleibt in dieser Kalibrierungsphase unverändert. Die Swing-Stop-Referenz und deren Vergleichs-CRV werden ausdrücklich nicht zur automatischen CRV-/Kaufverbesserung eingesetzt. Ein CRV Entry ohne verifizierten verwendeten Strukturstop wird als *indikativer Preisplan* gekennzeichnet.
+- **Zieltransparenz:** Der nächste Widerstand wird bei der Zielrolle als konservatives Erstziel bzw. Hindernis kenntlich gemacht; eine weiter entfernte Zielalternative wird nur separat angezeigt und erhöht das operative CRV nicht.
+- **Pullback-Planhistorie:** Der Live-Screener speichert pro Watchlist/Zeithorizont eine konkrete Plan-Entry-Zone, Invalidierung und Zielbasis aus einem tatsächlich planungsreifen Scan. Beim nächsten Scan bewertet er den *alten* Plan gegen den aktuellen Kurs: Rücksetzer zur Zone, unter die Zone, Invalidierung, Gate oder Zielbasiswechsel. Die neue kompakte Spalte `Plan-Status` zeigt dies nachvollziehbar; die Ampel wird dadurch nicht künstlich grün.
+- **Plan-Sicherungen:** Alte Pläne werden bei bestätigtem Strukturbruch/Hard Gate nicht übernommen und nach 30 Kalendertagen als abgelaufen gekennzeichnet. Näherungsstops werden ausdrücklich als solche bezeichnet.
+- **Keine zusätzlichen Provider-Abfragen;** keine Lockerung von Kerntrigger, Timing, Konfluenz, CRV-Mindestschwelle oder Hard Gates. Die statistische Trefferquote bestätigter Strukturstops wird erst anhand echter neuer Scans bewertet – nicht vorausgesetzt.
+
 ## v30.21bc – Timing-Zirkelschluss aufgelöst, Freigabe-Check präzisiert
 
 - Die Timing-/Handlungs-Konfidenz bewertet den **tatsächlichen technischen Kerntrigger** (`trigger_status == "Aktiv"`), nicht die vorherige Handlungsempfehlung `vorbereiten`/`kaufen`. So beeinflusst die eigene Empfehlung den Score nicht erneut.

@@ -4231,6 +4231,15 @@ def build_radar_entry_rr_package_v182(result):
         "crv_entry_reference": crv_entry_ref_v3021aj,
         "crv_entry_stop": crv_entry_stop_v3021aj,
         "crv_entry_stop_source": crv_entry_stop_source_v3021aj,
+        "stop_quality": _crv_pkg_v3021aj.get("technical_crv_stop_quality", "missing"),
+        "stop_quality_text": _crv_pkg_v3021aj.get("technical_crv_stop_quality_text", "-"),
+        "structure_stop": _crv_pkg_v3021aj.get("technical_crv_structure_stop"),
+        "structure_source": _crv_pkg_v3021aj.get("technical_crv_structure_source", "-"),
+        "structure_crv": _crv_pkg_v3021aj.get("technical_crv_structure_now"),
+        "entry_plan_quality": _crv_pkg_v3021aj.get("technical_crv_entry_quality", "unverified"),
+        "target_role": _crv_pkg_v3021aj.get("technical_crv_target_role", "-"),
+        "alternative_target": _crv_pkg_v3021aj.get("technical_crv_alternative_target"),
+        "alternative_source": _crv_pkg_v3021aj.get("technical_crv_alternative_source", "-"),
         "rr_label": rr_label,
         "rr_score": round(_radar_v18_clip(rr_score), 1),
         "rr_text": rr_text,
@@ -5221,7 +5230,17 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "crv": entry_rr_pkg.get("crv"),
         "crv_entry": entry_rr_pkg.get("crv_entry"),
         "crv_entry_reference": entry_rr_pkg.get("crv_entry_reference"),
+        "crv_stop_quality": entry_rr_pkg.get("stop_quality"),
+        "crv_stop_quality_text": entry_rr_pkg.get("stop_quality_text"),
+        "crv_structure_stop": entry_rr_pkg.get("structure_stop"),
+        "crv_structure_source": entry_rr_pkg.get("structure_source"),
+        "crv_structure_now": entry_rr_pkg.get("structure_crv"),
+        "crv_entry_plan_quality": entry_rr_pkg.get("entry_plan_quality"),
+        "crv_target_role": entry_rr_pkg.get("target_role"),
+        "crv_alternative_target": entry_rr_pkg.get("alternative_target"),
+        "crv_alternative_source": entry_rr_pkg.get("alternative_source"),
         "crv_target_source": entry_rr_pkg.get("target_source"),
+        "crv_target_value": entry_rr_pkg.get("tp1"),
         "crv_clearance_target": entry_rr_pkg.get("clearance_target"),
         "crv_clearance_pct": entry_rr_pkg.get("clearance_pct"),
         "crv_clearance_r": entry_rr_pkg.get("clearance_r"),
@@ -22561,7 +22580,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Ampel", "Ticker", "Name", "Live-Score", "Priorität",
                                         "Decision-Confidence", "Kurs", "Volatilität",
                                         "CRV jetzt", "CRV Entry", "Freiraum", "CRV-Ziel",
-                                        "Entry-Abstand", "Kerntrigger", "Status", "Harvest-Ampel",
+                                        "Entry-Abstand", "Plan-Status", "Kerntrigger", "Status", "Harvest-Ampel",
                                     ]
                                     _compact_cols_v3021l = [c for c in _compact_cols_v3021l if c in _desktop_live_display_v304a.columns]
                                     if _compact_cols_v3021l:
@@ -33296,7 +33315,23 @@ if result is not None:
                 tc5.metric("Setup-Confidence", fmt_num(setup_confidence, 0))
 
                 st.markdown("**Herleitung von Stop und Zielen**")
-                st.write(f"• Stop jetzt: {stop_source}")
+                # v30.21bd: stop provenance/quality comes from the exact same
+                # radar CRV package as the Screener, not from a UI-only estimate.
+                _bd_diag_v3021bd = _radar_decision_v3021az if isinstance(_radar_decision_v3021az, dict) else {}
+                _bd_source_v3021bd = str(_bd_diag_v3021bd.get("crv_stop_quality_text") or "Stop-Qualität nicht verfügbar")
+                _bd_stop_v3021bd = _radar_v182_num(_bd_diag_v3021bd.get("crv_structure_stop"), default=None)
+                _bd_struct_rr_v3021bd = _radar_v182_num(_bd_diag_v3021bd.get("crv_structure_now"), default=None)
+                st.write(f"• Stop jetzt: {stop_source} · Qualität: {_bd_source_v3021bd}")
+                if _bd_stop_v3021bd is not None:
+                    _bd_alt_text_v3021bd = f" · strukturelles Vergleichs-CRV {_bd_struct_rr_v3021bd:.2f}" if _bd_struct_rr_v3021bd is not None else ""
+                    st.write(f"• Bestätigte Swing-Support-Referenz: Stop {_bd_stop_v3021bd:.2f} {ccy} ({_bd_diag_v3021bd.get('crv_structure_source') or '-'}). Nur Vergleich, keine automatische Stop-Änderung{_bd_alt_text_v3021bd}.")
+                _bd_entry_quality_v3021bd = str(_bd_diag_v3021bd.get("crv_entry_plan_quality") or "unverified")
+                if _bd_entry_quality_v3021bd == "indicative_proxy":
+                    st.caption("CRV Entry ist hier ein indikatives Preis-Szenario: ein bestätigter Struktur-Stop für den späteren Rücksetzer fehlt noch. Keine automatische Kauf-Freigabe.")
+                st.write(f"• Zielrolle: {_bd_diag_v3021bd.get('crv_target_role') or '-'}")
+                _bd_alt_target_v3021bd = _radar_v182_num(_bd_diag_v3021bd.get("crv_alternative_target"), default=None)
+                if _bd_alt_target_v3021bd is not None:
+                    st.write(f"• Alternativziel (nicht für CRV-Freigabe verwendet): {_bd_alt_target_v3021bd:.2f} {ccy} · {_bd_diag_v3021bd.get('crv_alternative_source') or '-'}")
                 if _radar_v182_num(structural_crv_entry_stop, default=None) is not None:
                     st.write(f"• Stop für CRV Entry: {float(structural_crv_entry_stop):.2f} {ccy} · {structural_crv_entry_stop_source}")
                 st.write(f"• TP1: {tp1_source}")

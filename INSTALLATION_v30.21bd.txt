@@ -1,0 +1,37 @@
+CHSM v30.21bd – Structural CRV Audit & Pullback Continuity
+
+VORAUSSETZUNG
+- Letzte installierte Version v30.21bc.
+- Dies ist wie gewohnt eine klassische Austausch-ZIP für lokal UND Server.
+
+BITTE DIESE DATEIEN ERSETZEN / ZUSAMMENFÜHREN
+- VERSION.txt
+- legacy_app.py
+- analysis_core.py
+- modules/live_monitor.py
+- modules/technical_crv.py
+- modules/structural_trade_plan.py  (NEU)
+- CHANGELOG.md (optional)
+
+WICHTIG
+- In `modules` die drei genannten Dateien hinzufügen/ersetzen.
+- Den gesamten modules-Ordner niemals löschen oder ersetzen!
+- Dasselbe ZIP sowohl auf dem Mac als auch auf dem Server einspielen.
+- Streamlit komplett neu starten und einen neuen Vollscan durchführen.
+- Für `Plan-Status` sind zwei aufeinanderfolgende gültige Scans hilfreich,
+  denn zuerst muss die ursprüngliche Zone/Invalidierung verankert werden.
+
+NEU
+- Die Herkunft des produktiven Stops stimmt mit dem tatsächlich verwendeten Stop überein.
+- Stop-Qualität und eine unabhängig bestätigte Swing-Support-Referenz (falls gefunden)
+  sind in den erweiterten Diagnosen verfügbar; die Einzelanalyse erläutert sie.
+- Ein zweites Ziel wird als Alternative und nicht als automatische CRV-Verbesserung gezeigt.
+- Der kompakte Screener zeigt `Plan-Status` bei Rücksetzern und Zielbasiswechseln.
+- Eine zeitlich, strukturell oder durch ein Gate ungültige Planung wird NICHT
+  als Kaufchance freigegeben.
+
+SICHERHEIT / AUSWERTUNG
+- Bestehende CRV-Zahlen, 1,50-Schwelle, Timing/Konfluenz, Kerntrigger und Hard Gates
+  werden zunächst NICHT verändert. Die neue Strukturprüfung ist ein Audit-/Planungsmodul.
+- Ziel ist, anhand echter Scans die Häufigkeit guter vs. angenäherter Stops zu prüfen,
+  bevor das operative CRV-Modell selbst umgestellt wird.

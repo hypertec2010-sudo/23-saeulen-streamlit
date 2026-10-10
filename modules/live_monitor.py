@@ -5,6 +5,9 @@ Analyse-Callbacks verbunden. Dadurch bleibt die Analyse-Engine kompatibel,
 waehrend der Live-Monitor separat wartbar ist.
 """
 from __future__ import annotations
+
+from modules.structural_trade_plan import evaluate_pullback_continuity, finite as _bd_finite
+from modules.technical_crv import parse_price_zone as _bd_parse_price_zone
 import json, os, re, time
 from pathlib import Path
 import numpy as np
@@ -2376,6 +2379,19 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "CRV-Basis": crv_basis,
         "CRV-Zielquelle": crv_target_source,
         "CRV-Stopquelle": crv_stop_source,
+        "Stop-Qualität": str(d.get("crv_stop_quality_text") or "nicht bewertet"),
+        "Stop-Qualitätsklasse": str(d.get("crv_stop_quality") or "missing"),
+        "CRV Entry-Qualität": str(d.get("crv_entry_plan_quality") or "unverified"),
+        "CRV-Zielrolle": str(d.get("crv_target_role") or "-"),
+        "CRV-Alternativziel": d.get("crv_alternative_target"),
+        "Plan-Status": "—",
+        "Plan-Entry-Unterkante": _bd_parse_price_zone(d.get("entry_zone") or r.get("suggested_entry_zone"))[0],
+        "Plan-Entry-Oberkante": _bd_parse_price_zone(d.get("entry_zone") or r.get("suggested_entry_zone"))[1],
+        "Plan-Invalidierung": _bd_finite(d.get("crv_structure_stop")) or _bd_finite(r.get("chart_invalidation_level")),
+        "Plan-Stopquelle": str(d.get("crv_structure_source") or r.get("chart_invalidation_source") or "-"),
+        "Plan-Zielwert": _bd_finite(d.get("crv_target_value")),
+        "Plan-Zielquelle": str(d.get("crv_target_source") or "-"),
+        "Plan-Stopqualität": "confirmed" if _bd_finite(d.get("crv_structure_stop")) is not None else str(d.get("crv_stop_quality") or "missing"),
         "Freiraum %": "n/a" if clearance_pct_float is None else round(float(clearance_pct_float), 2),
         "Freiraum R": "n/a" if clearance_r_float is None else round(float(clearance_r_float), 2),
         "Freiraum-Quelle": clearance_source,
@@ -2959,10 +2975,32 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
         prev = state.get(key, {}) if isinstance(state.get(key, {}), dict) else {}
         prev_ampel = prev.get("ampel")
         prev_status = prev.get("status")
+        # v30.21bd: Anchor the previous plan before the refreshed setup can
+        # move its entry zone/target. This is an advisory state: it NEVER
+        # overrides current gates, scores, or the technical buy trigger.
+        _bd_previous_plan = prev.get("trade_plan") if isinstance(prev.get("trade_plan"), dict) else {}
+        _bd_new_state = str(row.get("__decision_state_v3021az") or "")
+        _bd_previous_ready = bool(_bd_previous_plan) and str(prev.get("decision_state") or "") in {"plan", "wait_entry", "buy", "observe"}
+        _bd_plan_now = evaluate_pullback_continuity(_bd_previous_plan if _bd_previous_ready else {}, {
+            "price": row.get("Kurs"),
+            "hard_gate": bool(row.get("__entry_hard_gate")),
+            "invalidated": bool(row.get("__invalidated")),
+            "target": row.get("Plan-Zielwert"),
+            "target_source": row.get("Plan-Zielquelle"),
+        })
+        # Do not claim a verified structure when the anchor is only an MA/ATR
+        # proxy. The user can still track the price plan, but must confirm it.
+        if _bd_plan_now != "—" and str(_bd_previous_plan.get("quality") or "") != "confirmed":
+            _bd_plan_now += " · Stop nur Näherung"
+        # Explicitly surface demotions without suggesting a buy.
+        if _bd_plan_now != "—" and _bd_new_state == "observe" and "⛔" not in _bd_plan_now:
+            _bd_plan_now += " · aktuelles Setup neu bewerten"
+        enriched.at[idx, "Plan-Status"] = _bd_plan_now
         # v23.8: Hysterese vor der Statuswechsel-Bewertung anwenden.
         # Dadurch werden kleine Score-/Trigger-Schwankungen nicht als harte
         # Gruen/Gelb/Weiss-Wechsel angezeigt.
         row2 = _v237_apply_live_signal_hysteresis(row, prev)
+        row2["Plan-Status"] = _bd_plan_now
         for col, val in row2.items():
             enriched.at[idx, col] = val
 
@@ -3028,6 +3066,27 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             "updated": now,
             "reason": str(row2.get("Grund") or ""),
             "trade_state": str(row2.get("Trade-State") or ""),
+            "decision_state": str(row2.get("__decision_state_v3021az") or "observe"),
+            "plan_continuity": str(row2.get("Plan-Status") or "—"),
+            "trade_plan": (
+                # Keep the earlier plan through an expected pullback, even if
+                # current grading becomes white; never promote to buy.
+                _bd_previous_plan
+                if _bd_previous_plan and "⛔" not in _bd_plan_now and "abgelaufen" not in _bd_plan_now and "Datum unklar" not in _bd_plan_now
+                and str(row2.get("__decision_state_v3021az") or "") in {"plan", "wait_entry", "observe"}
+                and _bd_previous_plan.get("invalidation") is not None
+                else ({
+                    "price": _bd_finite(row2.get("Kurs")),
+                    "entry_low": _bd_finite(row2.get("Plan-Entry-Unterkante")),
+                    "entry_high": _bd_finite(row2.get("Plan-Entry-Oberkante")),
+                    "invalidation": _bd_finite(row2.get("Plan-Invalidierung")),
+                    "stop_source": str(row2.get("Plan-Stopquelle") or "-"),
+                    "quality": "confirmed" if str(row2.get("Plan-Stopqualität") or "") == "confirmed" else "estimated",
+                    "target": _bd_finite(row2.get("Plan-Zielwert")),
+                    "target_source": str(row2.get("Plan-Zielquelle") or "-"),
+                    "created_at": now,
+                } if str(row2.get("__decision_state_v3021az") or "") in {"plan", "wait_entry", "buy"} else {})
+            ),
             # v28.4.3: Die wichtigsten Score-/Gate-Bausteine werden je Ticker
             # gespeichert. So kann ein Wechsel auch bei gleichem Kurs konkret
             # auf Trigger, Timing, Konfluenz oder ein neues Gate zurueckgefuehrt werden.

@@ -20,6 +20,7 @@ from __future__ import annotations
 import math
 import re
 from typing import Any
+from modules.structural_trade_plan import confirmed_support_stop, stop_evidence
 
 try:
     import numpy as np
@@ -346,6 +347,11 @@ def _trade_target_package(result: dict[str, Any], current_price: float, entry_re
         "target": _finite(chosen.get("value")) if chosen else None,
         "target_source": str(chosen.get("source")) if chosen else "kein belastbares setupgerechtes Trade-Ziel",
         "target_kind": str(chosen.get("kind")) if chosen else "missing",
+        # v30.21bd: A near resistance is often only the first obstacle. The
+        # next candidate remains an *alternative scenario*, not an automatic
+        # replacement target (which would falsely inflate operative CRV).
+        "secondary_target": _finite(candidates[1].get("value")) if len(candidates) > 1 else None,
+        "secondary_source": str(candidates[1].get("source")) if len(candidates) > 1 else "kein zweites belastbares Ziel",
         "candidates": candidates,
     }
 
@@ -359,6 +365,11 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
     zone_low, zone_high = parse_price_zone(r.get("suggested_entry_zone") or r.get("entry_zone"))
     entry_ref = zone_high if zone_high is not None and zone_high > 0 else price
     entry_source = "Oberer Rand der CHSM-Entry-Zone" if zone_high is not None else "Aktueller Kurs (keine belastbare Entry-Zone)"
+    structural = confirmed_support_stop(
+        r.get("df"), current_price=price, entry_reference=entry_ref,
+        atr=_first_number(r.get("atr"), r.get("ATR"), r.get("atr14")),
+    )
+    evidence = stop_evidence(stop, stop_source, structural)
 
     base = {
         "technical_crv_now": math.nan,
@@ -372,6 +383,20 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
         "technical_crv_stop_entry": math.nan,
         "technical_crv_stop_source": stop_source,
         "technical_crv_entry_stop_source": stop_source,
+        # Evidence, not an automatic release. Never call an ATR/MA proxy a
+        # confirmed structural stop. Alternative structural stop is kept
+        # separately and is never silently substituted into existing risk.
+        "technical_crv_stop_quality": evidence["quality"],
+        "technical_crv_stop_quality_text": evidence["label"],
+        "technical_crv_structure_support": structural.get("support") or math.nan,
+        "technical_crv_structure_stop": structural.get("stop") or math.nan,
+        "technical_crv_structure_source": structural.get("source") or "-",
+        "technical_crv_structure_touches": int(structural.get("touches") or 0),
+        "technical_crv_structure_now": math.nan,
+        "technical_crv_entry_quality": "unverified",
+        "technical_crv_target_role": "-",
+        "technical_crv_alternative_target": math.nan,
+        "technical_crv_alternative_source": "-",
         "technical_crv_target_candidates": [],
         "technical_crv_status": "missing",
         "technical_crv_setup_mode": "breakout" if _is_breakout_setup(r) else "standard",
@@ -408,6 +433,16 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
         {"value": round(float(c["value"]), 4), "source": c["source"], "kind": c["kind"]}
         for c in target_pkg["candidates"][:5]
     ]
+    base["technical_crv_target_role"] = (
+        "Nächster Widerstand / konservatives Erstziel"
+        if str(target_pkg.get("target_kind") or "").startswith("chart_")
+        else "Setup-/Projektionsziel; Zwischenwiderstände getrennt prüfen"
+    )
+    base["technical_crv_alternative_target"] = target_pkg.get("secondary_target") or math.nan
+    base["technical_crv_alternative_source"] = target_pkg.get("secondary_source") or "-"
+    structure_stop = _finite(structural.get("stop"))
+    if structure_stop is not None and price > structure_stop and target is not None and target > price:
+        base["technical_crv_structure_now"] = (target - price) / (price - structure_stop)
 
     if target is None:
         return base
@@ -436,6 +471,16 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
         risk_entry = entry_ref - entry_stop
         if risk_entry > 0:
             base["technical_crv_entry"] = (target - entry_ref) / risk_entry
+            # Explicitly distinguish a structural plan from a price-only
+            # scenario. The CRV stays available, but does not claim that a
+            # future pullback will preserve the present technical setup.
+            # Presence of a separate structural reference is not proof that
+            # the *used* entry stop was anchored to that structure.
+            base["technical_crv_entry_quality"] = (
+                "structural_stop_confirmed"
+                if structure_stop is not None and abs(entry_stop - structure_stop) / entry_ref < 0.002
+                else "indicative_proxy"
+            )
 
     now = _finite(base["technical_crv_now"])
     entry = _finite(base["technical_crv_entry"])

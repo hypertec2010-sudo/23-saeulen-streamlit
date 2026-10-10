@@ -3361,9 +3361,34 @@ def analyze_stock(
             x for x in setup_stop_candidates + [generic_atr_stop, generic_struct_stop]
             if pd.notna(x) and x > 0 and x < price
         ]
+        # v30.21bd: Keep the *actual* selected stop provenance. Previously the
+        # text was set per setup before choosing max(setup / ATR / MA50), which
+        # could label an ATR-based stop as a confirmed structural stop.
+        _stop_component_sources_v3021bd = {
+            "Breakout": ["Breakout-Level (2,5%-Puffer)", "ATR (1,6x)", "MA20-Naeherung (1,5%-Puffer)"],
+            "Breakout-Retest": ["Retest-Level (1,5%-Puffer)", "20T-Tief (0,5%-Puffer)", "ATR (1,4x)"],
+            "Pullback an MA20": ["MA20-Naeherung (1,5%-Puffer)", "20T-Tief (0,5%-Puffer)", "ATR (1,4x)"],
+            "Pullback an MA50": ["MA50-Naeherung (1,5%-Puffer)", "20T-Tief (1,0%-Puffer)", "ATR (1,5x)"],
+            "Rebound": ["20T-Rebound-Tief (1,0%-Puffer)", "ATR (1,3x)", "MA20-Naeherung (2,0%-Puffer)"],
+            "Range-Breakout": ["Range-Oberkante (1,5%-Puffer)", "ATR (1,5x)", "MA20-Naeherung (1,5%-Puffer)"],
+            "Trendfolge": ["MA20-Naeherung (1,5%-Puffer)", "MA50-Naeherung (1,5%-Puffer)", "ATR (1,8x)"],
+        }
+        _stop_sources_v3021bd = _stop_component_sources_v3021bd.get(setup_type, [])
+        _stop_labeled_v3021bd = [
+            (float(v), _stop_sources_v3021bd[i] if i < len(_stop_sources_v3021bd) else "Setup-Stop (technische Naeherung)")
+            for i, v in enumerate(setup_stop_candidates) if pd.notna(v) and v > 0 and v < price
+        ]
+        for _stop_val_v3021bd, _stop_src_v3021bd in (
+            (generic_atr_stop, "ATR-Stop (1,8x)"),
+            (generic_struct_stop, "MA50-Naeherung (3,5%-Puffer)"),
+        ):
+            if pd.notna(_stop_val_v3021bd) and 0 < _stop_val_v3021bd < price:
+                _stop_labeled_v3021bd.append((float(_stop_val_v3021bd), _stop_src_v3021bd))
 
         if stop_candidates:
-            stop_used = round(max(stop_candidates), 2)
+            _stop_choice_v3021bd = max(_stop_labeled_v3021bd, key=lambda item: item[0])
+            stop_used = round(_stop_choice_v3021bd[0], 2)
+            stop_source = _stop_choice_v3021bd[1]
         else:
             stop_used = round(price - max(price * 0.08, (atr * 1.8 if pd.notna(atr) else price * 0.06)), 2)
             stop_source = "Fallback-Stop"

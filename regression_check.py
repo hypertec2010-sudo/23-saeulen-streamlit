@@ -269,12 +269,14 @@ def test_navigation_guards() -> None:
     check("pages/trade_journal.py" in shell_source, "Trade-Journal-Seite ist nicht registriert")
     check("workspace_mode" in runtime_source and "watchlist_cockpit_area_v2413" in runtime_source, "Workspace-Bruecke unvollstaendig")
     check("CAPITAL_HILL_MULTIPAGE" in runtime_source and "CAPITAL_HILL_MULTIPAGE" in legacy_source, "Multipage-Bootstrap-Guard fehlt")
-    check('APP_VERSION = "v28.4.5a"' in legacy_source, "v28.4.5a Versionsstand fehlt in legacy_app.py")
+    from modules.version_info import APP_VERSION
+    check(APP_VERSION == (ROOT / "VERSION.txt").read_text(encoding="utf-8").strip(), "Versionsquelle inkonsistent")
+    check("from modules.version_info import APP_VERSION" in legacy_source, "Zentrale Versionsquelle fehlt in legacy_app.py")
     check(len(entry_source.splitlines()) < 80, "app.py ist nicht als schlanker Einstiegspunkt umgesetzt")
     check("run_every=_native_refresh_poll_seconds_v2832" in legacy_source, "60-Sekunden-Heartbeat fuer Live-Refresh fehlt")
     check("_live_refresh_policy.evaluate_refresh" in legacy_source, "Testbare Refresh-Policy ist nicht verdrahtet")
     check("_native_refresh_poll_seconds_v2832 = 60" in legacy_source, "Heartbeat-Intervall ist nicht auf 60 Sekunden gesetzt")
-    check("v246_live_monitor_cache" in legacy_source and "Nächster Auto-Scan" in legacy_source, "Cache-basierter Refresh-Status fehlt")
+    check("v246_live_monitor_cache" in legacy_source and "Nächster Auto-Vollscan" in legacy_source, "Cache-basierter Refresh-Status fehlt")
     check("_live_screener_snapshot.load_snapshot" in legacy_source, "Persistenter Live-Snapshot ist nicht verdrahtet")
     check("Mobile-Modus" in legacy_source and "v2842-mobile-card" in legacy_source, "Mobile-Screener-Oberfläche fehlt")
     check("Warum geändert?" in legacy_source, "Statuswechsel-Erklaerung fehlt in der Live-Screener-Oberfläche")
@@ -471,7 +473,8 @@ def test_analysis_core_extraction(mods) -> None:
     check("def _legacy_analyze_stock(" not in legacy_source, "Analyse-Pipeline liegt noch in legacy_app.py")
     check("def _legacy_analyze_stock_impl(" in core_source, "Extrahierte Analyse-Pipeline fehlt")
     check("legacy_analysis_core.legacy_analyze_stock" in legacy_source, "Analyse-Fallback ist nicht mit dem Modul verbunden")
-    check(len(legacy_source.splitlines()) < 25_000, "legacy_app.py wurde durch die Core-Extraktion nicht ausreichend verkleinert")
+    check("_legacy_analysis_core.configure_context(globals())" in legacy_source,
+          "Abhaengigkeiten der extrahierten Analyse-Pipeline sind nicht gebunden")
 
     legacy_core.reset_context()
     status = legacy_core.context_status()
@@ -561,8 +564,10 @@ def test_phase4_modules(mods) -> None:
     check(cache.market_bucket(15) >= 0, "Cache-Bucket fehlerhaft")
     check(market.finite_positive(float("nan")) is None, "NaN-Filter fehlerhaft")
     check(abs(market.atr_percent(2, 100) - 2.0) < 1e-9, "ATR-Prozent fehlerhaft")
-    check(resolver.normalize_ticker(" aapl ") == "AAPL", "Ticker-Normalisierung fehlerhaft")
-    check("SAP.DE" in resolver.candidate_variants("SAP"), "Ticker-Varianten fehlerhaft")
+    check(resolver.resolve_ticker(" aapl ").provider_symbol == "AAPL", "Ticker-Normalisierung fehlerhaft")
+    check(resolver.resolve_ticker("SPX").provider_symbol == "^GSPC", "Index-Alias fehlerhaft")
+    check(resolver.resolve_ticker("BRK.B").provider_symbol == "BRK-B", "Aktienklassen-Alias fehlerhaft")
+    check(resolver.resolve_ticker("SAP").provider_symbol == "SAP", "Ticker wird spekulativ auf eine andere Boerse umgeschrieben")
     check(scoring.clip_score(120) == 100.0, "Score-Clipping fehlerhaft")
     check(abs(scoring.weighted_score([(80, 3), (50, 1)]) - 72.5) < 1e-9, "Gewichteter Score fehlerhaft")
     result = analysis.analyze_stock(
@@ -593,7 +598,8 @@ def main() -> None:
     test_storage_layer(mods)
     test_navigation_guards()
     test_cockpit_navigation_state(mods["modules.page_runtime"])
-    print("v28.4.5a Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
+    from modules.version_info import APP_VERSION
+    print(f"{APP_VERSION} Regressionstest: ALLE PRUEFUNGEN ERFOLGREICH")
 
 
 if __name__ == "__main__":

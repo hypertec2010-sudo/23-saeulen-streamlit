@@ -1,0 +1,22 @@
+CHSM v30.21be – gezielt ersetzen/hinzufügen
+
+.github/workflows/quality.yml
+.streamlit/secrets.example.toml
+CHANGELOG.md
+INSTALLATION.txt
+INSTALLATION_v30.21be.txt
+VERSION.txt
+legacy_app.py
+modules/chart_overlays.py
+modules/live_monitor.py
+modules/short_term_trader.py
+modules/structural_trade_plan.py
+modules/technical_crv.py
+regression_check.py
+tests/fixtures/meta_crv_basis.json
+tests/test_crv_consistency.py
+tests/test_pullback_continuity.py
+tests/test_source_guards.py
+verify_deployment.py
+
+Nur diese Dateien kopieren; niemals den kompletten modules-Ordner ersetzen.

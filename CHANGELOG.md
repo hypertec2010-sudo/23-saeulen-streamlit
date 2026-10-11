@@ -1,3 +1,16 @@
+## v30.21be – Einheitliches Chart-CRV, Berechnungsbasis und stabile Pullback-Pläne
+
+- Das Chart-Overlay nutzt für CRV jetzt und Entry dieselbe technische Berechnung wie Radar und Screener. Das frühere Chart-CRV zum TP2 wird als eigenes Setup-Szenario im aufklappbaren Basisvergleich gezeigt, inklusive Kurs-/Entry-, Stop-, Ziel- und Quellenwerten sowie synthetischer Zielkennzeichnung. Das operative Ziel wird im Chart als eigene Linie dargestellt.
+- Die CRV-Berechnung verwendet die Analysepreis-Referenz (mit dokumentierten Fallbacks); der separate Livekurs-Marker bleibt sichtbar. Radar-Entry-Abstand und CRV verwenden dieselbe Kursbasis. Chart-Wellen aus einem gewählten sichtbaren Zeitraum überschreiben die operative Wellenbasis nicht mehr.
+- CRV bleibt bis zur Freigabeprüfung ungerundet. Ein Wert wie 1,496 besteht die 1,50-Schwelle nicht allein durch Anzeige-Rundung. Timing 60/60 (Planung), 70/65 (Kauf), aktiver technischer Rohstatus und Hard Gates bleiben erhalten.
+- Gemeinsame Entry-Zonen-Auswertung behandelt Bindestrich, Gedankenstrich und Dezimalkomma konsistent. Negative/fehlende Zonen werden verworfen.
+- Gültige Pullback-Pläne behalten ihren ursprünglichen Anker auch bei einem erneut aktiven Kaufstatus. Sperren, Invalidierung und Ablauf werden explizit geprüft; fehlende frische Kursdaten erzeugen keine Bestätigung. Planmetadaten beeinflussen keine Kaufentscheidung. Historien-Zeitprüfung nutzt dieselbe Berliner Scanzeit.
+- Plan-Stopwert und Quelle bleiben verbunden: Swing-Referenz, Chart-Invalidierung oder tatsächlich verwendeter Näherungsstop. Ein Quellenname allein beweist keinen bestätigten Swing-Stop.
+- Python-3.11-f-String im Short-Term-Trader korrigiert. Fehlender Quality-Workflow und sichere Secrets-Vorlage ergänzt; veralteter Guard auf zentrale Versionsquelle umgestellt. CI prüft Python 3.11 und 3.12.
+- Deterministische Regressionen für META-Berechnungsbasis, Live-/Analysepreis, CRV-Grenzwerte, Zielrollen, synthetische Ziele, Entscheidungsstufen und mehrstufige Planhistorie ergänzt. META-Fixture ist ausdrücklich eine Rekonstruktion aus aufgezeichneten gerundeten Werten, kein historischer OHLCV-Snapshot.
+- Keine zusätzliche Provider-Abfrage durch die neuen CRV-/Planhistorien-Helfer. Hinweistexte und Checkbox-Auswahl gelten als bereits umgesetzt und wurden nicht erneut gebaut.
+- Status: Patch vorbereitet; Installation und echte neue Scanfolgen müssen vom Nutzer bestätigt werden.
+
 ## v30.21bd – Structural CRV Audit & Pullback Continuity (konservativer erster Schritt)
 
 - **Tatsächlich verwendete Stop-Quelle korrigiert:** `analysis_core.py` benennt jetzt den gewählten Stop-Kandidaten passend zur Auswahl (ATR, MA20/50, Range, Retest, 20T-Tief) und überschreibt die Quelle weiterhin korrekt, wenn der Praxis-Mindestabstand bzw. Fallback greift. Bislang konnte trotz ATR-Auswahl eine strukturelle Setup-Bezeichnung stehen bleiben.

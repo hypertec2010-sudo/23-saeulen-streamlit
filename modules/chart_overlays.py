@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from modules.technical_crv import build_technical_crv_package, build_crv_basis_comparison, parse_price_zone
 
 _CTX = {}
 _CHART_LARGE_LABELS_V207 = False
@@ -833,7 +834,7 @@ def build_trade_setup_overlay_v193(result=None, wave_pkg=None, ccy=""):
     r = result or {}
     wave = wave_pkg or r.get("wave_structure_pkg") or {}
     entry_text = r.get("suggested_entry_zone") or r.get("Entry-Zone") or r.get("Entry_Zone") or ""
-    entry_low, entry_high = _trade_overlay_zone_v193(entry_text)
+    entry_low, entry_high = parse_price_zone(entry_text)
     stop = _trade_overlay_num_v193(r.get("stop_used") or r.get("stop") or r.get("Stop"), default=None)
     tp1 = _trade_overlay_num_v193(r.get("tp1") or r.get("TP1"), default=None)
     tp2 = _trade_overlay_num_v193(r.get("tp2") or r.get("TP2"), default=None)
@@ -847,14 +848,11 @@ def build_trade_setup_overlay_v193(result=None, wave_pkg=None, ccy=""):
     wave_target_low, wave_target_high = _trade_overlay_wave_zone_v193(wave_target_text)
 
     price = _trade_overlay_num_v193(r.get("live_price") or r.get("analysis_price") or r.get("price"), default=None)
-    crv = None
-    try:
-        # v21.1: CRV im Chart ebenfalls am Hauptziel orientieren. TP1 ist oft nur 1R.
-        rr_target = tp2 if tp2 and price and tp2 > price else tp1
-        if price and stop and rr_target and price > stop and rr_target > price:
-            crv = (rr_target - price) / (price - stop)
-    except Exception:
-        crv = None
+    # v30.21be: use the same target/stop/price rules as the Radar/Screener.
+    # A TP2 or synthetic scenario must never masquerade as operative CRV.
+    crv_pkg = build_technical_crv_package(r)
+    crv = _trade_overlay_num_v193(crv_pkg.get("technical_crv_now"), default=None)
+    crv_basis = build_crv_basis_comparison(r, crv_pkg)
 
     return {
         "entry_text": entry_text,
@@ -866,6 +864,9 @@ def build_trade_setup_overlay_v193(result=None, wave_pkg=None, ccy=""):
         "tp3": tp3,
         "price": price,
         "crv": None if crv is None else round(float(crv), 2),
+        "crv_entry": _trade_overlay_num_v193(crv_pkg.get("technical_crv_entry"), default=None),
+        "crv_target": _trade_overlay_num_v193(crv_pkg.get("technical_crv_target"), default=None),
+        "crv_basis": crv_basis,
         "wave_trigger": wave_trigger,
         "wave_trigger_text": wave_trigger_text,
         "wave_invalid": wave_invalid,
@@ -1049,6 +1050,7 @@ def add_trade_setup_overlay_to_plotly_v193(fig, chart_df, overlay):
             _trade_overlay_add_zone_v193(fig, chart_df, wt_low, wt_high, "Ziel bei Bestätigung", opacity=0.12)
 
         _trade_overlay_add_hline_v193(fig, chart_df, stop, "Stop / Invalidierung", dash="dash", width=2)
+        _trade_overlay_add_hline_v193(fig, chart_df, overlay.get("crv_target"), "Operatives CRV-Ziel", dash="dashdot", width=2)
         _trade_overlay_add_hline_v193(fig, chart_df, tp1, "TP1", dash="dot", width=1)
         _trade_overlay_add_hline_v193(fig, chart_df, tp2, "TP2", dash="dot", width=1)
         _trade_overlay_add_hline_v193(fig, chart_df, tp3, "TP3", dash="dot", width=1)

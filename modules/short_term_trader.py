@@ -772,7 +772,7 @@ def enrich_live_frame(df: pd.DataFrame | None) -> pd.DataFrame:
         chop.append(f"{float(pkg.get('chop_score') or 0):.0f}/100")
         sc = pkg.get("scan_chop_score")
         scan_chop.append("n/a" if sc is None else f"{float(sc):.0f}/100")
-        mode.append(f"{pkg.get('ampel','\u26aa')} {pkg.get('mode','-')}")
+        mode.append(f"{pkg.get('ampel','⚪')} {pkg.get('mode','-')}")
         horizon.append(str(pkg.get("horizon") or "n/a"))
     out["Trader-Ziel"] = trader_target
     out["Trader-Sicherung ab"] = secure

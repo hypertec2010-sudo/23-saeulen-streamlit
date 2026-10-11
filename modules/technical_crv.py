@@ -54,11 +54,14 @@ def parse_price_zone(value: Any) -> tuple[float | None, float | None]:
         return None, None
     if isinstance(value, (tuple, list)) and len(value) >= 2:
         a, b = _finite(value[0]), _finite(value[1])
-        if a is not None and b is not None:
+        if a is not None and b is not None and min(a, b) > 0:
             return min(a, b), max(a, b)
+        return None, None
     text = str(value).strip()
     if not text or text.lower() in {"-", "n/a", "none", "nan"}:
         return None, None
+    # A range separator is not a negative price: 95-100, 95 – 100, etc.
+    text = re.sub(r"(?<=\d)\s*[-–—]\s*(?=\d)", " ", text)
     raw = re.findall(r"[-+]?\d+(?:[\.,]\d+)?", text)
     nums: list[float] = []
     for token in raw:
@@ -66,6 +69,8 @@ def parse_price_zone(value: Any) -> tuple[float | None, float | None]:
             nums.append(float(token.replace(",", ".")))
         except Exception:
             continue
+    if any(n <= 0 for n in nums):
+        return None, None
     if len(nums) >= 2:
         return min(nums[0], nums[1]), max(nums[0], nums[1])
     if len(nums) == 1:
@@ -372,6 +377,11 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
     evidence = stop_evidence(stop, stop_source, structural)
 
     base = {
+        "technical_crv_price_reference": price if price is not None else math.nan,
+        "technical_crv_price_source": next(
+            (key for key in ("price", "current_price", "live_price") if _finite(r.get(key)) is not None),
+            "missing",
+        ),
         "technical_crv_now": math.nan,
         "technical_crv_entry": math.nan,
         "technical_crv_target": math.nan,
@@ -489,6 +499,53 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
     elif entry is not None:
         base["technical_crv_status"] = "entry_only"
     return base
+
+
+def build_crv_basis_comparison(result: dict[str, Any] | None,
+                               package: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Expose exact inputs for the operative CRVs and the former chart scenario.
+
+    TP2 (including synthetic floors) stays diagnostic. This function neither
+    selects a more favourable operative target nor modifies a decision.
+    """
+    r = result or {}
+    pkg = package if package is not None else build_technical_crv_package(r)
+    rows = []
+    for label, price_key, stop_key, crv_key, stop_source_key in (
+        ("CRV jetzt", "technical_crv_price_reference", "technical_crv_stop_now",
+         "technical_crv_now", "technical_crv_stop_source"),
+        ("CRV Entry", "technical_crv_entry_reference", "technical_crv_stop_entry",
+         "technical_crv_entry", "technical_crv_entry_stop_source"),
+    ):
+        rows.append({
+            "metric": label, "reference": _finite(pkg.get(price_key)),
+            "stop": _finite(pkg.get(stop_key)), "target": _finite(pkg.get("technical_crv_target")),
+            "crv": _finite(pkg.get(crv_key)),
+            "target_source": str(pkg.get("technical_crv_target_source") or "-"),
+            "stop_source": str(pkg.get(stop_source_key) or "-"),
+            "price_source": str(pkg.get("technical_crv_price_source") if label == "CRV jetzt"
+                                else pkg.get("technical_crv_entry_reference_source")),
+            "synthetic": False, "operative": True,
+        })
+    # Reproduce the old chart formula explicitly, including its live-first price.
+    price = _first_number(r.get("live_price"), r.get("analysis_price"), r.get("price"))
+    stop = _first_number(r.get("stop_used"), r.get("stop"), r.get("Stop"))
+    tp2 = _first_number(r.get("tp2"), r.get("TP2"))
+    use_tp2 = bool(tp2 is not None and price is not None and tp2 > price)
+    target = tp2 if use_tp2 else _first_number(r.get("tp1"), r.get("TP1"))
+    crv = ((target - price) / (price - stop)
+           if None not in (price, stop, target) and 0 < stop < price < target else None)
+    rows.append({
+        "metric": "TP2-Setup-Szenario" if use_tp2 else "TP1-Setup-Szenario",
+        "reference": price, "stop": stop, "target": target, "crv": crv,
+        "target_source": str(r.get("tp2_source" if use_tp2 else "tp1_source") or "Quelle nicht belegt"),
+        "stop_source": str(r.get("stop_source") or "Quelle nicht belegt"),
+        "price_source": next((key for key in ("live_price", "analysis_price", "price")
+                              if _finite(r.get(key)) is not None), "missing"),
+        "synthetic": bool(r.get("tp2_is_synthetic")) if use_tp2 else True,
+        "operative": False,
+    })
+    return rows
 
 
 def crv_soft_gate_state(crv_now: Any, crv_entry: Any = None) -> dict[str, Any]:

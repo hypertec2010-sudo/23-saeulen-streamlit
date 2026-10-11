@@ -187,7 +187,7 @@ from modules import live_screener_snapshot as _live_screener_snapshot
 from modules import live_scan_batches as _live_scan_batches
 from modules.stop_shadow import build_hybrid_stop_shadow as _build_hybrid_stop_shadow_v3021t
 from modules.classic_pivots import build_classic_daily_pivot_package
-from modules.technical_crv import build_technical_crv_package as _build_technical_crv_package_v3021aj, crv_soft_gate_state as _crv_soft_gate_state_v3021aj
+from modules.technical_crv import build_technical_crv_package as _build_technical_crv_package_v3021aj, crv_soft_gate_state as _crv_soft_gate_state_v3021aj, parse_price_zone as _parse_crv_price_zone_v3021be
 from modules.ma_cross import build_ma_cross_package as _build_ma_cross_package_v3021aq, pair_display_row as _ma_cross_pair_display_row_v3021aq
 from modules.technical_action_indicators import build_technical_action_package as _build_technical_action_package_v3021ar, action_rows as _technical_action_rows_v3021ar
 import yfinance as yf
@@ -3927,15 +3927,7 @@ def _radar_v182_num(value, default=None):
 
 
 def _radar_v182_parse_zone(entry_zone):
-    try:
-        low, high = _parse_entry_zone_bounds_v1524_12(entry_zone)
-        return low, high
-    except Exception:
-        text = str(entry_zone or "").replace(",", ".")
-        nums = [float(x) for x in re.findall(r"[-+]?\d+(?:\.\d+)?", text)]
-        if len(nums) >= 2:
-            return min(nums[0], nums[1]), max(nums[0], nums[1])
-    return None, None
+    return _parse_crv_price_zone_v3021be(entry_zone)
 
 
 def _radar_v182_get_price(result):
@@ -4125,6 +4117,8 @@ def build_radar_entry_rr_package_v182(result):
         _crv_pkg_v3021aj = _build_technical_crv_package_v3021aj(r)
     except Exception:
         _crv_pkg_v3021aj = {}
+    # CRV and entry-distance diagnostics use the same analysis-price reference.
+    price = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_price_reference"), default=None)
     tp1 = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_target"), default=None)
     tp1_source = str(_crv_pkg_v3021aj.get("technical_crv_target_source") or "kein belastbares technisches Ziel")
     stop = _radar_v182_num(_crv_pkg_v3021aj.get("technical_crv_stop_now"), default=_radar_v182_stop_value(r))
@@ -4225,10 +4219,13 @@ def build_radar_entry_rr_package_v182(result):
         "entry_distance_pct": None if entry_distance_pct is None else round(entry_distance_pct, 2),
         "entry_distance_text": distance_text,
         "entry_score": round(_radar_v18_clip(entry_score), 1),
-        "crv": None if crv is None else round(crv, 2),
-        "crv_now": None if crv is None else round(crv, 2),
-        "crv_entry": None if crv_entry is None else round(crv_entry, 2),
+        # v30.21be: decisions use full precision; round only in the UI.
+        "crv": crv,
+        "crv_now": crv,
+        "crv_entry": crv_entry,
         "crv_entry_reference": crv_entry_ref_v3021aj,
+        "crv_price_reference": price,
+        "crv_price_source": _crv_pkg_v3021aj.get("technical_crv_price_source", "missing"),
         "crv_entry_stop": crv_entry_stop_v3021aj,
         "crv_entry_stop_source": crv_entry_stop_source_v3021aj,
         "stop_quality": _crv_pkg_v3021aj.get("technical_crv_stop_quality", "missing"),
@@ -5230,6 +5227,8 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "crv": entry_rr_pkg.get("crv"),
         "crv_entry": entry_rr_pkg.get("crv_entry"),
         "crv_entry_reference": entry_rr_pkg.get("crv_entry_reference"),
+        "crv_price_reference": entry_rr_pkg.get("crv_price_reference"),
+        "crv_price_source": entry_rr_pkg.get("crv_price_source"),
         "crv_stop_quality": entry_rr_pkg.get("stop_quality"),
         "crv_stop_quality_text": entry_rr_pkg.get("stop_quality_text"),
         "crv_structure_stop": entry_rr_pkg.get("structure_stop"),
@@ -18129,7 +18128,7 @@ def _v3021ah_attach_shared_signal_packages(result):
     ).strip()
     try:
         if (
-            existing_source == "shared-operational-v30.21bc"
+            existing_source == "shared-operational-v30.21be"
             and isinstance(existing_timing, dict) and existing_timing.get("score") is not None
             and isinstance(existing_conf, dict) and existing_conf.get("score") is not None
         ):
@@ -18304,7 +18303,7 @@ def _v3021ah_attach_shared_signal_packages(result):
             market_fomo_pkg=market_fomo, fibonacci_pkg=fib_pkg, wave_pkg=wave_pkg,
             setup_pattern_pkg=pattern_pkg, result=result,
         )
-        conf_pkg["source"] = "shared-operational-v30.21bc"
+        conf_pkg["source"] = "shared-operational-v30.21be"
 
         timing_pkg = build_timing_action_confidence_v163(
             trigger_confluence_pkg=conf_pkg, final_action_label=final_action,
@@ -18318,11 +18317,12 @@ def _v3021ah_attach_shared_signal_packages(result):
             current_price=result.get("price"), structures=_structures_v3021ay,
             ccy=result.get("ccy", ""),
         )
-        timing_pkg["source"] = "shared-operational-v30.21bc"
+        timing_pkg["source"] = "shared-operational-v30.21be"
 
         result["trigger_confluence_pkg"] = conf_pkg
         result["timing_action_confidence_pkg"] = timing_pkg
-        result["signal_package_source"] = "shared-operational-v30.21bc"
+        result["signal_package_source"] = "shared-operational-v30.21be"
+        result.update(_build_technical_crv_package_v3021aj(result))
         result["signal_package_complete"] = True
         result["operational_signal_basis"] = "1y-daily-fixed; hourly-only-if-already-loaded"
         result["operational_action_label"] = final_action
@@ -29729,10 +29729,7 @@ if result is not None:
     try:
         wave_structure_pkg = build_wave_structure_context_v190(chart_df, result if "result" in locals() else {})
         if isinstance(result, dict):
-            result["wave_structure_pkg"] = wave_structure_pkg
-            result["wave_structure_label"] = wave_structure_pkg.get("label")
-            result["wave_structure_summary"] = wave_structure_pkg.get("summary")
-            result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
+            result["chart_wave_structure_pkg"] = wave_structure_pkg
     except Exception:
         wave_structure_pkg = (result or {}).get("wave_structure_pkg", {}) if isinstance(result, dict) else {}
 
@@ -29773,9 +29770,31 @@ if result is not None:
         if trade_overlay_pkg.get("wave_trigger"):
             _overlay_bits.append(f"Wann aktiv? {trade_overlay_pkg.get('wave_trigger'):.2f}")
         if trade_overlay_pkg.get("crv") is not None:
-            _overlay_bits.append(f"CRV {trade_overlay_pkg.get('crv'):.2f}")
+            _overlay_bits.append(f"CRV jetzt {trade_overlay_pkg.get('crv'):.2f}")
+        if trade_overlay_pkg.get("crv_entry") is not None:
+            _overlay_bits.append(f"CRV Entry {trade_overlay_pkg.get('crv_entry'):.2f}")
+        if trade_overlay_pkg.get("crv_target") is not None:
+            _overlay_bits.append(f"CRV-Ziel {trade_overlay_pkg.get('crv_target'):.2f}")
         if _overlay_bits:
             st.caption("Setup im Chart: " + " · ".join(_overlay_bits))
+        with st.expander("CRV-Basis: Chart und Screener", expanded=False):
+            _crv_rows_v3021be = []
+            for _basis_v3021be in trade_overlay_pkg.get("crv_basis", []):
+                _metric_v3021be = _basis_v3021be["metric"]
+                if _basis_v3021be.get("synthetic"):
+                    _metric_v3021be += " (synthetisch)"
+                _crv_rows_v3021be.append({
+                    "Berechnung": _metric_v3021be,
+                    "Kurs/Entry": _basis_v3021be.get("reference"),
+                    "Stop": _basis_v3021be.get("stop"),
+                    "Ziel": _basis_v3021be.get("target"),
+                    "CRV": _basis_v3021be.get("crv"),
+                    "Kursquelle": _basis_v3021be.get("price_source"),
+                    "Stopquelle": _basis_v3021be.get("stop_source"),
+                    "Zielquelle": _basis_v3021be.get("target_source"),
+                })
+            st.dataframe(pd.DataFrame(_crv_rows_v3021be), hide_index=True, use_container_width=True)
+            st.caption("CRV = (Ziel − Kurs/Entry) / (Kurs/Entry − Stop). Die Freigabe prüft ungerundete Werte. Das TP2-Setup-Szenario dient nur dem Vergleich; Zwischenwiderstände bleiben im operativen CRV berücksichtigt.")
     _chart_data_note = getattr(chart_df, "attrs", {}).get("chart_data_note", "") if chart_df is not None else ""
     if _chart_data_note:
         st.caption(_chart_data_note)
@@ -30024,10 +30043,7 @@ if result is not None:
             if "wave_structure_pkg" not in locals() or not isinstance(wave_structure_pkg, dict):
                 wave_structure_pkg = build_wave_structure_context_v190(chart_df, result if "result" in locals() else {})
                 if isinstance(result, dict):
-                    result["wave_structure_pkg"] = wave_structure_pkg
-                    result["wave_structure_label"] = wave_structure_pkg.get("label")
-                    result["wave_structure_summary"] = wave_structure_pkg.get("summary")
-                    result["wave_structure_action"] = wave_structure_pkg.get("action_hint")
+                    result["chart_wave_structure_pkg"] = wave_structure_pkg
             st.markdown(f"**Wellenanalyse / Swing-Struktur · {APP_VERSION}**")
             _wave_metrics = wave_structure_pkg.get("metrics", {}) if isinstance(wave_structure_pkg, dict) else {}
             _wave_drivers = wave_structure_pkg.get("drivers", []) if isinstance(wave_structure_pkg, dict) else []

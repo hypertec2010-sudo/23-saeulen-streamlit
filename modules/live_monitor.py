@@ -6,7 +6,7 @@ waehrend der Live-Monitor separat wartbar ist.
 """
 from __future__ import annotations
 
-from modules.structural_trade_plan import evaluate_pullback_continuity, finite as _bd_finite
+from modules.structural_trade_plan import evaluate_pullback_continuity, update_pullback_plan, plan_stop_reference, finite as _bd_finite
 from modules.technical_crv import parse_price_zone as _bd_parse_price_zone
 import json, os, re, time
 from pathlib import Path
@@ -758,6 +758,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         crv_basis = f"Trade-Ziel: n/a · Stop: {crv_stop_source}"
     else:
         crv_basis = f"Trade-Ziel: {crv_target_source} · Stop: {crv_stop_source}"
+    _crv_price_reference_v3021be = _bd_finite(d.get("crv_price_reference"))
+    if _crv_price_reference_v3021be is not None:
+        crv_basis = f"CRV-Kursbasis {_crv_price_reference_v3021be:.2f} ({d.get('crv_price_source') or '-'}) · " + crv_basis
     if clearance_pct_float is not None:
         _clearance_r_txt = "" if clearance_r_float is None else f" / {clearance_r_float:.2f}R"
         crv_basis += f" · Freiraum {clearance_pct_float:.1f}%{_clearance_r_txt} ({clearance_source})"
@@ -2280,6 +2283,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             _setup_shadow_volatility_v3021j >= 65,
         ]))
 
+    _plan_stop_v3021be = plan_stop_reference(r, d)
     return {
         **_package_fields_v3020,
         "Ampel": status_icon,
@@ -2384,14 +2388,15 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "CRV Entry-Qualität": str(d.get("crv_entry_plan_quality") or "unverified"),
         "CRV-Zielrolle": str(d.get("crv_target_role") or "-"),
         "CRV-Alternativziel": d.get("crv_alternative_target"),
+        "CRV-Kursbasis": _crv_price_reference_v3021be,
         "Plan-Status": "—",
         "Plan-Entry-Unterkante": _bd_parse_price_zone(d.get("entry_zone") or r.get("suggested_entry_zone"))[0],
         "Plan-Entry-Oberkante": _bd_parse_price_zone(d.get("entry_zone") or r.get("suggested_entry_zone"))[1],
-        "Plan-Invalidierung": _bd_finite(d.get("crv_structure_stop")) or _bd_finite(r.get("chart_invalidation_level")),
-        "Plan-Stopquelle": str(d.get("crv_structure_source") or r.get("chart_invalidation_source") or "-"),
+        "Plan-Invalidierung": _plan_stop_v3021be["stop"],
+        "Plan-Stopquelle": str(_plan_stop_v3021be["source"]),
         "Plan-Zielwert": _bd_finite(d.get("crv_target_value")),
         "Plan-Zielquelle": str(d.get("crv_target_source") or "-"),
-        "Plan-Stopqualität": "confirmed" if _bd_finite(d.get("crv_structure_stop")) is not None else str(d.get("crv_stop_quality") or "missing"),
+        "Plan-Stopqualität": str(_plan_stop_v3021be["quality"]),
         "Freiraum %": "n/a" if clearance_pct_float is None else round(float(clearance_pct_float), 2),
         "Freiraum R": "n/a" if clearance_r_float is None else round(float(clearance_r_float), 2),
         "Freiraum-Quelle": clearance_source,
@@ -2958,7 +2963,8 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
 
     state = st.session_state.live_watchlist_status_state_v220
     events = st.session_state.live_watchlist_status_events_v220
-    now = get_current_berlin_time().strftime("%d.%m.%Y %H:%M:%S")
+    _plan_now_at = get_current_berlin_time().replace(tzinfo=None)
+    now = _plan_now_at.strftime("%d.%m.%Y %H:%M:%S")
     enriched = live_df.copy()
     if "Signal-Stabilität" not in enriched.columns:
         enriched["Signal-Stabilität"] = ""
@@ -2987,7 +2993,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             "invalidated": bool(row.get("__invalidated")),
             "target": row.get("Plan-Zielwert"),
             "target_source": row.get("Plan-Zielquelle"),
-        })
+        }, now_at=_plan_now_at)
         # Do not claim a verified structure when the anchor is only an MA/ATR
         # proxy. The user can still track the price plan, but must confirm it.
         if _bd_plan_now != "—" and str(_bd_previous_plan.get("quality") or "") != "confirmed":
@@ -3069,13 +3075,12 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
             "decision_state": str(row2.get("__decision_state_v3021az") or "observe"),
             "plan_continuity": str(row2.get("Plan-Status") or "—"),
             "trade_plan": (
-                # Keep the earlier plan through an expected pullback, even if
-                # current grading becomes white; never promote to buy.
-                _bd_previous_plan
-                if _bd_previous_plan and "⛔" not in _bd_plan_now and "abgelaufen" not in _bd_plan_now and "Datum unklar" not in _bd_plan_now
-                and str(row2.get("__decision_state_v3021az") or "") in {"plan", "wait_entry", "observe"}
-                and _bd_previous_plan.get("invalidation") is not None
-                else ({
+                update_pullback_plan(_bd_previous_plan, {
+                    "price": row2.get("Kurs"),
+                    "hard_gate": bool(row2.get("__entry_hard_gate")),
+                    "invalidated": bool(row2.get("__invalidated")),
+                    "decision_state": str(row2.get("__decision_state_v3021az") or "observe"),
+                }, {
                     "price": _bd_finite(row2.get("Kurs")),
                     "entry_low": _bd_finite(row2.get("Plan-Entry-Unterkante")),
                     "entry_high": _bd_finite(row2.get("Plan-Entry-Oberkante")),
@@ -3084,8 +3089,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                     "quality": "confirmed" if str(row2.get("Plan-Stopqualität") or "") == "confirmed" else "estimated",
                     "target": _bd_finite(row2.get("Plan-Zielwert")),
                     "target_source": str(row2.get("Plan-Zielquelle") or "-"),
-                    "created_at": now,
-                } if str(row2.get("__decision_state_v3021az") or "") in {"plan", "wait_entry", "buy"} else {})
+                }, now_at=_plan_now_at)
             ),
             # v28.4.3: Die wichtigsten Score-/Gate-Bausteine werden je Ticker
             # gespeichert. So kann ein Wechsel auch bei gleichem Kurs konkret

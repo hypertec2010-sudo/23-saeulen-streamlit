@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -10,7 +11,10 @@ def test_release_contains_ci_and_refresh_guards() -> None:
     runtime = (ROOT / "modules/page_runtime.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
 
-    assert 'APP_VERSION = "v28.4.4"' in legacy
+    from modules.version_info import APP_VERSION
+    assert APP_VERSION == (ROOT / "VERSION.txt").read_text(encoding="utf-8").strip()
+    assert re.fullmatch(r"v\d+\.\d+[a-z]*", APP_VERSION)
+    assert "from modules.version_info import APP_VERSION" in legacy
     assert "_live_refresh_policy.evaluate_refresh" in legacy
     assert "run_every=_native_refresh_poll_seconds_v2832" in legacy
     assert "_live_screener_snapshot.load_snapshot" in legacy

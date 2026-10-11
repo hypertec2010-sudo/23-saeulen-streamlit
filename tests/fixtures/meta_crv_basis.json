@@ -1,0 +1,16 @@
+{
+  "_provenance": "T001, 09.10.2026: reconstruction from recorded rounded values, not historical OHLCV. Resistance 742.06 and TP2 777.52 inferred from displayed CRVs 0.93/2.34 and price/stop.",
+  "price": 718.67,
+  "stop_used": 693.52,
+  "stop_source": "Praxis-Mindestabstand",
+  "suggested_entry_zone": "711.86–726.24 USD",
+  "setup_type": "Reclaim-/Turnaround",
+  "tp1": 743.82,
+  "tp1_source": "1R-Teilziel",
+  "tp2": 777.52,
+  "tp2_source": "TP2 aus aufgezeichnetem Chart-CRV rekonstruiert",
+  "tp2_is_synthetic": false,
+  "chart_structures_analysis": {
+    "zones": [{"low": 742.06, "high": 744.0, "touches": 2}]
+  }
+}

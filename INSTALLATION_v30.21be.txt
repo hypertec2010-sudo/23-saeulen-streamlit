@@ -1,0 +1,43 @@
+CHSM v30.21be – Chart-/Screener-CRV und Pullback-Kontinuität
+
+STATUS
+Automatisiert geprüftes Austauschpaket auf Basis der bereitgestellten v30.21bd.
+Installation auf deinem Mac und Streamlit Cloud sowie Praxisabnahme stehen aus.
+
+INSTALLATION
+1. App beenden und den bisherigen Projektordner sichern.
+2. Die Dateien des PATCH-ZIPs einzeln in den bestehenden Projektordner kopieren.
+   Den kompletten modules-Ordner niemals ersetzen! Nur die aufgeführten Dateien
+   darin austauschen. Die mitgelieferte DATEILISTE.txt nennt alle Änderungen.
+3. Die neue .streamlit/secrets.example.toml ist nur eine kommentierte Vorlage.
+   Vorhandene secrets.toml und Cloud-Secrets bleiben deine bestehende Konfiguration.
+4. Dasselbe Paket lokal und im Server-Repository einspielen.
+5. Streamlit vollständig neu starten. VERSION.txt / App sollen v30.21be anzeigen.
+6. Einmal einen neuen vollständigen Watchlist-Scan ausführen; danach kann die
+   vorhandene Checkbox-Auswahl wie gewohnt für einzelne Werte verwendet werden.
+
+VERIFIKATION
+- python3.11 -m compileall -q .
+- python -m pip install -r requirements-ci.txt  (für die Testumgebung)
+- python verify_deployment.py
+- python -m pytest -q
+
+FACHLICHE PRAXISPRÜFUNG
+- META: Chart und Screener mit identischer frischer Datengrundlage vergleichen.
+  Im Chart die Box "CRV-Basis: Chart und Screener" öffnen. Kurs/Entry, Stop,
+  Ziel und Zielquelle prüfen. Unterschiedliche Scanzeitpunkte/Kurse sind kein
+  isolierter Versionsvergleich.
+- Das Chart zeigt CRV jetzt / Entry zum operativen Ziel. Das frühere TP2-CRV
+  steht separat als Setup-Szenario in der Diagnose. Die neue Ziellinie nennt
+  "Operatives CRV-Ziel".
+- META wird nicht allein durch das höhere TP2-Szenario zum Kaufkandidaten.
+- Pullback: planungsreifen Scan speichern, später Rückkehr in die ursprüngliche
+  Entry-Zone prüfen. Plan-Status soll den alten Plan beschreiben. Ein aktueller
+  Hard Gate oder Invalidierungsbruch muss ihn beenden.
+- Alte Planmetadaten sind keine Kauf-Freigabe. Die aktuelle Analyse bestimmt
+  weiterhin Beobachten, Setup planen, Entry abwarten oder Kauftrigger aktiv.
+
+HINWEIS ZUM META-TEST
+Die automatische Fixture rekonstruiert die dokumentierten gerundeten CRVs.
+Sie enthält keine originalen historischen OHLCV-Kerzen. Die echte Nachher-
+Tabelle wird erst nach Installation und einem dokumentierten Scan befüllt.

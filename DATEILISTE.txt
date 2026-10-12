@@ -1,13 +1,7 @@
-Basis: v30.21be
-Dateien einzeln am gleichen Pfad ersetzen:
-
+Basis v30.21bf; Dateien einzeln ersetzen:
+legacy_app.py
 VERSION.txt
 CHANGELOG.md
-INSTALLATION_v30.21bf.txt
-legacy_app.py
-modules/technical_crv.py
-modules/structural_trade_plan.py
-modules/live_monitor.py
-modules/chart_overlays.py
-tests/test_crv_consistency.py
 tests/test_crv_evidence.py
+tests/test_setup_alert_crv_evidence.py
+INSTALLATION_v30.21bg.txt

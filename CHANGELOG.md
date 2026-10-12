@@ -1,3 +1,9 @@
+## v30.21bg – Screener-Hotfix
+
+- Undefinierte Variable im technischen CRV-Alert korrigiert (`decision` statt `d`).
+- Regressionstests führen die echte Alert-Funktion für aktive und nahe Kandidaten aus.
+- Screener-Integration prüft den echten Alert-Callback; CRV-Evidenzregeln bleiben unverändert.
+
 ## v30.21bf – Technische CRV-Grundlage
 
 - CRV-Freigabe nur mit bestätigtem verwendetem Strukturstop und technischem Ziel.

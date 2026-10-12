@@ -6,6 +6,7 @@ from modules.technical_crv import build_technical_crv_package, technical_crv_eli
 from modules.structural_trade_plan import confirmed_support_stop
 from modules.live_monitor import build_decision_state_v3021az
 from test_crv_consistency import radar_rr
+from test_setup_alert_crv_evidence import setup_alerts
 
 
 def result():
@@ -99,12 +100,12 @@ def test_structural_crv_cannot_override_hard_gates(extra):
     assert decide(build_technical_crv_package(result()), **extra)['state']=='blocked'
 
 
-def test_actual_monitor_row_keeps_proxy_as_scenario(monkeypatch, radar_rr):
+def test_actual_monitor_row_keeps_proxy_as_scenario(monkeypatch, radar_rr, setup_alerts):
     from datetime import datetime
     from modules import live_monitor as lm
     monkeypatch.setattr(lm, '_v210_alert_price', lambda r: r.get('price'), raising=False)
     monkeypatch.setattr(lm, '_v210_alert_num', lambda v, default=None: float(v) if v is not None else default, raising=False)
-    monkeypatch.setattr(lm, 'build_setup_alerts_v210', lambda *a, **k: [], raising=False)
+    monkeypatch.setattr(lm, 'build_setup_alerts_v210', setup_alerts, raising=False)
     monkeypatch.setattr(lm, 'get_current_berlin_time', lambda: datetime(2026,10,11,20), raising=False)
     monkeypatch.setattr(lm, '_v214_monitor_final_release_check', lambda *a: (False, []), raising=False)
     monkeypatch.setattr(lm, 'shorten_text', lambda v, n: str(v)[:n], raising=False)
@@ -114,7 +115,7 @@ def test_actual_monitor_row_keeps_proxy_as_scenario(monkeypatch, radar_rr):
         timing_action_confidence_pkg={'score':85},trigger_confluence_pkg={'score':71})
     r['stop_source']='Praxis-Mindestabstand'
     rr=radar_rr(r)
-    d=dict(rr,bucket='Starke Watchlist',grade='B',crv_target_source=rr['target_source'],
+    d=dict(rr,bucket='Nahe am Trigger',grade='B',score=80,crv_target_source=rr['target_source'],
            crv_target_value=rr['tp1'],crv_stop_quality=rr['stop_quality'],crv_entry_plan_quality=rr['entry_plan_quality'])
     row=lm._v212_monitor_status_from_decision(r,d)
     assert row['Ampel']=='⚪'

@@ -5490,7 +5490,7 @@ def build_setup_alerts_v210(result, style_name="Ausgewogen", decision=None):
 
     # 4) CRV attraktiv geworden. Nur noch fuer echte handlungsnahe Kandidaten,
     # nicht fuer Starke Watchlist / Warnsignale / Gate-Faelle.
-    if actionable and d.get("crv_now_eligible") and crv is not None and crv >= 1.8:
+    if actionable and decision.get("crv_now_eligible") and crv is not None and crv >= 1.8:
         _v210_alert_add(rows, ticker=ticker, name=name, alert_type="CRV attraktiv", priority="mittel" if bucket != "Jetzt prüfbar" else "hoch", message=f"{ticker}: CRV ist attraktiv ({crv:.2f}). {rr_text}", action=next_step or "Entry/Trigger mit Stop prüfen.", price=price, bucket=bucket, grade=grade, crv=crv, trigger=wave_trigger_txt, invalidation=wave_inval_txt, status_key=f"{ticker}|crv|{round(crv,1)}|{bucket}")
 
     # 5) Invalidierung / Stop gebrochen. Das ist auch bei schwachen Kandidaten relevant,

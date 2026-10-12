@@ -1,0 +1,24 @@
+CHSM v30.21bg – Screener-Hotfix auf Basis v30.21bf
+
+Ursache: In build_setup_alerts_v210 wurde die nicht definierte Variable d
+statt des vorhandenen decision-Pakets angesprochen. Bei handlungsnahen
+Kandidaten führte dies zu "name 'd' is not defined".
+
+Installation:
+1. Bestehendes v30.21bf sichern.
+2. Dateien aus DATEILISTE.txt am selben relativen Pfad im bestehenden
+   Projektordner ersetzen bzw. ergänzen. Keine ganzen Ordner ersetzen.
+3. Dieselben Dateien bei GitHub aktualisieren; die ZIP nicht als Quellcode hochladen.
+4. App neu starten / deployen. Version prüfen: v30.21bg.
+5. Fehlgeschlagene Werte im Screener erneut scannen.
+
+Enthalten ist die korrigierte legacy_app.py sowie Version, Changelog,
+Regressionstests und diese Anleitung. modules-Dateien bleiben unverändert.
+Die technische CRV-Methodik aus v30.21bf bleibt unverändert.
+
+Neue Regressionstests durchlaufen die echte Alert-Funktion bei verschiedenen
+Buckets und vorhandener, fehlender oder ungültiger CRV-Evidenz. Auch der
+Screener-Integrationstest verwendet jetzt den echten Alert-Callback.
+
+Praxistest in deiner laufenden App bleibt nach Installation erforderlich.
+Kompletten Quellcode und Projektunterlagen aktualisieren wir nach dem Praxistest.

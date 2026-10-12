@@ -29835,13 +29835,6 @@ if result is not None:
 
         from modules.technical_crv import technical_crv_eligibility
         _chart_crv_quality_v3021bf = technical_crv_eligibility(_build_technical_crv_package_v3021aj(result))
-        _tech_verdict_v3021as = (
-            "Technische CRV-Grundlage bestätigt"
-            if _chart_crv_quality_v3021bf["now"] or _chart_crv_quality_v3021bf["entry"]
-            else "Technisches CRV nicht bewertbar"
-        )
-        _tech_action_v3021as = _chart_crv_quality_v3021bf["reason"] + ". Die Einstiegsfreigabe steht unter ‚Nächste Handlung‘."
-
         _tech_context_bits_v3021as = []
         if _tech_setup_v3021as and _tech_setup_v3021as != "-":
             _tech_context_bits_v3021as.append(f"Setup: {_tech_setup_v3021as}")
@@ -29851,17 +29844,9 @@ if result is not None:
             _tech_context_bits_v3021as.append(f"Entry-Lage: {entry_quality}")
         _tech_context_v3021as = " · ".join(_tech_context_bits_v3021as) or "Technische Gesamtlage aus bestehender CHSM-Logik."
 
-        st.markdown(
-            f'''
-            <div class="section-card" style="padding:0.95rem 1rem;margin:0.35rem 0 0.85rem 0;border-left:5px solid rgba(96,165,250,.78);">
-                <div class="premium-title">Technisches Fazit · Was jetzt?</div>
-                <div class="premium-value" style="font-size:1.08rem;margin-top:4px;">{html.escape(_tech_verdict_v3021as)}</div>
-                <div class="premium-sub" style="margin-top:7px;"><b>Handlung:</b> {html.escape(_tech_action_v3021as)}</div>
-                <div class="premium-sub" style="margin-top:7px;">{html.escape(_tech_context_v3021as)}</div>
-            </div>
-            ''',
-            unsafe_allow_html=True,
-        )
+        # Fill this chart card only once the authoritative decision exists below.
+        # The placeholder retains its location inside the technical details.
+        _technical_fazit_placeholder_v3021bi = st.empty()
 
         st.markdown("**Operative Technik-Level**")
         _tech_stop_text_v3021as = f"{_tech_stop_v3021as:.2f} {ccy} · {stop_source}" if _tech_stop_v3021as is not None else str(stop_source or "n/a")
@@ -30608,6 +30593,31 @@ if result is not None:
     result["decision_state_pkg_v3021az"] = _decision_state_pkg_v3021az
     result["decision_state_v3021az"] = _decision_state_pkg_v3021az.get("state")
     result["decision_status_v3021az"] = _decision_state_pkg_v3021az.get("status")
+    # v30.21bi: the technical verdict is the shared decision, not CRV quality.
+    _faz_status_v3021bi = (
+        str(_decision_state_pkg_v3021az.get("icon") or "⚪") + " "
+        + str(_decision_state_pkg_v3021az.get("status") or "Beobachten")
+    )
+    _faz_action_v3021bi = str(_decision_state_pkg_v3021az.get("action") or "-")
+    _faz_crv_note_v3021bi = str(_decision_state_pkg_v3021az.get("crv_context") or "")
+    _faz_reason_v3021bi = str(_decision_state_pkg_v3021az.get("reason") or "")
+    if _faz_crv_note_v3021bi:
+        _faz_reason_v3021bi = _faz_reason_v3021bi.removesuffix(" " + _faz_crv_note_v3021bi + ".")
+    _faz_note_html_v3021bi = (
+        '<div class="premium-sub" style="margin-top:7px;font-size:.8rem;">'
+        + html.escape(_faz_crv_note_v3021bi) + '</div>'
+    ) if _faz_crv_note_v3021bi else ""
+    _technical_fazit_placeholder_v3021bi.markdown(
+        f'''<div class="section-card" style="padding:0.95rem 1rem;margin:0.35rem 0 0.85rem 0;border-left:5px solid rgba(96,165,250,.78);">
+            <div class="premium-title">Technisches Fazit · Was jetzt?</div>
+            <div class="premium-value" style="font-size:1.08rem;margin-top:4px;">{html.escape(_faz_status_v3021bi)}</div>
+            <div class="premium-sub" style="margin-top:7px;">{html.escape(_faz_reason_v3021bi)}</div>
+            <div class="premium-sub" style="margin-top:7px;"><b>Handlung:</b> {html.escape(_faz_action_v3021bi)}</div>
+            <div class="premium-sub" style="margin-top:7px;">{html.escape(_tech_context_v3021as)}</div>
+            {_faz_note_html_v3021bi}
+        </div>''',
+        unsafe_allow_html=True,
+    )
     # v30.21ba: same public diagnostics as the Screener row. This makes the
     # remaining trigger question directly comparable between both surfaces.
     result["decision_queue_v3021ba"] = _decision_state_pkg_v3021az.get("queue_category")

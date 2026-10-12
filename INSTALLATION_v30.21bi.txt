@@ -1,0 +1,20 @@
+CHSM v30.21bi – Technisches Fazit; Basis v30.21bh
+
+Die Karte „Technisches Fazit · Was jetzt?“ zeigt wieder die vollständige zentrale
+Entscheidung: Beobachten, Setup planen / Trigger abwarten, Entry/Pullback abwarten,
+Kauftrigger aktiv oder Blockiert. Begründung und Handlung stimmen mit der
+Sofortanalyse überein. Ein nicht bewertetes CRV steht nur als Zusatzhinweis darunter.
+
+Der Platz im technischen Chartbereich bleibt gleich. Die Karte wird gefüllt,
+sobald die zentrale Entscheidungsstufe berechnet ist. Berechnung und Freigaberegeln
+bleiben unverändert, insbesondere die neutrale Behandlung von Szenario-CRVs aus bh.
+
+Installation:
+1. Bestehendes v30.21bh sichern.
+2. Die Dateien aus DATEILISTE.txt einzeln am gleichen relativen Projektpfad ersetzen.
+3. Bei GitHub dieselben Dateien aktualisieren; ZIP selbst nicht als Programmdatei hochladen.
+4. App neu starten / deployen und Version v30.21bi prüfen.
+5. Sofortanalyse öffnen und die Karte unter „Technische Chartdetails“ kontrollieren.
+
+Keine modules-Dateien müssen ausgetauscht werden.
+Kompletter Quellcode und Projektunterlagen folgen nach erfolgreichem Praxistest.

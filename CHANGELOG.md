@@ -1,3 +1,9 @@
+## v30.21bi – Technisches Fazit wieder aus zentraler Entscheidung
+
+- Technisches Fazit zeigt Status, Begründung und Handlung aus derselben Entscheidungsstufe wie Screener und Sofortanalyse.
+- CRV-Hinweis erscheint getrennt als ergänzende Information statt als pauschales Hauptfazit.
+- Keine Änderung an Berechnung, Freigabe, Schwellen oder CRV-Evidenzregeln.
+
 ## v30.21bh – CRV nur bei belastbarer technischer Grundlage bewerten
 
 - Fehlende oder ersatzbasierte CRV-Grundlage ist neutral, keine Freigabesperre.

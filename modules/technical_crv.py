@@ -162,7 +162,7 @@ def _chart_obstacles(result: dict[str, Any], current_price: float) -> list[dict[
         low = _finite(zone.get("low"))
         high = _finite(zone.get("high"))
         touches = int(_finite(zone.get("touches")) or 0)
-        if low is None or high is None or low <= 0 or high <= 0:
+        if low is None or high is None or low <= 0 or high <= 0 or touches < 2:
             continue
         if low <= current_price <= high and high > current_price * 1.001:
             out.append({
@@ -473,7 +473,7 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
             entry_stop = invalidation
             entry_stop_source = invalidation_source
         min_stop = entry_ref * 0.965
-        if entry_stop is None or entry_stop <= 0 or entry_stop >= entry_ref or entry_stop > min_stop:
+        if entry_stop is None or entry_stop <= 0 or entry_stop >= entry_ref or (evidence["quality"] != "confirmed" and entry_stop > min_stop):
             entry_stop = min_stop
             entry_stop_source = f"{entry_stop_source} · 3,5%-Praxisabstand zur Entry-Zone"
         base["technical_crv_stop_entry"] = entry_stop
@@ -488,7 +488,7 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
             # the *used* entry stop was anchored to that structure.
             base["technical_crv_entry_quality"] = (
                 "structural_stop_confirmed"
-                if structure_stop is not None and abs(entry_stop - structure_stop) / entry_ref < 0.002
+                if stop_evidence(entry_stop, entry_stop_source, structural)["quality"] == "confirmed"
                 else "indicative_proxy"
             )
 
@@ -499,6 +499,30 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
     elif entry is not None:
         base["technical_crv_status"] = "entry_only"
     return base
+
+
+def technical_crv_eligibility(package: dict[str, Any]) -> dict[str, Any]:
+    """Only verified used stops and technical targets qualify; numbers alone never do."""
+    target_kind = str(package.get("technical_crv_target_kind") or "missing")
+    source = str(package.get("technical_crv_target_source") or "").casefold()
+    target_ok = (_finite(package.get("technical_crv_target")) is not None
+                 and target_kind in {"chart_resistance", "chart_active_zone",
+                     "chart_resistance_above_breakout", "setup", "wave", "high52",
+                     "breakout_measured_move"}
+                 and not any(t in source for t in ("fallback", "synthet", "analyst", "1r", "2r", "1.8r"))
+                 and source not in {"", "-", "tp2", "quelle nicht belegt"})
+    now_stop_ok = package.get("technical_crv_stop_quality") == "confirmed"
+    entry_stop_ok = package.get("technical_crv_entry_quality") == "structural_stop_confirmed"
+    reasons = []
+    if not now_stop_ok:
+        reasons.append("Bestätigter technischer Strukturstop fehlt")
+    if not target_ok:
+        reasons.append("Belastbares technisches Ziel fehlt")
+    return {
+        "now": bool(now_stop_ok and target_ok and _finite(package.get("technical_crv_now")) is not None),
+        "entry": bool(entry_stop_ok and target_ok and _finite(package.get("technical_crv_entry")) is not None),
+        "reason": " · ".join(reasons) or "Technische CRV-Grundlage bestätigt",
+    }
 
 
 def build_crv_basis_comparison(result: dict[str, Any] | None,
@@ -525,7 +549,8 @@ def build_crv_basis_comparison(result: dict[str, Any] | None,
             "stop_source": str(pkg.get(stop_source_key) or "-"),
             "price_source": str(pkg.get("technical_crv_price_source") if label == "CRV jetzt"
                                 else pkg.get("technical_crv_entry_reference_source")),
-            "synthetic": False, "operative": True,
+            "synthetic": False,
+            "operative": technical_crv_eligibility(pkg)["now" if label == "CRV jetzt" else "entry"],
         })
     # Reproduce the old chart formula explicitly, including its live-first price.
     price = _first_number(r.get("live_price"), r.get("analysis_price"), r.get("price"))

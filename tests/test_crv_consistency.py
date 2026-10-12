@@ -53,6 +53,7 @@ def decision(now, entry, **overrides):
         valid_trade_setup=True, signal_packages_complete=True,
         timing_score=85.9, conf_score=70.9, crv_now=now, crv_entry=entry,
         trigger_status="Beobachten", entry_distance_pct=0,
+        crv_now_eligible=True, crv_entry_eligible=True,
     )
     values.update(overrides)
     return build_decision_state_v3021az(**values)

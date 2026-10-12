@@ -71,9 +71,7 @@ def confirmed_support_stop(df: Any, *, current_price: Any, entry_reference: Any,
     atr_val = finite(atr)
     buffer = max(support * 0.006, (atr_val * 0.25 if atr_val and atr_val > 0 else 0.0))
     stop = support - buffer
-    # Conservative minimum for execution planning; does not move a stop closer.
-    min_dist = max(entry * 0.035, atr_val * 0.75 if atr_val and atr_val > 0 else 0.0)
-    stop = min(stop, entry - min_dist)
+    # v30.21bf: chart support plus buffer only; no practice-distance substitute.
     if stop <= 0 or stop >= min(price, entry) or (entry - stop) / entry > 0.22:
         return dict(missing)
     return {
@@ -92,8 +90,9 @@ def stop_evidence(stop: Any, stop_source: str, structural: dict[str, Any]) -> di
     lower = source.lower()
     if actual is None:
         quality, explanation = "missing", "Kein verwendbarer Stop"
-    elif ("bestätigtes swing-support" in lower
-          and structural.get("quality") == "confirmed_swing"
+    elif any(term in lower for term in ("atr", "praxis", "fallback", "mindestabstand", "nähe", "naeherung")):
+        quality, explanation = "proxy", "Ersatz-/Mindestabstands-Stop; nicht chartbestätigt"
+    elif (structural.get("quality") == "confirmed_swing"
           and finite(structural.get("stop")) is not None
           and abs(actual - float(structural["stop"])) / max(actual, 1e-9) < 0.002):
         quality, explanation = "confirmed", "Stop an bestätigter Pivot-Unterstützung"

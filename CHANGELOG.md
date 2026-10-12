@@ -1,3 +1,11 @@
+## v30.21bf – Technische CRV-Grundlage
+
+- CRV-Freigabe nur mit bestätigtem verwendetem Strukturstop und technischem Ziel.
+- Ersatz-/Praxisstop und unbelegte Ziele bleiben explizite Szenarien; keine Freigabe.
+- Fehlende Grundlage getrennt von einem belegten CRV unter 1,50.
+- Strukturreferenz ohne pauschalen Praxis-Mindestabstand; kein automatischer Stoptausch.
+- Handlungstexte verwenden die zentrale Entscheidung.
+
 ## v30.21be – Einheitliches Chart-CRV, Berechnungsbasis und stabile Pullback-Pläne
 
 - Das Chart-Overlay nutzt für CRV jetzt und Entry dieselbe technische Berechnung wie Radar und Screener. Das frühere Chart-CRV zum TP2 wird als eigenes Setup-Szenario im aufklappbaren Basisvergleich gezeigt, inklusive Kurs-/Entry-, Stop-, Ziel- und Quellenwerten sowie synthetischer Zielkennzeichnung. Das operative Ziel wird im Chart als eigene Linie dargestellt.

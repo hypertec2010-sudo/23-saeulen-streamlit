@@ -1,0 +1,29 @@
+CHSM Austausch-Patch v30.21bf – Basis v30.21be
+
+1. Bestehenden Projektordner sichern. Voraussetzung: v30.21be ist installiert.
+2. ZIP entpacken. Die in DATEILISTE.txt genannten Programmdateien unter denselben
+   relativen Pfaden in den vorhandenen Projektordner kopieren und ersetzen.
+   Einzeldateien ersetzen; den Ordner modules nicht als Ganzes austauschen.
+3. Bei GitHub dieselben Dateien unter denselben Pfaden aktualisieren.
+   Die ZIP selbst ist keine Programmdatei für GitHub.
+4. Streamlit neu starten / neu deployen. Bereits gespeicherte Analyseergebnisse
+   durch einen frischen Scan ersetzen. Angezeigte Version: v30.21bf.
+
+Erwartung bei META mit unveränderter Kurs-/Stop-/Zielbasis:
+- 0,93 und 0,48 bleiben als Szenario sichtbar.
+- Freigabe-Check: Technisches CRV nicht bewertbar; bestätigter Strukturstop fehlt.
+- Kein Urteil „CRV unter 1,50“ auf Basis des Praxis-Mindestabstands.
+- Beobachten bleibt bestehen; Kerntrigger offen, technische Trade-Struktur fehlt.
+
+Technisches CRV zählt nur mit nachgewiesenem verwendetem Strukturstop und
+technischem Ziel. Das jetzige Verfahren bestätigt Stops an mehrfach belegten
+Pivot-Unterstützungen mit Puffer. MA-, ATR-, Praxis- und Ersatzstop-Szenarien
+werden nicht freigegeben. Eine getrennte Strukturreferenz ersetzt den tatsächlich
+verwendeten Stop nicht automatisch. Dadurch können weitere bisher gelbe/grüne
+Kandidaten auf Beobachten wechseln, wenn ihre Grundlage nur eine Näherung war.
+
+Grenze für belegtes technisches CRV: weiterhin 1,50. Kerntrigger, Timing,
+Konfluenz, Entry-Lage und Hard Gates bleiben zusätzlich erforderlich.
+
+Dieser Patch enthält zunächst nur die Austauschdateien. Kompletter Quellcode
+und Projektunterlagen werden nach erfolgreichem Praxistest aktualisiert.

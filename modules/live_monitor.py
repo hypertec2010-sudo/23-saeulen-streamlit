@@ -486,7 +486,8 @@ def build_decision_state_v3021az(
     timing_score=None, conf_score=None, crv_now=None, crv_entry=None,
     action_label="", trigger_status="", entry_distance_pct=None, ma20_stretch_pct=None,
     gate_reasons="", entry_hard_gate=None, invalidated=False,
-    warning_bucket=False,
+    warning_bucket=False, crv_now_eligible=False, crv_entry_eligible=False,
+    crv_evidence_reason="Technische CRV-Grundlage nicht belegt",
 ):
     """Single authoritative decision state for Screener and Sofortanalyse.
 
@@ -509,8 +510,8 @@ def build_decision_state_v3021az(
 
     timing=_num(timing_score)
     conf=_num(conf_score)
-    crv_n=_num(crv_now)
-    crv_e=_num(crv_entry)
+    crv_n=_num(crv_now) if crv_now_eligible else None
+    crv_e=_num(crv_entry) if crv_entry_eligible else None
     distance=_num(entry_distance_pct)
     stretch=_num(ma20_stretch_pct)
     gate_pkg=classify_entry_hard_gate_v3021az(gate_reasons)
@@ -563,8 +564,10 @@ def build_decision_state_v3021az(
             missing.append(f"Konfluenz {conf:.1f} < 60 (Setup planen)")
         elif conf < 65:
             missing.append(f"Konfluenz {conf:.1f} < 65 (Kaufstufe)")
-    if not setup_crv_ok:
-        missing.append("CRV jetzt und CRV Entry unter 1,50 oder nicht verfügbar")
+    if not crv_now_eligible and not crv_entry_eligible:
+        missing.append("Technisches CRV nicht bewertbar: " + str(crv_evidence_reason))
+    elif not setup_crv_ok:
+        missing.append("Belastbares technisches CRV jetzt und CRV Entry unter 1,50 oder nicht verfügbar")
     elif not crv_now_ok:
         missing.append(f"CRV jetzt {crv_n:.2f} < 1,50; CRV Entry {crv_e:.2f} erlaubt nur Entry-Planung" if crv_n is not None else f"CRV jetzt nicht verfügbar; CRV Entry {crv_e:.2f} erlaubt nur Entry-Planung")
     if not trigger_active:
@@ -668,6 +671,8 @@ def build_decision_state_v3021az(
         "conf": conf,
         "crv_now": crv_n,
         "crv_entry": crv_e,
+        "crv_now_eligible": bool(crv_now_eligible),
+        "crv_entry_eligible": bool(crv_entry_eligible),
         "crv_now_ok": crv_now_ok,
         "crv_entry_ok": crv_entry_ok,
         "entry_distance_pct": distance,
@@ -733,6 +738,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     except Exception:
         crv_entry_float = None
 
+    _crv_scenario_now_v3021bf = _bd_finite(crv_float)
+    _crv_scenario_entry_v3021bf = _bd_finite(crv_entry_float)
+    crv_float = _crv_scenario_now_v3021bf if d.get("crv_now_eligible") else None
+    crv_entry_float = _crv_scenario_entry_v3021bf if d.get("crv_entry_eligible") else None
+
     # v30.21ai: The displayed/scored Screener CRV is the real structural CRV.
     # Synthetic 1.8R/2R planning floors remain visible as a separate plan value.
     crv_target_source = str(d.get("crv_target_source") or r.get("structural_target_source") or "-").strip() or "-"
@@ -754,11 +764,12 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     plan_crv = d.get("planning_crv")
     plan_source = str(d.get("planning_target_source") or r.get("tp2_source") or "-").strip() or "-"
     plan_is_synthetic = bool(d.get("planning_is_synthetic") or r.get("tp2_is_synthetic"))
-    if crv_float is None:
+    if _bd_finite(d.get("crv_target_value")) is None:
         crv_basis = f"Trade-Ziel: n/a · Stop: {crv_stop_source}"
     else:
         crv_basis = f"Trade-Ziel: {crv_target_source} · Stop: {crv_stop_source}"
     _crv_price_reference_v3021be = _bd_finite(d.get("crv_price_reference"))
+    crv_basis = str(d.get("crv_evidence_reason") or "Technische Grundlage fehlt") + " · " + crv_basis
     if _crv_price_reference_v3021be is not None:
         crv_basis = f"CRV-Kursbasis {_crv_price_reference_v3021be:.2f} ({d.get('crv_price_source') or '-'}) · " + crv_basis
     if clearance_pct_float is not None:
@@ -1671,6 +1682,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         conf_score=conf_score_lm,
         crv_now=crv_float,
         crv_entry=crv_entry_float,
+        crv_now_eligible=bool(d.get("crv_now_eligible")),
+        crv_entry_eligible=bool(d.get("crv_entry_eligible")),
+        crv_evidence_reason=d.get("crv_evidence_reason") or "Technische Grundlage fehlt",
         action_label=operational_action_lm,
         trigger_status=r.get("trigger_status", ""),
         entry_distance_pct=entry_distance,
@@ -2370,11 +2384,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Startquelle": "n/a" if str(start_price_text).lower() == "n/a" else (start_price_source or "n/a"),
         "Grade": grade,
         "Radar-Bucket": bucket,
-        "CRV": "n/a" if crv_float is None else round(float(crv_float), 2),
+        "CRV": (round(crv_float, 2) if crv_float is not None else (f"{_crv_scenario_now_v3021bf:.2f} (Szenario)" if _crv_scenario_now_v3021bf is not None else "n/a")),
         # v30.21an: separate display aliases keep the operative/internal CRV
         # key stable while making the screener meaning explicit for the user.
-        "CRV jetzt": "n/a" if crv_float is None else round(float(crv_float), 2),
-        "CRV Entry": "n/a" if crv_entry_float is None else round(float(crv_entry_float), 2),
+        "CRV jetzt": (round(crv_float, 2) if crv_float is not None else (f"{_crv_scenario_now_v3021bf:.2f} (Szenario)" if _crv_scenario_now_v3021bf is not None else "n/a")),
+        "CRV Entry": (round(crv_entry_float, 2) if crv_entry_float is not None else (f"{_crv_scenario_entry_v3021bf:.2f} (Szenario)" if _crv_scenario_entry_v3021bf is not None else "n/a")),
         "Freiraum": (
             "n/a" if clearance_pct_float is None
             else f"{clearance_pct_float:.1f}%" + ("" if clearance_r_float is None else f" / {clearance_r_float:.2f}R")

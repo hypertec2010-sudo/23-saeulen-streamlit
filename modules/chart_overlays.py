@@ -867,6 +867,8 @@ def build_trade_setup_overlay_v193(result=None, wave_pkg=None, ccy=""):
         "crv_entry": _trade_overlay_num_v193(crv_pkg.get("technical_crv_entry"), default=None),
         "crv_target": _trade_overlay_num_v193(crv_pkg.get("technical_crv_target"), default=None),
         "crv_basis": crv_basis,
+        "crv_now_eligible": crv_basis[0]["operative"],
+        "crv_entry_eligible": crv_basis[1]["operative"],
         "wave_trigger": wave_trigger,
         "wave_trigger_text": wave_trigger_text,
         "wave_invalid": wave_invalid,

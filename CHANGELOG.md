@@ -1,3 +1,10 @@
+## v30.21bh – CRV nur bei belastbarer technischer Grundlage bewerten
+
+- Fehlende oder ersatzbasierte CRV-Grundlage ist neutral, keine Freigabesperre.
+- Nur belegtes technisches CRV wird gegen 1,50 geprüft.
+- Nicht bewertetes CRV wird ausdrücklich als Hinweis ausgewiesen; kein bestandener CRV-Check behauptet.
+- Setup, Timing, Konfluenz, Kerntrigger, Entry-Lage und Hard Gates bleiben eigenständige Bedingungen.
+
 ## v30.21bg – Screener-Hotfix
 
 - Undefinierte Variable im technischen CRV-Alert korrigiert (`decision` statt `d`).

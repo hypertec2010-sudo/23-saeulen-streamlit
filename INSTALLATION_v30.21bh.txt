@@ -1,0 +1,37 @@
+CHSM v30.21bh – Bedingte CRV-Prüfung; Basis v30.21bg
+
+Korrektur der Methodik:
+In bf/bg wurde ein nicht belastbares CRV zwar als Szenario erkannt,
+fehlende CRV-Evidenz verhinderte aber trotzdem jede gelbe/grüne Einstufung.
+Das war strenger als die Vorgabe „CRV nur mit technischer Grundlage bewerten“.
+
+Ab bh:
+- Technischer Strukturstop UND technisches Ziel vorhanden: CRV wird bewertet;
+  die bestehenden Schwellen (1,50) gelten weiter.
+- Ersatzstop, Ersatzziel oder fehlende technische Grundlage: CRV ist neutral,
+  Zahlen bleiben Szenarien; kein numerischer Bonus und keine CRV-Sperre.
+- Nicht bewertetes CRV gilt nicht als bestandener CRV-Check. Der Freigabe-Check
+  enthält den ausdrücklichen Hinweis „CRV nicht bewertet“ mit Begründung.
+- Valides Setup, vollständige Timing-/Konfluenzdaten, deren Schwellen,
+  aktivierter technischer Kerntrigger, Entry-Lage, Hard Gates und Invalidierung
+  werden weiter unabhängig geprüft. Nicht alle Kandidaten werden automatisch gelb/grün.
+- Technisch bewertbares Entry-CRV allein bleibt eine Planungs-/Wartestufe;
+  es ersetzt kein belastbares aktuelles CRV.
+
+Installation:
+1. Vorhandenes v30.21bg sichern.
+2. Dateien aus DATEILISTE.txt einzeln unter denselben relativen Pfaden ersetzen
+   oder ergänzen. Keinen ganzen modules-Ordner ersetzen.
+3. In GitHub dieselben Dateien aktualisieren; ZIP nicht als Programmdatei hochladen.
+4. App neu starten / deployen. Version v30.21bh prüfen.
+5. Einen frischen Screener-Scan durchführen, damit alte Ergebnisse ersetzt werden.
+
+Erwartung:
+- Gleiche Szenario-CRVs dürfen unterschiedliche Farben erhalten, abhängig
+  von Setup, Timing/Konfluenz, Trigger und Lage.
+- Offener Kerntrigger kann bei gutem Setup gelb, aber nicht grün werden.
+- CRV nicht bewertet steht als Hinweis, nicht unter den fehlenden Freigabebedingungen.
+- Ein belegtes technisches CRV unter 1,50 kann weiter Weiß auslösen.
+
+Kompletter Quellcode und Projektunterlagen werden nach erfolgreichem Praxistest
+aktualisiert. Dieser Austausch-Patch baut auf bg einschließlich bf auf.

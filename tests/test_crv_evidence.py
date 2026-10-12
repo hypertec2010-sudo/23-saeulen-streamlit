@@ -45,7 +45,8 @@ def test_proxy_never_qualifies_even_with_coincident_structural_reference(source,
     assert not technical_crv_eligibility(pkg)['now']
     assert not technical_crv_eligibility(pkg)['entry']
     ds = decide(pkg)
-    assert ds['state'] == 'observe'
+    assert ds['state'] == 'buy'
+    assert not ds['crv_evaluated']
     assert 'Strukturstop fehlt' in ds['release_check']
     assert 'unter 1,50' not in ds['release_check']
     assert not radar_rr(r)['crv_now_eligible']
@@ -75,7 +76,8 @@ def test_nontechnical_target_never_qualifies(source):
     r=result();r.pop('technical_target_1');r.update(tp2=110,tp2_source=source)
     pkg=build_technical_crv_package(r)
     assert not technical_crv_eligibility(pkg)['now']
-    assert decide(pkg)['state']=='observe'
+    assert decide(pkg)['state']=='buy'
+    assert not decide(pkg)['crv_evaluated']
     assert 'technisches Ziel fehlt' in decide(pkg)['release_check']
 
 
@@ -92,7 +94,8 @@ def test_missing_target_is_separate_from_low_confirmed_crv():
 def test_no_implicit_eligibility_from_numbers_at_decision_boundary():
     ds=build_decision_state_v3021az(valid_trade_setup=True,signal_packages_complete=True,
         timing_score=90,conf_score=90,trigger_status='Aktiv',crv_now=4,crv_entry=4)
-    assert ds['state']=='observe'
+    assert ds['state']=='buy'
+    assert not ds['crv_evaluated']
 
 
 @pytest.mark.parametrize('extra',[{'entry_hard_gate':True},{'invalidated':True}])
@@ -100,7 +103,8 @@ def test_structural_crv_cannot_override_hard_gates(extra):
     assert decide(build_technical_crv_package(result()), **extra)['state']=='blocked'
 
 
-def test_actual_monitor_row_keeps_proxy_as_scenario(monkeypatch, radar_rr, setup_alerts):
+@pytest.mark.parametrize('trigger,icon', [('Aktiv','🟢'), ('Beobachten','🟡')])
+def test_actual_monitor_row_keeps_proxy_as_scenario(monkeypatch, radar_rr, setup_alerts, trigger, icon):
     from datetime import datetime
     from modules import live_monitor as lm
     monkeypatch.setattr(lm, '_v210_alert_price', lambda r: r.get('price'), raising=False)
@@ -110,7 +114,7 @@ def test_actual_monitor_row_keeps_proxy_as_scenario(monkeypatch, radar_rr, setup
     monkeypatch.setattr(lm, '_v214_monitor_final_release_check', lambda *a: (False, []), raising=False)
     monkeypatch.setattr(lm, 'shorten_text', lambda v, n: str(v)[:n], raising=False)
     monkeypatch.setattr(lm, '_v232_is_current_baseline_source', lambda v: False, raising=False)
-    r=result();r.update(ticker='META',valid_trade_setup=True,trigger_status='Aktiv',ma20=99,
+    r=result();r.update(ticker='META',valid_trade_setup=True,trigger_status=trigger,ma20=99,
         signal_package_complete=True,
         timing_action_confidence_pkg={'score':85},trigger_confluence_pkg={'score':71})
     r['stop_source']='Praxis-Mindestabstand'
@@ -118,7 +122,59 @@ def test_actual_monitor_row_keeps_proxy_as_scenario(monkeypatch, radar_rr, setup
     d=dict(rr,bucket='Nahe am Trigger',grade='B',score=80,crv_target_source=rr['target_source'],
            crv_target_value=rr['tp1'],crv_stop_quality=rr['stop_quality'],crv_entry_plan_quality=rr['entry_plan_quality'])
     row=lm._v212_monitor_status_from_decision(r,d)
-    assert row['Ampel']=='⚪'
+    assert row['Ampel']==icon
+    assert 'CRV nicht bewertet' in row['Freigabe-Check']
     assert '(Szenario)' in row['CRV jetzt']
     assert 'Strukturstop fehlt' in row['Freigabe-Check']
     assert 'unter 1,50' not in row['Freigabe-Check']
+
+
+@pytest.mark.parametrize('scenario', [0.1, 0.93, 2.5, 20, None])
+@pytest.mark.parametrize('trigger,state', [('Beobachten', 'plan'), ('Aktiv', 'buy')])
+def test_unassessed_scenario_neither_blocks_nor_confirms_crv(scenario, trigger, state):
+    ds=build_decision_state_v3021az(valid_trade_setup=True,signal_packages_complete=True,
+        timing_score=85,conf_score=71,trigger_status=trigger,crv_now=scenario,crv_entry=scenario,
+        crv_now_eligible=False,crv_entry_eligible=False,crv_evidence_reason='Strukturstop fehlt')
+    assert ds['state']==state
+    assert ds['crv_now'] is None and ds['crv_entry'] is None
+    assert not ds['crv_now_ok'] and not ds['crv_entry_ok']
+    assert not ds['crv_evaluated']
+    assert not any('CRV' in reason for reason in ds['release_missing'])
+    assert 'CRV nicht bewertet' in ds['release_check']
+
+
+@pytest.mark.parametrize('extra,state', [
+    ({'timing_score':59}, 'observe'), ({'conf_score':59}, 'observe'),
+    ({'timing_score':69}, 'plan'), ({'conf_score':64}, 'plan'),
+    ({'valid_trade_setup':False}, 'observe'), ({'signal_packages_complete':False}, 'observe'),
+    ({'trigger_status':'inaktiv'}, 'plan'), ({'entry_distance_pct':5.1}, 'wait_entry'),
+    ({'ma20_stretch_pct':12.1}, 'wait_entry'), ({'entry_hard_gate':True}, 'blocked'),
+    ({'invalidated':True}, 'blocked'),
+])
+def test_neutral_crv_does_not_override_other_requirements(extra, state):
+    args=dict(valid_trade_setup=True,signal_packages_complete=True,timing_score=85,conf_score=71,
+              trigger_status='Aktiv',crv_now=5,crv_entry=5,crv_now_eligible=False,crv_entry_eligible=False)
+    args.update(extra)
+    assert build_decision_state_v3021az(**args)['state']==state
+
+
+def test_assessed_now_low_crv_cannot_borrow_unassessed_entry_scenario():
+    ds=build_decision_state_v3021az(valid_trade_setup=True,signal_packages_complete=True,
+        timing_score=85,conf_score=71,trigger_status='Aktiv',crv_now=0.9,crv_entry=10,
+        crv_now_eligible=True,crv_entry_eligible=False)
+    assert ds['state']=='observe' and ds['crv_evaluated']
+    assert 'unter 1,50' in ds['release_check']
+
+
+def test_assessed_entry_only_retains_wait_for_entry():
+    ds=build_decision_state_v3021az(valid_trade_setup=True,signal_packages_complete=True,
+        timing_score=85,conf_score=71,trigger_status='Aktiv',crv_now=5,crv_entry=2,
+        crv_now_eligible=False,crv_entry_eligible=True)
+    assert ds['state']=='wait_entry' and not ds['buy_now']
+
+
+def test_assessed_but_missing_numeric_value_is_not_neutral():
+    ds=build_decision_state_v3021az(valid_trade_setup=True,signal_packages_complete=True,
+        timing_score=85,conf_score=71,trigger_status='Aktiv',crv_now=None,
+        crv_now_eligible=True,crv_entry_eligible=False)
+    assert ds['state']=='observe' and ds['crv_evaluated']

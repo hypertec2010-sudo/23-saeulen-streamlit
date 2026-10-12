@@ -492,9 +492,10 @@ def build_decision_state_v3021az(
     """Single authoritative decision state for Screener and Sofortanalyse.
 
     States intentionally answer two different questions only once:
-    - Is the setup worth active planning?  timing/conf >= 60 and CRV now OR entry >= 1.50
+    - Is the setup worth active planning?  timing/conf >= 60; assessed CRV now OR entry >= 1.50
     - Is it executable now?               timing >= 70, conf >= 65, active buy action,
-                                          CRV now >= 1.50 and acceptable location.
+                                          assessed CRV now >= 1.50 and acceptable location.
+    Unassessable CRV is neutral and explicitly disclosed; it is never called passed.
 
     Fibonacci/wave/pattern/candle details remain inside timing/confluence but do
     not create additional release gates here.
@@ -534,7 +535,13 @@ def build_decision_state_v3021az(
     )
     crv_now_ok=bool(crv_n is not None and crv_n >= 1.50)
     crv_entry_ok=bool(crv_e is not None and crv_e >= 1.50)
-    setup_crv_ok=bool(crv_now_ok or crv_entry_ok)
+    # CRV is conditional evidence, not mandatory evidence. A proxy or missing
+    # target cannot fail a numeric test which does not apply to that setup.
+    crv_evaluated=bool(crv_now_eligible or crv_entry_eligible)
+    crv_neutral=not crv_evaluated
+    crv_context=("CRV nicht bewertet: " + str(crv_evidence_reason)
+                 + "; Szenarien sind kein Freigabekriterium") if crv_neutral else ""
+    setup_crv_ok=bool(crv_neutral or crv_now_ok or crv_entry_ok)
     location_too_far=bool(distance is not None and distance > 5.0)
     trend_overextended=bool(stretch is not None and stretch > 12.0)
     wait_for_entry=bool(
@@ -564,11 +571,9 @@ def build_decision_state_v3021az(
             missing.append(f"Konfluenz {conf:.1f} < 60 (Setup planen)")
         elif conf < 65:
             missing.append(f"Konfluenz {conf:.1f} < 65 (Kaufstufe)")
-    if not crv_now_eligible and not crv_entry_eligible:
-        missing.append("Technisches CRV nicht bewertbar: " + str(crv_evidence_reason))
-    elif not setup_crv_ok:
+    if crv_evaluated and not setup_crv_ok:
         missing.append("Belastbares technisches CRV jetzt und CRV Entry unter 1,50 oder nicht verfügbar")
-    elif not crv_now_ok:
+    elif crv_evaluated and not crv_now_ok:
         missing.append(f"CRV jetzt {crv_n:.2f} < 1,50; CRV Entry {crv_e:.2f} erlaubt nur Entry-Planung" if crv_n is not None else f"CRV jetzt nicht verfügbar; CRV Entry {crv_e:.2f} erlaubt nur Entry-Planung")
     if not trigger_active:
         missing.append(f"Kerntrigger {str(trigger_status or 'nicht verfügbar').strip()} (nicht Aktiv)")
@@ -581,6 +586,8 @@ def build_decision_state_v3021az(
     if hard:
         missing.insert(0, "Hard Gate: " + "; ".join(gate_pkg.get("hard_items") or ["aktives Einstiegsgate"]))
     release_check = " · ".join(missing) if missing else "Keine offene Freigabebedingung"
+    if crv_context:
+        release_check += " · Hinweis: " + crv_context
 
     if invalidated or hard:
         state="blocked"
@@ -600,7 +607,7 @@ def build_decision_state_v3021az(
         reason="Setup ist noch nicht planungsreif."
         if missing:
             reason += " Offen: " + ", ".join(missing[:4]) + "."
-        action="Beobachten; erst bei planungsreifem Setup, Timing/Konfluenz und belastbarem CRV aktiv werden."
+        action="Beobachten; valides Setup, Timing/Konfluenz, Kerntrigger und Entry-Lage prüfen. Technisches CRV nur bei belegter Grundlage bewerten."
         prio=4
     elif wait_for_entry:
         state="wait_entry"
@@ -623,15 +630,16 @@ def build_decision_state_v3021az(
             reason += f" Kerntrigger {str(trigger_status or 'nicht verfügbar').strip()} bleibt offen."
         action="Setup planen, aber nicht hinterherlaufen: bessere Entry-Zone/Pullback bzw. neues enges Setup abwarten."
         prio=2
-    elif buy_signal_ok and trigger_active and crv_now_ok:
+    elif buy_signal_ok and trigger_active and (crv_now_ok or crv_neutral):
         state="buy"
         icon="🟢"
         status="Kauftrigger aktiv"
         queue="🎯 Jetzt prüfen"
         reason=(
-            f"Ausführbares Setup: Timing {timing:.0f}/100, Konfluenz {conf:.0f}/100, "
-            f"aktiver Trigger und CRV jetzt {crv_n:.2f}."
+            f"Technischer Kauftrigger aktiv: Timing {timing:.0f}/100, Konfluenz {conf:.0f}/100."
         )
+        if crv_now_ok:
+            reason += f" Technisches CRV jetzt {crv_n:.2f}."
         action="Entry jetzt aktiv prüfen: Positionsgröße, Stop/Invalidierung und Ausführung festlegen."
         prio=0
     else:
@@ -653,7 +661,12 @@ def build_decision_state_v3021az(
         action="Setup aktiv planen: Entry-Zone, Triggerregel und Stop vorbereiten; Kauf erst bei aktiver Kaufstufe."
         prio=2
 
+    if crv_context:
+        reason += " " + crv_context + "."
+
     return {
+        "crv_evaluated": crv_evaluated,
+        "crv_context": crv_context,
         "state": state,
         "icon": icon,
         "status": status,

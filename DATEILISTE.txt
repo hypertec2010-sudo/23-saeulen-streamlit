@@ -1,7 +1,7 @@
-Basis v30.21bf; Dateien einzeln ersetzen:
+Basis v30.21bg; Dateien einzeln ersetzen:
 legacy_app.py
+modules/live_monitor.py
 VERSION.txt
 CHANGELOG.md
 tests/test_crv_evidence.py
-tests/test_setup_alert_crv_evidence.py
-INSTALLATION_v30.21bg.txt
+INSTALLATION_v30.21bh.txt

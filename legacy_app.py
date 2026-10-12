@@ -30795,7 +30795,7 @@ if result is not None:
         )
         # v30.21bc: show the exact same release matrix used by the Screener.
         st.caption("Freigabe-Check: " + str(_decision_state_pkg_v3021az.get("release_check") or "Keine offene Freigabebedingung"))
-        st.caption("Nur ein technischer Rohstatus 'Aktiv' bestätigt den Kerntrigger. Die Kaufstufe prüft zusätzlich Timing, Konfluenz, CRV und Entry-Lage.")
+        st.caption("Nur ein technischer Rohstatus 'Aktiv' bestätigt den Kerntrigger. Die Kaufstufe prüft zusätzlich Timing, Konfluenz und Entry-Lage; CRV nur bei belegter technischer Grundlage.")
         with st.expander("Trigger-Konfluenz im Detail", expanded=False):
             st.caption("Prüft Kerntrigger, Timing, Tageskerze, Ultra/SR, Fibonacci, Struktur, MA10, FOMO, Volumen und Marktregime. Die spätere Handlungsempfehlung wird nicht erneut als positive Eingabe gezählt.")
             _rows = []

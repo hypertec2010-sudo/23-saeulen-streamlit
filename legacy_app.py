@@ -29848,6 +29848,10 @@ if result is not None:
         # The placeholder retains its location inside the technical details.
         _technical_fazit_placeholder_v3021bi = st.empty()
 
+        # Informative event-setups use the full daily analysis basis, not the visible chart range.
+        from modules.event_setup_context import build_event_setup_context, render_event_setup_context
+        render_event_setup_context(st, build_event_setup_context(result.get("df")), ccy=ccy)
+
         st.markdown("**Operative Technik-Level**")
         _tech_stop_text_v3021as = f"{_tech_stop_v3021as:.2f} {ccy} · {stop_source}" if _tech_stop_v3021as is not None else str(stop_source or "n/a")
         _tech_target_text_v3021as = f"{_tech_target_v3021as:.2f} {ccy} · {structural_target_source}" if _tech_target_v3021as is not None else str(structural_target_source or "n/a")

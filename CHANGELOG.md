@@ -1,3 +1,10 @@
+## v30.21bj – Kleine informative Rubrik für Event-Setups
+
+- High Volume Close und mögliche Flaggen nach Gap-/Volumenimpulsen in technischen Chartdetails.
+- Bestehende Tagesdaten; keine Provider-Abfrage und keine Veränderung von Score, Ampel, Stop, CRV oder Freigabe.
+- Vergleichsvolumen aus 20 vorherigen Handelstagen; heutige Tageskerze ausgeschlossen.
+- Nachrichten-/Earnings-Auslöser nicht automatisch behauptet; explizite Flaggenheuristik.
+
 ## v30.21bi – Technisches Fazit wieder aus zentraler Entscheidung
 
 - Technisches Fazit zeigt Status, Begründung und Handlung aus derselben Entscheidungsstufe wie Screener und Sofortanalyse.

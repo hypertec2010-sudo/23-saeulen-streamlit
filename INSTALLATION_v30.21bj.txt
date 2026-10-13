@@ -1,0 +1,34 @@
+CHSM v30.21bj – Event-Setups in technischen Chartdetails; Basis v30.21bi
+
+Installation:
+1. Vorhandenes v30.21bi sichern.
+2. Die in DATEILISTE.txt genannten Dateien einzeln am gleichen relativen
+   Projektpfad ersetzen bzw. ergänzen. Keinen ganzen modules-Ordner ersetzen.
+3. Bei GitHub dieselben Dateien aktualisieren; die ZIP selbst nicht als Programmdatei hochladen.
+4. App neu starten / deployen. Version v30.21bj prüfen.
+5. Sofortanalyse öffnen → Technische Chartdetails → Event-Setups.
+
+Anzeige:
+- Letzter technischer Gap-/Volumenimpuls in den letzten 20 abgeschlossenen Handelstagen.
+- Standardfilter: Eröffnung mindestens 10% über vorherigem Schlusskurs;
+  Volumen mindestens 2x dem Mittel der 20 vorherigen Handelstage.
+- Ereignisdatum, Gap, relatives Volumen, High-Volume-Close-Level und spätere
+  Rückeroberung per Tagesschluss.
+- Mögliche Flagge mit ausdrücklich vorgeschlagener Heuristik: 3–15 vorherige
+  Folgetage, Bandbreite höchstens 8%, Volumen höchstens 75% des Impulstages,
+  Gap nicht vollständig angelaufen. Letzter Tagesschluss wird gegen das Band
+  VOR der aktuellen Ausbruchskerze geprüft.
+- Impulstagestief / Konsolidierungstief sind Strukturreferenzen, keine automatisch
+  verwendeten Stops. EMA10 informativ, kein automatischer Exit.
+- Nachrichten oder Earnings als Auslöser werden nicht aus dem Kursbild erfunden.
+
+Grenzen:
+Die Rubrik verwendet die vorhandenen vollständigen Tagesdaten, nicht den
+gewählten sichtbaren Chartausschnitt. Die heutige Tageskerze wird konservativ
+immer ausgeschlossen; daher keine Echtzeit- oder Intraday-Einstiegsmeldung.
+Kleinere Gaps als 10% fehlen im Standardfilter, obwohl sie interessant sein können.
+Flaggenparameter sind ein erster technischer Vorschlag, keine validierte Strategie.
+
+Nur informative Rubrik: keine neuen Provider-Anfragen und keine Änderung an
+Score, Ampel, Grade, CRV, Produktionsstop oder zentraler Freigabe.
+Kompletter Quellcode und Projektunterlagen folgen nach dem Praxistest.

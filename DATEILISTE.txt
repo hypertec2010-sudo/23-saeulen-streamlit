@@ -1,7 +1,11 @@
-Basis v30.21bi; Dateien einzeln ersetzen:
+Basis v30.21bi/bj; Dateien einzeln ersetzen:
 legacy_app.py
-modules/event_setup_context.py
-tests/test_event_setup_context.py
+modules/live_monitor.py
+modules/decision_diagnostics.py
+tests/test_decision_diagnostics.py
 VERSION.txt
 CHANGELOG.md
+INSTALLATION_v30.21bk.txt
+modules/event_setup_context.py
+tests/test_event_setup_context.py
 INSTALLATION_v30.21bj.txt

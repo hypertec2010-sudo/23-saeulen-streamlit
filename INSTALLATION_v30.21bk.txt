@@ -1,0 +1,40 @@
+CHSM v30.21bk – Diagnose von Invalidierung und Score
+Basis: v30.21bi ODER v30.21bj (dieser Patch enthält die informative bj-Rubrik mit).
+
+Installation:
+1. Vorhandenen Projektordner sichern.
+2. Dateien aus DATEILISTE.txt einzeln unter denselben relativen Pfaden ersetzen
+   bzw. ergänzen. Keinen ganzen modules-Ordner ersetzen.
+3. Bei GitHub dieselben Dateien aktualisieren; ZIP selbst nicht als Programmdatei hochladen.
+4. App neu starten/deployen; Version v30.21bk prüfen.
+5. Frischen Vollscan ausführen, damit auch die neuen Diagnosefelder erzeugt werden.
+
+Erwartung bei MU / MRVL:
+- Bei weiterhin gemeldeter Invalidierung bleibt die Ampel rot. Es gibt keine
+  automatische Umfärbung wegen eines Markt-/Branchenrückgangs.
+- Hauptscreener zeigt „Setup-Stärke“: gewichtete Komponenten VOR Freigabe-Abzügen,
+  ohne farbabhängige Unter-/Obergrenzen. Das ist keine Unternehmensbewertung und
+  kein zusätzlicher Kauftrigger; fehlende Daten können Standardwerte enthalten.
+- Bisheriger „Live-Score“ bleibt intern unverändert, einschließlich −45 bei
+  Invalidierung, weiteren Abzügen und Statusgrenzen. Er ist als Handlungs-Score
+  in Diagnose/Aktionsübersicht nachvollziehbar; historische Vergleiche und Engine
+  werden nicht auf einen neuen Zahlenmaßstab umgestellt.
+- Der Freigabe-Check / die Entscheidungs-Zusammenfassung nennt bei Invalidierung
+  das im bestehenden Alertpfad tatsächlich verwendete Modelllevel, Vergleichskurs,
+  Kursquelle und prozentualen Abstand.
+- Eine Wave-/Setup-Modellreferenz wird nicht als bestätigter Strukturstop bezeichnet.
+  Abweichung zwischen verwendetem Textlevel und numerischem Modellfeld wird gemeldet.
+  Keine stillschweigende Änderung der verwendeten Referenz oder Freigabeschwelle.
+- Nicht bewertetes CRV sowie neutrale Chart-/Trend-Standardwerte werden als
+  Rechenwerte getrennt erläutert und nicht als positive Treiber/negative Messung verkauft.
+
+Grenzen:
+Dieser Diagnose-Patch ändert keine Invalidierungsregel und entfernt keine Hard Gates.
+Konkrete Kurslevel der MU-/MRVL-Nutzerscans lagen nicht vor. Die Regression nutzt
+rekonstruierte Teilscore-Werte und synthetische Referenzkurse, keine Original-Marktdaten.
+Die nächste fachliche Prüfung kann anhand der nun sichtbaren Level erfolgen.
+
+Ein neuer Markt-/Branchenvergleich ist noch nicht implementiert. Die MRVL/MU-
+Intraday-Untersuchung bleibt auf ausdrücklichen Wunsch im Backlog.
+Die Event-/HVC-/Flaggen-Rubrik aus bj bleibt rein informativ.
+Kompletter Quellcode und Projektunterlagen folgen nach dem Praxistest.

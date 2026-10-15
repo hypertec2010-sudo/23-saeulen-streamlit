@@ -5219,6 +5219,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "wave_trigger": wave_impact_pkg.get("trigger"),
         "wave_trigger_distance_pct": wave_impact_pkg.get("trigger_distance_pct"),
         "wave_invalidation": wave_impact_pkg.get("invalidation"),
+        "wave_invalidation_price": wave_impact_pkg.get("invalidation_price"),
         "wave_target_zone": wave_impact_pkg.get("target_zone"),
         "wave_subscore_text": wave_impact_pkg.get("subscore_text"),
         "top_chance_rank": _radar_v183_top_chance_rank({"score": score, "bucket": bucket, "grade": grade, "crv": crv, "knockout": knockout}),
@@ -5497,6 +5498,9 @@ def build_setup_alerts_v210(result, style_name="Ausgewogen", decision=None):
     # weil es eine bestehende Idee aus dem Rennen nimmt.
     if wave_inval is not None and price is not None and wave_inval > 0 and price <= wave_inval:
         _v210_alert_add(rows, ticker=ticker, name=name, alert_type="Invalidierung gebrochen", priority="hoch", message=f"{ticker}: Kurs liegt unter der Wave-/Setup-Invalidierung ({fmt_num(wave_inval, 2)}).", action="Setup nicht mehr als aktiv werten; Risiko/Stop prüfen.", price=price, bucket=bucket, grade=grade, crv=crv, trigger=wave_trigger_txt, invalidation=wave_inval_txt, status_key=f"{ticker}|invalid|{round(wave_inval,2)}")
+        # Capture exact inputs used by this alert, avoiding a later quote re-fetch.
+        rows[-1]["Invalidierung-Level"] = wave_inval
+        rows[-1]["Invalidierung-Kursbasis"] = price
 
     # v21.1: Keine "Setup-Gate aktiv"-Alerts mehr. Gate-/Bremsgruende bleiben in Radar-Bremse/Gate sichtbar.
 
@@ -21897,7 +21901,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # v30.4a: Trader-Pfad direkt hinter Kurs/Titel sichtbar machen,
                                 # damit die taktischen Werte im breiten Live-Screener nicht
                                 # hinter Shadow-/Diagnosespalten verschwinden.
-                                "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Chop-Risk", "Trader-Modus", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
+                                "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Chop-Risk", "Trader-Modus", "Setup-Stärke", "Handlungs-Score", "Invalidierung-Detail", "Freigabe-Check", "Nicht bewertete Komponenten", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 # v30.21an: CRV-Entscheidung kompakt und direkt lesbar.
                                 # Die lange CRV-Basis bleibt in Diagnose/Details, damit die
@@ -21987,6 +21991,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     tone = "warning"
                                 elif "🔴" in ampel or any(x in status_l for x in ("meiden", "invalid", "blockiert")):
                                     takeaway = "Aktuell keine belastbare Einstiegsfreigabe."
+                                    _invalid_detail_v3021bk = _txt("Invalidierung-Detail")
+                                    if "invalid" in status_l or "Invalidierung gebrochen" in _txt("Freigabe-Check"):
+                                        if _invalid_detail_v3021bk not in {"", "-"}:
+                                            takeaway = "Invalidierung gemeldet: " + _invalid_detail_v3021bk + "."
                                     action = "Beobachten und erst nach erneuter technischer Freigabe handeln."
                                     tone = "warning"
                                 elif "🟢" in ampel and trigger_ready:
@@ -22125,6 +22133,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         "Name": _v243_clip_cell(raw.get("Name"), 30),
                                         "Kurs": _v230_safe_float(raw.get("Kurs"), default=None),
                                         "Live-Score": None if live_num is None else float(live_num),
+                                        "Setup-Stärke": _v243_clean_cell(raw.get("Setup-Stärke")),
                                         "Decision-Confidence": conf,
                                         "Status": _v243_clip_cell(raw.get("Status"), 34),
                                         "Trade-State": _v243_clip_cell(raw.get("Trade-State"), 30),
@@ -22182,7 +22191,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         f"⛔ Blockiert ({n_block})",
                                     ])
                                     _queue_cols_v309 = [
-                                        "Ticker", "Name", "Ampel", "Live-Score", "Decision-Confidence",
+                                        "Ticker", "Name", "Ampel", "Setup-Stärke", "Live-Score", "Decision-Confidence",
                                         "Status", "Trade-State", "CRV", "CRV Entry", "Entry-Abstand", "Harvest",
                                         "Änderung", "Fokus-Grund", "Nächste Handlung",
                                     ]
@@ -22198,7 +22207,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 st.info("Aktuell keine Werte in dieser Kategorie.")
                                                 continue
                                             show = part[[c for c in _queue_cols_v309 if c in part.columns]].head(20)
-                                            st.dataframe(show, hide_index=True, use_container_width=True, height=min(520, 42 * len(show) + 55))
+                                            st.dataframe(show.rename(columns={"Live-Score": "Handlungs-Score"}), hide_index=True, use_container_width=True, height=min(520, 42 * len(show) + 55))
                                             with st.expander("Evidenz / Aktualität / Grenzen", expanded=False):
                                                 detail_cols = [
                                                     "Ticker", "Decision-Confidence", "Evidenz", "Aktualität", "Grenzen"
@@ -22321,7 +22330,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _ampel_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ampel")))
                                         _ticker_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ticker")))
                                         _name_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Name"), 40))
-                                        _score_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Live-Score")))
+                                        _score_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Setup-Stärke") or _mobile_row_v2842.get("Live-Score")))
+                                        _handlungs_score_v3021bk = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Live-Score")))
                                         _ctx_adj_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Kontext-Anpassung")))
                                         _engine_score_v285a = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Engine-Score")))
                                         _guarded_engine_v285d = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Guarded Engine-Score")))
@@ -22386,7 +22396,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                   <div class="v2842-mobile-title">{_ampel_v2842} {_ticker_v2842}</div>
                                                   <div class="v2842-mobile-name">{_name_v2842}</div>
                                                 </div>
-                                                <div class="v2842-mobile-score">{_score_v2842}</div>
+                                                <div class="v2842-mobile-score">Setup-Stärke {_score_v2842}</div>
                                               </div>
                                               <div class="v304a-trader-strip {_trader_strip_class_v304a}">
                                                 <div><span class="v2842-mobile-label">⚡ Trader-Ziel</span><span class="v304a-trader-value">{_trader_target_v304}</span></div>
@@ -22402,7 +22412,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 <div><span class="v2842-mobile-label">Benchmark</span>{_bench_v286e}</div>
                                                 <div><span class="v2842-mobile-label">Volatilitätsregime</span>{_volreg_v2847}</div>
                                                 <div><span class="v2842-mobile-label">Marktregime</span>{_market_v2847}</div>
-                                                <div><span class="v2842-mobile-label">Engine (Test)</span>{_score_v2842} → {_engine_score_v285a} ({_ctx_adj_v285a})</div>
+                                                <div><span class="v2842-mobile-label">Engine (Test)</span>{_handlungs_score_v3021bk} → {_engine_score_v285a} ({_ctx_adj_v285a})</div>
                                                 <div><span class="v2842-mobile-label">Guarded Engine</span>{_guarded_engine_v285d} · {_engine_rec_v285d}</div>
                                                 <div><span class="v2842-mobile-label">Shadow</span>{_ampel_v2842} → {_shadow_ampel_v286} · {_shadow_delta_v286}</div>
                                                 <div><span class="v2842-mobile-label">Kontext-Confidence</span>{_ctx_conf_v285a2}</div>
@@ -22497,11 +22507,11 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 _detail_name_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Name"))
                                                 _detail_ticker_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Ticker"))
                                                 _detail_price_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Kurs"))
-                                                _detail_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Live-Score"))
+                                                _detail_score_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Setup-Stärke") or _mobile_detail_row_v2842.get("Live-Score"))
                                                 _detail_ampel_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Ampel"))
                                                 _detail_dq_v2846 = _v243_clean_cell(_mobile_detail_row_v2842.get("Datenqualität"))
                                                 st.markdown(f"### {_detail_name_v2846} · `{_detail_ticker_v2846}`")
-                                                st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
+                                                st.caption(f"Kurs {_detail_price_v2846} · {_detail_ampel_v2846} · Setup-Stärke {_detail_score_v2846} · Datenqualität {_detail_dq_v2846}")
                                                 st.caption(f"Relative Stärke: {_v243_clean_cell(_mobile_detail_row_v2842.get('Relative Stärke'))} · RS-Dynamik: {_v243_clean_cell(_mobile_detail_row_v2842.get('RS-Dynamik'))} · Benchmark: {_v243_clean_cell(_mobile_detail_row_v2842.get('Benchmark'))} · Volatilität: {_v243_clean_cell(_mobile_detail_row_v2842.get('Volatilitätsregime'))} · Markt: {_v243_clean_cell(_mobile_detail_row_v2842.get('Marktregime'))}")
                                                 st.info(
                                                     f"⚡ Trader-Ziel {_v243_clean_cell(_mobile_detail_row_v2842.get('Trader-Ziel'))} · "
@@ -22588,7 +22598,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     # fields out of the visible screener. Keep the operative data
                                     # untouched and expose the four user-facing CRV fields here.
                                     _compact_cols_v3021l = [
-                                        "Ampel", "Ticker", "Name", "Live-Score", "Priorität",
+                                        "Ampel", "Ticker", "Name", ("Setup-Stärke" if "Setup-Stärke" in _desktop_live_display_v304a.columns else "Live-Score"), "Priorität",
                                         "Decision-Confidence", "Kurs", "Volatilität",
                                         "CRV jetzt", "CRV Entry", "Freiraum", "CRV-Ziel",
                                         "Entry-Abstand", "Plan-Status", "Kerntrigger", "Status", "Harvest-Ampel",
@@ -22678,6 +22688,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         height=min(520, 42 * len(_desktop_rescan_editor_v3021e) + 55),
                                         disabled=[c for c in _desktop_rescan_editor_v3021e.columns if c != "🔄"],
                                         column_config={
+                                            "Setup-Stärke": st.column_config.TextColumn(
+                                                "Setup-Stärke", help="Gewichtete Komponenten vor Freigabe-Abzügen; kann Standardwerte enthalten. Die Ampel zeigt die separate Handelsfreigabe."),
                                             "🔄": st.column_config.CheckboxColumn(
                                                 "🔄",
                                                 help="Anhaken = diesen Wert beim nächsten selektiven Re-Scan frisch vom Provider abfragen.",
@@ -30562,6 +30574,7 @@ if result is not None:
         _invalidated_v3021az = any(str(a.get("Alert-Typ") or "") == "Invalidierung gebrochen" for a in (_alerts_v3021az or []))
     except Exception:
         _invalidated_v3021az = False
+        _alerts_v3021az = []
     # v30.21bc: one CRV source for state + displayed values. Live-Screener
     # already takes d["crv"] / d["crv_entry"] from the same Radar builder.
     structural_crv = _radar_v182_num(_radar_decision_v3021az.get("crv"), default=None)
@@ -30576,6 +30589,14 @@ if result is not None:
     _ma20_stretch_v3021az = None
     if _price_v3021az is not None and _ma20_v3021az not in {None, 0}:
         _ma20_stretch_v3021az = ((_price_v3021az / _ma20_v3021az) - 1.0) * 100.0
+    from modules.decision_diagnostics import build_invalidation_diagnostics
+    _invalid_alert_single_v3021bk = next((a for a in (_alerts_v3021az or [])
+        if a.get("Alert-Typ") == "Invalidierung gebrochen"), {})
+    _invalid_diag_single_v3021bk = build_invalidation_diagnostics(
+        result, _radar_decision_v3021az,
+        price=_invalid_alert_single_v3021bk.get("Invalidierung-Kursbasis", _price_v3021az),
+        used_level=_invalid_alert_single_v3021bk.get("Invalidierung-Level",
+            _v210_alert_level(_radar_decision_v3021az.get("wave_invalidation"))))
     _decision_state_pkg_v3021az = _live_module.build_decision_state_v3021az(
         valid_trade_setup=bool(valid_trade_setup if "valid_trade_setup" in locals() else result.get("valid_trade_setup", False)),
         signal_packages_complete=bool(_timing_score_v3021az is not None and _conf_score_v3021az is not None),
@@ -30592,6 +30613,7 @@ if result is not None:
         ma20_stretch_pct=_ma20_stretch_v3021az,
         gate_reasons=_radar_decision_v3021az.get("gate_reasons", ""),
         invalidated=_invalidated_v3021az,
+        invalidation_detail=_invalid_diag_single_v3021bk["detail"],
         warning_bucket=(str(_radar_decision_v3021az.get("bucket") or "") == "Warnsignale / meiden"),
     )
     result["decision_state_pkg_v3021az"] = _decision_state_pkg_v3021az

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from modules.structural_trade_plan import evaluate_pullback_continuity, update_pullback_plan, plan_stop_reference, finite as _bd_finite
 from modules.technical_crv import parse_price_zone as _bd_parse_price_zone
+from modules.decision_diagnostics import build_invalidation_diagnostics, explain_components
 import json, os, re, time
 from pathlib import Path
 import numpy as np
@@ -487,6 +488,7 @@ def build_decision_state_v3021az(
     action_label="", trigger_status="", entry_distance_pct=None, ma20_stretch_pct=None,
     gate_reasons="", entry_hard_gate=None, invalidated=False,
     warning_bucket=False, crv_now_eligible=False, crv_entry_eligible=False,
+    invalidation_detail="",
     crv_evidence_reason="Technische CRV-Grundlage nicht belegt",
 ):
     """Single authoritative decision state for Screener and Sofortanalyse.
@@ -582,7 +584,7 @@ def build_decision_state_v3021az(
     if trend_overextended:
         missing.append(f"MA20-Abstand {stretch:+.1f}% > +12,0%")
     if invalidated:
-        missing.insert(0, "Invalidierung gebrochen")
+        missing.insert(0, "Invalidierung gebrochen" + (": " + str(invalidation_detail) if invalidation_detail else ""))
     if hard:
         missing.insert(0, "Hard Gate: " + "; ".join(gate_pkg.get("hard_items") or ["aktives Einstiegsgate"]))
     release_check = " · ".join(missing) if missing else "Keine offene Freigabebedingung"
@@ -594,7 +596,7 @@ def build_decision_state_v3021az(
         icon="🔴"
         status="Blockiert"
         queue="⛔ Blockiert"
-        reason="Echter Hard-Gate-/Invalidierungsgrund aktiv."
+        reason=("Invalidierung gebrochen: " + str(invalidation_detail)) if invalidated and invalidation_detail else "Echter Hard-Gate-/Invalidierungsgrund aktiv."
         if gate_pkg.get("hard_items"):
             reason += " " + "; ".join(gate_pkg.get("hard_items")[:2])
         action="Kein neuer Einstieg: Hard Gate bzw. Invalidierung zuerst klären."
@@ -735,6 +737,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         if name.strip().upper() == ticker:
             name = str((r.get("info", {}) or {}).get("longName") or (r.get("info", {}) or {}).get("shortName") or ticker).strip()
     price = _v210_alert_price(r)
+    _invalid_diag_v3021bk = build_invalidation_diagnostics(
+        r, d, price=price, used_level=_v210_alert_num(d.get("wave_invalidation"), default=None))
     bucket = str(d.get("bucket") or "-").strip()
     grade = str(d.get("grade") or "-").strip().upper()
     crv = d.get("crv")
@@ -807,6 +811,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
 
     alerts = build_setup_alerts_v210(r, style_name=style_name, decision=d)
     alert_types = [str(a.get("Alert-Typ") or "") for a in alerts]
+    _invalid_alert_v3021bk = next((a for a in alerts if a.get("Alert-Typ") == "Invalidierung gebrochen"), {})
+    if "Invalidierung-Level" in _invalid_alert_v3021bk:
+        _invalid_diag_v3021bk = build_invalidation_diagnostics(
+            r, d, price=_invalid_alert_v3021bk.get("Invalidierung-Kursbasis"),
+            used_level=_invalid_alert_v3021bk["Invalidierung-Level"])
     alert_text = " · ".join(alert_types[:2]) if alert_types else "-"
 
     gate = str(d.get("gate_reasons") or "")
@@ -1698,6 +1707,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         crv_now_eligible=bool(d.get("crv_now_eligible")),
         crv_entry_eligible=bool(d.get("crv_entry_eligible")),
         crv_evidence_reason=d.get("crv_evidence_reason") or "Technische Grundlage fehlt",
+        invalidation_detail=_invalid_diag_v3021bk["detail"],
         action_label=operational_action_lm,
         trigger_status=r.get("trigger_status", ""),
         entry_distance_pct=entry_distance,
@@ -1975,6 +1985,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             + 0.02 * crv_component
             + 0.01 * grade_component
         )
+        _setup_strength_v3021bk = int(round(_v2210_clip(live_score_raw, 0.0, 100.0)))
         # Kurzfristige Trading-Risiken: kein frischer Trigger, schwaches Timing
         # oder Chart-Abwarten duerfen deutlich bremsen.
         if trigger_component < 58.0 and not trend_structure_ok:
@@ -1995,6 +2006,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             + 0.04 * crv_component
             + 0.02 * grade_component
         )
+
+    # Preserve weighted components before all risk penalties and status clamps.
+    # This is descriptive setup strength, not a new trading decision.
+    if not live_short_term:
+        _setup_strength_v3021bk = int(round(_v2210_clip(live_score_raw, 0.0, 100.0)))
 
     # Abzuege nur fuer chart-/entry-relevante Bremsen. Fundamentale Hinweise bleiben
     # in der Warnhinweis-Spalte sichtbar, zaehlen hier aber nicht als harter Score-Abzug.
@@ -2112,17 +2128,17 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         ("Trend", trend_component),
         ("CRV", crv_component),
     ]
-    _explain_sorted = sorted(_explain_components, key=lambda x: float(x[1]), reverse=True)
-    _score_drivers = "; ".join(f"{label} {int(round(float(value)))}/100" for label, value in _explain_sorted[:3])
-    _score_brakes_list = [(label, value) for label, value in sorted(_explain_components, key=lambda x: float(x[1])) if float(value) < 60.0]
-    _score_brakes = "; ".join(f"{label} {int(round(float(value)))}/100" for label, value in _score_brakes_list[:3]) or "Keine deutliche Komponenten-Bremse"
-    _missing_signal_labels = []
-    if not timing_signal_available:
-        _missing_signal_labels.append("Timing n/a (nicht geliefert)")
-    if not conf_signal_available:
-        _missing_signal_labels.append("Konfluenz n/a (nicht geliefert)")
-    if _missing_signal_labels:
-        _score_brakes = "; ".join(_missing_signal_labels) + "; " + _score_brakes
+    _component_diag_v3021bk = explain_components(
+        dict(_explain_components),
+        {"Timing": timing_signal_available, "Konfluenz": conf_signal_available,
+         "Chart": chart_score_lm is not None, "Trend": bool(trend_structure_ok),
+         "CRV": bool(d.get("crv_now_eligible")),
+         "Trigger": trigger_component != 42.0},
+        setup_strength=_setup_strength_v3021bk, action_score=live_score_int,
+        invalidated=("Invalidierung gebrochen" in alert_types), hard_gate=entry_hard_gate,
+    )
+    _score_drivers = _component_diag_v3021bk["drivers"]
+    _score_brakes = _component_diag_v3021bk["brakes"]
 
     # v30.21ag: Eine Distribution-Warnzone soll in der Entscheidungs-Zusammenfassung
     # sichtbar bleiben, auch wenn sie bewusst kein hartes Einstiegsgate mehr ist.
@@ -2133,7 +2149,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     if entry_hard_gate:
         _gate_prefix_v286c = active_entry_gates if active_entry_gates not in {"", "-"} else "Hartes Einstiegsgate aktiv"
         _score_brakes = "Harte Gates: " + _gate_prefix_v286c + "; " + _score_brakes
-    _score_explanation = f"Treiber: {_score_drivers}. Bremsen: {_score_brakes}."
+    _score_explanation = _component_diag_v3021bk["explanation"]
+    if _decision_state_v3021az.get("state") == "blocked":
+        _score_explanation = str(_decision_state_v3021az["reason"]) + " " + _score_explanation
 
     # v28.5a: Context-Adjusted Score im reinen Beobachtungsmodus.
     # Die bestehende Ampel und der Live-Score bleiben unveraendert.
@@ -2316,6 +2334,17 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Ampel": status_icon,
         "Status": status,
         "Live-Score": f"{live_score_int}/100",
+        "Setup-Stärke": f"{_setup_strength_v3021bk}/100",
+        "Handlungs-Score": f"{live_score_int}/100",
+        "Nicht bewertete Komponenten": _component_diag_v3021bk["neutral"],
+        "Invalidierung-Detail": _invalid_diag_v3021bk["detail"],
+        "Invalidierung-Level": _invalid_diag_v3021bk["level"],
+        "Invalidierung-Kursbasis": _invalid_diag_v3021bk["price"],
+        "Invalidierung-Kursquelle": _invalid_diag_v3021bk["price_source"],
+        "Invalidierung-Abstand %": _invalid_diag_v3021bk["distance_pct"],
+        "Invalidierung-Quelle": _invalid_diag_v3021bk["source"],
+        "Invalidierung-Qualität": _invalid_diag_v3021bk["quality"],
+        "Invalidierung-Quellenkonflikt": _invalid_diag_v3021bk["mismatch"],
         "Kontext-Anpassung": f"{_context_adjustment:+d}",
         "Engine-Score": f"{_engine_score_int}/100",
         "Guarded Engine-Score": f"{_guarded_engine_score}/100",

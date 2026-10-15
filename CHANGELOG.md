@@ -1,3 +1,11 @@
+## v30.21bk – Invalidierung nachvollziehen, Setup-Stärke getrennt anzeigen
+
+- Tatsächlich verwendetes Wave-/Setup-Level, Vergleichskurs, Quelle und Abstand in Screener und Sofortanalyse.
+- Unterscheidung Modellreferenz / bestätigter Strukturstop; numerischer Quellenkonflikt wird sichtbar, ohne das operative Level stillschweigend zu wechseln.
+- Hauptscreener zeigt Setup-Stärke vor Freigabe-Abzügen. Bisheriger Live-/Handlungsscore bleibt für Engine, Historie und Diagnose erhalten.
+- Nicht bewertete CRV-/Chart-/Trend-Rechenwerte werden nicht als positive Treiber oder gemessene Bremsen ausgegeben.
+- Keine Abschwächung von Invalidierung, Hard Gates oder Freigaberegeln. Branchenvergleich und Intraday-Untersuchung sind nicht Teil dieses Patches.
+
 ## v30.21bj – Kleine informative Rubrik für Event-Setups
 
 - High Volume Close und mögliche Flaggen nach Gap-/Volumenimpulsen in technischen Chartdetails.

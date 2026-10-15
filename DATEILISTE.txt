@@ -10,3 +10,6 @@ tests/test_event_setup_context.py
 INSTALLATION_v30.21bj.txt
 tests/test_wave_reference_evidence.py
 INSTALLATION_v30.21bl.txt
+modules/action_risk_context.py
+tests/test_action_risk_context.py
+INSTALLATION_v30.21bm.txt

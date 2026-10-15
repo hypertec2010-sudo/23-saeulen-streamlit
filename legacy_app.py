@@ -30941,55 +30941,6 @@ if result is not None:
             return "Bruch " + raw
         return raw
 
-    def _v17_13_2_invalid_zone_for_action(entry_zone_text="", current_px=None, structures=None, ccy=""):
-        """Return a coherent invalidation level for the action box.
-
-        The old path sometimes used an active S/R zone above the preferred entry zone
-        as "defensiver bei", while the buy condition pointed to a much lower entry
-        zone. That reads contradictory. For Pre-Entry we first anchor invalidation to
-        the same entry/support zone used for the setup. If no entry zone is available,
-        use the next downside support only; avoid upside/overhead active zones as an
-        invalidation level.
-        """
-        ez = str(entry_zone_text or "").strip()
-        if ez and ez not in {"-", "None", "nan", "n/a"}:
-            return f"Bruch unter die Entry-/Support-Zone {ez}"
-        try:
-            cp = float(current_px) if current_px is not None and not pd.isna(current_px) else np.nan
-        except Exception:
-            cp = np.nan
-        try:
-            structures = structures or {}
-            candidates = []
-            for z in (structures.get("supports", []) or []):
-                try:
-                    mid = float(z.get("mid", np.nan))
-                    low = float(z.get("low", np.nan))
-                    high = float(z.get("high", np.nan))
-                    if pd.isna(mid) or pd.isna(low) or pd.isna(high):
-                        continue
-                    # Invalidation should be a downside level; ignore zones clearly above price.
-                    if pd.notna(cp) and low > cp * 1.002:
-                        continue
-                    candidates.append((abs(cp - mid) if pd.notna(cp) else 0, z, "Support S1"))
-                except Exception:
-                    continue
-            if candidates:
-                candidates.sort(key=lambda x: x[0])
-                _, z, label = candidates[0]
-                ztxt = _fmt_zone_range_v1525_9(z, ccy)
-                if ztxt:
-                    try:
-                        mid = float(z.get("mid", np.nan))
-                        dist = abs((cp / mid) - 1.0) * 100.0 if pd.notna(cp) and pd.notna(mid) and mid else np.nan
-                        dist_txt = f", Abstand {dist:.1f}%" if pd.notna(dist) else ""
-                    except Exception:
-                        dist_txt = ""
-                    return f"Bruch der {label} bei {ztxt}{dist_txt}"
-        except Exception:
-            pass
-        return "Bruch der relevanten Support-/Trigger-Zone."
-
     def _v1721_buy_execution_text(entry_zone_text="", current_px=None, structures=None, ccy=""):
         ez = str(entry_zone_text or "").strip()
         if ez and ez not in {"-", "None", "nan"}:
@@ -31162,19 +31113,18 @@ if result is not None:
         ccy if "ccy" in locals() else "",
     )
 
-    # v17.13.2: In der Pre-Entry-Handlungsbox muss die Invalidierung zur
-    # genannten Kauf-/Entry-Zone passen. Keine aktive Zone oberhalb der Entry-Zone
-    # mehr als "defensiver bei" anzeigen.
-    try:
-        if not position_mode:
-            _invalid_txt = _v17_13_2_invalid_zone_for_action(
-                suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
-                price if "price" in locals() else None,
-                chart_structures if "chart_structures" in locals() else result.get("chart_structures_analysis"),
-                ccy if "ccy" in locals() else "",
-            )
-    except Exception:
-        pass
+    # v30.21bm: Entry warning is not a structural invalidation or stop.
+    if not position_mode:
+        from modules.action_risk_context import build_action_risk_context
+        _risk_context_v3021bm = build_action_risk_context(
+            result,
+            entry_zone=suggested_entry_zone if "suggested_entry_zone" in locals() else "-",
+            ccy=ccy if "ccy" in locals() else "",
+            invalidated=_invalidated_v3021az,
+            invalidation_diagnostics=_invalid_diag_single_v3021bk,
+        )
+        _invalid_label = _risk_context_v3021bm["label"]
+        _invalid_txt = _risk_context_v3021bm["text"]
 
     st.markdown(
         f"""
@@ -31198,7 +31148,7 @@ if result is not None:
                 <div class="action-bridge-item"><div class="action-bridge-label">Was sehe ich?</div><div class="action-bridge-value">{html.escape(shorten_text(short_thesis, 190))}</div></div>
                 <div class="action-bridge-item"><div class="action-bridge-label">Nächste Handlung</div><div class="action-bridge-value action-bridge-main">{html.escape(_now_do_value)}</div><div class="action-bridge-value">{html.escape(shorten_text(_why_txt, 140))}</div></div>
                 <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_trigger_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_trigger_txt, 190))}</div></div>
-                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_invalid_label)}</div><div class="action-bridge-value">{html.escape(shorten_text(_invalid_txt, 190))}</div></div>
+                <div class="action-bridge-item"><div class="action-bridge-label">{html.escape(_invalid_label)}</div><div class="action-bridge-value">{html.escape(_invalid_txt)}</div></div>
             </div>
         </div>
         """,
@@ -32535,7 +32485,7 @@ if result is not None:
         ccy=ccy if "ccy" in locals() else "",
     )
     exec_summary_text = _exec_concrete_why
-    exec_redflag = _exec_concrete_bear
+    exec_redflag = _invalid_txt if not position_mode else _exec_concrete_bear
     exec_risk_context = final_risk_reason
     exec_confirmation = _exec_concrete_bull
 
@@ -32568,10 +32518,10 @@ if result is not None:
                     </div>
                 </div>
                 <div class="exec-v2-panel">
-                    <div class="exec-v2-panel-title">Ungültig / defensiver bei</div>
+                    <div class="exec-v2-panel-title">{html.escape(_invalid_label) if not position_mode else "Ungültig / defensiver bei"}</div>
                     <div class="exec-v2-list">
                         <div class="exec-v2-list-item">
-                            <div class="exec-v2-list-value">{exec_redflag if str(exec_redflag).strip() not in {"", "-", "None"} else "Bruch der nächsten relevanten Support-Zone"}</div>
+                            <div class="exec-v2-list-value">{html.escape(str(exec_redflag)) if str(exec_redflag).strip() not in {"", "-", "None"} else "Struktur-Risiko nicht verfügbar"}</div>
                         </div>
                     </div>
                 </div>

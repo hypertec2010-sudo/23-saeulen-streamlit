@@ -1,0 +1,33 @@
+CHSM v30.21bm – Entry-Warnsignal und Struktur-Risiko trennen
+Basis: bi, bj, bk oder bl; kumulativer Patch mit allen Zwischenänderungen.
+
+Installation:
+1. Bestehenden Projektordner sichern.
+2. ZIP entpacken. Die Dateien aus DATEILISTE.txt unter denselben relativen Pfaden
+   einzeln im vorhandenen Projekt ersetzen/ergänzen. Keinen ganzen modules-Ordner
+   ersetzen. Persönliche Secrets und Konfiguration beibehalten.
+3. Bei GitHub die entpackten Dateien aktualisieren, nicht die ZIP hochladen.
+4. App neu starten/deployen; Version v30.21bm prüfen. UNH frisch analysieren.
+
+Erwartung bei UNH mit Entry 409.14 - 413.26 USD ohne bestätigten Strukturstop:
+- Überschrift: Entry-Warnsignal / Struktur-Risiko.
+- Unter 409.14 USD Einstieg neu prüfen; Bewegungen innerhalb der Entry-Zone
+  sind keine automatische Invalidierung.
+- Keine bestätigte technische Invalidierungsmarke aus dem Strukturstop verfügbar.
+- Ein Ersatzstop wird nicht als strukturelle Invalidierung angezeigt.
+
+Wenn der tatsächlich verwendete technische Stop bestätigt ist, wird dessen
+eigener Wert separat genannt. Eine bestätigte alternative Support-Referenz
+wird nicht automatisch als verwendeter Stop übernommen.
+Ist die bestehende Wave-/Setup-Invalidierung ausgelöst, bleibt diese Sperre
+im Risikotext ausdrücklich genannt; der Freigabe-Check bleibt maßgeblich.
+
+Gleicher Risikotext in Entscheidungs-Zusammenfassung und Executive Summary.
+Text wird vollständig angezeigt, statt auf 190 Zeichen abgeschnitten.
+Positionsmodus mit bestehenden Führungs-/Exit-Hinweisen bleibt erhalten.
+
+Keine Änderung von Stopberechnung, CRV, Score, Ampel, Kauftrigger oder Freigabe.
+Das Warnsignal ist eine Erklärung und kein neu programmierter Handelsfilter.
+Keine pauschale neue Tagesschlussregel für Stops oder Freigaben eingeführt.
+Markt-/Branchenvergleich folgt separat; MRVL/MU-Intraday bleibt im Backlog.
+Vollständiger Quellcode und Projektunterlagen nach dem Praxistest konsolidieren.

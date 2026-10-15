@@ -1,3 +1,11 @@
+## v30.21bm – Entry-Warnsignal und Struktur-Risiko trennen
+
+- Pauschales Überschreiben der Invalidierung mit der Entry-Zone in der Entscheidungs-Zusammenfassung entfernt.
+- Warnsignal unter der unteren Entry-Grenze getrennt von einem bestätigten verwendeten Strukturstop darstellen.
+- Ohne bestätigten Stop keine strukturelle Invalidierungsmarke behaupten; bestehende Wave-/Setup-Sperre separat nennen.
+- Vollständiger Risikotext auch in Executive Summary; Positionsmodus bleibt unverändert.
+- Keine Änderung von Stop, CRV, Ampel, Score oder Freigaberegeln.
+
 ## v30.21bl – Herkunft der Invalidierung und Tagesschluss-Vergleich
 
 - Wave-Referenz als erkanntes Swing-Tief oder MA20-Ersatz mit Datum ausweisen.

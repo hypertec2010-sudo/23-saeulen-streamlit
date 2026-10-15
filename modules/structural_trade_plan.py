@@ -24,24 +24,26 @@ def confirmed_support_stop(df: Any, *, current_price: Any, entry_reference: Any,
                            atr: Any = None, lookback: int = 180) -> dict[str, Any]:
     """Look for *two separate, completed* pivot lows at a clustered support.
 
-    The stop is below the entire cluster with a volatility buffer and a practical
-    distance floor. The result is a reference, not an automatic purchase signal.
+    The stop is below the entire cluster with a volatility buffer, without a
+    practice-distance floor. The result is a reference, not a purchase signal.
     """
     missing = {"quality": "unverified", "stop": None, "support": None,
                "source": "Kein mehrfach bestätigtes Swing-Tief", "touches": 0}
+    def rejected(code, reason, **details):
+        return {**missing, "reason_code": code, "reason": reason, **details}
     price = finite(current_price)
     entry = finite(entry_reference)
     if price is None or entry is None or min(price, entry) <= 0 or df is None:
-        return dict(missing)
+        return rejected("inputs_missing", "Kurs, Entry-Referenz oder Kurshistorie fehlt/ist ungültig.")
     try:
         import pandas as pd
         if not hasattr(df, "columns") or "Low" not in df.columns:
-            return dict(missing)
+            return rejected("lows_missing", "Tiefkurse (Low) fehlen in der Kurshistorie.")
         lows = pd.to_numeric(df["Low"], errors="coerce").tail(lookback).reset_index(drop=True)
     except Exception:
-        return dict(missing)
+        return rejected("lows_unreadable", "Tiefkurse lassen sich nicht auswerten.")
     if len(lows) < 22:
-        return dict(missing)
+        return rejected("history_short", f"Nur {len(lows)} Kerzen; mindestens 22 für diese Swing-Prüfung erforderlich.")
     pivots = []
     for i in range(3, len(lows) - 3):
         v = finite(lows.iloc[i])
@@ -51,10 +53,13 @@ def confirmed_support_stop(df: Any, *, current_price: Any, entry_reference: Any,
         if window.notna().all() and v == min(window) and v < min(lows.iloc[i-3:i]) and v < min(lows.iloc[i+1:i+4]):
             pivots.append((i, v))
     if not pivots:
-        return dict(missing)
+        return rejected("no_pivots", "Kein striktes Swing-Tief mit je drei Bestätigungskerzen davor und danach erkannt.")
     # Never use a support already above the planned entry as a stop.
     max_support = min(price, entry) * 0.994
     pivot_candidates = [(i, val) for i, val in pivots if val < max_support]
+    if not pivot_candidates:
+        return rejected("no_downside_pivot", "Erkannte Swing-Tiefs liegen nicht mindestens 0,6 % unter Kurs und Entry-Referenz.",
+                        pivot_count=len(pivots))
     clusters = []
     for i, val in reversed(pivot_candidates):
         cluster = [(j, other) for j, other in pivot_candidates
@@ -65,7 +70,9 @@ def confirmed_support_stop(df: Any, *, current_price: Any, entry_reference: Any,
             latest = max(j for j, _ in group)
             clusters.append((support, latest, len(group)))
     if not clusters:
-        return dict(missing)
+        return rejected("no_retest", "Kein zweites Swing-Tief innerhalb 1,5 % Preisabstand und mit mindestens sechs Kerzen Abstand erkannt.",
+                        candidate_support=max(val for _, val in pivot_candidates),
+                        candidate_quality="single_pivot", pivot_count=len(pivots))
     # Closest qualified support beneath the entry; recency breaks ties.
     support, last_idx, touches = sorted(clusters, key=lambda x: (x[0], x[1]), reverse=True)[0]
     atr_val = finite(atr)
@@ -73,13 +80,18 @@ def confirmed_support_stop(df: Any, *, current_price: Any, entry_reference: Any,
     stop = support - buffer
     # v30.21bf: chart support plus buffer only; no practice-distance substitute.
     if stop <= 0 or stop >= min(price, entry) or (entry - stop) / entry > 0.22:
-        return dict(missing)
+        reason = ("Stop nach Puffer ist nicht positiv." if stop <= 0 else
+                  "Stop nach Puffer liegt nicht unter Kurs und Entry-Referenz." if stop >= min(price, entry) else
+                  f"Stop nach Puffer liegt {(entry-stop)/entry*100:.1f} % unter Entry; Grenze ist 22 %.")
+        return rejected("stop_distance", reason, candidate_support=support, candidate_stop=stop,
+                        candidate_quality="retested_but_rejected", candidate_touches=int(touches))
     return {
         "quality": "confirmed_swing",
         "stop": round(stop, 6), "support": round(support, 6),
         "support_buffer": round(support - stop, 6),
         "source": f"Bestätigtes Swing-Support-Tief ({touches} Pivot-Berührungen, Puffer)",
         "touches": int(touches), "last_pivot_bar": int(last_idx),
+        "reason_code": "confirmed", "reason": "Mehrfach bestätigtes Swing-Tief; Stop mit Puffer erfüllt die Abstandsregeln.",
     }
 
 
@@ -100,12 +112,24 @@ def stop_evidence(stop: Any, stop_source: str, structural: dict[str, Any]) -> di
         quality, explanation = "proxy", "Volatilitäts-/Mindestabstands-Stop; nicht chartbestätigt"
     else:
         quality, explanation = "estimated", "Setup-/MA-/Level-basierte technische Näherung"
+    structure_reason = structural.get("reason") or "Bestätigte Swing-Support-Referenz fehlt; frisch analysieren."
+    if quality == "confirmed":
+        reason = "Verwendeter Stop passt zur bestätigten Swing-Support-Referenz."
+    elif quality == "missing":
+        reason = "Verwendeter Stop fehlt. " + structure_reason
+    elif structural.get("quality") != "confirmed_swing":
+        reason = explanation + ". " + structure_reason
+    elif quality == "proxy":
+        reason = "Bestätigte Support-Referenz vorhanden; verwendet wird ein Ersatzstop (" + source + ")."
+    else:
+        reason = "Bestätigte Support-Referenz vorhanden; verwendeter Stop passt nicht innerhalb der 0,2-%-Toleranz zu deren Strukturstop."
     return {
         "quality": quality, "label": explanation, "used_stop": actual,
         "used_stop_source": source,
         "confirmed_support": finite(structural.get("support")),
         "confirmed_structure_stop": finite(structural.get("stop")),
         "reference_source": str(structural.get("source") or "-"),
+        "reason": reason,
     }
 
 

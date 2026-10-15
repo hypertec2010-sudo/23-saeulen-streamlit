@@ -4241,6 +4241,7 @@ def build_radar_entry_rr_package_v182(result):
         "structure_stop": _crv_pkg_v3021aj.get("technical_crv_structure_stop"),
         "structure_source": _crv_pkg_v3021aj.get("technical_crv_structure_source", "-"),
         "structure_crv": _crv_pkg_v3021aj.get("technical_crv_structure_now"),
+        "stop_diagnostics": _crv_pkg_v3021aj.get("technical_crv_stop_diagnostics", {}),
         "entry_plan_quality": _crv_pkg_v3021aj.get("technical_crv_entry_quality", "unverified"),
         "target_role": _crv_pkg_v3021aj.get("technical_crv_target_role", "-"),
         "alternative_target": _crv_pkg_v3021aj.get("technical_crv_alternative_target"),
@@ -5246,6 +5247,7 @@ def build_professional_radar_decision_v18(result, style_name="Ausgewogen"):
         "crv_structure_stop": entry_rr_pkg.get("structure_stop"),
         "crv_structure_source": entry_rr_pkg.get("structure_source"),
         "crv_structure_now": entry_rr_pkg.get("structure_crv"),
+        "crv_stop_diagnostics": entry_rr_pkg.get("stop_diagnostics", {}),
         "crv_entry_plan_quality": entry_rr_pkg.get("entry_plan_quality"),
         "crv_target_role": entry_rr_pkg.get("target_role"),
         "crv_alternative_target": entry_rr_pkg.get("alternative_target"),
@@ -21905,7 +21907,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # v30.4a: Trader-Pfad direkt hinter Kurs/Titel sichtbar machen,
                                 # damit die taktischen Werte im breiten Live-Screener nicht
                                 # hinter Shadow-/Diagnosespalten verschwinden.
-                                "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Chop-Risk", "Trader-Modus", "Setup-Stärke", "Handlungs-Score", "Invalidierung-Detail", "Freigabe-Check", "Nicht bewertete Komponenten", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
+                                "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Chop-Risk", "Trader-Modus", "Setup-Stärke", "Handlungs-Score", "Invalidierung-Detail", "Freigabe-Check", "Nicht bewertete Komponenten", "Stop-Diagnose", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 # v30.21an: CRV-Entscheidung kompakt und direkt lesbar.
                                 # Die lange CRV-Basis bleibt in Diagnose/Details, damit die
@@ -33348,16 +33350,16 @@ if result is not None:
                 # v30.21bd: stop provenance/quality comes from the exact same
                 # radar CRV package as the Screener, not from a UI-only estimate.
                 _bd_diag_v3021bd = _radar_decision_v3021az if isinstance(_radar_decision_v3021az, dict) else {}
-                _bd_source_v3021bd = str(_bd_diag_v3021bd.get("crv_stop_quality_text") or "Stop-Qualität nicht verfügbar")
+                from modules.stop_diagnostics import render_stop_diagnostics
+                render_stop_diagnostics(st, _bd_diag_v3021bd.get("crv_stop_diagnostics"), ccy=ccy)
                 _bd_stop_v3021bd = _radar_v182_num(_bd_diag_v3021bd.get("crv_structure_stop"), default=None)
                 _bd_struct_rr_v3021bd = _radar_v182_num(_bd_diag_v3021bd.get("crv_structure_now"), default=None)
-                st.write(f"• Stop jetzt: {stop_source} · Qualität: {_bd_source_v3021bd}")
                 if _bd_stop_v3021bd is not None:
-                    _bd_alt_text_v3021bd = f" · strukturelles Vergleichs-CRV {_bd_struct_rr_v3021bd:.2f}" if _bd_struct_rr_v3021bd is not None else ""
-                    st.write(f"• Bestätigte Swing-Support-Referenz: Stop {_bd_stop_v3021bd:.2f} {ccy} ({_bd_diag_v3021bd.get('crv_structure_source') or '-'}). Nur Vergleich, keine automatische Stop-Änderung{_bd_alt_text_v3021bd}.")
+                    if _bd_struct_rr_v3021bd is not None:
+                        st.caption(f"Strukturelles Vergleichs-CRV: {_bd_struct_rr_v3021bd:.2f}; keine automatische Stop-Änderung.")
                 _bd_entry_quality_v3021bd = str(_bd_diag_v3021bd.get("crv_entry_plan_quality") or "unverified")
                 if _bd_entry_quality_v3021bd == "indicative_proxy":
-                    st.caption("CRV Entry ist hier ein indikatives Preis-Szenario: ein bestätigter Struktur-Stop für den späteren Rücksetzer fehlt noch. Keine automatische Kauf-Freigabe.")
+                    st.caption("CRV Entry ist hier ein indikatives Preis-Szenario: Der verwendete Entry-Stop ist nicht als Strukturstop bestätigt. Keine automatische Kauf-Freigabe.")
                 st.write(f"• Zielrolle: {_bd_diag_v3021bd.get('crv_target_role') or '-'}")
                 _bd_alt_target_v3021bd = _radar_v182_num(_bd_diag_v3021bd.get("crv_alternative_target"), default=None)
                 if _bd_alt_target_v3021bd is not None:

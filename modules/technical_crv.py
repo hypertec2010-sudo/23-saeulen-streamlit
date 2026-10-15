@@ -402,6 +402,9 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
         "technical_crv_structure_stop": structural.get("stop") or math.nan,
         "technical_crv_structure_source": structural.get("source") or "-",
         "technical_crv_structure_touches": int(structural.get("touches") or 0),
+        "technical_crv_stop_diagnostics": {
+            "structure": structural, "used": evidence,
+        },
         "technical_crv_structure_now": math.nan,
         "technical_crv_entry_quality": "unverified",
         "technical_crv_target_role": "-",
@@ -515,7 +518,11 @@ def technical_crv_eligibility(package: dict[str, Any]) -> dict[str, Any]:
     entry_stop_ok = package.get("technical_crv_entry_quality") == "structural_stop_confirmed"
     reasons = []
     if not now_stop_ok:
-        reasons.append("Bestätigter technischer Strukturstop fehlt")
+        diagnostic = package.get("technical_crv_stop_diagnostics") or {}
+        detail = (diagnostic.get("used") or {}).get("reason")
+        has_structure = (diagnostic.get("structure") or {}).get("quality") == "confirmed_swing"
+        prefix = "Verwendeter Stop nicht als Strukturstop bestätigt" if has_structure else "Bestätigter technischer Strukturstop fehlt"
+        reasons.append(prefix + (": " + str(detail) if detail else ""))
     if not target_ok:
         reasons.append("Belastbares technisches Ziel fehlt")
     return {

@@ -13,3 +13,9 @@ INSTALLATION_v30.21bl.txt
 modules/action_risk_context.py
 tests/test_action_risk_context.py
 INSTALLATION_v30.21bm.txt
+modules/structural_trade_plan.py
+modules/technical_crv.py
+modules/stop_diagnostics.py
+tests/test_stop_diagnostics.py
+tests/test_crv_evidence.py
+INSTALLATION_v30.21bn.txt

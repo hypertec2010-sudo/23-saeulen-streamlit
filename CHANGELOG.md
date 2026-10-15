@@ -1,3 +1,12 @@
+## v30.21bn – Unterstützung, Strukturstop und verwendeten Stop getrennt erklären
+
+- Konkrete Diagnose je Ablehnungsstufe der bestehenden Swing-Stop-Prüfung.
+- Einzelnes erkanntes Swing-Tief und verworfener Stop-Kandidat bleiben sichtbar, ohne als bestätigt zu gelten.
+- Tabelle in „Herleitung von Stop und Zielen“ trennt Unterstützung, Strukturstop-Referenz und tatsächlich verwendeten Stop.
+- Freigabe-Check unterscheidet fehlende Struktur von vorhandener Struktur bei Ersatzstop/abweichendem verwendetem Stop.
+- Stop-Diagnose in den Screener-Detaildaten; keine neue Provider-Abfrage.
+- Berechnungen, Auswahlregeln, Toleranzen, Stop-Nutzung und Freigaben unverändert.
+
 ## v30.21bm – Entry-Warnsignal und Struktur-Risiko trennen
 
 - Pauschales Überschreiben der Invalidierung mit der Entry-Zone in der Entscheidungs-Zusammenfassung entfernt.

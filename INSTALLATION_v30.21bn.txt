@@ -1,0 +1,44 @@
+CHSM v30.21bn – Stop-Diagnose: Unterstützung, Referenz und Verwendung
+Kumulativer Patch für bi, bj, bk, bl oder bm; Zwischenänderungen enthalten.
+
+Installation:
+1. Bestehenden Projektordner sichern.
+2. ZIP entpacken und Dateien aus DATEILISTE.txt einzeln unter denselben relativen
+   Pfaden im bestehenden Projekt ersetzen/ergänzen. Nicht den gesamten modules-
+   Ordner ersetzen. Persönliche Secrets/Provider-Konfiguration beibehalten.
+3. Bei GitHub die entpackten Dateien aktualisieren; ZIP nicht als Programmdatei hochladen.
+4. App neu starten/deployen; Version v30.21bn kontrollieren.
+5. Frischen Vollscan bzw. frische Sofortanalyse durchführen.
+
+Wo ist die neue Anzeige?
+In der Sofortanalyse unter „Herleitung von Stop und Zielen“:
+- Erkannte Unterstützung: bestätigte Swing-Unterstützung oder unbestätigtes
+  einzelnes Swing-Tief bzw. mehrfach getestetes, für den Stop verworfenes Niveau.
+- Abgeleiteter Strukturstop: bestätigte Referenz mit Puffer oder ausdrücklich
+  verworfener Kandidat, soweit berechenbar. Keine automatische Stop-Nutzung.
+- Tatsächlich verwendeter Stop: Zahl, Quelle und Qualität der operativen Rechnung.
+Darunter der konkrete Grund für Strukturprüfung und Verwendung im CRV.
+Die Anzeige betrifft die Swing-Stop-Erkennung, nicht sämtliche Chart-Supportzonen.
+
+Der Freigabe-Check nennt den Grund ebenfalls:
+- Fehlende Historie/Tiefkurse, zu wenige Kerzen oder kein bestätigtes Swing-Tief.
+- Zweiter Test innerhalb 1,5 % und mit sechs Kerzen Abstand fehlt.
+- Swing-Tiefs liegen nicht mindestens 0,6 % unter Kurs UND Entry-Referenz.
+- Stop nach Puffer scheitert an Positivität, Kurslage oder 22-%-Abstandsgrenze.
+- Bestätigte Referenz existiert, aber Ersatzstop wird verwendet oder der
+  verwendete Stop passt nicht innerhalb der bestehenden 0,2-%-Toleranz dazu.
+Screener-Detaildaten enthalten zusätzlich „Stop-Diagnose“; kompakte Haupttabelle
+behält ihre bisherige Größe. Bestehende gespeicherte Scans haben keine neue Diagnose.
+
+Unverändert:
+Stop-/Zielauswahl, Toleranzen, Puffer, CRV-Zahlen, Bewertbarkeit, Scores und Ampeln.
+Kein automatischer Austausch eines Ersatzstops gegen eine technische Referenz.
+Keine neue Provider-Abfrage; Diagnose aus vorhandener Berechnung.
+Widerstandserkennung nicht verändert. Mehr Informationen sind keine zusätzliche
+Bestätigung eines Trades. Tests verwenden rekonstruierte Daten, keine Original-
+Kurshistorie des UNH-Nutzerscans.
+
+Bitte UNH frisch analysieren und die Tabelle einschließlich der beiden Gründe
+unter „Herleitung von Stop und Zielen“ zurückmelden.
+Vollständiger Quellcode/Projektunterlagen nach dem Praxistest konsolidieren.
+Markt-/Branchenvergleich separat; MRVL/MU-Intraday bleibt im Backlog.

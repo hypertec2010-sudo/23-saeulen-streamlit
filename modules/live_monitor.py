@@ -2446,6 +2446,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "CRV-Stopquelle": crv_stop_source,
         "Stop-Qualität": str(d.get("crv_stop_quality_text") or "nicht bewertet"),
         "Stop-Qualitätsklasse": str(d.get("crv_stop_quality") or "missing"),
+        "Stop-Diagnose": str(((d.get("crv_stop_diagnostics") or {}).get("used") or {}).get("reason") or "Diagnose fehlt; frisch analysieren."),
         "CRV Entry-Qualität": str(d.get("crv_entry_plan_quality") or "unverified"),
         "CRV-Zielrolle": str(d.get("crv_target_role") or "-"),
         "CRV-Alternativziel": d.get("crv_alternative_target"),

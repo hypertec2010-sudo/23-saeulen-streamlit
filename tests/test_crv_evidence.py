@@ -47,7 +47,7 @@ def test_proxy_never_qualifies_even_with_coincident_structural_reference(source,
     ds = decide(pkg)
     assert ds['state'] == 'buy'
     assert not ds['crv_evaluated']
-    assert 'Strukturstop fehlt' in ds['release_check']
+    assert 'Verwendeter Stop nicht als Strukturstop bestätigt' in ds['release_check']
     assert 'unter 1,50' not in ds['release_check']
     assert not radar_rr(r)['crv_now_eligible']
     assert not build_crv_basis_comparison(r,pkg)[0]['operative']
@@ -120,12 +120,14 @@ def test_actual_monitor_row_keeps_proxy_as_scenario(monkeypatch, radar_rr, setup
     r['stop_source']='Praxis-Mindestabstand'
     rr=radar_rr(r)
     d=dict(rr,bucket='Nahe am Trigger',grade='B',score=80,crv_target_source=rr['target_source'],
-           crv_target_value=rr['tp1'],crv_stop_quality=rr['stop_quality'],crv_entry_plan_quality=rr['entry_plan_quality'])
+           crv_target_value=rr['tp1'],crv_stop_quality=rr['stop_quality'],crv_entry_plan_quality=rr['entry_plan_quality'],
+           crv_stop_diagnostics=rr['stop_diagnostics'])
     row=lm._v212_monitor_status_from_decision(r,d)
     assert row['Ampel']==icon
+    assert 'verwendet wird ein Ersatzstop' in row['Stop-Diagnose']
     assert 'CRV nicht bewertet' in row['Freigabe-Check']
     assert '(Szenario)' in row['CRV jetzt']
-    assert 'Strukturstop fehlt' in row['Freigabe-Check']
+    assert 'Verwendeter Stop nicht als Strukturstop bestätigt' in row['Freigabe-Check']
     assert 'unter 1,50' not in row['Freigabe-Check']
 
 

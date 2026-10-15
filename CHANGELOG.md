@@ -1,3 +1,12 @@
+## v30.21bl – Herkunft der Invalidierung und Tagesschluss-Vergleich
+
+- Wave-Referenz als erkanntes Swing-Tief oder MA20-Ersatz mit Datum ausweisen.
+- Letzten abgeschlossenen Tagesschluss getrennt vom operativen Vergleichskurs zeigen; heutige Tageskerze konservativ ausgeschlossen.
+- Kein bestätigter Schlussbruch bei fehlenden Daten, Quellenkonflikt oder einer erst später entstandenen Referenz.
+- Herkunft alter Datensätze ausdrücklich unbelegt; keine nachträgliche Quellenvermutung.
+- Operatives Level, Kurs, rote Sperre und alle Freigabeschwellen bleiben unverändert.
+- Branchenvergleich folgt separat; MRVL/MU-Intraday-Untersuchung bleibt im Backlog.
+
 ## v30.21bk – Invalidierung nachvollziehen, Setup-Stärke getrennt anzeigen
 
 - Tatsächlich verwendetes Wave-/Setup-Level, Vergleichskurs, Quelle und Abstand in Screener und Sofortanalyse.

@@ -1,0 +1,37 @@
+CHSM v30.21bl – Herkunft der Invalidierung und Tagesschluss-Vergleich
+Basis: v30.21bi, bj oder bk. Enthält die Änderungen aus bj und bk kumulativ.
+
+Installation:
+1. Vorhandenen Projektordner sichern.
+2. ZIP entpacken. Dateien aus DATEILISTE.txt einzeln unter denselben relativen
+   Pfaden im vorhandenen Projekt ersetzen bzw. ergänzen. Nicht den ganzen
+   modules-Ordner ersetzen. Persönliche Konfiguration beibehalten.
+3. Bei GitHub die entpackten Dateien aktualisieren, nicht die ZIP hochladen.
+4. App neu starten/deployen; Version v30.21bl kontrollieren.
+5. Frischen Vollscan durchführen. Alte gespeicherte Zeilen enthalten die neue
+   Herkunft und den Tagesschluss-Vergleich noch nicht.
+
+Neu im Freigabe-Check und in der Entscheidungs-Zusammenfassung:
+- Erkanntes Swing-Tief mit Datum des Tiefs oder MA20-Ersatz mit Berechnungsdatum.
+- Letzter abgeschlossener Tagesschluss mit Kurs und Datum, verglichen mit genau
+  dem im bestehenden Alert verwendeten Level. Die heutige Tageskerze wird
+  konservativ auch nach Börsenschluss ausgeschlossen.
+- Vergleichskurs unter Level bei vorherigem Schluss darüber wird getrennt
+  beschrieben. Das ist kein belegter Schlussbruch des aktuellen Tages.
+- Fehlende, widersprüchliche oder ungeeignete Daten werden nicht ergänzt.
+  Ein Schluss vor Entstehung der Referenz bestätigt keinen Bruch dieser Referenz.
+- Die Datumsausgabe macht auch ältere Datenstände sichtbar. Ein Schlussvergleich
+  beschreibt die Lage zum angezeigten Datum, keine bestätigte Ereignisursache.
+
+Wichtig:
+Das ist eine Diagnose-Erweiterung. Operative Kurs-/Levelbasis, Invalidierungsregel,
+rote Sperre, Scores und Freigabeschwellen bleiben unverändert. Die neue Herkunft
+bestätigt für sich allein keinen technischen Strukturstop für das CRV.
+MU und MRVL können daher weiterhin rot sein. Ihre übermittelten Level sind
+bekannt; die Original-Kurshistorien und Zeitstempel dieser Scans liegen nicht vor.
+
+Nächster separater Entwicklungsschritt: Markt-/Branchenvergleich mit identischen
+Zeitfenstern. Noch keine automatische Erklärung eines Rückgangs durch Inflation,
+Zinsen oder Sektor. Die MRVL/MU-Intraday-Untersuchung bleibt im Backlog.
+Die Event-Rubrik aus bj und die Setup-Stärke aus bk bleiben erhalten.
+Vollständiges Quellcodepaket und Projektunterlagen nach dem Praxistest erneuern.

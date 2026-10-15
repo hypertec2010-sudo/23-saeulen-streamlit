@@ -10205,7 +10205,10 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
         else:
             trigger = base.get("confirmation_text", "Klassischen Trigger nutzen")
         invalid_price = last_low["price"] if last_low else (ma20 if pd.notna(ma20) else np.nan)
-        invalidation = f"Bruch unter letztes Swing Low/Higher Low {_wave_v190_fmt_num(invalid_price)}" if pd.notna(invalid_price) else "n/a"
+        invalidation = (f"Bruch unter letztes Swing Low/Higher Low {_wave_v190_fmt_num(invalid_price)}" if last_low else
+                        f"Bruch unter {_wave_v190_fmt_num(invalid_price)} (MA20-Ersatzreferenz)") if pd.notna(invalid_price) else "n/a"
+        from modules.decision_diagnostics import build_wave_reference_evidence
+        invalid_evidence = build_wave_reference_evidence(df, swing=last_low, ma20=ma20)
         target_zone = f"1.272-1.618 Extension ca. {_wave_v190_fmt_num(extension_127)} - {_wave_v190_fmt_num(extension_162)}" if impulse_high > impulse_low else "n/a"
         quality_label = "hoch" if quality >= 75 else "gut" if quality >= 62 else "mittel" if quality >= 48 else "schwach"
 
@@ -10234,6 +10237,7 @@ def build_wave_structure_context_v190(chart_df=None, result=None):
             "wave_trigger_price": round(float(trigger_price), 2) if trigger_price is not None and pd.notna(trigger_price) else "n/a",
             "wave_invalidation": invalidation,
             "wave_invalidation_price": round(float(invalid_price), 2) if pd.notna(invalid_price) else "n/a",
+            "wave_invalidation_evidence": invalid_evidence,
             "wave_target_zone": target_zone,
             "wave_extension_127": round(float(extension_127), 2),
             "wave_extension_162": round(float(extension_162), 2),

@@ -3406,6 +3406,17 @@ def analyze_stock(
             stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
             stop_source = "Praxis-Mindestabstand"
 
+        # v30.21bo: choose once BEFORE every stop-dependent calculation.
+        from modules.stop_selection import select_productive_stop
+        _stop_selection_v3021bo = select_productive_stop(
+            df, price=price, entry_zone=suggested_entry_zone, atr=atr,
+            setup_type=setup_type, fallback_stop=stop_used, fallback_source=stop_source,
+            position_mode=bool(buy_in_override > 0),
+        )
+        stop_used = _stop_selection_v3021bo["stop"]
+        stop_source = _stop_selection_v3021bo["source"]
+        stop_dist = (price - stop_used) / price * 100 if price > stop_used else 0
+
         risk_per_share = price - stop_used
 
         tp1 = round(price + 1 * risk_per_share, 2)
@@ -4628,6 +4639,7 @@ def analyze_stock(
         "hmap": hmap,
         "atr_stop": atr_stop,
         "stop_used": stop_used,
+        "stop_selection": locals().get("_stop_selection_v3021bo", {}),
         "stop_dist": stop_dist,
         "tp1": tp1,
         "tp2": tp2,

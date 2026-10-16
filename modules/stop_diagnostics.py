@@ -19,7 +19,9 @@ def build_stop_diagnostic_rows(diagnostics, *, ccy=''):
                   'Keine nutzbare Swing-Unterstützung nach den Strukturstop-Regeln belegt')
     rows=[{'Baustein':'Erkannte Unterstützung','Kurs':price(support),'Einordnung':support_note},
           {'Baustein':'Abgeleiteter Strukturstop','Kurs':price(stop),
-           'Einordnung':'Bestätigte Referenz mit Puffer; nicht automatisch verwendet' if confirmed else
+           'Einordnung':('Bestätigte Referenz mit Puffer; verwendeter Stop ist bestätigt'
+                          if used.get('quality')=='confirmed' else
+                          'Bestätigte Referenz mit Puffer; nicht automatisch verwendet') if confirmed else
                         'Verworfener Kandidat; keine Stop-Freigabe' if stop is not None else
                         'Nicht bestätigt'},
           {'Baustein':'Tatsächlich verwendeter Stop','Kurs':price(used.get('used_stop')),
@@ -35,3 +37,6 @@ def render_stop_diagnostics(st, diagnostics, *, ccy=''):
     used=package.get('used') or {}
     st.caption('Strukturprüfung: '+str(structure.get('reason') or 'Diagnose fehlt; frisch analysieren.'))
     st.caption('Verwendung im CRV: '+str(used.get('reason') or 'Diagnose fehlt; frisch analysieren.'))
+    selection=package.get('selection') or {}
+    if selection.get('reason'):
+        st.caption('Stop-Auswahl: '+str(selection['reason']))

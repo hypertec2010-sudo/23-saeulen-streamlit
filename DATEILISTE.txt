@@ -19,3 +19,8 @@ modules/stop_diagnostics.py
 tests/test_stop_diagnostics.py
 tests/test_crv_evidence.py
 INSTALLATION_v30.21bn.txt
+analysis_core.py
+modules/legacy_analysis_core.py
+modules/stop_selection.py
+tests/test_productive_stop_selection.py
+INSTALLATION_v30.21bo.txt

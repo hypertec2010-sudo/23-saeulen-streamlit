@@ -1,3 +1,13 @@
+## v30.21bo – Bestätigten Strukturstop bevorzugt verwenden
+
+- Stop-Auswahl in Standard- und reduzierter Analyse vor Risiko-, Ziel- und Positionsgrößenberechnung.
+- Für erkannte Long-Setups bestätigten Swing-Stop mit Puffer bevorzugen, sofern unter Kurs und gesamter Entry-Zone; sonst bisherigen Stop erhalten.
+- Technischer Stop wird nicht erneut durch den pauschalen Praxis-Mindestabstand ersetzt.
+- Ausgewählter Stop und echte Quelle werden gemeinsam an Chart, CRV, Radar und Positionsgröße weitergegeben; vorheriger Stop bleibt Diagnose.
+- Bestehende Positionsführung bleibt im Positionsmodus unverändert.
+- Struktur-Risikotext unterscheidet vorhandene Support-Referenz von bestätigtem verwendetem Stop.
+- CRV kann jetzt bewertbar werden und die Entscheidung verbessern ODER bremsen. Schwelle 1,50, Kerntrigger, Timing, Konfluenz und Sperren bleiben bestehen.
+
 ## v30.21bn – Unterstützung, Strukturstop und verwendeten Stop getrennt erklären
 
 - Konkrete Diagnose je Ablehnungsstufe der bestehenden Swing-Stop-Prüfung.

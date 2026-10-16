@@ -4,7 +4,7 @@ from modules.decision_diagnostics import finite
 
 
 def build_action_risk_context(result, *, entry_zone='', ccy='', invalidated=False,
-                              invalidation_diagnostics=None):
+                              invalidation_diagnostics=None, stop_diagnostics=None):
     r=result or {}
     low,high=parse_price_zone(entry_zone)
     suffix=(' '+str(ccy).strip()) if str(ccy or '').strip() else ''
@@ -18,6 +18,8 @@ def build_action_risk_context(result, *, entry_zone='', ccy='', invalidated=Fals
     if r.get('technical_crv_stop_quality')=='confirmed' and stop is not None and stop>0:
         parts.append(f'Struktur-Risiko: Bestätigter technischer Stop bei {stop:.2f}{suffix}; '
                      'separat von der Entry-Zone beachten.')
+    elif ((stop_diagnostics or r.get('technical_crv_stop_diagnostics') or {}).get('structure') or {}).get('quality')=='confirmed_swing':
+        parts.append('Struktur: Bestätigte Support-Referenz vorhanden; verwendeter Stop nicht als Strukturstop bestätigt. Keine automatische Übernahme der Referenz.')
     else:
         parts.append('Struktur: Keine bestätigte technische Invalidierungsmarke aus dem Strukturstop verfügbar.')
     diag=invalidation_diagnostics or {}

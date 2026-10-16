@@ -54,7 +54,7 @@ def test_actual_package_radar_and_rows_distinguish_reference_from_used_stop(rada
     rows=build_stop_diagnostic_rows(diag,ccy='USD')
     assert rows[0]['Kurs']=='95.00 USD' and rows[1]['Kurs']=='94.43 USD'
     assert rows[2]['Kurs']==f"{r['stop_used']:.2f} USD"
-    assert 'nicht automatisch' in rows[1]['Einordnung']
+    assert ('verwendeter Stop ist bestätigt' if quality=='confirmed' else 'nicht automatisch') in rows[1]['Einordnung']
     assert technical_crv_eligibility(pkg)['now']==(quality=='confirmed')
     rr=radar_rr(r)
     assert rr['stop_diagnostics']==diag

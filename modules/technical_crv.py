@@ -404,6 +404,7 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
         "technical_crv_structure_touches": int(structural.get("touches") or 0),
         "technical_crv_stop_diagnostics": {
             "structure": structural, "used": evidence,
+            "selection": r.get("stop_selection") or {},
         },
         "technical_crv_structure_now": math.nan,
         "technical_crv_entry_quality": "unverified",

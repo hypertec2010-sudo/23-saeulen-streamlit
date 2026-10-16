@@ -1,0 +1,51 @@
+CHSM v30.21bo – Bestätigten Strukturstop bevorzugen
+Kumulativer Patch für bi, bj, bk, bl, bm oder bn; Zwischenänderungen enthalten.
+
+Installation:
+1. Bestehenden Projektordner sichern.
+2. ZIP entpacken und Dateien aus DATEILISTE.txt einzeln unter denselben relativen
+   Pfaden ersetzen/ergänzen. Nicht den gesamten modules-Ordner ersetzen.
+   Persönliche Secrets und Provider-Konfiguration beibehalten.
+3. Bei GitHub die entpackten Dateien aktualisieren, nicht die ZIP hochladen.
+4. App neu starten/deployen; Version v30.21bo kontrollieren. Bei weiterhin alten
+   Analysewerten den Streamlit-Daten-Cache leeren und erneut analysieren.
+5. Frischen Vollscan bzw. UNH-Sofortanalyse ausführen; gespeicherte alte Zeilen
+   sind kein Nachweis der neuen Berechnung.
+
+Geänderte Berechnungslogik für neue Einstiegsanalysen:
+- Bei erkanntem Long-Setup bestätigten Swing-Stop mit Puffer bevorzugen.
+- Kurs und vollständige Entry-Zone müssen gültig sein. Stop muss vor und nach
+  Rundung auf Cent unter Kurs UND unter dem unteren Entry-Zonenrand liegen.
+- Bestehende Anforderungen an Swing-Bestätigung und Puffer bleiben erhalten.
+- Ein ausgewählter Strukturstop wird nicht durch den pauschalen 3,5-%-
+  Praxis-Mindestabstand ersetzt.
+- Fehlt eine passende Struktur, bleibt die bisherige Stop-Auswahl erhalten,
+  inklusive ihrer bisherigen Quelle/Qualität und Ersatz-/Praxisregeln.
+- Positionsmodus (gesetzter Buy-in) behält die bisherige Stop-Führung.
+
+Eine Quelle für alle abhängigen Rechnungen:
+Stop wird bereits in Standardanalyse UND reduziertem Analysepfad gewählt, bevor
+Risiko pro Aktie, R-Szenarioziele, CRV, Stopscores und Positionsgröße entstehen.
+Chart und Radar verwenden diesen gewählten Stop; die CRV-Bestätigung prüft
+weiterhin dessen tatsächliche technische Evidenz.
+Vorheriger Stop/Quelle bleiben im Diagnosepaket; „Stop-Auswahl“ erläutert die
+Wahl unter „Herleitung von Stop und Zielen“.
+
+Bei UNH mit exakt der rekonstruierten bisherigen Datenbasis:
+Unterstützung 395.37 USD, Strukturstop 392.38 USD, vorheriger ATR-Stop 390.60 USD.
+392.38 USD sollte als verwendeter Stop erscheinen, wenn Setup/Entry weiterhin
+geeignet sind. Die originalen Kurshistorien wurden nicht übermittelt; ein neuer
+Scan kann deshalb andere Zahlen liefern.
+
+Folge für Freigaben:
+CRV kann nun bewertbar sein und wird dann ungerundet gegen 1,50 geprüft.
+Das kann Freigaben verbessern oder bremsen. Technisches Ziel muss ebenfalls
+belegt sein. Valides Setup, Timing, Konfluenz, Kerntrigger, Entry-Lage und
+Invalidierung/Hard Gates bleiben eigenständige Bedingungen.
+Kein Stop wird beim Broker gesetzt oder geändert; es geht um CHSM-Berechnungen.
+
+Bitte nach Installation UNH frisch analysieren und zurückmelden:
+- Herleitung von Stop und Zielen samt Gründen/Stop-Auswahl.
+- CRV jetzt und Entry sowie Freigabe-Check.
+Vollständiger Quellcode und Projektunterlagen nach dem Praxistest konsolidieren.
+Markt-/Branchenvergleich separat; MRVL/MU-Intraday bleibt im Backlog.

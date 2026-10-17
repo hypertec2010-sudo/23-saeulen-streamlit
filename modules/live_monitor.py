@@ -9,6 +9,7 @@ from __future__ import annotations
 from modules.structural_trade_plan import evaluate_pullback_continuity, update_pullback_plan, plan_stop_reference, finite as _bd_finite
 from modules.technical_crv import parse_price_zone as _bd_parse_price_zone
 from modules.decision_diagnostics import build_invalidation_diagnostics, explain_components
+from modules.environment_context import stock_daily
 import json, os, re, time
 from pathlib import Path
 import numpy as np
@@ -2331,6 +2332,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _plan_stop_v3021be = plan_stop_reference(r, d)
     return {
         **_package_fields_v3020,
+        "__env_sector": str(r.get("sector") or r.get("sector_label") or (r.get("info") or {}).get("sector") or ""),
+        "__env_industry": str(r.get("industry") or r.get("industry_label") or (r.get("info") or {}).get("industry") or ""),
+        "__env_stock": stock_daily(r),
         "Ampel": status_icon,
         "Status": status,
         "Live-Score": f"{live_score_int}/100",

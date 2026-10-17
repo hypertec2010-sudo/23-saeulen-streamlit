@@ -288,6 +288,24 @@ def _score_from_pct(value: float, scale: float) -> float:
     return _clamp(50.0 + float(value) * float(scale))
 
 
+def _context_daily_metrics(series, benchmark):
+    """Extra display-only metrics; preserve existing Leadership/Rotation math."""
+    missing={'Perf 1T %':None,'RS 1T %':None,'Kursdatum':None,
+             'Benchmarkdatum':None,'Vorheriger Handelstag':None,'Kontext-Datenbasis':'missing'}
+    if not isinstance(series.index,pd.DatetimeIndex) or not isinstance(benchmark.index,pd.DatetimeIndex):return missing
+    s=pd.to_numeric(series,errors='coerce').dropna();b=pd.to_numeric(benchmark,errors='coerce').dropna()
+    if s.empty or b.empty:return missing
+    out={**missing,'Kursdatum':s.index[-1].date().isoformat(),'Benchmarkdatum':b.index[-1].date().isoformat()}
+    if len(s)<6 or len(b)<6:return out
+    if (pd.Index(s.index.date).duplicated().any() or pd.Index(b.index.date).duplicated().any()
+            or not s.index.is_monotonic_increasing or not b.index.is_monotonic_increasing
+            or list(s.index[-6:].date)!=list(b.index[-6:].date)
+            or not all(math.isfinite(float(v)) and float(v)>0 for v in list(s.iloc[-6:])+list(b.iloc[-6:]))):return out
+    ret=(s.iloc[-1]/s.iloc[-2]-1)*100;bench=(b.iloc[-1]/b.iloc[-2]-1)*100
+    return {**out,'Perf 1T %':float(ret),'RS 1T %':float(ret-bench),
+            'Vorheriger Handelstag':s.index[-2].date().isoformat(),'Kontext-Datenbasis':'aligned'}
+
+
 def _metrics_for(spec: RotationSpec, prices: pd.DataFrame, offset: int = 0) -> dict[str, Any] | None:
     if spec.symbol not in prices.columns or spec.benchmark not in prices.columns:
         return None
@@ -340,6 +358,7 @@ def _metrics_for(spec: RotationSpec, prices: pd.DataFrame, offset: int = 0) -> d
     rotation = 50.0 + 45.0 * math.tanh(accel / 0.35)
 
     return {
+        **(_context_daily_metrics(s,b) if offset==0 else {}),
         "Ticker": spec.symbol,
         "Name": spec.name,
         "Ebene": spec.level,

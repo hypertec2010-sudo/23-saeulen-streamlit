@@ -15374,7 +15374,7 @@ def _v303d_rotation_frame_fingerprint(df):
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         return "empty"
     cols = [c for c in [
-        "Ticker", "Phase", "Rotation", "Leadership", "Rang", "Rang Δ1T", "Rang Δ5T", "Rang Δ20T",
+        "Ticker", "Phase", "Rotation", "Leadership", "Perf 1T %", "Perf 5T %", "RS 5T %", "Kursdatum", "Benchmarkdatum", "Vorheriger Handelstag", "Kontext-Datenbasis", "Rang", "Rang Δ1T", "Rang Δ5T", "Rang Δ20T",
         "Leadership Δ1T", "Leadership Δ5T", "Leadership Δ20T", "Rotation Δ1T", "Rotation Δ5T", "Rotation Δ20T",
     ] if c in df.columns]
     if not cols:
@@ -15790,7 +15790,7 @@ def _v302_position_peer_plan(pos, ticker):
         group_text = str(pos.get("portfolio_group") or "").strip().lower()
         keyword_map = [
             (("kommunikation", "communication", "media", "streaming"), "XLC"),
-            (("halbleiter", "semiconductor", "chip"), "SOXX"),
+            (("halbleiter", "semiconductor", "chip"), "SMH"),
             (("cyber",), "CIBR"),
             (("software", "cloud"), "IGV"),
             (("defense", "verteidigung", "aerospace"), "ITA"),
@@ -21907,15 +21907,19 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # v30.4a: Trader-Pfad direkt hinter Kurs/Titel sichtbar machen,
                                 # damit die taktischen Werte im breiten Live-Screener nicht
                                 # hinter Shadow-/Diagnosespalten verschwinden.
-                                "Ampel", "Ticker", "Name", "Kurs", "Trader-Ziel", "Harvest-Score", "Chop-Risk", "Trader-Modus", "Setup-Stärke", "Handlungs-Score", "Invalidierung-Detail", "Freigabe-Check", "Nicht bewertete Komponenten", "Stop-Diagnose", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
+                                "Ampel", "Umfeldrisiko", "Ticker", "Name", "Umfeld-Grund", "Umfeld-Datenstand", "Umfeld-Snapshot", "Kurs", "Trader-Ziel", "Harvest-Score", "Chop-Risk", "Trader-Modus", "Setup-Stärke", "Handlungs-Score", "Invalidierung-Detail", "Freigabe-Check", "Nicht bewertete Komponenten", "Stop-Diagnose", "Live-Score", "Shadow-Ampel", "Shadow-Abweichung", "Guarded Engine-Score", "Engine-Empfehlung", "Volatilität", "Datenqualität", "Relative Stärke", "RS-Dynamik", "Benchmark", "Primärbenchmark-Status", "Benchmark-Fallback-Grund", "Volatilitätsregime", "Marktregime", "Kontext-Anpassung", "Engine-Score", "Kontext-Verlässlichkeit", "Score-Treiber", "Score-Bremsen", "Aktive Einstiegsgates", "Gate-Details",
                                 "Trade-State", "Status", "Signal-Stabilität", "Bestätigungen",
                                 # v30.21an: CRV-Entscheidung kompakt und direkt lesbar.
                                 # Die lange CRV-Basis bleibt in Diagnose/Details, damit die
                                 # Haupttabelle trotz mehr Transparenz nicht breiter wird als nötig.
                                 "CRV jetzt", "CRV Entry", "Freiraum", "CRV-Ziel", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
-                            optional_cols = [c for c in main_cols if c in live_df.columns]
-                            live_display_df = live_df[optional_cols].copy() if optional_cols else live_df.copy()
+                            from modules.environment_context import attach_environment_columns
+                            _env_radar_v3021bp, _, _env_meta_v3021bp, _, _ = _v303d_load_rotation_snapshot()
+                            _env_display_v3021bp = attach_environment_columns(live_df, _env_radar_v3021bp, _env_meta_v3021bp)
+                            st.caption(f"Umfeldampel: Radar-Tagesdaten bis {_env_meta_v3021bp.get('data_through') or 'unbekannt'} · separat von der technischen Ampel.")
+                            optional_cols = [c for c in main_cols if c in _env_display_v3021bp.columns]
+                            live_display_df = _env_display_v3021bp[optional_cols].copy() if optional_cols else _env_display_v3021bp.copy()
 
                             def _v243_clean_cell(x):
                                 try:
@@ -22334,6 +22338,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     )
                                     for _, _mobile_row_v2842 in live_display_df.iterrows():
                                         _ampel_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ampel")))
+                                        _env_badge_v3021bp = html.escape(str(_mobile_row_v2842.get("Umfeldrisiko") or "⚪ Unbekannt"))
+                                        _env_reason_v3021bp = html.escape(str(_mobile_row_v2842.get("Umfeld-Grund") or "Radardaten fehlen."))
                                         _ticker_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Ticker")))
                                         _name_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Name"), 40))
                                         _score_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Setup-Stärke") or _mobile_row_v2842.get("Live-Score")))
@@ -22432,6 +22438,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 <div><span class="v2842-mobile-label">Änderung</span>{_change_v2842}</div>
                                               </div>
                                               <div class="v2842-mobile-status">{_status_v2842}</div>
+                                              <div class="v2843-mobile-reason"><b>Umfeld: {_env_badge_v3021bp}</b><br>{_env_reason_v3021bp}</div>
                                               {_why_score_card_v286e3}
                                               {_why_block_v2843}
                                             </div>
@@ -22604,7 +22611,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     # fields out of the visible screener. Keep the operative data
                                     # untouched and expose the four user-facing CRV fields here.
                                     _compact_cols_v3021l = [
-                                        "Ampel", "Ticker", "Name", ("Setup-Stärke" if "Setup-Stärke" in _desktop_live_display_v304a.columns else "Live-Score"), "Priorität",
+                                        "Ampel", "Umfeldrisiko", "Ticker", "Name", "Umfeld-Grund", ("Setup-Stärke" if "Setup-Stärke" in _desktop_live_display_v304a.columns else "Live-Score"), "Priorität",
                                         "Decision-Confidence", "Kurs", "Volatilität",
                                         "CRV jetzt", "CRV Entry", "Freiraum", "CRV-Ziel",
                                         "Entry-Abstand", "Plan-Status", "Kerntrigger", "Status", "Harvest-Ampel",
@@ -23804,8 +23811,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 "Breadth bestätigt ausgewählte Sektoren über repräsentative Einzelwerte."
                             )
                             st.info(
-                                "Beobachtungsmodus: Der Rotation Radar verändert weder Live- noch Shadow-Ampel und gibt noch keinen automatischen Score-Bonus. "
-                                "Er sammelt zunächst einen unabhängigen Branchen-/Kapitalfluss-Kontext für die spätere Validierung."
+                                "Rotation bleibt unabhängig vom technischen Score. Screener und Sofortanalyse verwenden denselben verifizierten Snapshot für eine separate Umfeldampel. "
+                                "Nach Aktualisierung wird der neue Kontext beim nächsten Anzeigen übernommen; veraltete oder unvollständige Tagesdaten bleiben unbekannt."
                             )
 
                             _rot_saved_v301, _rot_saved_err_v301, _rot_meta_v301, _rot_saved_at_v301, _rot_load_note_v303d = _v303d_load_rotation_snapshot()
@@ -24427,14 +24434,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 _rot_cols_v301 = [
                                     "Phase", "Rang", "Rang Δ5T", "Name", "Ticker", "Ebene", "Region",
                                     "Leadership", "Leadership Δ5T", "Rotation", "Rotation Δ5T",
-                                    "Breadth", "Breadth-Status", "RS 5T %", "RS 21T %", "RS 63T %",
+                                    "Breadth", "Breadth-Status", "Perf 1T %", "Perf 5T %", "RS 5T %", "RS 21T %", "RS 63T %",
                                     "Perf 21T %", "Trend-Score", "Benchmark", "Trendshift",
                                 ]
                                 _rot_cols_v301 = [c for c in _rot_cols_v301 if c in _show_rot_v301.columns]
                                 _show_rot_v301 = _show_rot_v301[_rot_cols_v301].copy()
                                 for _num_col_v301 in [
                                     "Leadership", "Leadership Δ5T", "Rotation", "Rotation Δ5T", "Breadth",
-                                    "RS 5T %", "RS 21T %", "RS 63T %", "Perf 21T %", "Trend-Score"
+                                    "Perf 1T %", "Perf 5T %", "RS 5T %", "RS 21T %", "RS 63T %", "Perf 21T %", "Trend-Score"
                                 ]:
                                     if _num_col_v301 in _show_rot_v301.columns:
                                         _show_rot_v301[_num_col_v301] = pd.to_numeric(_show_rot_v301[_num_col_v301], errors="coerce").round(1)
@@ -31156,6 +31163,12 @@ if result is not None:
         """,
         unsafe_allow_html=True,
     )
+
+    # v30.21bp: same separate context as Screener, never a decision input.
+    from modules.environment_context import build_environment_context, render_environment_context
+    _env_radar_single_v3021bp, _, _env_meta_single_v3021bp, _, _ = _v303d_load_rotation_snapshot()
+    _environment_single_v3021bp = build_environment_context(result, _env_radar_single_v3021bp, _env_meta_single_v3021bp)
+    render_environment_context(st, _environment_single_v3021bp)
 
     # v30.8: Transparente Decision-Confidence direkt unter der zentralen Handlungsbox.
     # Sie nutzt nur bereits geladene Analyse-/Coverage-Daten und verändert keine Handlung.

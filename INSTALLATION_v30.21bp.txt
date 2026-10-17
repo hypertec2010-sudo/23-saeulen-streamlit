@@ -1,0 +1,74 @@
+CHSM v30.21bp – Separate Umfeldampel aus dem Rotation-Radar
+Arbeitsbasis: bo. Kumulativer Patch für bi, bj, bk, bl, bm, bn oder bo.
+
+Installation und erster Test:
+1. Bestehenden Projektordner sichern.
+2. ZIP entpacken. Dateien aus DATEILISTE.txt einzeln unter denselben relativen
+   Pfaden im bestehenden Projekt ersetzen/ergänzen. Nicht den gesamten modules-
+   Ordner ersetzen. Persönliche Secrets/Provider-Konfiguration beibehalten.
+3. Bei GitHub die entpackten Dateien aktualisieren, nicht die ZIP hochladen.
+4. App neu starten/deployen; Version v30.21bp kontrollieren.
+5. „Rotation Radar vollständig aktualisieren“ ausführen. Das ist erforderlich,
+   da alte Snapshots die neuen 1-Tages-Metriken/Datenbelege nicht enthalten.
+6. Screener frisch scannen; ANET/BE benötigen ihre bisherigen Branchen-/Sektor-
+   Metadaten im Scan. MU/MRVL können zusätzlich über die bekannte Radar-Gruppe
+   zugeordnet werden. Bei alten Analysewerten gegebenenfalls Daten-Cache leeren.
+7. Screener und Sofortanalyse desselben Titels auf Umfeldampel, Grund und
+   Datenstand prüfen. Aktueller Radar-Snapshot wird bei erneutem Anzeigen gelesen.
+
+Anzeige:
+- Desktop: „Umfeldrisiko“ neben der technischen Ampel, daneben „Umfeld-Grund“.
+- Mobil: separate Umfeldzeile mit Begründung in der bestehenden Aktienkarte.
+- Sofortanalyse: direkt unter der Entscheidungs-Zusammenfassung mit Gesamtmarkt,
+  Sektor, verfügbarer Branche/Thema, 1T-/5T-Performance und Radar-Phase.
+- Tagesstand in der Screener-Kopfzeile; Snapshot-ID und Datum in Details bzw.
+  Sofortanalyse. Derselbe Snapshot und dieselbe reine Berechnung für beide Wege.
+
+Wichtig: Die Umfeldampel beeinflusst weder technische Ampel, Score, Sortier-
+priorität, Freigabe noch Stops. Keine neue automatische Sperre oder Abwertung.
+BP ist eine Ergänzung gegenüber BO. Beim Überspringen früherer Versionen kommen
+deren genehmigte Änderungen mit, insbesondere die Strukturstop-Auswahl aus BO.
+
+Zuordnung und Daten:
+- US-gelistete Aktien: SPY als Marktproxy. Deutsche .DE-Listings: EWG.
+- Sektor aus bereits vorhandenen Provider-Metadaten, mit Radar-Sektor-ETF.
+- Halbleiter einschließlich MU/MRVL: SMH. Kein separater SOXX-Sonderpfad mehr.
+- Software/Cybersecurity/Biotech/Defense/Solar nach Branchenmerkmalen, soweit im
+  Radar vorhanden. Themen-/Branchen-ETF bleibt ein Proxy.
+- ANET/BE werden anhand ihrer tatsächlichen vorhandenen Metadaten zugeordnet,
+  nicht pauschal als Halbleiter behandelt. Fehlt ein spezifischer Branchenproxy,
+  steht ausdrücklich „Nur Sektorproxy; Branche nicht separat erfasst“.
+- Andere nicht zugeordnete Börsenregionen bleiben im Marktvergleich unbekannt.
+- Keine tatsächlichen Kapitalflüsse gemessen; Interpretation aus Kursen/RS.
+- Der neue Kontextpfad lädt keine Providerdaten. Er verwendet den bestehenden
+  verifizierten Radar-Snapshot; zusätzliche 1T-Metriken entstehen im Radar-Refresh.
+
+Erste transparente Risikoheuristik (nicht als Prognose rückgetestet):
+- Rot: Gesamtmarkt 1T <= -2 % ODER 5T <= -4 %; Sektor/Branche 1T <= -3 % ODER
+  5T <= -6 %; alternativ Radar-Phase „Rotating Out“.
+- Gelb: Gesamtmarkt 1T <= -0,75 % ODER 5T <= -1,5 %; Sektor/Branche 1T <= -1 %
+  ODER 5T <= -2 %. Auch Rotation Δ1T <= -8 / Δ5T <= -10 Punkte, Cooling/Mature
+  oder Sektor-/Branchen-RS 5T <= -2 Prozentpunkte gegenüber Markt ergeben Gelb.
+- Grün: keine dieser Warnungen bei vollständiger, zugeordneter Datenbasis.
+- Unbekannt: benötigte Daten fehlen, sind veraltet/inkonsistent oder nicht
+  verifiziert. Eine belegte gelbe/rote Warnung bleibt bei sonst fehlenden Daten
+  sichtbar, ausdrücklich als Teilbasis. Fehlende Daten erzeugen kein Grün.
+- Gesamtumfeld entspricht der stärksten belegten Warnung, ohne doppelte
+  Score-Abzüge. Es ist kein zusätzliches Kauf-/Verkaufssignal.
+
+Aktualität und Grenzen:
+- Verlangt wird der letzte nach einer konservativen 16:30-New-York-Grenze
+  abgeschlossene Wochentag; Wochenenden berücksichtigt. Ohne US-Feiertags-
+  kalender wird an Feiertagen gegebenenfalls konservativ „unbekannt“ angezeigt.
+- Snapshot vor Abschluss seines angegebenen Tages oder mit Zukunftszeitpunkt
+  wird nicht akzeptiert. Kurs-/Benchmark-Tage müssen zusammenpassen.
+- Tagesdaten erkennen keine plötzlich beginnende Intraday-Wende im Voraus.
+- Aktien-RS zur Gruppe nur bei exakt gleichen beiden Tagen. Die heutige
+  Aktienkerze wird wegen möglicher Analyse-Caches konservativ nicht genutzt.
+- Grün bedeutet lediglich kein Warnsignal in den geprüften Kriterien, keine
+  Absicherung gegen Verlust und keine Bestätigung einer Broker-Stoporder.
+
+Bitte einen frischen Screener-Ausschnitt mit technischer Ampel, Umfeldrisiko
+und Grund sowie die Umfeldrubrik einer Sofortanalyse zurückmelden.
+Quellcode-Gesamtpaket/Projektunterlagen nach dem Praxistest konsolidieren.
+MRVL/MU-Intraday-Untersuchung bleibt im Backlog. Keine Brokeranbindung ergänzt.

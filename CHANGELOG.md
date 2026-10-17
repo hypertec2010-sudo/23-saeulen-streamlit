@@ -1,3 +1,13 @@
+## v30.21bp – Separate Umfeldampel aus dem Rotation-Radar
+
+- Desktop- und mobiler Screener zeigen Umfeldrisiko und kurze Begründung neben der unveränderten technischen Ampel.
+- Sofortanalyse verwendet dieselbe reine Berechnung und denselben verifizierten Radar-Snapshot mit Detailaufschlüsselung.
+- Radar ergänzt 1-Tages-Performance, gemeinsamen Kurs-/Benchmark-Datenstand und vorherigen Handelstag; bestehende Leadership-/Rotationsscores unverändert.
+- Gesamtmarkt, Sektor und vorhandene Branchen-/Themen-Proxys getrennt; MU/MRVL → SMH. ANET/BE anhand vorhandener Metadaten, kein pauschaler KI-/Halbleiter-Topf.
+- Absolute Rückgänge und beschleunigte Abkühlung als dokumentierte Risikoheuristik; keine Score-Abzüge, Freigabesperren oder Stop-Änderungen.
+- Fehlende/alte/inkonsistente Daten unbekannt; bestätigte Warnung auf Teilbasis ausdrücklich markiert. Sektorproxy bleibt als solcher sichtbar.
+- Gemeinsamer Aktien-/Gruppen-Tagesvergleich nur bei belegten identischen Tagen; keine Provider-Abfrage im neuen Kontextpfad.
+
 ## v30.21bo – Bestätigten Strukturstop bevorzugt verwenden
 
 - Stop-Auswahl in Standard- und reduzierter Analyse vor Risiko-, Ziel- und Positionsgrößenberechnung.

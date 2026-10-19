@@ -1,3 +1,10 @@
+## v30.21bq – Umfeld-Zuordnung durch Statushistorie erhalten
+
+- Fehler aus bp korrigiert: interne Spaltenbereinigung entfernte auch Sektor, Branche und Tagesvergleich der Umfeldampel.
+- Genau die drei benötigten __env_-Felder bleiben jetzt im abgeschlossenen Scan und dessen persistentem Snapshot erhalten; sonstige Hilfsspalten werden weiterhin entfernt.
+- Regression durchläuft echte Statushistorie, JSON-Speicherung/Wiederherstellung und Umfeldanzeige für HALO, ACN, DHR und LLY.
+- Technische Einstufung, Score und Freigabe bleiben unverändert. Keine Änderung der Umfeldschwellen oder künstliche Vervollständigung alter Scans.
+
 ## v30.21bp – Separate Umfeldampel aus dem Rotation-Radar
 
 - Desktop- und mobiler Screener zeigen Umfeldrisiko und kurze Begründung neben der unveränderten technischen Ampel.

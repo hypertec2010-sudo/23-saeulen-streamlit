@@ -28,3 +28,5 @@ modules/rotation_radar.py
 modules/environment_context.py
 tests/test_environment_context.py
 INSTALLATION_v30.21bp.txt
+tests/test_environment_history_roundtrip.py
+INSTALLATION_v30.21bq.txt

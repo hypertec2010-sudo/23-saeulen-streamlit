@@ -3284,11 +3284,13 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
 
     # Remove ephemeral hysteresis/sort helpers, NOT package or diagnostic
     # snapshot data. __pkg_ is consumed by the package planner; __diag_ is
-    # consumed only by the read-only live-scan diagnosis.
+    # consumed only by the read-only live-scan diagnosis. The three __env_
+    # fields are persistent display evidence, not disposable sort helpers.
     for _internal_col in [c for c in enriched.columns
                           if str(c).startswith("__")
                           and not str(c).startswith("__pkg_")
-                          and not str(c).startswith("__diag_")]:
+                          and not str(c).startswith("__diag_")
+                          and str(c) not in {"__env_sector", "__env_industry", "__env_stock"}]:
         if _internal_col in enriched.columns:
             enriched = enriched.drop(columns=[_internal_col])
     # Signal-Stabilität und Bestätigungen direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.

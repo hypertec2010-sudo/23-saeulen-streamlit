@@ -1,0 +1,45 @@
+CHSM v30.21bq – Sektor-/Branchenzuordnung im Screener erhalten
+Kumulativer Patch für bi bis bp; enthält alle bisherigen Ergänzungen.
+
+Ursache des Nutzerberichts:
+Die Umfeldampel konnte SPY aus dem Rotation-Radar bewerten. Die Statushistorie
+entfernte aber beim Bereinigen interner Hilfsspalten die neuen __env_-Daten
+(Sektor, Branche und gemeinsamer Aktien-Tagesvergleich). In der Anzeige fehlte
+dadurch die Aktienzuordnung, obwohl der Analyse-Scan diese Daten geliefert hatte.
+Das ist ein Integrationsfehler aus bp, keine zusätzliche Branchenabwertung.
+
+Korrektur:
+Genau die drei benötigten Metadatenfelder bleiben im abgeschlossenen Scan und
+dessen persistentem Snapshot erhalten. Sonstige temporäre Felder werden weiter
+entfernt. Die technische Ampel, Scores und Freigaben werden nicht verändert.
+Die Umfeldschwellen und die Regeln für unbekannte Daten bleiben unverändert.
+
+Installation:
+1. Bestehenden Projektordner sichern.
+2. ZIP entpacken und Dateien aus DATEILISTE.txt einzeln unter denselben relativen
+   Pfaden ersetzen/ergänzen. Nicht den gesamten modules-Ordner ersetzen.
+3. Bei GitHub die entpackten Dateien aktualisieren, nicht die ZIP hochladen.
+4. App neu starten/deployen; Version v30.21bq prüfen.
+5. Betroffene Aktien per Checkbox gezielt neu scannen oder einen Vollscan starten.
+   Alte gespeicherte Zeilen enthalten die bereits entfernten Informationen nicht
+   mehr; bloßes Neuladen des Screens kann sie nicht zurückholen.
+6. Das Rotation-Radar nur dann erneut vollständig aktualisieren, wenn dessen
+   Tagesstand fehlt oder veraltet ist. Der neue Scan allein ersetzt keinen Radar-
+   Refresh; die beiden Datenquellen bleiben getrennt aktualisierbar.
+
+Erwartung:
+Wenn Sektor-/Branchen-Metadaten und passende aktuelle Radar-Zeilen vorhanden
+sind, entfällt die bisher dadurch verursachte pauschale „Teilbasis“-Meldung.
+Ein Sektorproxy bleibt ausdrücklich als Proxy benannt, wenn keine passende
+engere Branche im Radar vorhanden ist. Echtes Fehlen von Daten bleibt unbekannt.
+Der gemeldete gelbe SPY-Kontext kann weiterhin korrekt gelb bleiben; die neue
+Version soll keine anderen Farben erzwingen.
+
+Regression:
+HALO/ACN/DHR/LLY mit rekonstruierten Metadaten durch echte Statushistorie,
+JSON-Snapshot-Speicherung/Wiederherstellung und abschließende Umfeldanzeige.
+Dies sind keine Original-Provider-Snapshots der Nutzerscans.
+
+Bitte nach Installation denselben Screener-Ausschnitt nach einem frischen Scan
+zurückmelden. Kein erneuter Upload der gesamten Projektunterlagen erforderlich;
+Gesamtquellcode/Unterlagen nach Praxisprüfung konsolidieren.

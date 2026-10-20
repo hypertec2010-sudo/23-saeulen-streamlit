@@ -1,0 +1,57 @@
+CHSM v30.21br – Werte zwischen normalen Watchlisten verschieben
+Kumulativer Patch für bi bis bq; enthält alle bisherigen Ergänzungen.
+
+Installation:
+1. Bestehenden Projektordner sichern.
+2. ZIP entpacken. Alle Dateien aus DATEILISTE.txt einzeln unter denselben
+   relativen Pfaden ersetzen/ergänzen. Nicht den gesamten modules-Ordner ersetzen.
+3. Insbesondere die NEUE Datei modules/watchlist_move.py hochladen, außerdem
+   logging_utils.py und modules/storage/watchlist_repository.py aktualisieren.
+4. Bei GitHub die entpackten Dateien hochladen, nicht die ZIP als Programmdatei.
+   Persönliche Secrets und Provider-Konfiguration beibehalten.
+5. App neu starten/deployen; Version v30.21br kontrollieren.
+
+Bedienung:
+- Watchlist-Verwaltung: Unter „Inhalt der aktuellen Watchlist“ Häkchen vor den
+  gewünschten Titeln setzen. „Ausgewählte Werte verschieben“ bietet die Ziel-
+  Watchlist und zeigt die Anzahl bereits vorhandener Zieleinträge an.
+- Desktop-Screener: Bestehende Häkchenauswahl benutzen. Sobald Werte ausgewählt
+  sind, erscheint zusätzlich zum gezielten Neu-Scannen die Verschiebefunktion.
+- Ziel wählen und „Nach ... verschieben“ klicken. Die Aktion wird erst mit
+  diesem Button ausgeführt. Anschließend erscheint eine Erfolgsmeldung.
+- Mobil kann die Watchlist-Verwaltung mit ihrer Häkchenauswahl genutzt werden.
+
+Verhalten:
+- Ein oder mehrere Titel zwischen vorhandenen normalen Watchlisten verschieben.
+- Quell- und Zielmitgliedschaft werden gemeinsam in einem Speicherlauf geändert;
+  nicht erst in der Quelle löschen und danach einzeln zur Zielliste hinzufügen.
+- Vorhandener Zieleintrag bleibt unverändert; keine doppelten Ticker. Nach dem
+  erfolgreichen Vorgang wird der ausgewählte Quell-Eintrag entfernt.
+- Aufnahmedatum und zusätzliche Eintragsangaben bleiben bei neuen Zieleinträgen
+  erhalten. Typ, Alert-Modus und Prüffrequenz richten sich nach der Zielliste.
+- Vorhandener Startkurs einschließlich Datum/Quelle wird kopiert, sofern das
+  Ziel dafür noch keine eigenen Metadaten hat. Ziel-Baselines werden nicht
+  überschrieben. Historische Quell-Baselines bleiben zur Nachvollziehbarkeit erhalten.
+- Fehlt eine historische Baseline, wird durch das Verschieben kein neuer Kurs
+  abgefragt oder erfunden.
+- Leere Quell-Watchlist bleibt als Liste mit ihren Einstellungen bestehen.
+- Auswahl wird nach Erfolg zurückgesetzt. Ein veralteter/fehlender Quellticker
+  stoppt die Aktion vollständig, statt nur einen Teil der Auswahl zu verschieben.
+- Bei einem Speicherfehler wird kein Erfolg gemeldet. Falls der Mitgliedschafts-
+  schreibvorgang nicht bestätigt ist: Listen neu laden und Zustand prüfen.
+  Bereits kopierte Startkursdaten werden nicht automatisch entfernt; historische
+  Quell-Metadaten bleiben erhalten.
+
+Umfang:
+Normale Watchlisten. Positions-Watchlisten werden nicht als Ziel angeboten;
+Depotpositionen, deren Einstandsdaten und Brokerorders bleiben unverändert.
+Datenbank- und bisheriger Google-Sheets-Speicherpfad unterstützt.
+Kein Eingriff in technische Bewertung, CRV, Freigaben oder Umfeldampel.
+Keine Änderung der noch offenen LIN-Bewertungsprüfung.
+
+Prüfung:
+Regression für Metadaten, Duplikate, leere Listen, ungültige/veraltete Auswahl,
+Speicherfehler, echten Repository-/Sheets-Code und Streamlit-Bedienelemente.
+Tests verwenden lokale Prüfdaten; keine produktiven Watchlisten wurden geändert.
+
+Gesamtquellcode/Projektunterlagen nach Praxisprüfung konsolidieren.

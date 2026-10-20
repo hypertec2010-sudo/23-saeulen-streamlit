@@ -250,6 +250,12 @@ class WatchlistRepository:
             return False, "Ticker konnten nicht entfernt werden."
         return True, f"{removed} Ticker aus '{name}' entfernt."
 
+    def move_entries_to_watchlist(self, source, target, tickers, *, load_baselines, save_baselines):
+        from modules.watchlist_move import execute_move
+        return execute_move(source,target,tickers,load_rows=self.load_watchlists_df,
+                            save_rows=lambda frame:self._save_rows(frame.to_dict('records')),
+                            load_baselines=load_baselines,save_baselines=save_baselines)
+
     def _first_setting(self, name: str, field: str, default: str) -> str:
         for row in self._load_rows():
             if self._normalise_name(row.get("Watchlist_Name")).lower() == name.lower():

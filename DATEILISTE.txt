@@ -30,3 +30,8 @@ tests/test_environment_context.py
 INSTALLATION_v30.21bp.txt
 tests/test_environment_history_roundtrip.py
 INSTALLATION_v30.21bq.txt
+modules/watchlist_move.py
+modules/storage/watchlist_repository.py
+logging_utils.py
+tests/test_watchlist_move.py
+INSTALLATION_v30.21br.txt

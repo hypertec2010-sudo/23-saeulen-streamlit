@@ -215,6 +215,7 @@ from logging_utils import (
     load_watchlists_df,
     remove_ticker_from_watchlist,
     remove_tickers_from_watchlist,
+    move_entries_to_watchlist,
     update_watchlist_alert_mode,
     update_watchlist_check_frequency,
 )
@@ -15331,6 +15332,7 @@ if _use_database_watchlists_v280:
     add_entries_to_watchlist = _watchlist_repository_v280.add_entries_to_watchlist
     remove_ticker_from_watchlist = _watchlist_repository_v280.remove_ticker_from_watchlist
     remove_tickers_from_watchlist = _watchlist_repository_v280.remove_tickers_from_watchlist
+    move_entries_to_watchlist = _watchlist_repository_v280.move_entries_to_watchlist
     update_watchlist_alert_mode = _watchlist_repository_v280.update_watchlist_alert_mode
     update_watchlist_check_frequency = _watchlist_repository_v280.update_watchlist_check_frequency
     get_watchlist_alert_mode = _watchlist_repository_v280.get_watchlist_alert_mode
@@ -15367,6 +15369,23 @@ def _v303d_json_safe(value):
     except Exception:
         pass
     return value
+
+
+def _v3021br_save_move_baselines(store):
+    # Unlike the historical session/file helper, require an acknowledged write.
+    try:
+        ok = bool(_storage_v280.save_namespace("watchlist_start_prices", dict(store)))
+        if ok:
+            st.session_state.watchlist_start_price_store_v2214 = dict(store)
+        return ok
+    except Exception:
+        return False
+
+
+def _v3021br_move_watchlist_entries(source, target, tickers):
+    return move_entries_to_watchlist(source, target, tickers,
+        load_baselines=_v2214_load_start_price_store,
+        save_baselines=_v3021br_save_move_baselines)
 
 
 def _v303d_rotation_frame_fingerprint(df):
@@ -20197,6 +20216,9 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                 st.markdown("**Inhalt der aktuellen Watchlist**")
                 st.caption(f"Anzahl Werte: {len(current_tickers)}")
+                _move_notice_v3021br = st.session_state.pop("watchlist_move_notice_v3021br", None)
+                if _move_notice_v3021br:
+                    st.success(_move_notice_v3021br)
                 if current_tickers:
                     # v30.21aw: Mehrfachauswahl direkt vor dem Ticker. Damit lassen sich
                     # mehrere Watchlist-Werte in einem einzigen Speicherlauf entfernen.
@@ -20217,7 +20239,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         column_config={
                             "Auswahl": st.column_config.CheckboxColumn(
                                 "Auswahl",
-                                help="Mehrere Werte markieren und anschließend gemeinsam entfernen.",
+                                help="Mehrere Werte markieren und anschließend verschieben oder entfernen.",
                                 default=False,
                             ),
                             "Ticker": st.column_config.TextColumn("Ticker"),
@@ -20237,13 +20259,27 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         _tk: (_tk in set(_selected_remove_v3021aw)) for _tk in current_tickers
                     }
 
+                    from modules.watchlist_move import render_move_controls
+                    def _move_success_v3021br(message):
+                        st.session_state["watchlist_move_notice_v3021br"] = message
+                        for _move_key_v3021br in (
+                            _selection_key_v3021aw,
+                            f"watchlist_remove_editor_v3021aw::{selected_watchlist_name}",
+                            f"watchlist_remove_pending_v3021aw::{selected_watchlist_name}",
+                        ):
+                            st.session_state.pop(_move_key_v3021br, None)
+                        trigger_ui_refresh()
+                    render_move_controls(st, frame=watchlists_df, source=selected_watchlist_name,
+                        selected=_selected_remove_v3021aw, move=_v3021br_move_watchlist_entries,
+                        on_success=_move_success_v3021br)
+
                     _pending_key_v3021aw = f"watchlist_remove_pending_v3021aw::{selected_watchlist_name}"
                     rem1, rem2, rem3 = st.columns([1.2, 1.0, 0.9])
                     with rem1:
                         st.caption(
                             f"{len(_selected_remove_v3021aw)} ausgewählt"
                             if _selected_remove_v3021aw
-                            else "Häkchen vor den Werten setzen, die entfernt werden sollen."
+                            else "Häkchen vor den Werten setzen, die verschoben oder entfernt werden sollen."
                         )
                     with rem2:
                         if st.button(
@@ -22705,7 +22741,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 "Setup-Stärke", help="Gewichtete Komponenten vor Freigabe-Abzügen; kann Standardwerte enthalten. Die Ampel zeigt die separate Handelsfreigabe."),
                                             "🔄": st.column_config.CheckboxColumn(
                                                 "🔄",
-                                                help="Anhaken = diesen Wert beim nächsten selektiven Re-Scan frisch vom Provider abfragen.",
+                                                help="Werte zum gezielten Neu-Scannen oder Verschieben auswählen.",
                                                 default=False,
                                                 width="small",
                                             )
@@ -22741,6 +22777,15 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _scan_c2_v3021e.caption(
                                             "Nur angehakte Werte werden neu abgefragt. Nicht ausgewählte Zeilen bleiben unverändert."
                                         )
+                                    if _selected_tickers_v3021e:
+                                        from modules.watchlist_move import render_move_controls
+                                        def _screen_move_success_v3021br(message):
+                                            st.session_state[_selection_state_key_v3021e] = []
+                                            st.session_state[_selection_rev_key_v3021e] = int(st.session_state.get(_selection_rev_key_v3021e, 0)) + 1
+                                            _move_success_v3021br(message)
+                                        render_move_controls(st, frame=watchlists_df, source=selected_watchlist_name,
+                                            selected=_selected_tickers_v3021e, move=_v3021br_move_watchlist_entries,
+                                            on_success=_screen_move_success_v3021br, key_prefix="screener_move")
                                     _desktop_decision_tickers_v308 = [
                                         str(value).strip()
                                         for value in live_df.get("Ticker", pd.Series(dtype=str)).tolist()

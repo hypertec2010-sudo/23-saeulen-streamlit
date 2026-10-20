@@ -85,6 +85,27 @@ def save_watchlists_df(df):
         return False, str(e)
 
 
+def move_entries_to_watchlist(source, target, tickers, *, load_baselines, save_baselines):
+    """One worksheet update for both lists; never remove then append separately."""
+    from modules.watchlist_move import execute_move
+    try:
+        sh,error=open_log_spreadsheet()
+        if sh is None:return False,str(error)
+        ws=get_or_create_worksheet(sh,'Watchlists',rows=2000,cols=10)
+        values=ws.get_all_values()
+        if not values:return False,'Keine Watchlist-Daten vorhanden.'
+        headers=values[0]
+        frame=pd.DataFrame([r+['']*(len(headers)-len(r)) for r in values[1:]],columns=headers)
+        def save(moved):
+            data=[headers]+moved.reindex(columns=headers).fillna('').astype(str).values.tolist()
+            data += [['']*len(headers) for _ in range(max(0,len(values)-len(data)))]
+            ws.update(range_name='A1',values=data,value_input_option='RAW')
+            return True
+        return execute_move(source,target,tickers,load_rows=lambda:(frame,None),save_rows=save,
+                            load_baselines=load_baselines,save_baselines=save_baselines)
+    except Exception as exc:return False,f'Verschieben nicht bestätigt: {exc}'
+
+
 def create_watchlist(watchlist_name, watchlist_type, check_frequency=None):
     name = str(watchlist_name or "").strip()
     wl_type = str(watchlist_type or "").strip() or "Watchlist"

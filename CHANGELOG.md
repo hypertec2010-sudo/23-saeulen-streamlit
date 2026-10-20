@@ -1,3 +1,12 @@
+## v30.21br – Werte zwischen normalen Watchlisten verschieben
+
+- Vorhandene Häkchenauswahl in der Watchlist-Verwaltung und im Desktop-Screener zum Verschieben mehrerer Titel nutzen.
+- Zielauswahl und Vorschau; vorhandene Zieleinträge bleiben erhalten, keine Duplikate.
+- Quell- und Zielmitgliedschaft in einem Speicherlauf ändern; leere Quell-Watchlist bleibt bestehen.
+- Aufnahmedatum und zusätzliche Eintragsdaten bleiben erhalten; Ziel-Listeneinstellungen gelten dort.
+- Vorhandene Startkurs-Metadaten vor dem Mitgliedschaftswechsel kopieren; bestehende Ziel-Baselines nicht überschreiben.
+- Datenbank- und Google-Sheets-Backend unterstützt; kein Eingriff in Depotpositionen, Brokerorders oder technische Bewertung.
+
 ## v30.21bq – Umfeld-Zuordnung durch Statushistorie erhalten
 
 - Fehler aus bp korrigiert: interne Spaltenbereinigung entfernte auch Sektor, Branche und Tagesvergleich der Umfeldampel.

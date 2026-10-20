@@ -20230,6 +20230,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                         "Auswahl": [bool(_selection_state_v3021aw.get(_tk, False)) for _tk in current_tickers],
                         "Ticker": current_tickers,
                     })
+                    from modules.selection_editor import prepare_selection_editor
+                    _selection_df_v3021aw, _selection_editor_key_v3021bs = prepare_selection_editor(
+                        st.session_state, _selection_df_v3021aw, selection_column="Auswahl",
+                        state_key=_selection_key_v3021aw,
+                        widget_key=f"watchlist_remove_editor_v3021aw::{selected_watchlist_name}",
+                        reset=_selection_key_v3021aw not in st.session_state,
+                    )
                     _edited_selection_v3021aw = st.data_editor(
                         _selection_df_v3021aw,
                         hide_index=True,
@@ -20244,7 +20251,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             ),
                             "Ticker": st.column_config.TextColumn("Ticker"),
                         },
-                        key=f"watchlist_remove_editor_v3021aw::{selected_watchlist_name}",
+                        key=_selection_editor_key_v3021bs,
                     )
                     _selected_remove_v3021aw = []
                     try:
@@ -22730,6 +22737,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         ],
                                     )
                                     _selection_revision_v3021e = int(st.session_state.get(_selection_rev_key_v3021e, 0))
+                                    from modules.selection_editor import prepare_selection_editor
+                                    _desktop_rescan_editor_v3021e, _live_editor_key_v3021bs = prepare_selection_editor(
+                                        st.session_state, _desktop_rescan_editor_v3021e, selection_column="🔄",
+                                        state_key=_selection_state_key_v3021e,
+                                        widget_key=f"v3021e_live_rescan_editor_{_partial_widget_suffix_v3021e}",
+                                        revision=_selection_revision_v3021e,
+                                    )
                                     _edited_live_display_v3021e = st.data_editor(
                                         _desktop_rescan_editor_v3021e,
                                         hide_index=True,
@@ -22746,7 +22760,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 width="small",
                                             )
                                         },
-                                        key=f"v3021e_live_rescan_editor_{_partial_widget_suffix_v3021e}_{_selection_revision_v3021e}",
+                                        key=_live_editor_key_v3021bs,
                                     )
                                     _selected_tickers_v3021e = list(_live_scan_batches.selected_tickers_from_editor(_edited_live_display_v3021e))
                                     st.session_state[_selection_state_key_v3021e] = list(_selected_tickers_v3021e)

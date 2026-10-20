@@ -1,0 +1,28 @@
+CHSM v30.21bs – stabile Mehrfachauswahl
+Kumulativer Patch für bi bis br; enthält alle bisherigen Ergänzungen.
+
+1. Bestehenden Projektordner sichern und ZIP entpacken.
+2. Dateien aus DATEILISTE.txt unter den dort angegebenen relativen Pfaden
+   ersetzen/ergänzen. Nicht den gesamten modules-Ordner löschen/ersetzen.
+3. Unbedingt die NEUE Datei modules/selection_editor.py ergänzen sowie
+   legacy_app.py und VERSION.txt aktualisieren. Bisherige neue Module aus
+   früheren Patches sind ebenfalls im Paket enthalten.
+4. Bei GitHub die entpackten Dateien hochladen, nicht die ZIP als Programmdatei.
+   Persönliche Secrets und Provider-Konfiguration beibehalten.
+5. App neu starten; Version v30.21bs kontrollieren.
+
+Prüfen:
+- Watchlist-Verwaltung und Desktop-Screener: mehrere Häkchen nacheinander
+  setzen, ein Häkchen wieder entfernen, Ziel-Watchlist wechseln.
+- Auswahl muss beim ersten Klick greifen und bei weiteren Aktionen erhalten
+  bleiben. Das kurze Streamlit-Ladesymbol kann weiterhin erscheinen.
+- Im Screener „Grüne auswählen“ und „Auswahl löschen“ prüfen.
+- Nach erfolgreichem Verschieben/Entfernen ist die Auswahl zurückgesetzt.
+- Bei Filterwechsel bleiben nur sichtbare ausgewählte Ticker berücksichtigt;
+  alte Zeilenpositionen dürfen keine anderen Titel auswählen.
+
+Keine Änderung von Bewertung, Freigabe, Umfeldampel oder Brokerorders.
+Verschieben bleibt auf normale Watchlisten beschränkt; Details siehe
+INSTALLATION_v30.21br.txt. Tests verwenden lokale Daten, keine produktiven
+Watchlisten oder Konten. Gesamtquellcode/Projektunterlagen nach Praxisprüfung
+konsolidieren.

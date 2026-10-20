@@ -1,3 +1,10 @@
+## v30.21bs – Häkchenauswahl beim ersten Klick erhalten
+
+- Stabile Editor-Eingabe in Watchlist-Verwaltung und Desktop-Screener verhindert zurückspringende Häkchen bei Neuberechnung.
+- Mehrfachauswahl und Abwahl bleiben über weitere Bedienaktionen erhalten; geänderte Tabellen übernehmen die Auswahl über Ticker statt alte Zeilenpositionen.
+- Explizite Auswahlbefehle sowie erfolgreiches Verschieben/Entfernen setzen die Auswahl weiterhin korrekt zurück.
+- Keine Änderung von Scans, Bewertungslogik oder Speicher-Backends.
+
 ## v30.21br – Werte zwischen normalen Watchlisten verschieben
 
 - Vorhandene Häkchenauswahl in der Watchlist-Verwaltung und im Desktop-Screener zum Verschieben mehrerer Titel nutzen.

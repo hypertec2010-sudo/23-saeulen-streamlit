@@ -1,3 +1,10 @@
+## v30.21bu – Analyseabbruch bei gültigen Setups behoben
+
+- position_mode in beiden Analysefunktionen vor dem ersten Berechnungsschritt initialisiert; späte doppelte Zuweisung entfernt.
+- Fehler aus bt traf gerade den gültigen Setup-Pfad: dort wurde die Variable im Trading-Score verwendet, bevor sie gesetzt war. Kandidaten konnten dadurch aus dem Scan herausfallen, während ungültige Setups weiterhin Ergebnisse lieferten.
+- Neue Regression führt beide vollständigen Analysefunktionen mit deterministischen Kurs-/Fundamentaldaten aus: gültige Watchlist-Setups, bestehende Positionen und ungültige Setups. Keine Vorbelegung interner Variablen im Test.
+- CRV bleibt separate Umsetzungsinformation wie in bt. Keine zusätzliche Änderung an Bewertungsgewichten, Schwellen, Marktfiltern oder Invalidierungen.
+
 ## v30.21bt – Technische Freigabe und CRV getrennt
 
 - CRV steuert weder die zentrale technische Ampel noch Setup-/Kaufstufe oder das Warten auf einen Entry. Timing, Konfluenz, Trigger, Entry-Abstand, Überdehnung und echte Sperren bleiben maßgeblich.

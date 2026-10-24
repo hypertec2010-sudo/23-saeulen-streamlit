@@ -65,6 +65,9 @@ def _legacy_analyze_stock_impl(
     smart_money_default,
     strict_mode
 ):
+    # v30.21bu: needed by the valid-setup score before recommendations.
+    position_mode = buy_in_override > 0
+
     df, info = load_data(ticker)
 
     # v28.4.5b: New listings are no longer rejected merely because MA200 is
@@ -1188,8 +1191,6 @@ def _legacy_analyze_stock_impl(
     trading_case_text = trading_case_label(trading_case_score)
     investment_case_text = investment_case_label(investment_case_score)
     tradeability_text = tradeability_label(tradeability_score)
-
-    position_mode = buy_in_override > 0
 
     # ---------- Recommendations ----------
     if has_upcoming_earnings and days_earn < 7:

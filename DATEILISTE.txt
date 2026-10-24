@@ -42,3 +42,5 @@ modules/crv_context.py
 tests/test_crv_informational.py
 INSTALLATION_v30.21bt.txt
 tests/test_crv_consistency.py
+tests/test_analysis_position_mode.py
+INSTALLATION_v30.21bu.txt

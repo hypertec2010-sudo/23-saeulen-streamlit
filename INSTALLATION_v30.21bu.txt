@@ -1,0 +1,38 @@
+CHSM v30.21bu – gültige Setups wieder analysierbar
+Kumulativer Patch für bi bis bt; alle bisherigen Ergänzungen enthalten.
+
+Ursache:
+In bt wurde position_mode bei der Berechnung des gültigen Trade-Setups gelesen,
+aber erst später in der Analyse gesetzt. Gerade gültige Setups konnten dadurch
+abbrechen. Ungültige Setups durchliefen einen anderen Pfad und wurden weiter
+angezeigt. Das kann fehlende gelbe/grüne Kandidaten zusätzlich erklären.
+
+Korrektur:
+Initialisierung am Anfang der vollständigen Haupt- und Fallback-Analyse.
+CRV-Trennung, Schwellen und die übrigen Bewertungsregeln bleiben erhalten.
+Dieser Patch erzeugt keine pauschale Aufwertung und garantiert keine bestimmte
+Anzahl grüner oder gelber Werte im aktuellen Markt.
+
+Installation:
+1. Projektstand sichern und ZIP entpacken.
+2. Dateien aus DATEILISTE.txt unter identischen relativen Projektpfaden
+   ersetzen/ergänzen. Nicht den gesamten modules-Ordner ersetzen oder löschen.
+3. Gegenüber installiertem bt für den Laufzeitfix entscheidend:
+   analysis_core.py, modules/legacy_analysis_core.py und VERSION.txt.
+   Das vollständige Paket enthält außerdem Tests, Anleitung und frühere Module.
+4. App neu starten; Version v30.21bu prüfen.
+5. Watchlist vollständig neu scannen. Die vorher fehlgeschlagenen Werte
+   ADBE, CRM, PLTR und TEAM ebenfalls neu analysieren. Alte gespeicherte
+   Scanergebnisse werden nicht rückwirkend neu bewertet.
+6. Falls dann weiterhin nur Weiß/Rot erscheint: Diagnose/Freigabe-Check des
+   frisch abgeschlossenen Scans prüfen. Echte Setup-/Timing-/Markt- oder
+   Invalidierungssperren sind weiterhin möglich; keine weitere Lockerung hier.
+
+Prüfung:
+Beide vollständigen Analysefunktionen mit synthetischen OHLCV-/Fundamentaldaten
+und ersetzten Providergrenzen ausgeführt, einschließlich gültiger Setups und
+Positionsmodus. Keine internen position_mode-Werte vorab in den Test injiziert.
+Das sind deterministische Regressionsfälle, keine aktuellen Marktanalysen der
+vier genannten Aktien. Keine produktiven Watchlisten oder Brokerorders geändert.
+
+Weitere Bedienung siehe INSTALLATION_v30.21bt.txt.

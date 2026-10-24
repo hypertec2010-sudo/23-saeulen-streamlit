@@ -87,7 +87,8 @@ def test_missing_target_is_separate_from_low_confirmed_crv():
     assert 'technisches Ziel fehlt' in ds['release_check']
     r['technical_target_1']=103
     ds=decide(build_technical_crv_package(r))
-    assert 'unter 1,50' in ds['release_check']
+    assert 'Enger Zielraum' in ds['crv_context']
+    assert not any('CRV' in x for x in ds['release_missing'])
     assert 'nicht bewertbar' not in ds['release_check']
 
 
@@ -164,19 +165,21 @@ def test_assessed_now_low_crv_cannot_borrow_unassessed_entry_scenario():
     ds=build_decision_state_v3021az(valid_trade_setup=True,signal_packages_complete=True,
         timing_score=85,conf_score=71,trigger_status='Aktiv',crv_now=0.9,crv_entry=10,
         crv_now_eligible=True,crv_entry_eligible=False)
-    assert ds['state']=='observe' and ds['crv_evaluated']
-    assert 'unter 1,50' in ds['release_check']
+    assert ds['state']=='buy' and ds['crv_evaluated']
+    assert 'Enger Zielraum' in ds['crv_context']
+    assert not any('CRV' in x for x in ds['release_missing'])
 
 
-def test_assessed_entry_only_retains_wait_for_entry():
+def test_assessed_entry_only_does_not_override_technical_location():
     ds=build_decision_state_v3021az(valid_trade_setup=True,signal_packages_complete=True,
         timing_score=85,conf_score=71,trigger_status='Aktiv',crv_now=5,crv_entry=2,
         crv_now_eligible=False,crv_entry_eligible=True)
-    assert ds['state']=='wait_entry' and not ds['buy_now']
+    assert ds['state']=='buy' and ds['buy_now']
+    assert ds['crv_assessment'].startswith('Jetzt offen')
 
 
-def test_assessed_but_missing_numeric_value_is_not_neutral():
+def test_assessed_but_missing_numeric_value_is_disclosed_without_block():
     ds=build_decision_state_v3021az(valid_trade_setup=True,signal_packages_complete=True,
         timing_score=85,conf_score=71,trigger_status='Aktiv',crv_now=None,
         crv_now_eligible=True,crv_entry_eligible=False)
-    assert ds['state']=='observe' and ds['crv_evaluated']
+    assert ds['state']=='buy' and ds['crv_evaluated']

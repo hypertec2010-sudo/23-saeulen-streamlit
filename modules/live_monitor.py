@@ -492,16 +492,11 @@ def build_decision_state_v3021az(
     invalidation_detail="",
     crv_evidence_reason="Technische CRV-Grundlage nicht belegt",
 ):
-    """Single authoritative decision state for Screener and Sofortanalyse.
+    """Single authoritative technical decision for Screener and Sofortanalyse.
 
-    States intentionally answer two different questions only once:
-    - Is the setup worth active planning?  timing/conf >= 60; assessed CRV now OR entry >= 1.50
-    - Is it executable now?               timing >= 70, conf >= 65, active buy action,
-                                          assessed CRV now >= 1.50 and acceptable location.
-    Unassessable CRV is neutral and explicitly disclosed; it is never called passed.
-
-    Fibonacci/wave/pattern/candle details remain inside timing/confluence but do
-    not create additional release gates here.
+    CRV is independent execution context and never a release or location gate.
+    Setup validity, measured timing/confluence, core trigger, location and genuine
+    hard gates/invalidations retain their existing technical requirements.
     """
     def _num(v):
         try:
@@ -538,21 +533,19 @@ def build_decision_state_v3021az(
     )
     crv_now_ok=bool(crv_n is not None and crv_n >= 1.50)
     crv_entry_ok=bool(crv_e is not None and crv_e >= 1.50)
-    # CRV is conditional evidence, not mandatory evidence. A proxy or missing
-    # target cannot fail a numeric test which does not apply to that setup.
     crv_evaluated=bool(crv_now_eligible or crv_entry_eligible)
-    crv_neutral=not crv_evaluated
-    crv_context=("CRV nicht bewertet: " + str(crv_evidence_reason)
-                 + "; Szenarien sind kein Freigabekriterium") if crv_neutral else ""
-    setup_crv_ok=bool(crv_neutral or crv_now_ok or crv_entry_ok)
+    from modules.crv_context import crv_context as build_crv_context
+    crv_info=build_crv_context(crv_now, crv_entry,
+        now_eligible=crv_now_eligible, entry_eligible=crv_entry_eligible,
+        reason=crv_evidence_reason)
+    crv_context=crv_info["text"]
     location_too_far=bool(distance is not None and distance > 5.0)
     trend_overextended=bool(stretch is not None and stretch > 12.0)
     wait_for_entry=bool(
         location_too_far
-        or (not crv_now_ok and crv_entry_ok)
         or trend_overextended
     )
-    setup_ready=bool(valid_trade_setup and setup_signal_ok and setup_crv_ok and not hard and not invalidated)
+    setup_ready=bool(valid_trade_setup and setup_signal_ok and not hard and not invalidated)
 
     # v30.21bc: independent, exact release diagnostics, no duplicate gates.
     # The same dict is returned to Live-Screener and Sofortanalyse.
@@ -574,10 +567,6 @@ def build_decision_state_v3021az(
             missing.append(f"Konfluenz {conf:.1f} < 60 (Setup planen)")
         elif conf < 65:
             missing.append(f"Konfluenz {conf:.1f} < 65 (Kaufstufe)")
-    if crv_evaluated and not setup_crv_ok:
-        missing.append("Belastbares technisches CRV jetzt und CRV Entry unter 1,50 oder nicht verfügbar")
-    elif crv_evaluated and not crv_now_ok:
-        missing.append(f"CRV jetzt {crv_n:.2f} < 1,50; CRV Entry {crv_e:.2f} erlaubt nur Entry-Planung" if crv_n is not None else f"CRV jetzt nicht verfügbar; CRV Entry {crv_e:.2f} erlaubt nur Entry-Planung")
     if not trigger_active:
         missing.append(f"Kerntrigger {str(trigger_status or 'nicht verfügbar').strip()} (nicht Aktiv)")
     if location_too_far:
@@ -618,9 +607,6 @@ def build_decision_state_v3021az(
         status="Entry/Pullback abwarten"
         queue="🔎 Setup planen"
         parts=[]
-        if not crv_now_ok and crv_entry_ok:
-            parts.append(f"CRV jetzt {crv_n:.2f}" if crv_n is not None else "CRV jetzt n/a")
-            parts.append(f"CRV Entry {crv_e:.2f}")
         if location_too_far:
             parts.append(f"Entry-Abstand {distance:+.1f}%")
         if trend_overextended:
@@ -633,7 +619,7 @@ def build_decision_state_v3021az(
             reason += f" Kerntrigger {str(trigger_status or 'nicht verfügbar').strip()} bleibt offen."
         action="Setup planen, aber nicht hinterherlaufen: bessere Entry-Zone/Pullback bzw. neues enges Setup abwarten."
         prio=2
-    elif buy_signal_ok and trigger_active and (crv_now_ok or crv_neutral):
+    elif buy_signal_ok and trigger_active:
         state="buy"
         icon="🟢"
         status="Kauftrigger aktiv"
@@ -641,8 +627,6 @@ def build_decision_state_v3021az(
         reason=(
             f"Technischer Kauftrigger aktiv: Timing {timing:.0f}/100, Konfluenz {conf:.0f}/100."
         )
-        if crv_now_ok:
-            reason += f" Technisches CRV jetzt {crv_n:.2f}."
         action="Entry jetzt aktiv prüfen: Positionsgröße, Stop/Invalidierung und Ausführung festlegen."
         prio=0
     else:
@@ -670,6 +654,7 @@ def build_decision_state_v3021az(
     return {
         "crv_evaluated": crv_evaluated,
         "crv_context": crv_context,
+        "crv_assessment": crv_info["display"],
         "state": state,
         "icon": icon,
         "status": status,
@@ -1936,6 +1921,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         except Exception:
             return lo
 
+    # v30.21bt: technical state also anchors score construction, so obsolete
+    # CRV branches above cannot indirectly change its score range.
+    status_icon = _decision_state_v3021az["icon"]
+    status = _decision_state_v3021az["status"]
+    priority = _decision_state_v3021az["priority"]
     grade_component = {"A": 92.0, "B": 80.0, "C": 66.0, "D": 48.0, "E": 35.0, "F": 22.0, "G": 12.0}.get(grade, 50.0)
     # v30.21ah: no optimistic synthetic fallbacks. Unknown signal values are
     # neutral for the numeric score and explicitly marked as missing below.
@@ -1960,8 +1950,6 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         trigger_component = 76.0
     elif bucket_near:
         trigger_component = 64.0
-    elif "CRV attraktiv" in alert_types:
-        trigger_component = 54.0
     if trend_structure_ok and trend_timing_ok:
         trigger_component = max(trigger_component, 82.0 if trend_not_too_extended else 66.0)
 
@@ -1983,9 +1971,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             + 0.18 * conf_component
             + 0.14 * chart_component
             + 0.05 * trend_component
-            + 0.02 * crv_component
             + 0.01 * grade_component
-        )
+        ) / 0.98
         _setup_strength_v3021bk = int(round(_v2210_clip(live_score_raw, 0.0, 100.0)))
         # Kurzfristige Trading-Risiken: kein frischer Trigger, schwaches Timing
         # oder Chart-Abwarten duerfen deutlich bremsen.
@@ -2004,9 +1991,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
             + 0.20 * conf_component
             + 0.14 * chart_component
             + 0.06 * trend_component
-            + 0.04 * crv_component
             + 0.02 * grade_component
-        )
+        ) / 0.96
 
     # Preserve weighted components before all risk penalties and status clamps.
     # This is descriptive setup strength, not a new trading decision.
@@ -2015,7 +2001,7 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
 
     # Abzuege nur fuer chart-/entry-relevante Bremsen. Fundamentale Hinweise bleiben
     # in der Warnhinweis-Spalte sichtbar, zaehlen hier aber nicht als harter Score-Abzug.
-    if bucket == "Warnsignale / meiden" and not (grade in {"A", "B"} and crv_ok):
+    if bucket == "Warnsignale / meiden" and grade not in {"A", "B"}:
         live_score_raw -= 6.0
     if entry_hard_gate:
         live_score_raw -= 24.0
@@ -2030,75 +2016,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     if perf_pct is not None and perf_pct >= 12.0 and status_icon in {"🟡", "⚪", "🔵"}:
         live_score_raw += min(10.0, (perf_pct - 8.0) * 0.35)
 
-    # v23.6: Score/Ampel-Alignment.
-    # Bisher wurde der numerische Score nachtraeglich an die vorab bestimmte Ampel
-    # geklemmt. Dadurch konnte 50/100 gelb sein, waehrend 58/100 weiss blieb.
-    # Jetzt ist der Rohscore zuerst massgeblich; harte Gruen-/Rot-Gates bleiben
-    # erhalten, aber Weiss/Gelb/Blau werden logisch an den Score angeglichen.
-    score_candidate = _v2210_clip(live_score_raw, 0.0, 100.0)
-
-    immutable_red = bool("Invalidierung gebrochen" in alert_types or (status_icon == "🔴" and (entry_hard_gate or bucket == "Warnsignale / meiden")))
-    immutable_green = bool(status_icon == "🟢")
-    weak_yellow_without_chart_trigger = bool(
-        status_icon == "🟡"
-        and score_candidate < 55.0
-        and not (bucket_near or entry_reached or wave_active or bucket_active)
-        and not (perf_pct is not None and perf_pct >= 6.0)
-        and status in {"Selektiv prüfen", "Nahe am Trigger"}
-    )
-
-    if live_short_term:
-        # Kurzfrist-Modus: Gruen darf nur dann bleiben, wenn der Trade wirklich
-        # operativ planbar ist. Sonst wird auf Gelb zurueckgestuft.
-        has_short_term_trigger = bool(bucket_active or wave_active or entry_reached or (trend_structure_ok and trend_timing_ok and trend_not_too_extended))
-        if status_icon == "🟢" and not has_short_term_trigger and not (setup_ready or shared_operational_ready_v3021ay):
-            status_icon, status, priority = "🟡", "Setup interessant / Trigger prüfen", 2
-            reason = "Kurzfrist-Modus: Qualität reicht nicht; es fehlt ein klarer aktueller Charttrigger."
-            monitor_action = "Kurzfrist nur vorbereiten: Trigger, Volumenbestaetigung und engen Stop abwarten."
-            immutable_green = False
-        # Sehr schwache Kurzfrist-Konfluenz soll auch bei guter Aktie nicht gelb bleiben.
-        if status_icon in {"🟡", "🔵"} and timing_component < 42.0 and conf_component < 48.0 and not entry_reached:
-            status_icon, status, priority = "⚪", "Kein kurzfristiger Trigger", 4
-            reason = "Kurzfrist-Modus: Timing/Konfluenz reichen aktuell nicht fuer einen Trading-Trigger."
-            monitor_action = "Kein kurzfristiger Trade: erst bei Reclaim, Breakout oder klarer Entry-Naehe neu prüfen."
-
-    if immutable_red:
-        live_score = _v2210_clip(score_candidate, 0.0, 39.0)
-    elif immutable_green:
-        live_score = _v2210_clip(score_candidate, 75.0, 98.0)
-    else:
-        live_score = _v2210_clip(score_candidate, 0.0, 74.0)
-
-        # Niedrige selektive Warnbucket-Faelle nicht kuenstlich gelb halten.
-        if weak_yellow_without_chart_trigger:
-            status_icon, status, priority = "⚪", "Beobachten / Vorsicht", 4
-            reason = "Score noch zu niedrig fuer gelb; Warn-/CRV-Kontext vorhanden, aber kein klarer chartnaher Trigger."
-            monitor_action = "Beobachten: erst bei verbessertem Charttrigger, Reclaim oder klarer Triggernaehe selektiv pruefen."
-
-        # Mittlere bis hohe Scores duerfen nicht weiss bleiben, wenn keine rote Bremse aktiv ist.
-        if status_icon == "⚪" and live_score >= 55.0:
-            status_icon, status, priority = "🟡", "Beobachten / nahe dran", 2
-            reason = "Live-Score liegt im gelben Bereich, aber ein klarer Kauftrigger fehlt noch."
-            monitor_action = "Nahe dran beobachten: Trigger-/Volumenbestätigung, Reclaim oder Pullback mit sauberem Stop abwarten."
-
-        # Blau war semantisch verwirrend: CRV ist Kontext, aber die Ampel soll nach
-        # Handlungsnaehe sortieren. Attraktives CRV ohne Trigger wird als Gelb gefuehrt.
-        if status_icon == "🔵" and live_score >= 55.0:
-            status_icon, status, priority = "🟡", "CRV attraktiv / Trigger offen", 2
-            reason = "CRV ist attraktiv und der Live-Score ist gelb, aber ein aktiver Charttrigger fehlt noch."
-            monitor_action = "CRV attraktiv, aber noch kein aktiver Kauftrigger. Entry/Trigger weiter beobachten."
-        elif status_icon == "🔵" and live_score < 55.0:
-            status_icon, status, priority = "⚪", "CRV beobachten", 4
-            reason = "CRV ist interessant, aber der charttechnische Live-Score reicht noch nicht fuer gelb."
-            monitor_action = "Beobachten: CRV bleibt interessant, aber erst bei Triggernaehe oder Chartfreigabe handeln."
-
-        # Nach einer Status-Anhebung/-Abstufung den Score in einen konsistenten Bereich ziehen.
-        if status_icon == "🟡":
-            live_score = _v2210_clip(live_score, 55.0, 74.0)
-        elif status_icon == "⚪":
-            live_score = _v2210_clip(live_score, 0.0, 54.0)
-
-    live_score_int = int(round(live_score))
+    # v30.21bt: only the authoritative technical state sets the score range.
+    live_score_int = int(round(_v2210_clip(live_score_raw, 0.0, 100.0)))
 
     # v30.21az: final visible state comes from the single decision-state engine.
     # Legacy branches above remain temporarily as diagnostics for score continuity,
@@ -2127,7 +2046,6 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         ("Konfluenz", conf_component),
         ("Chart", chart_component),
         ("Trend", trend_component),
-        ("CRV", crv_component),
     ]
     _component_diag_v3021bk = explain_components(
         dict(_explain_components),
@@ -2235,13 +2153,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _guard_hard = bool(entry_hard_gate or "Invalidierung gebrochen" in alert_types)
     _guard_trigger_ok = bool(trigger_component >= 70.0 or wave_active or entry_reached or bucket_active)
     _guard_chart_brake = bool(chart_component < 55.0)
-    _guard_crv_brake = bool(crv_component < 55.0)
-    _guard_technical_brake = bool(_guard_chart_brake or _guard_crv_brake)
+    _guard_technical_brake = _guard_chart_brake  # CRV is separate execution context
     _guard_reasons = []
     if _guard_hard: _guard_reasons.append("hartes Einstiegsgate/Invalidierung")
     if not _guard_trigger_ok: _guard_reasons.append("kein bestätigter technischer Trigger")
     if _guard_chart_brake: _guard_reasons.append(f"Chart {int(round(chart_component))}/100")
-    if _guard_crv_brake: _guard_reasons.append(f"CRV {int(round(crv_component))}/100")
 
     _guarded_adjustment = int(_context_adjustment)
     if _guarded_adjustment > 0 and (_guard_hard or not _guard_trigger_ok):
@@ -2438,6 +2354,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "CRV": (round(crv_float, 2) if crv_float is not None else (f"{_crv_scenario_now_v3021bf:.2f} (Szenario)" if _crv_scenario_now_v3021bf is not None else "n/a")),
         # v30.21an: separate display aliases keep the operative/internal CRV
         # key stable while making the screener meaning explicit for the user.
+        "CRV-Einordnung": _decision_state_v3021az["crv_assessment"],
+        "CRV-Hinweis": _decision_state_v3021az["crv_context"],
         "CRV jetzt": (round(crv_float, 2) if crv_float is not None else (f"{_crv_scenario_now_v3021bf:.2f} (Szenario)" if _crv_scenario_now_v3021bf is not None else "n/a")),
         "CRV Entry": (round(crv_entry_float, 2) if crv_entry_float is not None else (f"{_crv_scenario_entry_v3021bf:.2f} (Szenario)" if _crv_scenario_entry_v3021bf is not None else "n/a")),
         "Freiraum": (

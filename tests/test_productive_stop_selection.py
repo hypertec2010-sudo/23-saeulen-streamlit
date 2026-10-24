@@ -91,7 +91,7 @@ def engine_risk_block(path):
 
 
 @pytest.mark.parametrize('engine',['analysis_core.py','modules/legacy_analysis_core.py'])
-@pytest.mark.parametrize('target,state',[(430,'observe'),(450,'buy')])
+@pytest.mark.parametrize('target,state',[(430,'buy'),(450,'buy')])
 def test_both_actual_engines_size_chart_radar_and_permission_share_chosen_stop(engine,target,state,radar_rr):
     scope=dict(df=unh_history(),price=409.65,suggested_entry_zone='407.60 - 411.70 USD',
                atr=11.96,setup_type='Breakout',stop_used=390.6,stop_source='ATR (1,6x)',

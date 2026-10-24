@@ -1,0 +1,46 @@
+CHSM v30.21bt – CRV als separate Umsetzungsinformation
+Kumulativer Patch für bi bis bs. Enthält die bisherigen Ergänzungen einschließlich
+Umfeldampel, Watchlist-Verschieben und stabiler Häkchenauswahl.
+
+Installation:
+1. Bestehenden Projektstand sichern. ZIP entpacken.
+2. Alle Dateien aus DATEILISTE.txt unter den identischen relativen Pfaden
+   ersetzen/ergänzen. Nicht den gesamten modules-Ordner ersetzen/löschen.
+3. Insbesondere NEU: modules/crv_context.py. Außerdem legacy_app.py,
+   analysis_core.py, modules/legacy_analysis_core.py, modules/live_monitor.py
+   und VERSION.txt aktualisieren. ZIP nicht als Programmdatei hochladen.
+4. Persönliche Secrets/Provider-Konfiguration beibehalten. App neu starten.
+5. Version v30.21bt prüfen. Watchlist vollständig neu scannen, Sofortanalysen
+   neu ausführen. Vorher gespeicherte Scans zeigen weiterhin ihre alten Ergebnisse.
+
+Verhalten:
+- Technisch starke aktive Setups können Grün erhalten, auch bei engem oder
+  fehlendem CRV. Grün ist technische Prüffreigabe, keine Aussage über ein
+  ausreichendes CRV oder eine fertige Order.
+- „CRV-Einordnung“ steht separat bei den CRV-Zahlen: Eng, Ab 1,50, Jetzt offen
+  oder Nicht bewertbar. 1,50 ist eine Vergleichsmarke, kein Freigabegate.
+- Strukturstop-/Zielnachweis und Szenariokennzeichnung werden weiter verwendet.
+  Eine große Szenariozahl wird nicht als bestätigtes technisches CRV ausgegeben.
+- Auch vorgelagerte CRV-Einflüsse auf Watchlist-Trading-Score, Radar-Abzüge,
+  Grade und Rangfolge sowie Live-Score wurden entfernt. Verbleibende Gewichte
+  werden proportional normiert; keine pauschale Score-Gutschrift.
+- Bestehende Positionsmanagement-Berechnung und Stop-/Zielberechnung bleiben
+  erhalten. Explizite Mindest-CRV-Konfiguration im Tradingpaket bleibt separat.
+- Keine Lockerung der Setup-, Timing-, Konfluenz-, Trigger- oder Entry-Regeln.
+  Markt-/Setup-Veto und Modell-Invalidierung sind eigenständige offene Themen;
+  sie werden in diesem Patch nicht verändert. Daher werden nicht alle weißen
+  oder roten Werte automatisch gelb/grün.
+- Umfeldampel separat; veralteter Radar-Stand bleibt unbekannt, Radar regulär
+  aktualisieren. Kein automatischer Markt-/Providerabruf durch diese Änderung.
+
+Prüfen:
+- Watchlist neu scannen: CRV-Einordnung sichtbar, technische Ampel separat.
+- Sofortanalyse desselben Wertes mit gleichem Stand vergleichen.
+- Enges CRV als Hinweis sichtbar, nicht als fehlende technische Freigabebedingung.
+- Echte Hard Gates/Invalidierungen bleiben rot. Schlechte/fehlende technische
+  Signale bleiben weiß. Trigger-offene planungsreife Setups bleiben gelb.
+- Kontrollierte Regressionen variieren CRV bei identischer Technik und prüfen
+  Ampel, Score und Rangfolge im tatsächlichen Entscheidungs-/Radar-/Monitorcode.
+  Es werden keine produktiven Watchlisten oder Brokerorders geändert.
+
+Gesamtquellcode/Projektunterlagen nach Praxisprüfung konsolidieren.

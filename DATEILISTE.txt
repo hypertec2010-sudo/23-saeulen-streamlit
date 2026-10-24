@@ -38,3 +38,7 @@ INSTALLATION_v30.21br.txt
 modules/selection_editor.py
 tests/test_selection_editor.py
 INSTALLATION_v30.21bs.txt
+modules/crv_context.py
+tests/test_crv_informational.py
+INSTALLATION_v30.21bt.txt
+tests/test_crv_consistency.py

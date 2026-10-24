@@ -1,3 +1,12 @@
+## v30.21bt – Technische Freigabe und CRV getrennt
+
+- CRV steuert weder die zentrale technische Ampel noch Setup-/Kaufstufe oder das Warten auf einen Entry. Timing, Konfluenz, Trigger, Entry-Abstand, Überdehnung und echte Sperren bleiben maßgeblich.
+- Technischer Trading-Score für Watchlist-/Neueinstiegsanalysen ohne CRV-Anteil; verbleibende Gewichte proportional normiert. Bestehende Positionsmanagement-Berechnung bleibt erhalten.
+- CRV-Abzüge, Begrenzungen und Rang-/Grade-Einflüsse im professionellen Radar entfernt. Live-Setup-Stärke und Handlungs-Score ohne CRV-Anteil und ohne alte CRV-abhängige Score-Klemmen.
+- Separate CRV-Einordnung im Desktop-/mobilen Screener und identischer Kontext in der Sofortanalyse. Technische Stop-/Zielevidenz, Szenariokennzeichnung und ungerundete Vergleichswerte bleiben erhalten. 1,50 ist lediglich eine Vergleichsmarke.
+- Keine Änderung an Ziel-/Stopberechnung, Timing-/Konfluenzschwellen, Markt-/Setupfiltern oder Invalidierungsregeln. Explizite CRV-Vorgaben beim Zusammenstellen eines Tradingpakets bleiben als separate Nutzerentscheidung bestehen.
+- Vollständigen Scan nach Deployment neu ausführen; alte gespeicherte Bewertungen werden nicht rückwirkend umgeschrieben.
+
 ## v30.21bs – Häkchenauswahl beim ersten Klick erhalten
 
 - Stabile Editor-Eingabe in Watchlist-Verwaltung und Desktop-Screener verhindert zurückspringende Häkchen bei Neuberechnung.

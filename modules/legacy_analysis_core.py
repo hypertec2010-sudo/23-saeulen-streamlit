@@ -873,12 +873,14 @@ def _legacy_analyze_stock_impl(
         market_trade_score = 85 if market_info["regime"] == "POSITIV" else (60 if market_info["regime"] == "NEUTRAL" else 25)
         entry_score = entry_quality_score(entry_quality, price, entry_low, entry_high)
 
+        # v30.21bt: new-entry technical score excludes CRV. Preserve the
+        # existing position-management calculation for already held positions.
         tradeability_score = round(clamp(
-            crv_score * 0.34
-            + stop_score * 0.18
-            + timing_trade_score * 0.22
-            + market_trade_score * 0.10
-            + entry_score * 0.16
+            (crv_score * 0.34 if position_mode else 0.0)
+            + (stop_score * 0.18
+               + timing_trade_score * 0.22
+               + market_trade_score * 0.10
+               + entry_score * 0.16) / (1.0 if position_mode else 0.66)
         ))
         tradeability_text = tradeability_label(tradeability_score)
 

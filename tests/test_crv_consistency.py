@@ -72,7 +72,7 @@ def test_meta_chart_and_radar_use_identical_operational_inputs(meta, radar_rr):
     assert round(setup["crv"], 2) == 2.34
     assert setup["target"] == 777.52
     assert setup["operative"] is False
-    assert decision(radar["crv"], radar["crv_entry"])["state"] == "observe"
+    assert decision(radar["crv"], radar["crv_entry"])["state"] == "plan"
 
 
 def test_live_marker_does_not_silently_change_operational_crv(meta, radar_rr):
@@ -96,15 +96,17 @@ def test_price_zone_separators_are_not_negative_prices(text):
     assert parse_price_zone(text) == (711.86, 726.24)
 
 
-@pytest.mark.parametrize("reward,expected", [(7.48, "observe"), (7.5, "buy"), (7.51, "buy")])
-def test_crv_threshold_uses_full_precision(radar_rr, reward, expected):
+@pytest.mark.parametrize("reward,expected", [(7.48, "Eng"), (7.5, "Ab 1,50"), (7.51, "Ab 1,50")])
+def test_informational_crv_comparison_uses_full_precision(radar_rr, reward, expected):
     result = {
         "price": 100, "stop_used": 95, "suggested_entry_zone": (100, 100),
         "technical_target_1": 100 + reward, "setup_type": "Trendfolge",
     }
     radar = radar_rr(result)
     assert radar["crv"] == pytest.approx(reward / 5)
-    assert decision(radar["crv"], radar["crv_entry"], trigger_status="Aktiv")["state"] == expected
+    ds=decision(radar["crv"], radar["crv_entry"], trigger_status="Aktiv")
+    assert ds["state"] == "buy"
+    assert ds["crv_assessment"].startswith(expected)
 
 
 def test_synthetic_and_analyst_targets_cannot_create_operational_release():
@@ -118,7 +120,7 @@ def test_synthetic_and_analyst_targets_cannot_create_operational_release():
     setup = build_crv_basis_comparison(result, pkg)[2]
     assert setup["crv"] == 2
     assert setup["synthetic"] is True and setup["operative"] is False
-    assert decision(pkg["technical_crv_now"], pkg["technical_crv_entry"])["state"] == "observe"
+    assert decision(pkg["technical_crv_now"], pkg["technical_crv_entry"])["state"] == "plan"
 
 
 def test_distant_setup_target_remains_separate_from_near_resistance(meta):
@@ -163,8 +165,8 @@ def test_planning_and_buy_remain_distinct(overrides, expected):
     assert ds["buy_now"] == (expected == "buy")
 
 
-def test_good_entry_crv_without_good_now_crv_only_allows_waiting():
-    assert decision(0.9, 1.6, trigger_status="Aktiv")["state"] == "wait_entry"
+def test_entry_crv_difference_is_context_not_a_location_gate():
+    assert decision(0.9, 1.6, trigger_status="Aktiv")["state"] == "buy"
 
 
 def test_missing_or_broken_stop_cannot_show_good_chart_crv(meta):

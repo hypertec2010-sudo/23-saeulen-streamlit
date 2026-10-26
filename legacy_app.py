@@ -16110,46 +16110,10 @@ def _v3015_build_volatility_stop(technical_stop, reference_price, atr_pct=None, 
 
 
 def _v230_extract_position_inputs(result, style_name="Ausgewogen"):
-    """v30.15a: Chart-Invalidierung, Fallback und ATR-Schutz sauber trennen."""
-    base = dict(_v230_extract_position_inputs_base_v3015(result, style_name=style_name) or {})
-    r = result or {}
-    reference = _v230_safe_float(base.get("entry_default"), default=None)
-    if reference is None:
-        reference = _v230_safe_float(base.get("price"), default=None)
-    legacy_stop = _v230_safe_float(base.get("stop"), default=None)
-    chart_pkg = _v3015a_extract_chart_invalidation(r, reference)
-    basis_pkg = _v3015a_resolve_pre_atr_stop(
-        chart_pkg.get("stop"),
-        reference,
-        chart_source=chart_pkg.get("source"),
-    )
-    pkg = _v3015_build_volatility_stop(
-        basis_pkg.get("base_stop"),
-        reference,
-        atr_pct=r.get("atr_pct", r.get("ATR-%")),
-        atr_abs=r.get("atr", r.get("ATR")),
-    )
-    base["legacy_technical_stop"] = legacy_stop
-    base["chart_invalidation_stop"] = basis_pkg.get("chart_stop")
-    base["chart_invalidation_source"] = basis_pkg.get("chart_source")
-    base["chart_invalidation_kind"] = chart_pkg.get("kind")
-    base["fallback_stop"] = basis_pkg.get("fallback_stop")
-    base["pre_atr_stop"] = basis_pkg.get("base_stop")
-    base["pre_atr_stop_source"] = basis_pkg.get("base_source")
-    base["pre_atr_stop_kind"] = basis_pkg.get("base_kind")
-    # Rueckwaertskompatibler Feldname: bezeichnet ab v30.15a die verwendete
-    # Stop-Basis vor ATR, nicht automatisch eine echte Chartmarke.
-    base["technical_stop"] = basis_pkg.get("base_stop")
-    base["atr_pct"] = pkg.get("atr_pct")
-    base["atr_multiple"] = pkg.get("atr_multiple")
-    base["atr_guard_stop"] = pkg.get("atr_guard_stop")
-    base["atr_guard_distance_pct"] = pkg.get("atr_guard_distance_pct")
-    base["risk_stop_source"] = pkg.get("source")
-    base["risk_stop_widened_by_atr"] = pkg.get("widened_by_atr")
-    base["risk_stop_too_volatile"] = pkg.get("too_volatile")
-    if _v230_safe_float(pkg.get("recommended_stop"), default=None) is not None:
-        base["stop"] = pkg.get("recommended_stop")
-    return base
+    """v30.21bv: one central stop/target; no independent risk-stop replacement."""
+    from modules.risk_calculator import build_analysis_risk_basis
+    return build_analysis_risk_basis(result, generated_at=get_current_berlin_time().isoformat())
+
 
 _event_module.configure_context(
     base_dir=Path(__file__).resolve().parent,
@@ -18113,7 +18077,7 @@ def _v3021ah_attach_shared_signal_packages(result):
     ).strip()
     try:
         if (
-            existing_source == "shared-operational-v30.21bt"
+            existing_source == "shared-operational-v30.21bv"
             and isinstance(existing_timing, dict) and existing_timing.get("score") is not None
             and isinstance(existing_conf, dict) and existing_conf.get("score") is not None
         ):
@@ -18288,7 +18252,7 @@ def _v3021ah_attach_shared_signal_packages(result):
             market_fomo_pkg=market_fomo, fibonacci_pkg=fib_pkg, wave_pkg=wave_pkg,
             setup_pattern_pkg=pattern_pkg, result=result,
         )
-        conf_pkg["source"] = "shared-operational-v30.21bt"
+        conf_pkg["source"] = "shared-operational-v30.21bv"
 
         timing_pkg = build_timing_action_confidence_v163(
             trigger_confluence_pkg=conf_pkg, final_action_label=final_action,
@@ -18302,11 +18266,11 @@ def _v3021ah_attach_shared_signal_packages(result):
             current_price=result.get("price"), structures=_structures_v3021ay,
             ccy=result.get("ccy", ""),
         )
-        timing_pkg["source"] = "shared-operational-v30.21bt"
+        timing_pkg["source"] = "shared-operational-v30.21bv"
 
         result["trigger_confluence_pkg"] = conf_pkg
         result["timing_action_confidence_pkg"] = timing_pkg
-        result["signal_package_source"] = "shared-operational-v30.21bt"
+        result["signal_package_source"] = "shared-operational-v30.21bv"
         result.update(_build_technical_crv_package_v3021aj(result))
         result["signal_package_complete"] = True
         result["operational_signal_basis"] = "1y-daily-fixed; hourly-only-if-already-loaded"
@@ -18878,9 +18842,9 @@ _V304D_GLOSSARY = {
         ("Invalidated / Invalidiert", "Setup ist nicht mehr gültig, weil eine wichtige technische oder risikobezogene Bedingung verletzt wurde."),
         ("Stop / Stop-Loss", "Kursniveau, an dem ein Trade zur Risikobegrenzung beendet werden soll."),
         ("Chart-Invalidierung", "Konkretes numerisches Kursniveau aus Swing-/Higher-Low, Supportzone oder Entry-/Reclaim-Zone. Erst ein Bruch dieses Niveaus stellt die verwendete Chartidee infrage."),
-        ("3,5%-Fallback", "Reiner Mindestabstand im Risiko-Rechner, wenn keine belastbare numerische Chart-Invalidierung vorhanden ist oder die Chartmarke zu eng liegt. Der Fallback ist selbst keine Chartmarke."),
-        ("Volatility-Aware Risk Stop", "Risiko-Rechner-Stop, der die ausgewiesene Vor-ATR-Basis nicht enger macht, sondern bei Bedarf um einen ATR-basierten Mindestpuffer erweitert. Ein weiterer Stop führt bei gleichem Risikobudget zu einer kleineren Positionsgröße."),
-        ("ATR-Schutz / ATR-Puffer", "Mindestabstand des Risiko-Rechner-Stops auf Basis der typischen ATR-Schwankung. Seit v30.15 wird je nach ATR-Regime ein Multiplikator von 1,6 bis 2,2 ATR verwendet."),
+        ("3,5%-Fallback", "Mindestabstand im optionalen ATR-Vergleich. Die Standardrechnung übernimmt den Analyse-Stop unverändert; der Prozentwert ist keine Chartmarke."),
+        ("Volatility-Aware Risk Stop", "Optionaler ATR-Vergleich zum gemeinsamen Analyse-Stop. Er erweitert den Abstand bei Bedarf und verändert die Standardanalyse nicht. Bei gleichem Risikobudget verringert ein weiterer Stop die rechnerische Stückzahl."),
+        ("ATR-Schutz / ATR-Puffer", "Vergleichsabstand auf Basis der ATR-Schwankung, je nach ATR-Regime mit 1,6 bis 2,2 ATR. Dieser Vergleich ist im Rechner ausdrücklich als Szenario auswählbar."),
         ("Initial Stop", "Ursprünglicher Stop zum Zeitpunkt des Einstiegs; dient auch zur Berechnung des anfänglichen Risikos."),
         ("Trailing Stop", "Nachgezogener Stop, der sich mit einer günstigen Kursbewegung nach oben bewegen kann."),
         ("Position Size", "Positionsgröße, also wie viele Stücke bzw. welcher Kapitalbetrag in einem Trade eingesetzt wird."),
@@ -21900,7 +21864,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # v30.21an: CRV-Entscheidung kompakt und direkt lesbar.
                                 # Die lange CRV-Basis bleibt in Diagnose/Details, damit die
                                 # Haupttabelle trotz mehr Transparenz nicht breiter wird als nötig.
-                                "CRV jetzt", "CRV Entry", "CRV-Einordnung", "Freiraum", "CRV-Ziel", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
+                                "Analyse-Stop", "CRV jetzt", "CRV Entry", "CRV-Einordnung", "Freiraum", "CRV-Ziel", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
                             from modules.environment_context import attach_environment_columns
                             _env_radar_v3021bp, _, _env_meta_v3021bp, _, _ = _v303d_load_rotation_snapshot()
@@ -22378,6 +22342,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _state_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Trade-State"), 34))
                                         _status_v2842 = html.escape(_v243_clip_cell(_mobile_row_v2842.get("Status"), 52))
                                         _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV jetzt") or _mobile_row_v2842.get("CRV")))
+                                        _analysis_stop_bv = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Analyse-Stop")))
                                         _crv_context_v3021bt = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV-Einordnung")))
                                         _crv_entry_v3021an = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV Entry")))
                                         _crv_clearance_v3021an = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Freiraum")))
@@ -22422,6 +22387,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                                 <div><span class="v2842-mobile-label">CRV jetzt</span>{_crv_v2842}</div>
                                                 <div><span class="v2842-mobile-label">CRV Entry</span>{_crv_entry_v3021an}</div>
                                                 <div><span class="v2842-mobile-label">CRV separat</span>{_crv_context_v3021bt}</div>
+                                                <div><span class="v2842-mobile-label">Analyse-Stop</span>{_analysis_stop_bv}</div>
                                                 <div><span class="v2842-mobile-label">Freiraum</span>{_crv_clearance_v3021an}</div>
                                                 <div><span class="v2842-mobile-label">Entry-Abstand</span>{_distance_v2842}</div>
                                                 <div class="v304a-trader-wide"><span class="v2842-mobile-label">CRV-Ziel</span>{_crv_target_v3021an}</div>
@@ -22604,7 +22570,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _compact_cols_v3021l = [
                                         "Ampel", "Umfeldrisiko", "Ticker", "Name", "Umfeld-Grund", ("Setup-Stärke" if "Setup-Stärke" in _desktop_live_display_v304a.columns else "Live-Score"), "Priorität",
                                         "Decision-Confidence", "Kurs", "Volatilität",
-                                        "CRV jetzt", "CRV Entry", "CRV-Einordnung", "Freiraum", "CRV-Ziel",
+                                        "Analyse-Stop", "CRV jetzt", "CRV Entry", "CRV-Einordnung", "Freiraum", "CRV-Ziel",
                                         "Entry-Abstand", "Plan-Status", "Kerntrigger", "Status", "Harvest-Ampel",
                                     ]
                                     _compact_cols_v3021l = [c for c in _compact_cols_v3021l if c in _desktop_live_display_v304a.columns]
@@ -24552,398 +24518,14 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     # v24.10: Waehrung nicht global auf EUR festhalten.
                                     # Die Einheit wird je Ticker aus der Kurswaehrung abgeleitet
                                     # und tickerbezogen gespeichert, damit US-Werte USD anzeigen.
-                                    default_risk_currency_v2410 = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, fallback="USD")
+                                    default_risk_currency_v2410 = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, result=selected_calc_row.get("__risk_basis"), fallback="USD")
                                     currency_key_v2410 = f"v230_risk_currency_widget_{re.sub(r'[^A-Za-z0-9_]+', '_', selected_calc_ticker or 'UNKNOWN')}"
                                     risk_currency = st.text_input("Währung/Einheit", value=st.session_state.get(currency_key_v2410, default_risk_currency_v2410), key=currency_key_v2410)
                                     risk_currency = str(risk_currency or default_risk_currency_v2410 or "USD").strip().upper()
 
-                                # v24.6: Risiko-Basis je Ticker cachen. Die Auswahl im Rechner
-                                # darf nicht immer wieder eine komplette Einzelanalyse starten.
-                                risk_cache_key_v246 = f"{selected_calc_ticker}|{monitor_style}|Swing (1-4 Wochen)|riskstop|{APP_VERSION}"
-                                risk_cache_store_v246 = st.session_state.get("v246_risk_basis_cache", {})
-                                _cached_risk_v3021c = dict(risk_cache_store_v246.get(risk_cache_key_v246) or {}) if risk_cache_key_v246 in risk_cache_store_v246 else {}
-                                _cache_has_structure_v3021c = all(
-                                    key in _cached_risk_v3021c
-                                    for key in ("chart_invalidation_stop", "chart_invalidation_source", "chart_invalidation_kind")
-                                )
-                                if _cached_risk_v3021c and _cache_has_structure_v3021c:
-                                    risk_inputs = _cached_risk_v3021c
-                                    risk_error = None
-                                else:
-                                    with st.spinner(f"Risiko-Basis für {selected_calc_ticker} wird berechnet ..."):
-                                        try:
-                                            risk_result = analyze_stock(
-                                                ticker=selected_calc_ticker,
-                                                # v24.0: Risiko-Basis ebenfalls mit stabilem Swing-Horizont laden;
-                                                # der gewaehlte Live-Horizont beeinflusst Status/Score, nicht den
-                                                # unsupported Core-Horizon-Parameter.
-                                                horizon="Swing (1-4 Wochen)",
-                                                depot=10000,
-                                                risk_pct=1.0,
-                                                override=0.0,
-                                                buy_in_override=0.0,
-                                                smart_money_default=True,
-                                                strict_mode=True,
-                                            )
-                                            risk_inputs = _v230_extract_position_inputs(risk_result, style_name=monitor_style)
-                                            risk_inputs["currency"] = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, risk_result, fallback=default_risk_currency_v2410)
-                                            risk_cache_store_v246[risk_cache_key_v246] = dict(risk_inputs)
-                                            st.session_state["v246_risk_basis_cache"] = risk_cache_store_v246
-                                            risk_error = None
-                                        except Exception as exc:
-                                            risk_inputs = {}
-                                            risk_error = str(exc)[:220]
-                                if risk_error:
-                                    st.warning(f"Risiko-Basis konnte nicht berechnet werden: {risk_error}")
-                                else:
-                                    # Falls die Risiko-Basis eine genauere Waehrung liefert, hat sie Vorrang.
-                                    risk_currency = _v2410_infer_quote_currency(selected_calc_ticker, selected_calc_row, risk_inputs, fallback=risk_currency)
-                                    # v24.8: Der Risiko-Rechner darf beim Wechsel des Tickerauswahlfeldes
-                                    # keine alten Entry-/Stop-/Ziel-Widgetwerte eines anderen Tickers behalten.
-                                    # Daher werden die Widget-Keys tickerbezogen geführt. Außerdem hat der
-                                    # aktuelle Live-Monitor-Kurs Vorrang vor einem ggf. gecachten Analysepreis.
-                                    live_row_price_v248 = _v230_safe_float(selected_calc_row.get("Kurs"), default=None)
-                                    if live_row_price_v248 is not None and live_row_price_v248 > 0:
-                                        risk_inputs["price"] = live_row_price_v248
-                                        risk_inputs["entry_default"] = live_row_price_v248
-                                        _live_basis_v3015a = _v3015a_resolve_pre_atr_stop(
-                                            risk_inputs.get("chart_invalidation_stop"),
-                                            live_row_price_v248,
-                                            chart_source=risk_inputs.get("chart_invalidation_source"),
-                                        )
-                                        risk_inputs["fallback_stop"] = _live_basis_v3015a.get("fallback_stop")
-                                        risk_inputs["pre_atr_stop"] = _live_basis_v3015a.get("base_stop")
-                                        risk_inputs["pre_atr_stop_source"] = _live_basis_v3015a.get("base_source")
-                                        risk_inputs["pre_atr_stop_kind"] = _live_basis_v3015a.get("base_kind")
-                                        risk_inputs["technical_stop"] = _live_basis_v3015a.get("base_stop")
-                                        _live_stop_plan_v3015 = _v3015_build_volatility_stop(
-                                            _live_basis_v3015a.get("base_stop"),
-                                            live_row_price_v248,
-                                            atr_pct=risk_inputs.get("atr_pct"),
-                                        )
-                                        if _v230_safe_float(_live_stop_plan_v3015.get("recommended_stop"), default=None) is not None:
-                                            risk_inputs["stop"] = _live_stop_plan_v3015.get("recommended_stop")
-                                        risk_inputs["atr_guard_stop"] = _live_stop_plan_v3015.get("atr_guard_stop")
-                                        risk_inputs["atr_guard_distance_pct"] = _live_stop_plan_v3015.get("atr_guard_distance_pct")
-                                        risk_inputs["risk_stop_source"] = _live_stop_plan_v3015.get("source")
-                                        risk_inputs["risk_stop_widened_by_atr"] = _live_stop_plan_v3015.get("widened_by_atr")
-                                        risk_inputs["risk_stop_too_volatile"] = _live_stop_plan_v3015.get("too_volatile")
+                                # v30.21bv: immutable basis captured by the same scan as this row.
+                                _risk_module.render_snapshot_calculator(st, selected_calc_row, currency=risk_currency)
 
-                                    ticker_key_v248 = re.sub(r"[^A-Za-z0-9_]+", "_", selected_calc_ticker or "UNKNOWN")
-                                    entry_widget_key_v248 = f"v230_entry_widget_{ticker_key_v248}"
-                                    stop_widget_key_v248 = f"v3015a_stop_widget_{ticker_key_v248}"
-                                    target_widget_key_v248 = f"v230_target_widget_{ticker_key_v248}"
-                                    current_btn_key_v248 = f"v230_use_current_price_btn_{ticker_key_v248}"
-                                    risk_stop_btn_key_v3015 = f"v3015a_use_risk_stop_btn_{ticker_key_v248}"
-
-                                    st.markdown(
-                                        f"**{selected_calc_ticker}** · Status: **{selected_calc_row.get('Status', '-')}** · Live-Score: **{selected_calc_row.get('Live-Score', '-')}** · Radar-Bucket: **{selected_calc_row.get('Radar-Bucket', '-')}**"
-                                    )
-                                    st.caption(
-                                        f"Live-Kurs {_v230_price_text(risk_inputs.get('price'))} · Entry-Zone {risk_inputs.get('entry_zone') or '-'} · "
-                                        f"{_v3021b_structure_level_label(risk_inputs.get('chart_invalidation_kind'))} {_v230_price_text(risk_inputs.get('chart_invalidation_stop'))} · "
-                                        f"3,5%-Fallback {_v230_price_text(risk_inputs.get('fallback_stop'))} · "
-                                        f"Risiko-Stop {_v230_price_text(risk_inputs.get('stop'))} · "
-                                        f"Ziel {_v230_price_text(risk_inputs.get('target'))} ({risk_inputs.get('target_source') or '-'})"
-                                    )
-
-                                    # v24.8: Pending-Override nur auf denselben Ticker anwenden und vor
-                                    # der Widget-Erstellung setzen.
-                                    _pending_entry_override_v248 = st.session_state.pop("v247_pending_entry_override", None)
-                                    if isinstance(_pending_entry_override_v248, dict):
-                                        if str(_pending_entry_override_v248.get("ticker") or "").upper() == selected_calc_ticker:
-                                            try:
-                                                st.session_state[entry_widget_key_v248] = float(round(float(_pending_entry_override_v248.get("value")), 4))
-                                            except Exception:
-                                                pass
-                                    elif _pending_entry_override_v248 is not None:
-                                        try:
-                                            st.session_state[entry_widget_key_v248] = float(round(float(_pending_entry_override_v248), 4))
-                                        except Exception:
-                                            pass
-
-                                    _pending_stop_override_v3015 = st.session_state.pop("v3015a_pending_stop_override", None)
-                                    if isinstance(_pending_stop_override_v3015, dict):
-                                        if str(_pending_stop_override_v3015.get("ticker") or "").upper() == selected_calc_ticker:
-                                            try:
-                                                st.session_state[stop_widget_key_v248] = float(round(float(_pending_stop_override_v3015.get("value")), 4))
-                                            except Exception:
-                                                pass
-
-                                    rc1, rc2, rc3, rc4 = st.columns(4)
-                                    default_account = float(st.session_state.get("v230_account_size", 50000.0) or 50000.0)
-                                    default_risk_pct = float(st.session_state.get("v230_risk_pct", 0.5) or 0.5)
-                                    default_max_pos = float(st.session_state.get("v230_max_position_pct", 12.0) or 12.0)
-                                    with rc1:
-                                        account_size = st.number_input("Depotgröße", min_value=0.0, value=default_account, step=1000.0, key="v230_account_size_widget")
-                                        st.session_state.v230_account_size = account_size
-                                    with rc2:
-                                        risk_pct_input = st.number_input("Risiko pro Trade (%)", min_value=0.01, max_value=10.0, value=default_risk_pct, step=0.05, key="v230_risk_pct_widget")
-                                        st.session_state.v230_risk_pct = risk_pct_input
-                                    with rc3:
-                                        entry_default = _v230_safe_float(risk_inputs.get("entry_default"), default=0.0) or 0.0
-                                        entry_input = st.number_input("Geplanter Entry", min_value=0.0, value=float(round(entry_default, 4)), step=0.01, key=entry_widget_key_v248)
-                                    _entry_basis_v3015a = _v3015a_resolve_pre_atr_stop(
-                                        risk_inputs.get("chart_invalidation_stop"),
-                                        entry_input,
-                                        chart_source=risk_inputs.get("chart_invalidation_source"),
-                                    )
-                                    _entry_stop_plan_v3015 = _v3015_build_volatility_stop(
-                                        _entry_basis_v3015a.get("base_stop"),
-                                        entry_input,
-                                        atr_pct=risk_inputs.get("atr_pct"),
-                                    )
-                                    with rc4:
-                                        stop_default = _v230_safe_float(_entry_stop_plan_v3015.get("recommended_stop"), default=None)
-                                        if stop_default is None:
-                                            stop_default = _v230_safe_float(risk_inputs.get("stop"), default=0.0) or 0.0
-                                        stop_input = st.number_input("Stop / Invalidierung", min_value=0.0, value=float(round(stop_default, 4)), step=0.01, key=stop_widget_key_v248)
-
-                                    rc5, rc6, rc7 = st.columns([1.0, 1.0, 1.2])
-                                    with rc5:
-                                        target_default = _v230_safe_float(risk_inputs.get("target"), default=0.0) or 0.0
-                                        target_input = st.number_input("Ziel / Teilziel", min_value=0.0, value=float(round(target_default, 4)), step=0.01, key=target_widget_key_v248)
-                                    with rc6:
-                                        max_position_pct = st.number_input("Max. Positionsanteil (%)", min_value=0.0, max_value=100.0, value=default_max_pos, step=1.0, key="v230_max_position_pct_widget")
-                                        st.session_state.v230_max_position_pct = max_position_pct
-                                    with rc7:
-                                        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-                                        use_current_as_entry = st.button("Aktuellen Kurs als Entry setzen", use_container_width=True, key=current_btn_key_v248)
-                                        if use_current_as_entry:
-                                            # Nicht direkt den Widget-Key nach der Widget-Erstellung setzen.
-                                            # Stattdessen tickerbezogen fuer den naechsten Run vormerken.
-                                            st.session_state["v247_pending_entry_override"] = {
-                                                "ticker": selected_calc_ticker,
-                                                "value": float(round(_v230_safe_float(risk_inputs.get("price"), default=entry_input) or entry_input, 4)),
-                                            }
-                                            st.rerun()
-
-                                    _chart_stop_v3015a = _v230_safe_float(_entry_basis_v3015a.get("chart_stop"), default=None)
-                                    _fallback_stop_v3015a = _v230_safe_float(_entry_basis_v3015a.get("fallback_stop"), default=None)
-                                    _basis_stop_v3015a = _v230_safe_float(_entry_basis_v3015a.get("base_stop"), default=None)
-                                    _atr_stop_v3015 = _v230_safe_float(_entry_stop_plan_v3015.get("atr_guard_stop"), default=None)
-                                    _rec_stop_v3015 = _v230_safe_float(_entry_stop_plan_v3015.get("recommended_stop"), default=None)
-                                    _atr_pct_v3015 = _v230_safe_float(_entry_stop_plan_v3015.get("atr_pct"), default=None)
-                                    _atr_mult_v3015 = _v230_safe_float(_entry_stop_plan_v3015.get("atr_multiple"), default=None)
-                                    _guard_dist_v3015 = _v230_safe_float(_entry_stop_plan_v3015.get("atr_guard_distance_pct"), default=None)
-                                    _rec_dist_v3015 = _v230_safe_float(_entry_stop_plan_v3015.get("recommended_distance_pct"), default=None)
-                                    _manual_stop_v3015 = _v230_safe_float(stop_input, default=None)
-                                    _manual_tighter_v3015 = bool(
-                                        _manual_stop_v3015 is not None and _rec_stop_v3015 is not None
-                                        and _manual_stop_v3015 > _rec_stop_v3015 + max(1e-8, float(entry_input or 0) * 1e-6)
-                                    )
-
-                                    sg1_v3015, sg2_v3015, sg3_v3015, sg4_v3015 = st.columns(4)
-                                    with sg1_v3015:
-                                        _chart_delta_v3015a = None
-                                        if _chart_stop_v3015a is not None and entry_input > 0 and _chart_stop_v3015a < entry_input:
-                                            _chart_delta_v3015a = f"-{(entry_input-_chart_stop_v3015a)/entry_input*100:.1f}%"
-                                        st.metric(
-                                            _v3021b_structure_level_label(risk_inputs.get("chart_invalidation_kind")),
-                                            _v230_price_text(_chart_stop_v3015a),
-                                            delta=_chart_delta_v3015a,
-                                        )
-                                    with sg2_v3015:
-                                        _fallback_delta_v3015a = None
-                                        if _fallback_stop_v3015a is not None and entry_input > 0:
-                                            _fallback_delta_v3015a = "-3,5%"
-                                        st.metric("3,5%-Fallback", _v230_price_text(_fallback_stop_v3015a), delta=_fallback_delta_v3015a)
-                                    with sg3_v3015:
-                                        _atr_delta_v3015 = None
-                                        if _guard_dist_v3015 is not None and _atr_mult_v3015 is not None:
-                                            _atr_delta_v3015 = f"-{_guard_dist_v3015:.1f}% · {_atr_mult_v3015:.1f} ATR"
-                                        st.metric("ATR-Schutz", _v230_price_text(_atr_stop_v3015), delta=_atr_delta_v3015)
-                                    with sg4_v3015:
-                                        _rec_delta_v3015 = None if _rec_dist_v3015 is None else f"-{_rec_dist_v3015:.1f}%"
-                                        st.metric("Empfohlener Risiko-Stop", _v230_price_text(_rec_stop_v3015), delta=_rec_delta_v3015)
-
-                                    _hybrid_shadow_v3021t = _build_hybrid_stop_shadow_v3021t(
-                                        _chart_stop_v3015a,
-                                        entry_input,
-                                        atr_pct=_atr_pct_v3015,
-                                    )
-                                    with st.expander("🧪 Hybrid-Stop · Shadow-Vergleich", expanded=False):
-                                        st.caption(
-                                            "Shadow only: Dieser Vergleich verändert weder den eingegebenen/produktiven Stop noch "
-                                            "Positionsgröße, CRV, Screener, Tradingpaket oder Freigaben."
-                                        )
-                                        _hybrid_stop_v3021t = _v230_safe_float(_hybrid_shadow_v3021t.get("hybrid_stop"), default=None)
-                                        _hybrid_dist_v3021t = _v230_safe_float(_hybrid_shadow_v3021t.get("hybrid_distance_pct"), default=None)
-                                        _hybrid_atr_units_v3021t = _v230_safe_float(_hybrid_shadow_v3021t.get("hybrid_distance_atr"), default=None)
-
-                                        _hs1_v3021t, _hs2_v3021t, _hs3_v3021t = st.columns(3)
-                                        with _hs1_v3021t:
-                                            _struct_delta_v3021t = None
-                                            if _chart_stop_v3015a is not None and entry_input > 0:
-                                                _struct_delta_v3021t = f"-{(entry_input-_chart_stop_v3015a)/entry_input*100:.1f}%"
-                                            st.metric("Struktur-Invalidierung", _v230_price_text(_chart_stop_v3015a), delta=_struct_delta_v3021t)
-                                        with _hs2_v3021t:
-                                            _old_delta_v3021t = None if _rec_dist_v3015 is None else f"-{_rec_dist_v3015:.1f}%"
-                                            st.metric("Produktiv empfohlen", _v230_price_text(_rec_stop_v3015), delta=_old_delta_v3021t)
-                                        with _hs3_v3021t:
-                                            _hybrid_delta_text_v3021t = None if _hybrid_dist_v3021t is None else f"-{_hybrid_dist_v3021t:.1f}%"
-                                            st.metric("Hybrid · Shadow", _v230_price_text(_hybrid_stop_v3021t), delta=_hybrid_delta_text_v3021t)
-
-                                        if _hybrid_shadow_v3021t.get("ok"):
-                                            _shadow_rows_v3021t = []
-                                            _shadow_models_v3021t = [
-                                                ("Produktiv empfohlen", _rec_stop_v3015, "heutige produktive ATR-/Stop-Logik"),
-                                                ("Struktur pur", _chart_stop_v3015a, "reine technische Invalidierung; ohne Noise-Puffer"),
-                                                ("Hybrid Shadow", _hybrid_stop_v3021t, str(_hybrid_shadow_v3021t.get("source") or "-")),
-                                            ]
-                                            _shadow_calcs_v3021t = {}
-                                            for _model_v3021t, _stop_v3021t, _note_v3021t in _shadow_models_v3021t:
-                                                _stop_num_v3021t = _v230_safe_float(_stop_v3021t, default=None)
-                                                if _stop_num_v3021t is None or _stop_num_v3021t <= 0 or entry_input <= 0 or _stop_num_v3021t >= entry_input:
-                                                    continue
-                                                _calc_v3021t = _v230_calculate_position_size(
-                                                    entry_input, _stop_num_v3021t, target_input, account_size, risk_pct_input,
-                                                    max_position_pct=max_position_pct,
-                                                )
-                                                _shadow_calcs_v3021t[_model_v3021t] = _calc_v3021t
-                                                _dist_v3021t = (entry_input - _stop_num_v3021t) / entry_input * 100.0
-                                                _shadow_rows_v3021t.append({
-                                                    "Modell": _model_v3021t,
-                                                    "Stop": round(_stop_num_v3021t, 4),
-                                                    "Abstand %": round(_dist_v3021t, 1),
-                                                    "Stück": int(_calc_v3021t.get("shares") or 0) if _calc_v3021t.get("ok") else None,
-                                                    "Roh-Stück": round(float(_calc_v3021t.get("shares_raw") or 0), 1) if _calc_v3021t.get("ok") else None,
-                                                    "CRV": round(float(_calc_v3021t.get("crv")), 2) if _calc_v3021t.get("ok") and _calc_v3021t.get("crv") is not None else None,
-                                                    "Einordnung": _note_v3021t,
-                                                })
-                                            if _shadow_rows_v3021t:
-                                                st.dataframe(pd.DataFrame(_shadow_rows_v3021t), hide_index=True, use_container_width=True)
-
-                                            _old_calc_v3021t = _shadow_calcs_v3021t.get("Produktiv empfohlen") or {}
-                                            _hybrid_calc_v3021t = _shadow_calcs_v3021t.get("Hybrid Shadow") or {}
-                                            if _rec_dist_v3015 is not None and _hybrid_dist_v3021t is not None:
-                                                _width_diff_v3021t = float(_rec_dist_v3015) - float(_hybrid_dist_v3021t)
-                                                _shares_old_v3021t = int(_old_calc_v3021t.get("shares") or 0) if _old_calc_v3021t.get("ok") else None
-                                                _shares_new_v3021t = int(_hybrid_calc_v3021t.get("shares") or 0) if _hybrid_calc_v3021t.get("ok") else None
-                                                _summary_v3021t = f"Stop-Abstand: produktiv {_rec_dist_v3015:.1f}% vs. Hybrid {_hybrid_dist_v3021t:.1f}%"
-                                                if _width_diff_v3021t > 0.05:
-                                                    _summary_v3021t += f" · produktiv {_width_diff_v3021t:.1f} %-Pkt. weiter"
-                                                elif _width_diff_v3021t < -0.05:
-                                                    _summary_v3021t += f" · Hybrid {abs(_width_diff_v3021t):.1f} %-Pkt. weiter"
-                                                if _shares_old_v3021t is not None and _shares_new_v3021t is not None:
-                                                    _summary_v3021t += f" · Stück {_shares_old_v3021t} → {_shares_new_v3021t}"
-                                                st.info(_summary_v3021t)
-
-                                            if _atr_pct_v3015 is not None:
-                                                _atr_detail_v3021t = f"ATR(14) {_atr_pct_v3015:.1f}% · Strukturpuffer 0,35 ATR · Mindestabstand 0,80 ATR"
-                                                if _hybrid_atr_units_v3021t is not None:
-                                                    _atr_detail_v3021t += f" · Hybrid effektiv {_hybrid_atr_units_v3021t:.2f} ATR"
-                                                st.caption(_atr_detail_v3021t)
-
-                                            if _hybrid_shadow_v3021t.get("provisional"):
-                                                st.warning(
-                                                    "Keine belastbare Struktur-Invalidierung vorhanden. Der Shadow zeigt nur einen provisorischen 1,0-ATR-Risikostop; "
-                                                    "das gilt ausdrücklich nicht als vollständiger Trade-Plan."
-                                                )
-                                            elif _hybrid_shadow_v3021t.get("noise_conflict"):
-                                                st.info(
-                                                    "Die reine Struktur liegt innerhalb von 0,8 ATR vom Entry. Der Hybrid setzt deshalb den Stop weiter, "
-                                                    "statt normale Schwankung als technische Invalidierung zu behandeln."
-                                                )
-
-                                            _tradeability_v3021t = str(_hybrid_shadow_v3021t.get("tradeability") or "n/a")
-                                            if _tradeability_v3021t == "besserer Entry abwarten":
-                                                st.warning(
-                                                    "Shadow-Einordnung: Der strukturell sinnvolle Stop liegt mehr als 12% vom Entry entfernt. "
-                                                    "Nicht künstlich enger setzen; eher besseren Entry/Pullback abwarten."
-                                                )
-                                            elif _tradeability_v3021t == "kritisch":
-                                                st.warning("Shadow-Einordnung: Stop-Abstand 10-12% · kritisch prüfen, aber kein automatisches Gate.")
-                                            elif _tradeability_v3021t == "erhoeht":
-                                                st.caption("Shadow-Einordnung: Stop-Abstand 8-10% · erhöht, aber noch kein automatisches Gate.")
-                                            elif _tradeability_v3021t == "normal":
-                                                st.caption("Shadow-Einordnung: Stop-Abstand bis 8% · im vorgesehenen Normalbereich.")
-                                        else:
-                                            st.caption(f"Hybrid-Stop aktuell nicht berechenbar: {_hybrid_shadow_v3021t.get('reason') or 'keine belastbare Basis'}")
-
-                                    with st.expander("ℹ️ Stop-Herkunft & Methodik", expanded=False):
-                                        st.caption(
-                                            f"Strukturquelle: {_entry_basis_v3015a.get('chart_source') or '-'} · "
-                                            f"Verwendete Basis vor ATR: {_entry_basis_v3015a.get('base_source') or '-'} "
-                                            f"({_v230_price_text(_basis_stop_v3015a)})."
-                                        )
-                                        st.caption(
-                                            "Die Unterkante der Entry-Zone wird nicht als Setup-Invalidierung verwendet. "
-                                            "Fehlt eine belastbare Strukturmarke, dient der klar gekennzeichnete 3,5%-Fallback als Ersatzbasis."
-                                        )
-                                        if _atr_pct_v3015 is not None:
-                                            st.caption(
-                                                f"ATR(14): {_atr_pct_v3015:.1f}% des Kurses · Mindestpuffer: "
-                                                f"{(_guard_dist_v3015 or 0):.1f}% ({(_atr_mult_v3015 or 0):.1f} ATR). "
-                                                "Der Rechner nimmt den weiter entfernten Wert aus Stop-Basis und ATR-Schutz; das Risikobudget bleibt unverändert."
-                                            )
-                                        else:
-                                            st.caption("Kein belastbarer ATR-Wert verfügbar; der Risiko-Rechner verwendet die ausgewiesene Stop-Basis vor ATR unverändert.")
-
-                                    if st.button("Empfohlenen Risiko-Stop übernehmen", use_container_width=True, key=risk_stop_btn_key_v3015):
-                                        if _rec_stop_v3015 is not None:
-                                            st.session_state["v3015a_pending_stop_override"] = {
-                                                "ticker": selected_calc_ticker,
-                                                "value": float(_rec_stop_v3015),
-                                            }
-                                            st.rerun()
-
-                                    if _chart_stop_v3015a is None:
-                                        st.warning(
-                                            "Keine belastbare strukturelle Setup-Invalidierung gefunden. Der 3,5%-Fallback dient nur als Ersatzbasis und ist keine Chartmarke."
-                                        )
-                                    elif _entry_basis_v3015a.get("base_kind") == "fallback":
-                                        st.info(
-                                            "Die erkannte Strukturmarke liegt näher als 3,5% am Entry. Vor dem ATR-Vergleich greift deshalb der defensivere 3,5%-Mindestabstand."
-                                        )
-
-                                    if _entry_stop_plan_v3015.get("atr_guard_capped"):
-                                        st.warning("Extrem hohe ATR: Der reine ATR-Abstand wäre größer als 80%. Der Rechner begrenzt die Darstellung auf 80% und behandelt das Setup als sehr volatil.")
-                                    if _manual_tighter_v3015:
-                                        st.warning(
-                                            "Der manuell gewählte Stop liegt enger als der aktuelle ATR-Schutz. Das ist zulässig, erhöht aber das Risiko, durch normale Schwankung ausgestoppt zu werden."
-                                        )
-                                    elif _entry_stop_plan_v3015.get("widened_by_atr"):
-                                        st.info(
-                                            "Die Stop-Basis vor ATR wäre enger als der Volatilitätspuffer. Der vorgeschlagene Risiko-Stop wurde deshalb weiter gesetzt; die Positionsgröße wird entsprechend kleiner berechnet."
-                                        )
-
-                                    calc_pkg = _v230_calculate_position_size(entry_input, stop_input, target_input, account_size, risk_pct_input, max_position_pct=max_position_pct)
-                                    if not calc_pkg.get("ok"):
-                                        st.warning(calc_pkg.get("error") or "Positionsgröße nicht berechenbar.")
-                                    else:
-                                        m1, m2, m3, m4 = st.columns(4)
-                                        with m1:
-                                            st.metric("Stückzahl", f"{int(calc_pkg['shares'])}")
-                                        with m2:
-                                            st.metric("Positionswert", f"{calc_pkg['position_value']:,.0f} {risk_currency}".replace(",", "."))
-                                        with m3:
-                                            st.metric("Max. Risiko", f"{calc_pkg['actual_risk']:,.0f} {risk_currency}".replace(",", "."), delta=(f"{calc_pkg['actual_risk_pct']:.2f}% Depot" if calc_pkg.get('actual_risk_pct') is not None else None))
-                                        with m4:
-                                            crv_show = calc_pkg.get("crv")
-                                            st.metric("CRV auf Ziel", "n/a" if crv_show is None else f"{crv_show:.2f}")
-                                        if calc_pkg.get("capped"):
-                                            st.info("Positionsgröße wurde durch den maximalen Positionsanteil begrenzt.")
-                                        st.caption(
-                                            f"Risiko je Aktie: {calc_pkg['unit_risk']:.2f} · Stop-Abstand: {calc_pkg['stop_distance_pct']:.1f}% · rechnerische Stückzahl ohne Positionslimit: {calc_pkg['shares_raw']:.1f}"
-                                        )
-                                        if _entry_stop_plan_v3015.get("widened_by_atr") and _basis_stop_v3015a is not None and _manual_stop_v3015 is not None and _rec_stop_v3015 is not None and abs(_manual_stop_v3015 - _rec_stop_v3015) <= max(0.01, entry_input * 0.0001):
-                                            _basis_calc_v3015a = _v230_calculate_position_size(entry_input, _basis_stop_v3015a, target_input, account_size, risk_pct_input, max_position_pct=max_position_pct)
-                                            if _basis_calc_v3015a.get("ok") and _basis_calc_v3015a.get("shares") != calc_pkg.get("shares"):
-                                                st.caption(
-                                                    f"Volatilitätsanpassung: {int(_basis_calc_v3015a.get('shares') or 0)} Stück mit Stop-Basis vor ATR → "
-                                                    f"{int(calc_pkg.get('shares') or 0)} Stück mit ATR-geschütztem Risiko-Stop. Risikobudget bleibt {risk_pct_input:.2f}% des Depots."
-                                                )
-                                        if calc_pkg["shares"] <= 0:
-                                            st.warning("Bei diesen Parametern ergibt sich keine kaufbare Stückzahl. Risikobudget nicht erzwingen: kleinere handelbare Einheit prüfen oder auf einen besseren Entry warten.")
-                                        elif calc_pkg.get("stop_distance_pct", 0) > 18:
-                                            st.warning("Sehr großer notwendiger Stop-Abstand: Das Setup ist für dieses Risikobudget aktuell sehr volatil. Positionsgröße klein halten oder einen besseren Entry/Pullback abwarten; den Stop nicht nur für mehr Stücke künstlich enger setzen.")
-                                        elif calc_pkg.get("crv") is not None and calc_pkg.get("crv") < 1.2:
-                                            st.warning("CRV auf das gewählte Ziel ist schwach. Ziel, Entry oder Stop erneut prüfen.")
-                                        else:
-                                            st.success("Risiko-Plan rechnerisch plausibel. Vor Umsetzung Setup, Liquidität und Stop-Regel final prüfen.")
-
-                        # ---------- v29.1: Portfolio & Risk Engine ----------
                         elif cockpit_area == "🛡️ Portfolio-Risiko":
                             st.markdown(f"### Portfolio & Risk Engine · {APP_VERSION}")
                             st.caption(

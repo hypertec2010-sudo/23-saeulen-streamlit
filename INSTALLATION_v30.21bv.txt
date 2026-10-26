@@ -1,0 +1,65 @@
+CHSM v30.21bv – Trade-Stop und identische Standard-Risikobasis
+Kumulativer Patch für bi bis bu; bisherige Ergänzungen enthalten.
+
+Installation:
+1. Projektstand sichern und ZIP entpacken.
+2. Alle Dateien aus DATEILISTE.txt unter identischen relativen Projektpfaden
+   ersetzen/ergänzen. Nicht den gesamten modules-Ordner ersetzen/löschen.
+3. Insbesondere legacy_app.py, modules/risk_calculator.py,
+   modules/live_monitor.py, modules/stop_selection.py,
+   modules/structural_trade_plan.py, modules/technical_crv.py,
+   modules/stop_diagnostics.py und VERSION.txt aktualisieren.
+4. App neu starten; Version v30.21bv kontrollieren.
+5. Watchlist vollständig neu scannen und Sofortanalysen neu ausführen.
+   Alte gespeicherte Scans werden nicht rückwirkend neu bewertet. Der Rechner
+   verlangt bei fehlender gemeinsamer Risikobasis einen Neuscan.
+
+Neue Stop-Auswahl für erkannte Long-Setups / Neueinstiege:
+- Zwei separate strikte Pivot-Tiefs innerhalb 1,5 % Preisnähe, mit mindestens
+  sechs Kerzen Abstand; je drei Nachbar-Kerzen bestätigen einen Pivot.
+- Trade-Relevanz: letzte 60 Kerzen, letzte Bestätigung höchstens 20 Kerzen alt,
+  gepufferter Stop höchstens 12 % unter konservativer Entry-Referenz.
+- Puffer weiterhin maximaler Wert aus 0,6 % Unterstützung und 0,25 ATR.
+- Der bestätigte Stop muss unter Kurs und gesamter Entry-Zone liegen.
+- Diese Grenzen sind Start-Heuristiken für den bisherigen 1–4-Wochen-Bezug,
+  keine Aussage über ein optimales Risiko und keine backgetestete Kalibrierung.
+- Ohne passende bestätigte Struktur: vorhandener 1,8-ATR-Stop als gekennzeichneter
+  Ersatz, sofern positiv und unter Kurs/Entry-Zone. Falls das nicht möglich ist,
+  bleibt der bisherige Ersatz mit seiner Herkunft bestehen.
+- Längerfristige Unterstützung aus bis zu 180 Kerzen bleibt in der Diagnose
+  als übergeordnete Referenz sichtbar; sie ist kein automatischer Trade-Stop.
+- Ein einzelnes Modell-, MA- oder Wave-Level wird nicht dadurch bestätigt.
+- Bestehende Positionsstop-Auswahl bleibt unverändert. Es werden keine Stops
+  im Broker angelegt, verändert oder gelöscht.
+
+Risiko-Rechner:
+- Analysewerte (Standard): exakter Analysepreis, tatsächlich verwendeter Stop
+  und operatives technisches Ziel aus dem ausgewählten Screener-Scan.
+- CRV jetzt und Rechner-CRV müssen bei identischem Datenstand übereinstimmen.
+  CRV Entry bleibt ein anderes Szenario mit konservativem Entry-Zonenrand.
+- Ein abweichender Live-Kurs wird angezeigt, ersetzt die CRV-Kursreferenz aber
+  nicht heimlich. Eine Sofortanalyse mit neuerem Kursstand darf abweichen.
+- ATR-Vergleich: weiter entfernter Wert aus Analyse-Stop und ATR-Schutz. Der
+  rohe ATR-Wert und Multiplikator sind sichtbar; Standardanalyse bleibt gleich.
+- Manuelles Szenario: Entry, Stop und Ziel frei bearbeitbar, als Szenario
+  ausgewiesen. Neuer Scan/Titel verwendet die neue Analysebasis; vorhandene
+  manuelle Widgets überschreiben sie nicht. Reset-Button setzt Standard zurück.
+- Depotgröße und Risikobudget bleiben globale Rechnereinstellungen.
+- Kein eigenständiger zweiter Analyse-/Providerabruf beim Öffnen des Rechners.
+- Tradingpaket nutzt dieselbe Standard-Stopbasis statt des früheren separaten
+  Rechner-ATR-Stops; explizite Paket-CRV-Vorgaben bleiben bestehen.
+
+Prüfen:
+1. HALO vollständig neu scannen und neu analysieren.
+2. Screener-Analyse-Stop, Stop in Sofortanalyse und Rechner-Standard vergleichen.
+3. Übergeordnete Unterstützung muss separat erkennbar sein. Ein nicht bestätigter
+   Ersatz bleibt als Szenario gekennzeichnet, auch bei numerisch hohem CRV.
+4. ATR/manuell wählen: nur die Szenariorechnung darf sich ändern.
+5. Neuer Scan: vorherige manuelle Rechnerwerte dürfen nicht übernommen werden.
+6. Bestehende Positionen / Stop-Führung kontrollieren; keine Brokeränderungen.
+
+Kontrollbeispiele für HALO verwenden rekonstruierte synthetische Daten. Ohne
+aktuelle vollständige Kurshistorie lässt sich kein neuer konkreter HALO-Stop
+vorhersagen. Stop-/Zielwahl und Positionsgröße verändern sich für Neueinstiege
+bewusst entsprechend der neuen Strukturwahl; keine pauschale Ampel-Aufwertung.
+Gesamtquellcode/Projektunterlagen nach Praxisprüfung konsolidieren.

@@ -224,3 +224,132 @@ def _v230_calculate_position_size(entry, stop, target, account_size, risk_pct, m
 
 
 # ---------- v24.5: Positions-/Exit-Monitor mit Persistenz ----------
+
+
+RISK_BASIS_VERSION = 'v30.21bv'
+
+
+def build_analysis_risk_basis(result, *, generated_at=''):
+    """Immutable, provider-free calculator inputs from ONE central analysis."""
+    import hashlib
+    import json
+    from modules.technical_crv import build_technical_crv_package, parse_price_zone
+    r=result or {}
+    pkg=build_technical_crv_package(r)
+    n=lambda value:_v230_safe_float(value,default=None)
+    price=n(pkg.get('technical_crv_price_reference'))
+    stop=n(pkg.get('technical_crv_stop_now'))
+    target=n(pkg.get('technical_crv_target'))
+    atr=n(r.get('atr',r.get('ATR')))
+    atr_pct=atr/price*100 if atr is not None and price and price>0 else n(r.get('atr_pct'))
+    structure=(pkg.get('technical_crv_stop_diagnostics') or {}).get('structure') or {}
+    confirmed=pkg.get('technical_crv_stop_quality')=='confirmed'
+    source=pkg.get('technical_crv_stop_source') or 'Stop nicht belegt'
+    zone=r.get('suggested_entry_zone') or r.get('entry_zone') or '-'
+    low,high=parse_price_zone(zone)
+    basis=dict(version=RISK_BASIS_VERSION,ticker=str(r.get('ticker') or r.get('Ticker') or '').upper(),
+        price=price,entry_default=price,entry_zone=str(zone),zone_low=low,zone_high=high,
+        stop=stop,target=target,target_source=pkg.get('technical_crv_target_source'),
+        crv=n(pkg.get('technical_crv_now')),crv_entry=n(pkg.get('technical_crv_entry')),
+        crv_eligible=bool(confirmed and pkg.get('technical_crv_target_kind') not in ('missing',None)),
+        stop_quality=pkg.get('technical_crv_stop_quality'),stop_source=source,
+        risk_stop_source=source,pre_atr_stop_source=source,pre_atr_stop=stop,
+        technical_stop=stop,legacy_technical_stop=stop,atr=atr,atr_pct=atr_pct,
+        chart_invalidation_stop=n(structure.get('stop')) if confirmed else None,
+        chart_invalidation_source=structure.get('source') if confirmed else 'Keine passende bestätigte Setup-Struktur',
+        chart_invalidation_kind='setup_structure' if confirmed else 'missing',
+        overarching_structure=(pkg.get('technical_crv_stop_diagnostics') or {}).get('overarching_structure') or {},
+        data_date=str(r.get('ts') or ''),generated_at=str(generated_at),
+        currency=str(r.get('currency') or r.get('ccy') or (r.get('info') or {}).get('currency') or ''),
+        stop_reason=str((r.get('stop_selection') or {}).get('reason') or ''),
+        setup_type=str(r.get('setup_type') or '-'))
+    basis['fingerprint']=hashlib.sha256(json.dumps(basis,sort_keys=True,ensure_ascii=True,allow_nan=False).encode()).hexdigest()[:20]
+    return basis
+
+
+def risk_basis_from_row(row):
+    """Read a scan snapshot only; never blend quotes or launch another analysis."""
+    from copy import deepcopy
+    basis=(row or {}).get('__risk_basis')
+    if not isinstance(basis,dict) or basis.get('version')!=RISK_BASIS_VERSION:
+        return None
+    if str(basis.get('ticker') or '').upper()!=str((row or {}).get('Ticker') or '').upper():
+        return None
+    if not basis.get('fingerprint') or _v230_safe_float(basis.get('price'),0)<=0:
+        return None
+    return deepcopy(basis)
+
+
+def atr_stop_scenario(basis):
+    """Optional wider ATR comparison; the canonical analysis stop is immutable."""
+    ref=_v230_safe_float(basis.get('price'))
+    atr_pct=_v230_safe_float(basis.get('atr_pct'))
+    stop=_v230_safe_float(basis.get('stop'))
+    if not ref or ref<=0 or not atr_pct or atr_pct<=0:
+        return {'stop':None,'guard_stop':None,'multiple':None}
+    mult=2.2 if atr_pct>=10 else 2.0 if atr_pct>=7 else 1.8 if atr_pct>=5 else 1.7 if atr_pct>=3.5 else 1.6
+    guard=ref*(1-min(80,max(3.5,atr_pct*mult))/100)
+    return {'stop':min(stop,guard) if stop is not None and 0<stop<ref else guard,
+            'guard_stop':guard,'multiple':mult}
+
+
+def render_snapshot_calculator(st, row, *, currency='USD'):
+    """Standard = exact scan basis; ATR/manual values are explicit scenarios."""
+    basis=risk_basis_from_row(row)
+    if basis is None:
+        st.info('Für diesen Stand fehlt die gemeinsame Analyse-Risikobasis. Bitte den Wert oder die Watchlist neu scannen.')
+        return
+    ticker=basis['ticker'];prefix='risk_bv::'+ticker+'::'+basis['fingerprint']
+    revision_key=prefix+'::revision'
+    if st.button('Auf Analysewerte zurücksetzen',key=prefix+'::reset'):
+        st.session_state[revision_key]=int(st.session_state.get(revision_key,0))+1
+        st.rerun()
+    key=prefix+'::'+str(st.session_state.get(revision_key,0))
+    mode=st.selectbox('Berechnungsbasis',['Analysewerte (Standard)','ATR-Vergleich','Manuelles Szenario'],key=key+'::mode')
+    manual=mode=='Manuelles Szenario';atr_mode=mode=='ATR-Vergleich'
+    scenario=atr_stop_scenario(basis)
+    selected_stop=scenario['stop'] if atr_mode else basis.get('stop')
+    st.caption(f"Gemeinsame Analysebasis · {ticker} · Kursdaten {basis.get('data_date') or 'nicht ausgewiesen'} · Scan {basis.get('generated_at') or 'nicht ausgewiesen'}")
+    st.caption('Analyse-Stop: '+_v230_price_text(basis.get('stop'))+' '+currency+' · '+str(basis.get('stop_source') or '-')+
+               ' · Ziel: '+_v230_price_text(basis.get('target'))+' · '+str(basis.get('target_source') or '-'))
+    if basis.get('stop_reason'):st.caption(basis['stop_reason'])
+    overarching=basis.get('overarching_structure') or {}
+    if overarching.get('stop') is not None:
+        st.caption('Übergeordnete Referenz: Unterstützung '+_v230_price_text(overarching.get('support'))+
+                   ' · gepufferter Stop '+_v230_price_text(overarching.get('stop'))+' '+currency+'; nicht automatisch der Trade-Stop.')
+    quote=_v230_safe_float((row or {}).get('Kurs'))
+    if quote and abs(quote-basis['price'])>0.005:
+        st.caption('Screenerkurs '+_v230_price_text(quote)+' · CRV-/Rechner-Referenz '+_v230_price_text(basis['price'])+'; keine Mischung der Kursbasen.')
+    if basis.get('stop_quality')!='confirmed':
+        st.info('Kein passender bestätigter Strukturstop für den aktuellen Trade. Analyse-Stop und CRV sind als Ersatz-/Näherungsszenario einzuordnen.')
+    if atr_mode:
+        st.info('ATR-Vergleich: separates Szenario. Analyse-Stop und technische Ampel bleiben unverändert.')
+        if scenario.get('multiple') is not None:
+            st.caption(f"ATR-Schutz {scenario['multiple']:.1f}x · rohe ATR-Marke {_v230_price_text(scenario.get('guard_stop'))}; ein weiterer Analyse-Stop wird beibehalten.")
+    elif manual:st.info('Manuelles Szenario: Entry, Stop und Ziel gelten nur für diese Rechnung.')
+    c1,c2,c3=st.columns(3)
+    entry=c1.number_input('Geplanter Entry',min_value=0.0,value=float(basis.get('price') or 0),format='%.4f',step=.01,key=key+'::'+mode+'::entry',disabled=not manual)
+    stop=c2.number_input('Stop',min_value=0.0,value=float(selected_stop or 0),format='%.4f',step=.01,key=key+'::'+mode+'::stop',disabled=not manual)
+    target=c3.number_input('Ziel',min_value=0.0,value=float(basis.get('target') or 0),format='%.4f',step=.01,key=key+'::'+mode+'::target',disabled=not manual)
+    c1,c2,c3=st.columns(3)
+    account=c1.number_input('Depotgröße',min_value=0.0,value=float(st.session_state.get('v230_account_size',50000)),step=1000.,key='risk_bv_account')
+    risk=c2.number_input('Risiko pro Trade (%)',min_value=.01,max_value=10.0,value=float(st.session_state.get('v230_risk_pct',.5)),step=.05,key='risk_bv_risk')
+    cap=c3.number_input('Maximaler Positionsanteil (%)',min_value=0.0,max_value=100.,value=float(st.session_state.get('v230_max_position_pct',12.)),step=1.,key='risk_bv_cap')
+    st.session_state.update(v230_account_size=account,v230_risk_pct=risk,v230_max_position_pct=cap)
+    if atr_mode and selected_stop is None:
+        st.warning('ATR-Vergleich nicht verfügbar: belastbarer ATR fehlt.')
+        return
+    calc=_v230_calculate_position_size(entry,stop,target,account,risk,max_position_pct=cap)
+    if not calc.get('ok'):
+        st.warning(calc.get('error') or 'Berechnung nicht verfügbar.')
+        return
+    c1,c2,c3,c4=st.columns(4)
+    c1.metric('Stückzahl',str(calc['shares']))
+    c2.metric('Positionswert',f"{calc['position_value']:.2f} {currency}")
+    c3.metric('Rechnerisches Risiko',f"{calc['actual_risk']:.2f} {currency}")
+    crv=calc.get('crv')
+    crv_label='CRV auf Ziel' if mode=='Analysewerte (Standard)' and basis.get('crv_eligible') else 'CRV auf Ziel (Szenario)'
+    c4.metric(crv_label,f'{crv:.2f}' if crv is not None else 'n/a')
+    st.caption(f"Risiko je Aktie {calc['unit_risk']:.4f} {currency} · Stop-Abstand {calc['stop_distance_pct']:.1f}% · Berechnungsbasis: {mode}")
+    if calc.get('capped'):st.caption('Stückzahl durch den maximalen Positionsanteil begrenzt.')
+    st.caption('CRV separat beurteilen. Berechnete Stops sind keine gesetzten Brokerorders; Ausführungsabweichungen sind nicht eingerechnet.')

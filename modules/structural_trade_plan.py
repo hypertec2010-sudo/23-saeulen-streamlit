@@ -21,7 +21,8 @@ def finite(value: Any) -> float | None:
 
 
 def confirmed_support_stop(df: Any, *, current_price: Any, entry_reference: Any,
-                           atr: Any = None, lookback: int = 180) -> dict[str, Any]:
+                           atr: Any = None, lookback: int = 180,
+                           max_pivot_age: int | None = None, max_distance: float = 0.22) -> dict[str, Any]:
     """Look for *two separate, completed* pivot lows at a clustered support.
 
     The stop is below the entire cluster with a volatility buffer, without a
@@ -69,6 +70,10 @@ def confirmed_support_stop(df: Any, *, current_price: Any, entry_reference: Any,
             support = min(p for _, p in group)
             latest = max(j for j, _ in group)
             clusters.append((support, latest, len(group)))
+    if max_pivot_age is not None and clusters:
+        clusters = [c for c in clusters if len(lows) - 1 - c[1] <= max_pivot_age]
+        if not clusters:
+            return rejected("old_retest", "Letzte Bestätigung liegt außerhalb der jüngeren Setup-Struktur.")
     if not clusters:
         return rejected("no_retest", "Kein zweites Swing-Tief innerhalb 1,5 % Preisabstand und mit mindestens sechs Kerzen Abstand erkannt.",
                         candidate_support=max(val for _, val in pivot_candidates),
@@ -79,10 +84,10 @@ def confirmed_support_stop(df: Any, *, current_price: Any, entry_reference: Any,
     buffer = max(support * 0.006, (atr_val * 0.25 if atr_val and atr_val > 0 else 0.0))
     stop = support - buffer
     # v30.21bf: chart support plus buffer only; no practice-distance substitute.
-    if stop <= 0 or stop >= min(price, entry) or (entry - stop) / entry > 0.22:
+    if stop <= 0 or stop >= min(price, entry) or (entry - stop) / entry > max_distance:
         reason = ("Stop nach Puffer ist nicht positiv." if stop <= 0 else
                   "Stop nach Puffer liegt nicht unter Kurs und Entry-Referenz." if stop >= min(price, entry) else
-                  f"Stop nach Puffer liegt {(entry-stop)/entry*100:.1f} % unter Entry; Grenze ist 22 %.")
+                  f"Stop nach Puffer liegt {(entry-stop)/entry*100:.1f} % unter Entry; Grenze ist {max_distance*100:g} %.")
         return rejected("stop_distance", reason, candidate_support=support, candidate_stop=stop,
                         candidate_quality="retested_but_rejected", candidate_touches=int(touches))
     return {
@@ -93,6 +98,22 @@ def confirmed_support_stop(df: Any, *, current_price: Any, entry_reference: Any,
         "touches": int(touches), "last_pivot_bar": int(last_idx),
         "reason_code": "confirmed", "reason": "Mehrfach bestätigtes Swing-Tief; Stop mit Puffer erfüllt die Abstandsregeln.",
     }
+
+
+# Initial trade-relevance heuristics, based on the existing 1–4 week horizon and
+# the existing 12% shadow distance guide; not an optimized/backtested forecast.
+TRADE_STOP_POLICY = "trade_structure_v30.21bv"
+
+
+def trade_support_stop(df, *, current_price, entry_reference, atr=None):
+    package = confirmed_support_stop(df, current_price=current_price,
+        entry_reference=entry_reference, atr=atr, lookback=60,
+        max_pivot_age=20, max_distance=0.12)
+    package.update(scope="current_setup", lookback=60, max_pivot_age=20,
+                   max_distance_pct=12.0, policy=TRADE_STOP_POLICY)
+    if package.get("quality") == "confirmed_swing":
+        package["source"] += " · jüngere Setup-Struktur"
+    return package
 
 
 def stop_evidence(stop: Any, stop_source: str, structural: dict[str, Any]) -> dict[str, Any]:

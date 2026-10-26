@@ -2246,6 +2246,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         ]))
 
     _plan_stop_v3021be = plan_stop_reference(r, d)
+    from modules.risk_calculator import build_analysis_risk_basis
+    _risk_basis_bv = build_analysis_risk_basis(r, generated_at=get_current_berlin_time().isoformat())
     return {
         **_package_fields_v3020,
         "__env_sector": str(r.get("sector") or r.get("sector_label") or (r.get("info") or {}).get("sector") or ""),
@@ -2253,6 +2255,9 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "__env_stock": stock_daily(r),
         "Ampel": status_icon,
         "Status": status,
+        "__risk_basis": _risk_basis_bv,
+        "Analyse-Stop": _risk_basis_bv.get("stop"),
+        "Analyse-Stopquelle": _risk_basis_bv.get("stop_source"),
         "Live-Score": f"{live_score_int}/100",
         "Setup-Stärke": f"{_setup_strength_v3021bk}/100",
         "Handlungs-Score": f"{live_score_int}/100",
@@ -3208,7 +3213,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                           if str(c).startswith("__")
                           and not str(c).startswith("__pkg_")
                           and not str(c).startswith("__diag_")
-                          and str(c) not in {"__env_sector", "__env_industry", "__env_stock"}]:
+                          and str(c) not in {"__env_sector", "__env_industry", "__env_stock", "__risk_basis"}]:
         if _internal_col in enriched.columns:
             enriched = enriched.drop(columns=[_internal_col])
     # Signal-Stabilität und Bestätigungen direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.

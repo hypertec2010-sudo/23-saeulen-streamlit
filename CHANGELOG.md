@@ -1,3 +1,12 @@
+## v30.21bv – Trade-Stop und gemeinsame Risiko-Basis
+
+- Neueinstiege verwenden eine jüngere bestätigte Setup-Struktur: Suche über 60 Kerzen, letzter Pivot-Retest höchstens 20 Kerzen alt, Stop-Abstand höchstens 12 %. Zwei getrennte strikte Pivot-Tiefs und Puffer bleiben Voraussetzung. Dies sind transparente Start-Heuristiken, keine optimierten Backtest-Ergebnisse.
+- Bisherige 180-Kerzen-Unterstützung bleibt als übergeordnete Referenz sichtbar. Ohne passende junge Struktur wird der 1,8-ATR-Risikostop ausdrücklich als Ersatz gekennzeichnet; ein Modelllevel wird nicht als bestätigt ausgegeben. Bestehende Positionsstop-Führung bleibt erhalten.
+- Screener speichert Analysepreis, Stop, Ziel, Quellen, CRV und Zeitstempel als gemeinsame unveränderliche Risikobasis. Risiko-Rechner verwendet genau diesen Scan; kein unabhängiger Analyse-Cache und keine Mischung mit anderem Live-Kurs.
+- Neue Rechneransicht: Analysewerte als Standard; ATR-Vergleich und manuelle Werte als separate Szenarien. Neue Scanbasis setzt alte Widgetwerte zurück; alter Snapshot ohne Basis verlangt Neuscan.
+- Analyse-Stop in Desktop-/mobilem Screener sichtbar. Stop-Diagnose trennt Setup-Unterstützung, tatsächlich verwendeten Stop und übergeordnete Unterstützung.
+- CRV bleibt informativ; Markt-/Invalidierungsregeln und Freigabeschwellen unverändert. Tradingpaket erhält ebenfalls die gemeinsame Standard-Stopbasis.
+
 ## v30.21bu – Analyseabbruch bei gültigen Setups behoben
 
 - position_mode in beiden Analysefunktionen vor dem ersten Berechnungsschritt initialisiert; späte doppelte Zuweisung entfernt.

@@ -14,7 +14,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def unh_history():
     # Reconstructed support/ATR fixture, not an original UNH market snapshot.
-    data=[410.]*80;data[8]=395.37;data[23]=395.6
+    data=[410.]*80;data[58]=395.37;data[70]=395.6
     return pd.DataFrame({'Low':data})
 
 
@@ -42,11 +42,11 @@ def test_no_eligible_whole_zone_or_position_preserves_previous_stop(overrides):
     assert p['reason']
 
 
-def test_no_structure_keeps_existing_stop_without_borrowing_confirmation():
+def test_no_structure_uses_disclosed_atr_proxy_without_borrowing_confirmation():
     p=select_productive_stop(pd.DataFrame({'Low':[410.]*80}),price=409.65,
         entry_zone='407.60 - 411.70',atr=11.96,setup_type='Breakout',
         fallback_stop=390.6,fallback_source='ATR (1,6x)')
-    assert p['stop']==390.6 and p['selected']=='existing'
+    assert p['stop']==388.12 and p['selected']=='atr_proxy'
 
 
 def test_confirmed_stop_does_not_get_widened_to_practice_floor():
@@ -67,8 +67,8 @@ def test_cent_rounding_cannot_select_zero_stop():
 
 def test_cent_rounding_cannot_fake_a_confirmed_used_stop():
     data=[.012]*40;data[8]=.01012;data[23]=.01013
-    p=select_productive_stop(pd.DataFrame({'Low':data}),price=.012,
-        entry_zone=(.0115,.012),atr=.0001,setup_type='Rebound',
+    p=select_productive_stop(pd.DataFrame({'Low':data}),price=.0112,
+        entry_zone=(.0108,.0112),atr=.0001,setup_type='Rebound',
         fallback_stop=.009,fallback_source='ATR')
     assert p['selected']=='existing' and p['stop']==.009
     assert 'Toleranz' in p['reason']

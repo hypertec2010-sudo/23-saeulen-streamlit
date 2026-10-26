@@ -44,3 +44,6 @@ INSTALLATION_v30.21bt.txt
 tests/test_crv_consistency.py
 tests/test_analysis_position_mode.py
 INSTALLATION_v30.21bu.txt
+tests/test_shared_risk_basis.py
+INSTALLATION_v30.21bv.txt
+modules/risk_calculator.py

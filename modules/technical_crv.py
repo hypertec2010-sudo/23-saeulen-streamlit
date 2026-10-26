@@ -374,6 +374,14 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
         r.get("df"), current_price=price, entry_reference=entry_ref,
         atr=_first_number(r.get("atr"), r.get("ATR"), r.get("atr14")),
     )
+    from modules.structural_trade_plan import trade_support_stop, TRADE_STOP_POLICY
+    selection = r.get("stop_selection") or {}
+    if not isinstance(selection, dict):
+        selection = {}
+    overarching = structural
+    if isinstance(selection, dict) and selection.get("policy") == TRADE_STOP_POLICY:
+        structural = trade_support_stop(r.get("df"), current_price=price,
+            entry_reference=entry_ref, atr=_first_number(r.get("atr"),r.get("ATR"),r.get("atr14")))
     evidence = stop_evidence(stop, stop_source, structural)
 
     base = {
@@ -405,6 +413,7 @@ def build_technical_crv_package(result: dict[str, Any] | None) -> dict[str, Any]
         "technical_crv_stop_diagnostics": {
             "structure": structural, "used": evidence,
             "selection": r.get("stop_selection") or {},
+            "overarching_structure": overarching if selection.get("policy") == TRADE_STOP_POLICY else {},
         },
         "technical_crv_structure_now": math.nan,
         "technical_crv_entry_quality": "unverified",

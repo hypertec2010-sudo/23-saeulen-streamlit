@@ -27,6 +27,13 @@ def build_stop_diagnostic_rows(diagnostics, *, ccy=''):
           {'Baustein':'Tatsächlich verwendeter Stop','Kurs':price(used.get('used_stop')),
            'Einordnung':str(used.get('used_stop_source') or 'Quelle nicht verfügbar')+' · '+
                         str(used.get('label') or 'Qualität nicht belegt')}]
+    overarching = package.get('overarching_structure') or {}
+    if overarching.get('quality') == 'confirmed_swing':
+        rows.extend([
+            {'Baustein':'Übergeordnete Unterstützung','Kurs':price(overarching.get('support')),
+             'Einordnung':'Längerfristige Referenz; kein automatischer Stop für den aktuellen Trade'},
+            {'Baustein':'Übergeordneter Strukturstop','Kurs':price(overarching.get('stop')),
+             'Einordnung':'Puffer der übergeordneten Referenz; separat von der verwendeten Trade-Absicherung'}])
     return rows
 
 
@@ -36,6 +43,8 @@ def render_stop_diagnostics(st, diagnostics, *, ccy=''):
     structure=package.get('structure') or {}
     used=package.get('used') or {}
     st.caption('Strukturprüfung: '+str(structure.get('reason') or 'Diagnose fehlt; frisch analysieren.'))
+    if structure.get('scope')=='current_setup':
+        st.caption('Setup-Bezug: 60 Kerzen; letzte Pivot-Bestätigung höchstens 20 Kerzen alt; höchstens 12 % Stop-Abstand. Übergeordnete Referenz separat.')
     st.caption('Verwendung im CRV: '+str(used.get('reason') or 'Diagnose fehlt; frisch analysieren.'))
     selection=package.get('selection') or {}
     if selection.get('reason'):

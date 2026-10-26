@@ -1,5 +1,5 @@
 """Choose the productive stop before sizing/targets in both analysis engines."""
-from modules.structural_trade_plan import confirmed_support_stop, finite, stop_evidence
+from modules.structural_trade_plan import confirmed_support_stop, trade_support_stop, TRADE_STOP_POLICY, finite, stop_evidence
 from modules.technical_crv import parse_price_zone
 
 LONG_SETUPS = frozenset({'Breakout','Breakout-Retest','Pullback an MA20',
@@ -18,10 +18,20 @@ def select_productive_stop(df, *, price, entry_zone, atr, setup_type,
     p=finite(price)
     if p is None or p<=0 or low is None or high is None or not 0<low<=high:
         return {**result,'reason':'Kurs oder vollständige Entry-Zone fehlt; bisherige Stop-Auswahl beibehalten.'}
-    structure=confirmed_support_stop(df,current_price=p,entry_reference=high,atr=atr)
+    result["policy"] = TRADE_STOP_POLICY
+    result["overarching_structure"] = confirmed_support_stop(df,current_price=p,entry_reference=high,atr=atr)
+    structure=trade_support_stop(df,current_price=p,entry_reference=high,atr=atr)
     stop=finite(structure.get('stop'))
     result['structure']=structure
     if structure.get('quality')!='confirmed_swing' or stop is None:
+        # No suitable recent structure: disclose an ATR proxy instead of
+        # silently substituting a distant long-term support as the trade stop.
+        av=finite(atr)
+        proxy=round(p-1.8*av,2) if av is not None and av>0 else None
+        if proxy is not None and 0<proxy<min(p,low):
+            return {**result,'stop':proxy,'source':'ATR-Risikostop (1,8x; keine passende Setup-Struktur)',
+                    'selected':'atr_proxy','reason':(structure.get('reason') or 'Kein bestätigter Strukturstop.')+
+                    ' ATR-Ersatz für den Trade; übergeordnete Referenz wird getrennt ausgewiesen.'}
         return {**result,'reason':structure.get('reason') or 'Kein bestätigter Strukturstop.'}
     # Whole entry zone must remain above the stop, including after cent rounding.
     selected=round(stop,2)

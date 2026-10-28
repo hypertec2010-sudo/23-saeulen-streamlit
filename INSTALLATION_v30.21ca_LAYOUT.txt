@@ -1,0 +1,50 @@
+CHSM v30.21ca – kompakte Trade-Wächter-Ansicht
+Kleine Layout-Ergänzung für eine bereits vollständig installierte v30.21bz.
+Dies ist KEIN kumulatives Quellcodepaket und ersetzt nicht das bz-Paket.
+
+Installation:
+1. Projekt sichern. Voraussetzung ist die installierte bz-Mustererkennung.
+2. ZIP entpacken und alle Dateien laut DATEILISTE.txt unter denselben relativen
+   Projektpfaden ersetzen/ergänzen. Insbesondere NEUE modules/trade_watch_overview.py,
+   pages/trade_watch.py, modules/app_shell.py und VERSION.txt hochladen.
+3. App neu starten; Version v30.21ca prüfen. Kein Neuscan nötig.
+4. Gespeicherte Ideen im Trade-Wächter öffnen. Haupttabelle zeigt nebeneinander:
+   Ticker, Status, Kurs, Entry-Bereich, Invalidierung, Ziel, Einheit.
+5. „Datenzeiten & technische Details“ öffnen für Datenzustand, Kurszeit,
+   Provider-Abruf, Signalzeit, Regel, Ablauf, Setup und weitere vorhandene Angaben.
+
+Was die Darstellung ändert:
+- Entry-Bereich enthält Auslöser UND oberste Einstiegsgrenze, damit die Grenze
+  nicht durch die kompakte Ansicht verloren geht.
+- Fehlende oder veraltete Kurse, Abruffehler und Überwachungslücken bleiben als
+  sichtbare Hinweise oberhalb des Detailbereichs erhalten.
+- Ein Ziel ist das gespeicherte Kursniveau; diese Layout-Ergänzung fügt keine
+  automatische „Ziel erreicht“-Meldung und keine Verkaufsfunktion hinzu.
+- Preise, Levels, Datumswerte, gespeicherte Ideen, Auswahl und Archivierung
+  werden nicht geändert. Angezeigte Entry-Level sind für die Lesbarkeit gerundet;
+  die exakten Originalwerte bleiben im ursprünglichen Ideen-/Regeldetail erhalten.
+- Navigation über die native Seite und über die Kompatibilitätsnavigation nutzt
+  dieselbe Ansicht. Auf schmalen Bildschirmen kann die Tabelle weiterhin scrollen;
+  die Hauptansicht hat jetzt sieben statt aller technischen Spalten.
+
+Technik und Voraussetzungen:
+- Die Seite übergibt dem unveränderten Wächter eine lokale Darstellungsansicht.
+  Nur dessen Übersichtstabelle wird kompakt angezeigt. Andere Streamlit-Aufrufe
+  und Widget-Ergebnisse werden unverändert weitergereicht; kein globales Ändern
+  von Streamlit-Funktionen.
+- Weder modules/watch_setups.py noch modules/trade_watch.py,
+  modules/trade_watch_ui.py, Analyse-/Risiko-/Screener-Logik sind im ZIP enthalten.
+  Die installierten bz-Dateien werden durch diesen Patch nicht überschrieben.
+- Die Seite prüft den bz-Erkennungsmarker. Ohne passende Basis erscheint eine
+  klare Installationsmeldung; die ältere freie bx-Anlage wird nicht als Ersatz
+  gestartet. Bei späteren Erkennungsversionen braucht es ggf. einen angepassten
+  Layout-Einstiegspunkt.
+- Automatische Prüfung benötigt weiterhin eine geöffnete, verbundene Wächter-
+  Seite. Kursquelle, Datenverzögerung und Signalregeln bleiben unverändert.
+
+Validierung siehe PRUEFUNG_v30.21ca:
+Gezielte Layout-/Bedienungstests und Login-/Navigationstests unter Python 3.12.
+Die vollständige bz-Quellkopie war lokal nicht verfügbar. Getestet wurde die
+stabile Tabellen-/Bedienungsschnittstelle am verfügbaren Wächter sowie die bz-
+Voraussetzungsprüfung; keine erneute vollständige bz-Engine-Validierung.
+Keine erneute Python-3.11-Prüfung und keine Live-Providerabfrage für diese Änderung.

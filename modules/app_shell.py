@@ -118,8 +118,8 @@ def render_navigation() -> None:
         "Trade-Journal": ("Watchlisten", "📓 Trade-Journal"),
     }
     if choice == "Trade-Wächter":
-        from modules.trade_watch_ui import render_monitor
-        render_monitor(st)
+        from modules.trade_watch_overview import render_compact_monitor
+        render_compact_monitor(st)
         return
     workspace, cockpit = mapping[choice]
     run_workspace_page(workspace, cockpit_area=cockpit, page_label=choice)

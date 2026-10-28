@@ -1,0 +1,23 @@
+CHSM v30.21ca – Layout-Prüfung 28.10.2026
+14 Tests unter Python 3.12 bestanden: 11 neue Layout-/Bedienungstests und
+3 vorhandene Streamlit-Einstieg-/Navigations-/Aktualisierungstests.
+Syntaxprüfung und deterministische Regression des verfügbaren bx-Quellstands
+bestanden; Log ist ausdrücklich als Basis bx bezeichnet.
+
+Geprüft:
+- Sieben Hauptspalten in gewünschter Reihenfolge, Entry inklusive Obergrenze.
+- Kleine/fehlende Preise, Originalwerte unverändert, technische Spalten im Detail.
+- Sichtbare Hinweise bei veralteten/fehlenden Kursen und Providerfehlern.
+- Reale Streamlit-Fragmente und Bedienung des verfügbaren Wächters: Auswahl
+  einer zweiten Idee und Archivierung bleiben dem richtigen Datensatz zugeordnet.
+- Native Seite und Navigation im Kompatibilitätsmodus nutzen dieselbe Ansicht.
+- Ohne bz-Erkennung wird die ältere freie bx-Maske nicht gestartet.
+- Andere Tabellen und Streamlit-Widget-Ergebnisse werden unverändert weitergereicht.
+- Geschützte lokale Analyse-, Wächter- und Risikodateien sind bytegleich zum
+  Ausgangsstand; keine davon ist Bestandteil dieses Layout-ZIP.
+
+Grenzen:
+Die vollständige bz-Quellkopie war lokal nicht verfügbar. Die Tests prüfen
+Layout-/Bedienungsschnittstelle und Basisvoraussetzung; sie stellen keine neue
+vollständige bz-Engine- oder Live-Providerprüfung dar. Python 3.11 nicht erneut
+geprüft. Installation setzt bz voraus; dies ist kein kumulatives Upgrade.

@@ -7,6 +7,8 @@ in later v28.4.5 releases without changing the trading logic again.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 import importlib
 import importlib.util
@@ -19,6 +21,19 @@ import pandas as pd
 import requests
 
 from modules.ticker_resolver import resolve_ticker
+
+
+# Request-local refresh intent: never a global cache flush or a quarantine bypass.
+_HISTORY_REFRESH_TOKEN = ContextVar("chsm_history_refresh_token", default="")
+
+
+@contextmanager
+def history_refresh_scope(token=""):
+    marker = _HISTORY_REFRESH_TOKEN.set(str(token or ""))
+    try:
+        yield
+    finally:
+        _HISTORY_REFRESH_TOKEN.reset(marker)
 
 
 class MarketDataError(RuntimeError):
@@ -273,6 +288,7 @@ class MarketDataProvider:
         # short-lived and process-local so normal freshness semantics stay intact.
         self._history_cache_lock = threading.Lock()
         self._history_cache: Dict[Any, tuple[float, pd.DataFrame]] = {}
+        self._history_cache_tokens = {}
         self._history_cache_ttl = 15 * 60.0
         self._history_cache_max_items = 600
         # v30.21s: a confirmed Yahoo rate limit quarantines the provider for
@@ -615,8 +631,12 @@ class MarketDataProvider:
             stamp, frame = hit
             if now - float(stamp) > self._history_cache_ttl:
                 self._history_cache.pop(key, None)
+                self._history_cache_tokens.pop(key, None)
                 return None
-            return frame.copy()
+            token = _HISTORY_REFRESH_TOKEN.get()
+            if token and self._history_cache_tokens.get(key) != token:
+                return None
+            return self._annotate_history(frame, from_cache=True)
 
     def _history_cache_put(self, resolved: str, request_kwargs: Dict[str, Any], frame: pd.DataFrame) -> None:
         if not isinstance(frame, pd.DataFrame) or frame.empty:
@@ -625,10 +645,30 @@ class MarketDataProvider:
         now = time.time()
         with self._history_cache_lock:
             self._history_cache[key] = (now, frame.copy())
+            self._history_cache_tokens[key] = _HISTORY_REFRESH_TOKEN.get()
             if len(self._history_cache) > self._history_cache_max_items:
                 oldest = sorted(self._history_cache.items(), key=lambda kv: kv[1][0])[: max(1, len(self._history_cache) - self._history_cache_max_items)]
                 for old_key, _ in oldest:
                     self._history_cache.pop(old_key, None)
+                    self._history_cache_tokens.pop(old_key, None)
+
+    def _annotate_history(self, frame, *, from_cache):
+        out = frame.copy()
+        now = datetime.now(timezone.utc).isoformat()
+        prior = dict(out.attrs.get("chsm_history") or {})
+        date = ""
+        if not out.empty:
+            try:
+                date = pd.Timestamp(out.index[-1]).date().isoformat()
+            except Exception:
+                pass
+        out.attrs["chsm_history"] = {
+            "fetched_at": prior.get("fetched_at", "") if from_cache else now,
+            "served_at": now, "from_cache": bool(from_cache),
+            "provider": str(getattr(self.primary, "name", "Yahoo")),
+            "data_date": date, "fresh_requested": bool(_HISTORY_REFRESH_TOKEN.get()),
+        }
+        return out
 
     def get_history_light(self, symbol: str, **kwargs) -> pd.DataFrame:
         """One-request history path for broad discovery scans.
@@ -657,6 +697,7 @@ class MarketDataProvider:
             # single-stock calls to avoid a 100-symbol burst against Yahoo.
             self._pace_request(min_gap=0.75)
             frame = self._clean_history_frame(self.primary.history(resolved, **request_kwargs))
+            frame = self._annotate_history(frame, from_cache=False)
             if not frame.empty:
                 self._history_cache_put(resolved, request_kwargs, frame)
             self._record(clean, "history_light", True, f"provider_symbol={resolved}; rows={len(frame)}")
@@ -764,6 +805,7 @@ class MarketDataProvider:
             if len(frame) == 0 and last_rate_exc is not None:
                 raise last_rate_exc
 
+            frame = self._annotate_history(frame, from_cache=False)
             if not frame.empty:
                 self._history_cache_put(resolved, request_kwargs, frame)
             self._record(

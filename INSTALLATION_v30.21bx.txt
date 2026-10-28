@@ -1,0 +1,102 @@
+CHSM v30.21bx – separater Trade-Wächter
+Kumulativer Patch ab v30.21bi, einschließlich aller Änderungen bis bw.
+
+Installation:
+1. Projektstand sichern. ZIP entpacken und alle enthaltenen Dateien laut
+   DATEILISTE.txt unter denselben relativen Projektpfaden ersetzen/ergänzen.
+   Ordner nicht vollständig löschen oder ersetzen.
+2. Besonders neue Dateien modules/trade_watch.py, modules/trade_watch_ui.py,
+   pages/trade_watch.py sowie geänderte modules/app_shell.py, legacy_app.py,
+   verify_deployment.py und VERSION.txt hochladen.
+3. App neu starten. Version v30.21bx kontrollieren.
+4. Im Menü „Trading“ erscheint „Trade-Wächter“. Bestehende Scans mit gemeinsamer
+   Risikobasis können unmittelbar verwendet werden; fehlt diese, die jeweilige
+   Aktie einmal neu scannen. Für das neue Modul ist kein Vollscan erforderlich.
+5. Vor einem echten Einsatz zunächst wenige Ideen mit bewusst geprüften Levels
+   beobachten und Kursdaten/Signale gegen den Handelsplatz vergleichen.
+
+Bedienung:
+- Im Screener oder Risiko-Rechner „Trade-Idee verfolgen“ öffnen und eine bereits
+  analysierte Aktie wählen; in der Sofortanalyse steht dieselbe Übernahme bereit.
+- Entry-Auslöser, oberste Entry-Grenze und Invalidierung ausdrücklich prüfen.
+  Der vorgeschlagene Entry ist der obere Rand der Analysezone bzw. Analysepreis,
+  kein automatisch bewiesener Ausbruch. Obergrenze anfänglich Entry + 1 % als
+  veränderbarer Vorschlag, keine optimierte Strategiegrenze.
+- Herkunft und Qualität des übernommenen Stops bleiben sichtbar. Auch ein
+  ATR-Ersatzstop wird nicht durch die Übernahme zum bestätigten Strukturstop.
+- Regel wählen: 5-Minuten-Schluss, 15-Minuten-Schluss oder
+  „Kurs erreicht (1m-Momentaufnahme)“. Ziel optional als Referenz, Begründung
+  und Ablaufzeit in Berliner Zeit eingeben. Unterstützt werden Long-Ideen
+  für US-Aktienticker und Xetra-Ticker (.DE), höchstens zehn laufende Ideen.
+- Bestätigung der geprüften Levels setzen und „Trade-Idee verfolgen“ drücken.
+- Auf der eigenen Seite „Trade-Wächter“ „Jetzt gezielt prüfen“ oder die
+  automatische Prüfung (standardmäßig 60 Sekunden; auch 30/120) verwenden.
+- Status, Abstand zum Entry, Kurszeit, letzter Provider-Abruf und Prüfzeit sind
+  sichtbar. Neue Trigger und Invalidierungen erhalten einen Hinweis in der App.
+  Ereignisse bleiben gespeichert. Ideen können pausiert und archiviert werden.
+- Eine pausierte oder lückenhafte Idee wird nicht blind wieder scharfgeschaltet:
+  archivieren und für eine neue Überwachungsphase eine neue Idee anlegen.
+
+Regeln und Abgrenzung:
+- Eigene native Seite; kein Laden der großen Legacy-Analyse beim Öffnen.
+  Nur leichte 1m-OHLC-Abfragen der aktiven Ticker, keine Benchmarks, keine
+  Fundamentaldaten und keine Neuberechnung von Score/Ampel/Stop/CRV.
+- Gespeicherte ursprüngliche Analysebasis und Handelslevels bleiben unverändert.
+  Dieses Modul ist ein Kursregel-Wächter, kein vollständiges Rocketcandle-System.
+- Kurskontakt nutzt den Close-Wert der neuesten 1m-Momentaufnahme im Entryband.
+  Er belegt weder eine tickgenaue Berührung noch einen abgeschlossenen Schluss.
+- 5-/15-Minuten-Schlüsse werden aus lückenlos gelieferten 1m-Kerzen gebildet.
+  Eine Gruppe muss vollständig nach dem Anlegen der Idee begonnen haben.
+  Ein Publikationspuffer von zehn Sekunden verhindert die Nutzung einer noch
+  laufenden Gruppe, garantiert aber keine endgültige Provider-Finalität.
+- Invalidierung: Low einer nach Anlage begonnenen Minute erreicht/unterschreitet
+  das festgelegte Level. Bei Entry und Invalidierung innerhalb derselben Minute
+  hat Invalidierung Vorrang. Das ist keine Aussage über eine Order-Ausführung.
+- Neue Einstiegssignale nur im regulären Handelsfenster und mit höchstens drei
+  Minuten alten Quelldaten. Verpasste alte Schluss-Signale werden protokolliert,
+  nicht als frische Freigabe ausgegeben. Fehlende Minuten seit Anlage/letzter
+  Prüfung sperren neue Trigger bis zu einer bewusst neu angelegten Idee.
+- Bereits bestätigte Trigger bleiben als gespeicherte Ereignisse erkennbar;
+  der daneben angezeigte Datenzustand kann später veraltet/fehlerhaft sein.
+  Die Gültigkeit endet zur festgelegten Zeit, spätestens nach 30 Tagen.
+- Regulärer US-Kernhandel mit dem hinterlegten Kalender 2026–2027, New Yorker
+  Zeitzone, Feiertagen/verkürzten Sitzungen. Xetra-Zeitfenster 09:00–17:30 in
+  Europe/Berlin an Werktagen; Xetra-Feiertage sind nicht vollständig hinterlegt.
+  Fehlende Minuten an solchen Tagen können deshalb eine Überwachungslücke
+  auslösen. Ungeplante Börsenschließungen sind nicht automatisch erfasst.
+- Kein Vor-/Nachhandel. Kein garantierter Echtzeitfeed, keine Tickdaten.
+  Der angezeigte 1m-Zeitpunkt ist der Kerzenstart, nicht der letzte Handelstick.
+- Automatische Prüfungen laufen ausschließlich bei geöffneter Wächter-Seite
+  und aktiver Sitzung. Bei Seitenwechsel, Browser-/Sitzungsende oder ruhender
+  Verbindung besteht keine Hintergrundüberwachung und keine externe Meldung.
+- Keine Brokerorders und keine automatische Positionsübernahme. Nachrichten,
+  Earnings und Änderungen des ursprünglichen Analyse-Setups werden nicht neu
+  bewertet. Das optionale Ziel beendet/verkauft keinen Trade automatisch.
+- Provider-Pacing und Rate-Limit-Quarantäne bleiben aktiv. Jeder Prüflauf
+  umgeht gezielt den 15-Minuten-Historiencache, ein Ticker nur einmal pro Lauf.
+  Automatische Wiederholungen haben mindestens 30 Sekunden Abstand je Idee.
+- Speicherung erfolgt benutzerbezogen über die bestehende Speicheranbindung
+  (Supabase plus lokaler Ersatz bzw. lokales JSON). Bei Speicherproblemen gibt
+  es sichtbare Hinweise. Lokale Dateien auf Cloud-Hosts sind kein dauerhafter
+  Ersatz für Supabase; für geräteübergreifende Nutzung Supabase verwenden.
+  Möglichst nur eine aktive Wächter-Seite verwenden: parallele Geräteänderungen
+  besitzen wie beim bestehenden Namespace-Speicher keinen transaktionalen Merge.
+
+Prüfung:
+- Gezielte Regeln: Datenalter, laufende/abgeschlossene Kerzen, Entry-Obergrenze,
+  Invalidierung vor/nach Trigger, fehlende/ungültige/future/zeitzonenlose Daten,
+  Wiederholungen, Ablauf, Pausierung, Archiv, Wochenenden, US-DST und Feiertage.
+- Echter leichter Providerpfad gegen vorgewärmten 15-Minuten-Cache, Gruppierung,
+  Rate-Limit-Stopp und Rücksetzen des Abrufkontexts getestet (Provider simuliert).
+- Streamlit-AppTest für Anlegen, Übernahme aus gespeichertem Screenerstand,
+  Wiederherstellung, manuelle/automatische Prüfung, Pause und Archiv.
+- Ergebnis der Gesamtprüfung und Deployment-Prüfung: siehe beigefügte Logs.
+- Python 3.12 geprüft. Die bereits bei bw defekten Python-3.11-Runtimes konnten
+  in dieser Sitzung nicht für eine erneute Prüfung eingesetzt werden.
+- Tests ersetzen keinen Praxisvergleich mit dem aktuellen Providerfeed.
+
+Technische Quellen (abgerufen 27.10.2026):
+https://docs.streamlit.io/develop/concepts/architecture/fragments
+https://ranaroussi.github.io/yfinance/reference/yfinance.price_history.html
+https://www.nyse.com/markets/hours-calendars
+https://cashmarket.deutsche-boerse.com/cash-en/trading/trading-calendar-and-trading-hours

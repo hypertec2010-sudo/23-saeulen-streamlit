@@ -1,0 +1,53 @@
+CHSM v30.21bw – frischer manueller Scan und nachvollziehbarer Datenstand
+Kumulativer Patch ab v30.21bi; bisherige Ergänzungen bis bv enthalten.
+
+Installation:
+1. Projekt sichern und ZIP entpacken.
+2. Alle Dateien aus DATEILISTE.txt unter denselben Projektpfaden ersetzen bzw.
+   ergänzen. Ordner nicht vollständig löschen/ersetzen.
+3. Besonders modules/provider_manager.py, modules/cache_layer.py und die neue
+   modules/data_freshness.py sowie legacy_app.py, modules/live_monitor.py,
+   analysis_core.py, modules/legacy_analysis_core.py und VERSION.txt hochladen.
+4. App neu starten; Versionsanzeige v30.21bw kontrollieren.
+5. Watchlist manuell vollständig aktualisieren. Alte gespeicherte Scans
+   enthalten noch keine belastbare Abrufzeit/Herkunft und benötigen einen Neuscan.
+
+Änderungen:
+- Jeder neu gestartete manuelle Vollscan und Auswahlscan erhält einen eigenen
+  Auftragsschlüssel: neue Analyse UND Umgehung des bisherigen 15-Minuten-
+  Kursdaten-Caches. Alle Batches eines Scans verwenden denselben Schlüssel.
+- Identische Kursdaten-/Benchmarkanfragen innerhalb desselben Scans werden
+  wiederverwendet. Automatische Aktualisierungen behalten ihr Cache-Verhalten.
+- Provider-Pausen, Fehlerbehandlung und 429-Quarantäne gelten weiterhin.
+- Keine globale Cache-Löschung; kein Ausweichen auf alte Daten als frischen Abruf.
+- Im Screener unter „Datenstand & Abrufe“: je Ticker Datum der Tageskerze,
+  tatsächlicher letzter Provider-Abruf in Berliner Zeit, Herkunft als Provider-
+  Abruf / Kursdaten-Cache / Analyse-Cache sowie Aktualitätseinordnung.
+- Vor US-Eröffnung wird die letzte abgeschlossene US-Tageskerze erwartet.
+  Im laufenden Handel wird eine noch nicht gelieferte heutige Kerze separat
+  bezeichnet. Laufende Kerzen gelten nicht als bestätigter Schlussstand.
+- Nach Handelsschluss gilt für die Anzeige ein konservativer Puffer von
+  30 Minuten. Ein Abruf vor diesem Zeitpunkt belegt keinen danach abgerufenen
+  Schlussstand; der Puffer ist keine Zusicherung der Provider-Finalität.
+- US-Sitzungen über America/New_York: Sommer-/Winterzeit, reguläre Feiertage
+  und verkürzte Sitzungen 2026–2027. Andere Börsen und nicht hinterlegte Jahre
+  werden ausdrücklich nicht nach diesem US-Kalender bewertet. Ungeplante
+  Börsenschließungen sind nicht automatisch enthalten.
+- Quelle des Sitzungskalenders: https://www.nyse.com/markets/hours-calendars
+
+Praxisprüfung:
+1. Manuellen Vollscan starten, anschließend „Datenstand & Abrufe“ öffnen.
+2. Abrufzeiten müssen zum Scan passen; ein Provider-Abruf garantiert weder
+   Echtzeitkurse noch eine neue Tageskerze. Liefert der Provider weiterhin
+   Freitagsdaten, bleibt das Kerzendatum Freitag und wird entsprechend erklärt.
+3. Wenige Aktien per Häkchen erneut scannen: diese erhalten neue Abrufzeiten;
+   nicht ausgewählte Zeilen behalten ihren vorherigen Stand.
+4. Automatische Aktualisierung und wiederholtes Anzeigen dürfen weiterhin
+   aus dem Cache kommen und müssen als solche erkennbar sein.
+
+Validierung:
+360 deterministische Tests unter Python 3.12 erfolgreich; Deployment-Prüfung
+unter Python 3.12 erfolgreich. Providergrenzen werden in den Tests simuliert,
+kein Nachweis einer aktuellen Yahoo-Lieferung aus dieser Umgebung.
+Python 3.11 konnte in dieser Sitzung wegen defekter vorhandener Test-Runtimes
+(Input/output error bzw. Bus error beim Start) nicht erneut verifiziert werden.

@@ -21007,6 +21007,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 _partial_batches_v3021d = _live_scan_batches.split_batches(_partial_selected_v3021d, 8)
                                 _partial_progress_v3021d = st.progress(0.0)
                                 _partial_progress_text_v3021d = st.empty()
+                                _partial_refresh_token_bw = f"selective-v3021d-{time.time_ns()}"
                                 for _partial_batch_no_v3021d, _partial_batch_v3021d in enumerate(_partial_batches_v3021d, start=1):
                                     _partial_batch_df_v3021d, _partial_batch_errors_v3021d = build_live_watchlist_monitor_v212(
                                         list(_partial_batch_v3021d),
@@ -21014,7 +21015,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         max_items=None,
                                         watchlist_meta_by_ticker=_partial_meta_by_ticker_v3021d,
                                         live_horizon=live_monitor_horizon,
-                                        analysis_bucket_override=f"selective-v3021d-{int(time.time() // 60)}",
+                                        analysis_bucket_override=_partial_refresh_token_bw,
                                         per_ticker_pause_seconds=0.4,
                                     )
                                     _partial_df_v3021d = _live_scan_batches.merge_frames(
@@ -21262,14 +21263,13 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 live_events_df = pd.DataFrame()
 
                                 # Kleinere interne Batches + Pause sind absichtlich langsamer,
-                                # aber deutlich provider-freundlicher. Manuell wird ein eigener
-                                # 2-Minuten-Freshness-Token genutzt statt globaler cache.clear().
+                                # aber deutlich provider-freundlicher. Ein manueller Auftrag
+                                # erhält einen eigenen Token, den alle Batches teilen.
                                 _batch_size_v287b = 8
                                 if manual_live_run_v246:
-                                    # Zwei-Minuten-Fenster: ein versehentlicher Doppelklick
-                                    # erzeugt keinen zweiten Provider-Sturm, der erste Klick
-                                    # ist dennoch ein frischer Analyse-Key.
-                                    _analysis_bucket_override_v287b = f"manual-v287b-{int(time.time() // 120)}"
+                                    # Jeder bewusst gestartete Scan fordert frische Historien an.
+                                    # Provider-Pacing und 429-Quarantäne gelten weiterhin.
+                                    _analysis_bucket_override_v287b = f"manual-v287b-{time.time_ns()}"
                                 else:
                                     _auto_bucket_seconds_v287b = max(15 * 60, int(refresh_minutes_v246) * 60)
                                     _analysis_bucket_override_v287b = (
@@ -21822,22 +21822,10 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                             except Exception:
                                 pass
 
-                            try:
-                                if "__diag_setup_data_date" in _summary_frame_v3021l.columns and len(_summary_frame_v3021l) > 0:
-                                    _raw_dates_v3021l = _summary_frame_v3021l["__diag_setup_data_date"].astype(str).str.strip()
-                                    _parsed_dates_v3021l = pd.to_datetime(_raw_dates_v3021l, errors="coerce").dt.date
-                                    _valid_dates_v3021l = _parsed_dates_v3021l.dropna()
-                                    if not _valid_dates_v3021l.empty:
-                                        _today_v3021l = _v305b_berlin_now().date()
-                                        _old_v3021l = int((_valid_dates_v3021l < _today_v3021l).sum())
-                                        if _old_v3021l / max(1, len(_valid_dates_v3021l)) >= 0.50:
-                                            _date_counts_v3021l = _valid_dates_v3021l.value_counts()
-                                            _date_text_v3021l = " · ".join(
-                                                f"{d.strftime('%d.%m.%Y')}: {int(n)}" for d, n in _date_counts_v3021l.head(3).items()
-                                            )
-                                            st.warning(f"Datenstand: {_old_v3021l}/{len(_valid_dates_v3021l)} Werte noch älter · {_date_text_v3021l}")
-                            except Exception:
-                                pass
+                            from modules.data_freshness import render_freshness_summary
+                            render_freshness_summary(st, _summary_frame_v3021l, now=_v305b_berlin_now())
+                            from modules.trade_watch_ui import render_capture as _capture_trade_watch_bx
+                            _capture_trade_watch_bx(st, _summary_frame_v3021l, key="watch_screener")
 
                             if _live_view_v3021l in {"📡 Live-Screener", "🧪 Diagnose"}:
                                 try:
@@ -24525,6 +24513,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
 
                                 # v30.21bv: immutable basis captured by the same scan as this row.
                                 _risk_module.render_snapshot_calculator(st, selected_calc_row, currency=risk_currency)
+                                from modules.trade_watch_ui import render_capture as _capture_risk_watch_bx
+                                _capture_risk_watch_bx(st, pd.DataFrame([selected_calc_row]), key="watch_risk")
 
                         elif cockpit_area == "🛡️ Portfolio-Risiko":
                             st.markdown(f"### Portfolio & Risk Engine · {APP_VERSION}")
@@ -28517,6 +28507,9 @@ sheet_log_triggered = False
 
 if result is not None:
     ticker = result["ticker"]
+    with st.expander("👁️ Trade-Idee verfolgen", expanded=False):
+        from modules.trade_watch_ui import capture_form as _capture_single_watch_bx
+        _capture_single_watch_bx(st, _risk_module.build_analysis_risk_basis(result), key="watch_analysis")
     csv_filename = f"capital_hill_single_{ticker}_{_v305b_berlin_now().strftime('%Y%m%d_%H%M%S')}.csv"
     csv_payload = single_export_df.to_csv(index=False).encode("utf-8-sig")
     csv_b64 = base64.b64encode(csv_payload).decode("utf-8")

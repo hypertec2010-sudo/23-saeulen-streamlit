@@ -2430,6 +2430,7 @@ def _legacy_analyze_stock_impl(
         "ccy": ccy,
         "exch": exch,
         "ts": ts,
+        "history_metadata": dict(df.attrs.get("chsm_history") or {}),
         "sector": sector,
         "industry": industry,
         "company_summary": company_summary,

@@ -2256,6 +2256,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Ampel": status_icon,
         "Status": status,
         "__risk_basis": _risk_basis_bv,
+        "Kursdaten-Abruf": str((r.get("history_metadata") or {}).get("fetched_at") or ""),
+        "Kursdaten-Kerze": str((r.get("history_metadata") or {}).get("data_date") or r.get("ts") or ""),
+        "Kursdaten-Quelle": ("Analyse-Cache" if (r.get("history_metadata") or {}).get("analysis_cache_hit") else
+                            "Kursdaten-Cache" if (r.get("history_metadata") or {}).get("from_cache") else
+                            "Provider-Abruf" if (r.get("history_metadata") or {}).get("fetched_at") else "Unbekannt"),
         "Analyse-Stop": _risk_basis_bv.get("stop"),
         "Analyse-Stopquelle": _risk_basis_bv.get("stop_source"),
         "Live-Score": f"{live_score_int}/100",

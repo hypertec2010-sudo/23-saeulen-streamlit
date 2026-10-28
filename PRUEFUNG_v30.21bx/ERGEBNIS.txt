@@ -1,0 +1,16 @@
+CHSM v30.21bx – Prüfung 27.10.2026
+407 Tests unter Python 3.12 bestanden, davon 47 gezielte Trade-Wächter-Tests.
+Deployment-Struktur, Syntax und deterministische Regressionstests bestanden.
+Installation auf dem ursprünglichen bi-Archiv mit allen kumulativen Dateien
+und exakter Byte-Gleichheit gegen den geprüften Arbeitsstand kontrolliert.
+
+Testgrenzen:
+- Keine reale Yahoo-Intraday-Lieferung in dieser Umgebung verifiziert.
+- Providergrenzen im Test simuliert; echter zentraler leichter Providerpfad,
+  Cache-Umgehung, Quarantäne sowie Streamlit-Formulare/Fragmente geprüft.
+- Timerzustand und automatische Prüffunktion per AppTest getestet; eine über
+  längere Zeit verbundene Produktionssitzung ist kein Bestandteil dieser Tests.
+- Python 3.11 in dieser Sitzung nicht erneut geprüft (bekannte defekte Runtimes).
+- NumPy/Pandas-DeprecationWarnings im Log: nicht fehlgeschlagene Prüfungen.
+- Gleichzeitige Schreibvorgänge mehrerer Browser werden nicht transaktional
+  zusammengeführt; möglichst eine aktive Wächter-Seite verwenden.

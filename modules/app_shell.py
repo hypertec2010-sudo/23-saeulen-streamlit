@@ -92,6 +92,7 @@ def render_navigation() -> None:
                 ],
                 "Trading": [
                     _page("pages/watchlists.py", "Watchlisten", "📋", "watchlisten"),
+                    _page("pages/trade_watch.py", "Trade-Wächter", "👁️", "trade-waechter"),
                     _page("pages/positions.py", "Positionen / Exit", "🛡️", "positionen"),
                     _page("pages/trade_journal.py", "Trade-Journal", "📓", "trade-journal"),
                 ],
@@ -104,7 +105,7 @@ def render_navigation() -> None:
     # Kompatibilität für ältere Streamlit-Versionen ohne st.navigation.
     choice = st.sidebar.radio(
         "Arbeitsbereich",
-        ["Sofortanalyse", "Kandidaten-Radar", "Watchlisten", "Positionen / Exit", "Trade-Journal"],
+        ["Sofortanalyse", "Kandidaten-Radar", "Watchlisten", "Trade-Wächter", "Positionen / Exit", "Trade-Journal"],
         key="fallback_navigation_v282",
     )
     from modules.page_runtime import run_workspace_page
@@ -116,5 +117,9 @@ def render_navigation() -> None:
         "Positionen / Exit": ("Positionen", "📌 Positionen / Exit"),
         "Trade-Journal": ("Watchlisten", "📓 Trade-Journal"),
     }
+    if choice == "Trade-Wächter":
+        from modules.trade_watch_ui import render_monitor
+        render_monitor(st)
+        return
     workspace, cockpit = mapping[choice]
     run_workspace_page(workspace, cockpit_area=cockpit, page_label=choice)

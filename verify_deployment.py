@@ -23,6 +23,8 @@ REQUIRED = [
     "pages/trade_watch.py",
     "modules/trade_watch.py",
     "modules/trade_watch_ui.py",
+    "modules/watch_setups.py",
+    "tests/test_watch_setups.py",
     "tests/test_trade_watch.py",
     "pages/trade_journal.py",
     "modules/risk_calculator.py",

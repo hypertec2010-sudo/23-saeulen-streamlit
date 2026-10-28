@@ -1,0 +1,66 @@
+........................................................................ [ 16%]
+........................................................................ [ 33%]
+........................................................................ [ 49%]
+........................................................................ [ 66%]
+........................................................................ [ 82%]
+........................................................................ [ 99%]
+....                                                                     [100%]
+=============================== warnings summary ===============================
+tests/test_trade_watch.py: 27 warnings
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/modules/trade_watch.py:245: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    closed = bars.loc[bars.index + pd.Timedelta(minutes=1, seconds=10) <= now]
+
+tests/test_trade_watch.py: 27 warnings
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/modules/trade_watch.py:246: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    last_expected = min(latest, (now - pd.Timedelta(minutes=1, seconds=10)).floor("min"))
+
+tests/test_trade_watch.py: 20 warnings
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/modules/trade_watch.py:262: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if t < start or len(group) != n or group.index[0] != t or group.index[-1] != t + pd.Timedelta(minutes=n - 1):
+
+tests/test_trade_watch.py: 20 warnings
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/modules/trade_watch.py:264: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    end = t + pd.Timedelta(minutes=n)
+
+tests/test_trade_watch.py: 20 warnings
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/modules/trade_watch.py:265: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if end > previous and end <= now - pd.Timedelta(seconds=10):
+
+tests/test_trade_watch.py: 26 warnings
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/modules/trade_watch.py:293: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    out["last_bar_end"] = (closed.index[-1] + pd.Timedelta(minutes=1)).isoformat()
+
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close5-5]
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close15-15]
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/tests/test_trade_watch.py:67: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    end = pd.Timestamp(ARM) + pd.Timedelta(minutes=n)
+
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close5-5]
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close15-15]
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/tests/test_trade_watch.py:69: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    early = w.evaluate(i, frame, now=end + pd.Timedelta(seconds=9))
+
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close5-5]
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close15-15]
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/tests/test_trade_watch.py:71: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    final = w.evaluate(early, frame, now=end + pd.Timedelta(seconds=11))
+
+tests/test_trade_watch.py::test_same_minute_invalidation_beats_entry_and_gaps_do_not_improve_signal
+tests/test_trade_watch.py::test_invalidation_after_confirmation_retains_both_events_in_order
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/modules/trade_watch.py:269: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    stop_times = [t + pd.Timedelta(minutes=1) for t, row in recent.iterrows()
+
+tests/test_trade_watch.py::test_bad_market_data_never_changes_a_technical_state[future]
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/tests/test_trade_watch.py:131: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if kind == "future": frame.index += pd.Timedelta(hours=2)
+
+tests/test_trading212_correction.py::test_wrong_manual_sell_can_be_rebuilt_from_broker_buy
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/modules/trade_journal.py:1284: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if pd.notna(opened_ts) and pd.notna(first_ts) and opened_ts < first_ts - pd.Timedelta(days=1):
+
+tests/test_watch_setups.py::test_structurally_incomplete_or_blocked_candidates_are_rejected[future]
+  /workspace/scratch/9183e491429f/work/23-saeulen-streamlit-main/tests/test_watch_setups.py:76: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if change == "future": frame.index = frame.index + pd.Timedelta(days=10)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+436 passed, 151 warnings in 57.64s

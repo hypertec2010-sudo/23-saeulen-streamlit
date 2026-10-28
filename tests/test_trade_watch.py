@@ -19,6 +19,12 @@ def idea(**changes):
                 target=110, mode="close5", expires_at="2026-10-30T20:00Z", now=ARM,
                 source={"stop_quality": "proxy", "fingerprint": "original"})
     args.update(changes)
+    from modules.watch_setups import sealed, POLICY, VERSION
+    package = sealed(dict(version=VERSION, policy=POLICY, eligible=True, ticker=args['ticker'].upper(),
+        entry=args['entry'], invalidation=args['invalidation'], max_entry=args['max_entry'],
+        target=args['target'], mode=args['mode'], detected_at=args['now'], valid_until=args['expires_at'],
+        label='Regel-Engine-Testfixture'))
+    args['source'] = {**args['source'], 'watch_setup': package}
     return w.make_idea(**args)
 
 
@@ -217,8 +223,11 @@ def test_corrupt_or_failed_storage_is_never_overwritten(tmp_path):
     assert manager.load_namespace(w.NAMESPACE) == {"bad": "format"}
 
 
-def test_standalone_page_creates_and_reloads_idea_without_analysis_or_provider(tmp_path):
+def test_standalone_page_has_no_free_input_and_can_archive_legacy_ideas(tmp_path):
     from streamlit.testing.v1 import AppTest
+    m = manager_at(tmp_path, "ui")
+    old = idea(); old["source"].pop("watch_setup")
+    w.save_ideas(m, [old])
     script = f'''
 import streamlit as st
 from modules.storage.manager import StorageManager
@@ -230,21 +239,11 @@ def forbidden():
 render_monitor(st, manager=m, provider_factory=forbidden)
 '''
     app = AppTest.from_string(script).run(timeout=20)
-    assert not app.exception and not app.error
-    app.text_input(key="watch_manual_manual_ticker").set_value("HALO")
-    app.number_input(key="watch_manual_manual_entry").set_value(100.)
-    app.number_input(key="watch_manual_manual_stop").set_value(95.)
-    app.number_input(key="watch_manual_manual_ceiling").set_value(102.)
-    app.checkbox(key="watch_manual_manual_reviewed").check()
-    next(b for b in app.button if b.label == "Trade-Idee verfolgen").click().run()
-    assert not app.exception and not app.error and app.success
-    assert len(w.load_ideas(manager_at(tmp_path, "ui"))) == 1
-    restored = AppTest.from_string(script).run(timeout=20)
-    assert not restored.exception and restored.dataframe[0].value.iloc[0]["Ticker"] == "HALO"
-    restored.button(key="watch_pause").click().run()
-    assert not restored.exception and w.load_ideas(manager_at(tmp_path, "ui"))[0]["paused"]
-    restored.button(key="watch_archive").click().run()
-    assert not restored.exception and w.load_ideas(manager_at(tmp_path, "ui"))[0]["archived"]
+    assert not app.exception and not app.error and not app.number_input and not app.text_input
+    assert app.button(key="watch_poll").disabled
+    assert "gesperrt" in app.dataframe[0].value.iloc[0]["Status"]
+    app.button(key="watch_archive").click().run()
+    assert not app.exception and w.load_ideas(m)[0]["archived"]
 
 
 def test_real_ui_poll_with_independent_fragment(tmp_path, monkeypatch):
@@ -281,7 +280,7 @@ def test_integration_has_native_page_and_capture_paths_without_analyzer_import()
     assert "run_workspace_page" not in page
     assert "pages/trade_watch.py" in (root / "modules/app_shell.py").read_text()
     assert '_capture_trade_watch_bx(st, _summary_frame_v3021l' in legacy
-    assert '_capture_single_watch_bx(st, _risk_module.build_analysis_risk_basis(result)' in legacy
+    assert '_capture_single_watch_by(st, result, hard_gate=_watch_hard_gate_by' in legacy
 
 
 def test_light_provider_bypasses_previous_15_minute_history_cache(monkeypatch):
@@ -305,21 +304,28 @@ def test_light_provider_bypasses_previous_15_minute_history_cache(monkeypatch):
 def test_capture_from_persisted_screener_basis_needs_no_analysis(tmp_path, monkeypatch):
     from streamlit.testing.v1 import AppTest
     from modules.risk_calculator import RISK_BASIS_VERSION
+    from modules.watch_setups import detect, form_id
+    from test_watch_setups import range_result
+    real_utc = w.utc
+    monkeypatch.setattr(w, "utc", lambda value=None: real_utc(value if value is not None else NOW))
     monkeypatch.setenv("APP_STORAGE_BACKEND", "local")
     monkeypatch.setenv("APP_STORAGE_LOCAL_DIR", str(tmp_path))
     monkeypatch.setenv("APP_USER_ID", "capture")
-    basis = dict(version=RISK_BASIS_VERSION, ticker="HALO", price=99., zone_high=100., stop=95.,
+    basis = dict(version=RISK_BASIS_VERSION, ticker="HALO", price=99.2, zone_high=100., stop=95.,
                  target=110., fingerprint="persisted", currency="USD", stop_quality="proxy", data_date="26.10.2026")
+    package = detect(range_result(), now=NOW)
+    assert package["eligible"]
+    prefix = "watch_screener_" + form_id(package)
     script = f'''
 import streamlit as st
 import pandas as pd
 from modules.trade_watch_ui import render_capture
-render_capture(st, pd.DataFrame([{{'Ticker':'HALO', 'Status':'Setup planen', '__risk_basis':{basis!r}}}]))
+render_capture(st, pd.DataFrame([{{'Ticker':'HALO', 'Status':'Setup planen', '__risk_basis':{basis!r}, '__watch_setup':{package!r}}}]))
 '''
     app = AppTest.from_string(script).run(timeout=20)
-    assert not app.exception and app.number_input(key="watch_screener_persisted_entry").value == 100.
-    app.checkbox(key="watch_screener_persisted_reviewed").check()
-    next(b for b in app.button if b.label == "Trade-Idee verfolgen").click().run()
+    assert not app.exception and not app.number_input
+    app.checkbox(key=prefix + "_reviewed").check()
+    next(b for b in app.button if b.label == "Chartsetup im Wächter verfolgen").click().run()
     assert not app.exception and app.success
     captured = w.load_ideas(manager_at(tmp_path, "capture"))[0]
-    assert captured["source"] == basis and captured["entry"] == 100.
+    assert captured["source"] == {**basis, "watch_setup": package} and captured["entry"] == package["entry"]

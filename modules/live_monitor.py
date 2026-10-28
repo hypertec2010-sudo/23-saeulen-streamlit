@@ -2248,6 +2248,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _plan_stop_v3021be = plan_stop_reference(r, d)
     from modules.risk_calculator import build_analysis_risk_basis
     _risk_basis_bv = build_analysis_risk_basis(r, generated_at=get_current_berlin_time().isoformat())
+    from modules.watch_setups import detect as _detect_watch_setup_by
+    _watch_setup_by = _detect_watch_setup_by(r, hard_gate=entry_hard_gate)
     return {
         **_package_fields_v3020,
         "__env_sector": str(r.get("sector") or r.get("sector_label") or (r.get("info") or {}).get("sector") or ""),
@@ -2256,6 +2258,8 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
         "Ampel": status_icon,
         "Status": status,
         "__risk_basis": _risk_basis_bv,
+        "__watch_setup": _watch_setup_by,
+        "Chartsetup": _watch_setup_by["label"] if _watch_setup_by["eligible"] else "Kein überwachbares Setup",
         "Kursdaten-Abruf": str((r.get("history_metadata") or {}).get("fetched_at") or ""),
         "Kursdaten-Kerze": str((r.get("history_metadata") or {}).get("data_date") or r.get("ts") or ""),
         "Kursdaten-Quelle": ("Analyse-Cache" if (r.get("history_metadata") or {}).get("analysis_cache_hit") else
@@ -3218,7 +3222,7 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                           if str(c).startswith("__")
                           and not str(c).startswith("__pkg_")
                           and not str(c).startswith("__diag_")
-                          and str(c) not in {"__env_sector", "__env_industry", "__env_stock", "__risk_basis"}]:
+                          and str(c) not in {"__env_sector", "__env_industry", "__env_stock", "__risk_basis", "__watch_setup"}]:
         if _internal_col in enriched.columns:
             enriched = enriched.drop(columns=[_internal_col])
     # Signal-Stabilität und Bestätigungen direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.

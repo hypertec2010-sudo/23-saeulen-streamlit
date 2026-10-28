@@ -72,7 +72,9 @@ def in_session(timestamp, market):
 
 
 def active(idea):
-    return not idea.get("archived") and not idea.get("paused") and idea.get("state") not in TERMINAL
+    from modules.watch_setups import idea_setup
+    return (not idea.get("archived") and not idea.get("paused") and idea.get("state") not in TERMINAL
+            and idea_setup(idea)[0])
 
 
 def make_idea(*, ticker, entry, invalidation, mode, expires_at, max_entry,
@@ -92,7 +94,7 @@ def make_idea(*, ticker, entry, invalidation, mode, expires_at, max_entry,
     expiry = utc(expires_at)
     if expiry <= now or expiry > now + timedelta(days=30):
         raise ValueError("Gültigkeit muss in der Zukunft und innerhalb von 30 Tagen liegen.")
-    return dict(id=uuid4().hex, ticker=symbol, market=market, entry=e,
+    idea = dict(id=uuid4().hex, ticker=symbol, market=market, entry=e,
                 invalidation=stop, max_entry=ceiling, target=goal if goal and goal > e else None,
                 mode=mode, currency=str(currency or "").strip()[:12], note=str(note or "")[:500],
                 source=deepcopy(source or {}), created_at=now.isoformat(),
@@ -100,6 +102,11 @@ def make_idea(*, ticker, entry, invalidation, mode, expires_at, max_entry,
                 paused=False, archived=False, health="Noch nicht geprüft", events=[],
                 last_bar_end="", last_attempt_at="", last_fetch_at="", quote_at="", price=None,
                 gap=False, triggered_at="")
+    from modules.watch_setups import idea_setup
+    ok, reason = idea_setup(idea, now=now)
+    if not ok:
+        raise ValueError(reason)
+    return idea
 
 
 def event(idea, kind, at, text):
@@ -121,6 +128,15 @@ def load_ideas(manager):
     ideas = deepcopy(result.data["ideas"])
     if any(not isinstance(i, dict) or not i.get("id") for i in ideas):
         raise RuntimeError("Ungültige gespeicherte Trade-Idee; vorhandene Daten bleiben erhalten.")
+    from modules.watch_setups import idea_setup
+    for idea in ideas:
+        ok, reason = idea_setup(idea)
+        if not ok:
+            # Keep old records and their history. They never become evidence of
+            # a chart setup merely because this version was installed.
+            idea["setup_blocked"] = reason
+        else:
+            idea.pop("setup_blocked", None)
     return ideas
 
 
@@ -131,11 +147,15 @@ def save_ideas(manager, ideas):
 
 
 def add_idea(manager, idea):
+    from modules.watch_setups import idea_setup
+    ok, reason = idea_setup(idea, now=utc())
+    if not ok:
+        raise ValueError(reason)
     ideas = load_ideas(manager)
-    if sum(not i.get("archived") and i.get("state") not in TERMINAL for i in ideas) >= MAX_ACTIVE:
+    if sum(not i.get("archived") and not i.get("setup_blocked") and i.get("state") not in TERMINAL for i in ideas) >= MAX_ACTIVE:
         raise ValueError(f"Höchstens {MAX_ACTIVE} laufende Ideen; zuerst eine Idee archivieren.")
     fields = ("ticker", "entry", "invalidation", "max_entry", "mode", "target")
-    if any(not i.get("archived") and i.get("state") not in TERMINAL and
+    if any(not i.get("archived") and not i.get("setup_blocked") and i.get("state") not in TERMINAL and
            all(i.get(k) == idea.get(k) for k in fields) for i in ideas):
         raise ValueError("Diese Handelsidee wird bereits verfolgt.")
     ideas.append(idea)
@@ -185,6 +205,12 @@ def evaluate(idea, frame, *, now=None, fetched_at=None, fetch_error=""):
     """
     out = deepcopy(idea)
     now = utc(now)
+    from modules.watch_setups import idea_setup
+    ok, reason = idea_setup(out)
+    if not ok:
+        out["setup_blocked"] = reason
+        out["health"] = "Kein geprüftes Chartsetup · nicht überwacht"
+        return out
     if out.get("archived") or out.get("paused") or out["state"] in TERMINAL:
         return out
     out["last_attempt_at"] = now.isoformat()

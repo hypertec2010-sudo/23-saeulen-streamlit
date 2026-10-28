@@ -1,0 +1,27 @@
+CHSM v30.21by – Prüfung vom 28.10.2026
+436 Tests unter Python 3.12 bestanden.
+Davon 29 Tests für echte Chartsetup-Erkennung/Übernahmegrenzen und 47 für
+Wächter-Regeln, Providergrenzen, Speicherung und Streamlit-Oberfläche.
+Deployment-Struktur, Syntax und deterministische Regressionstests bestanden.
+Kumulativen Patch auf Originalstand bi angewendet; exakte Dateibytes und
+Vollständigkeit geänderter Originaldateien durch Paketbau geprüft.
+
+Neue Nachweise:
+- Vollständige synthetische Tages-OHLCV für Konsolidierung und Support-Pullback
+  werden tatsächlich erkannt; keine Mock-Erkennung/Label-Freigabe.
+- Nur MA-/Setup-Name oder grüne Ampel reicht nicht. Fehlende Pivots, ungültige
+  Volumen-/OHLC-Daten, alte Daten, fehlender Trend und Gates werden abgelehnt.
+- Abgeschlossene Tagesbasis, laufender Invalidierungsbruch, CRV-Unabhängigkeit,
+  feste Ticker-/Level-/Gültigkeitsbindung und keine freien Alt-Ideen geprüft.
+- Chartbelege überstehen echte Live-History-Bereinigung und Snapshot-Roundtrip.
+- Übernahme aus Screenerstand und Sofortanalyse tatsächlich per AppTest geprüft;
+  bei gewöhnlichem Rerun gehen Checkbox/Formularbestätigung nicht verloren.
+- Standard-Risikobasis und Ampel-/CRV-Regeln bestehen die bisherigen Regressionen.
+
+Grenzen:
+Die Testdaten sind synthetisch. Keine Gewinnerwartung, Trefferquote, Rendite,
+aktuelle Yahoo-Lieferung oder dauerhafte Produktionssitzung ist nachgewiesen.
+Mustergrenzen sind Start-Heuristiken; andere gute Setups können abgelehnt werden.
+Python 3.11 in dieser Sitzung nicht erneut geprüft.
+NumPy-/Pandas-DeprecationWarnings siehe Log; keine fehlgeschlagenen Prüfungen.
+Die Wächter-Seite muss für automatische Updates geöffnet/verbunden bleiben.

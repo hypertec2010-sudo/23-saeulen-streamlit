@@ -1,0 +1,118 @@
+CHSM v30.21by – Trade-Wächter ausschließlich für erkannte Chartsetups
+Kumulativer Patch ab v30.21bi; enthält alle Änderungen bis bx.
+Die vorigen Anleitungen gelten nur, soweit diese Anleitung sie nicht ersetzt.
+Insbesondere die freie manuelle Wächter-Anlage aus bx entfällt.
+
+Installation und Start:
+1. Projekt sichern, ZIP entpacken. Alle Dateien laut DATEILISTE.txt unter
+   denselben relativen Pfaden ersetzen/ergänzen. Ordner nicht komplett löschen.
+2. Besonders die NEUE modules/watch_setups.py sowie modules/trade_watch.py,
+   modules/trade_watch_ui.py, modules/live_monitor.py, legacy_app.py,
+   verify_deployment.py und VERSION.txt hochladen.
+3. App neu starten; Version v30.21by prüfen.
+4. Gewünschte Aktien im Screener neu scannen oder frisch analysieren. Ein alter
+   gespeicherter Scan enthält noch keinen Strukturbeleg und wird nicht aus einer
+   grünen Ampel oder einem Setup-Namen nachträglich zum Chartsetup erklärt.
+   Ein selektiver Neuscan der interessanten Aktien reicht.
+5. Unter „Trade-Idee verfolgen“ erscheinen nur übernehmbare Chartsetups.
+   Dort stehen Erklärung, feste Levels und ein Chart. Regeln ansehen und
+   „Chartsetup im Wächter verfolgen“ drücken. Keine Level-Eingabe erforderlich.
+6. Im Menü Trading → Trade-Wächter gezielt bzw. automatisch prüfen.
+   Bei fehlendem Muster steht „Kein überwachbares Chartsetup vorhanden“.
+
+Was sich ändert:
+- Eine grüne/gelbe Ampel, ein alter Setup-Name oder ein ATR-Stop allein genügen
+  nicht. Ein eigener, providerfreier Detektor prüft abgeschlossene Tages-OHLCV.
+- Zunächst genau zwei Muster: bestätigte Konsolidierung vor Ausbruch oder
+  Pullback an mehrfach bestätigter Unterstützung. Andere mögliche Strategien
+  werden nicht automatisch als gleichwertiges Setup behandelt.
+- Der Detektor gibt Einstiegsauslöser, obere Entry-Grenze, Struktur-Invalidierung,
+  Bestätigungsregel und Gültigkeit vor. Diese Werte sind nicht frei editierbar.
+- Vor dem Speichern und beim Überwachen werden Herkunft, konsistenter Inhalt,
+  Tickerbindung und unveränderte Levels geprüft. Alte freie oder veränderte
+  Ideen bleiben lesbar/archivierbar, werden aber nicht mehr abgefragt.
+- Übernahme im Screener, Risiko-Rechner und in der Sofortanalyse nutzt dieselbe
+  Erkennung. Belege überstehen Live-History-Bereinigung und Snapshot-Speicherung.
+- Neue Screener-Spalte „Chartsetup“. Die Liste zur Übernahme enthält nur für den
+  aktuellen Zeitpunkt freigegebene Belege; fehlende/abgelaufene Belege benötigen
+  einen Neuscan. Bei Ablehnung lässt sich der konkrete Grund anzeigen.
+- Das ursprüngliche Analyse-Risikopaket bleibt erhalten. Die Invalidierung der
+  konkreten Chartidee kann vom allgemeinen Analyse-Stop abweichen; sie wird als
+  Setup-Invalidierung separat erklärt und ändert den Standard-Risiko-Rechner nicht.
+
+Gemeinsame Strukturprüfung:
+- Mindestens 60 abgeschlossene Tageskerzen mit positiven, gültigen OHLCV-Werten,
+  eindeutiger zeitlicher Reihenfolge und aktueller letzter abgeschlossener Sitzung.
+  Keine Wochenhistorie, Duplikate oder Zukunftsdaten als Tagesstruktur verwenden.
+- Laufende Tageskerzen können kein Muster erzeugen. Ein bereits darin erkannter
+  Bruch der abgeleiteten Invalidierung verhindert dagegen eine neue Übernahme.
+- Schlusskurs über einer gegenüber fünf Kerzen zuvor steigenden MA50.
+- Bekannte Earnings innerhalb von sieben Tagen und aktive technische Einstiegs-
+  gates verhindern die neue Übernahme. Bereits gehaltene Positionen sind nicht
+  die Zielgruppe dieses Einstieg-Wächters. Unbekannte Termine bleiben unbekannt.
+- Kein pauschales Marktregime-/CRV-Veto: die allgemeine Umfeldampel und das CRV
+  bleiben getrennt. Die bestehende technische Ampel wird nicht verändert.
+
+Muster 1 – Konsolidierung vor Ausbruch:
+- Letzte 20 abgeschlossene Tageskerzen; MA20 über MA50.
+- Zwei strikte lokale Hochs und zwei strikte lokale Tiefs. Jeweils drei Nachbar-
+  kerzen davor/danach bestätigen einen Pivot, mindestens sechs Kerzen trennen
+  die beiden Tests. Obere Tests innerhalb 1 %, untere Tests innerhalb 1,5 %.
+- Range-Breite 2–12 %, keine größere Abweichung außerhalb der Grenzen (oben
+  maximal 1 %, unten maximal 1,5 % Toleranz), Kurs höchstens 3 % unter Widerstand.
+- Auslöser über der höheren getesteten Oberkante plus max(0,1 %, 0,1 ATR).
+
+Muster 2 – Unterstützungs-Pullback:
+- Zwei strikte bestätigte Pivot-Tiefs in den letzten 60 Kerzen, innerhalb 1,5 %
+  Preisnähe und mindestens sechs Kerzen auseinander. Letzter Pivot 3–10 Kerzen alt.
+- Rücksetzer vom vorherigen Hoch der bis zu 15 Kerzen vor dem Pivot: 3–12 %.
+  Vor dem Rücksetzer MA20 über MA50; aktuelle MA50 weiter steigend.
+- Kurs höchstens zwei ATR über der bestätigten Unterstützung, kein neuer
+  Tiefbruch um mehr als 1,5 %, Auslöser höchstens 5 % über dem Schlusskurs.
+- Auslöser über dem höchsten Hoch der letzten drei abgeschlossenen Kerzen
+  plus max(0,1 % Kurs, 0,1 ATR).
+
+Levels / Laufzeit:
+- Invalidierung unter der bestätigten Unterstützung mit Puffer
+  max(0,6 % Unterstützung, 0,25 ATR); Abstand zum Auslöser maximal 12 %.
+  Kein ATR-Ersatzstop wird hier zu bestätigter Chartstruktur umbenannt.
+- Schlusskurs der abgeschlossenen Struktur muss vor dem Auslöser und über der
+  Invalidierung liegen. Ein neuerer Analysepreis darf die Invalidierung nicht
+  gebrochen oder die Entry-Grenze bereits überschritten haben.
+- Oberste Entry-Grenze = Auslöser + min(0,5 ATR, 1 % Auslöser).
+- Feste Bestätigung: neuer vollständiger 5-Minuten-Schluss im Entryband. Die
+  bestehende Minutenprüfung, Lücken-/Altersprüfung und Invalidierungspriorität
+  bleiben bestehen. Neue Trigger nur aus nach Anlage begonnenen Kerzengruppen.
+- Gültigkeit bis zum Ende der auf die Tagesbasis folgenden Börsensitzung.
+  Anschließend ist eine neue Chartprüfung nötig; kein unbegrenztes Weiterlaufen
+  eines alten Musters. US-Kalender 2026–2027; Xetra-Fenster wie in bx.
+- Optionales technisches Ziel nur als Referenz. CRV zur konkreten Setupidee wird
+  separat angezeigt; fehlendes/niedriges CRV erzeugt oder entfernt kein Muster.
+
+Einordnung und Grenzen:
+- Die Muster und Grenzen sind transparente Start-Heuristiken, keine optimierte
+  oder auf Profitabilität validierte Strategie. Die Tests prüfen die Umsetzung,
+  nicht die Gewinnerwartung. Es ist kein vollständiges Rocketcandle-Regelwerk.
+- Nicht erkannte Muster können trotzdem handelswürdig sein. Umgekehrt bedeutet
+  ein erkannter Strukturbeleg nicht automatisch einen lohnenden Trade.
+- Kursdaten stammen weiterhin aus Yahoo-Minutenkerzen ohne Echtzeitgarantie.
+  Automatische Prüfung nur auf der geöffneten Wächter-Seite bei aktiver Sitzung.
+  Kein Hintergrunddienst, keine Brokerorder, keine automatische Positionsanlage.
+- Nachrichten/Earnings werden im Wächter nicht erneut geladen. Datenlücken,
+  lokale Cloud-Speicherung und parallele Browser haben dieselben Grenzen wie bx.
+- Die tägliche Strukturprüfung erfordert einen neuen Scan, aber nicht bei jedem
+  Minutenupdate eine neue Gesamtanalyse. Selektive Aktualisierung bleibt möglich.
+
+Prüfung:
+- Echte Mustererkennung an synthetischen vollständigen OHLCV-Historien für beide
+  Fälle, Ablehnung bloßer Labels/grüner Ampeln, fehlender Tests, schwachen Trends,
+  beschädigter/veralteter Daten, Earnings-/Gate-Sperren, überdehnter Preise.
+- Laufende Tageskerze kann keine Struktur erzeugen, ihr Invalidierungsbruch
+  kann eine Freigabe verhindern. CRV-/Umfeldunabhängigkeit separat geprüft.
+- Unveränderte Strukturlevels, Ticker-/Gültigkeitsbindung, alte freie Ideen,
+  Snapshot- und tatsächliche History-Bereinigung sowie Streamlit-Übernahmen geprüft.
+- Sofortanalyse-Formular behält die Bestätigung bei unverändertem Chart über
+  normale Reruns; tatsächliche Strukturänderungen setzen die Bestätigung zurück.
+- Gesamt- und Deployment-Ergebnis siehe PRUEFUNG_v30.21by. Python 3.12 geprüft;
+  Python 3.11 in dieser Sitzung nicht erneut geprüft. Keine aktuelle Live-Yahoo-
+  Lieferung oder längere Produktionssitzung durch diese Tests nachgewiesen.

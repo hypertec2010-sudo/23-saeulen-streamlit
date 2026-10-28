@@ -23,69 +23,68 @@ def shown_time(value):
 
 
 def capture_form(st, basis=None, *, key="watch_setup", manager=None):
-    """Read-only structural levels; only an actual detector package can be saved."""
+    """Read-only setup review; preparation is visible but cannot arm a watcher."""
     from copy import deepcopy
-    from modules.watch_setups import validate, form_id
+    from modules.watch_setups import validate, evidence_valid, form_id, PHASES
     basis = basis or {}
     package = basis.get("watch_setup")
-    ok, reason = validate(package, now=watch.utc(), ticker=basis.get("ticker"))
-    if not ok:
-        st.info("Kein überwachbares Chartsetup vorhanden.")
-        st.caption(reason)
+    if not evidence_valid(package):
+        st.info("Kein geprüfter Chartbeleg vorhanden. Gewünschte Aktie neu scannen.")
         return
+    phase = package.get("phase", "ready" if package.get("eligible") else "none")
+    ok, reason = validate(package, now=watch.utc(), ticker=basis.get("ticker"))
+    phase_name = "Chartbeleg nicht aktuell / gesperrt" if phase == "ready" and not ok else PHASES.get(phase, phase)
+    st.markdown("**" + phase_name + " · " + package["label"] + " · " + package["ticker"] + "**")
+    st.write(package.get("reason") or reason)
+    st.caption("Abgeschlossene Tagesbasis: " + (package.get("basis_date") or "nicht verfügbar") +
+               " · Beleg gültig bis " + shown_time(package.get("valid_until")))
     prefix = key + "_" + form_id(package)
-    st.markdown("**" + package["label"] + " · " + package["ticker"] + "**")
-    st.caption("Erkannt aus abgeschlossenen Tageskerzen bis " + package["basis_date"] +
-               " · erneute Chartprüfung spätestens nach Ablauf am " + shown_time(package["valid_until"]))
     currency = package.get("currency") or "Kurseinheit der Analyse"
-    st.table(pd.DataFrame([
-        {"Regel": "Entry-Auslöser", "Level": package["entry"], "Einheit": currency},
-        {"Regel": "Oberste Entry-Grenze", "Level": package["max_entry"], "Einheit": currency},
-        {"Regel": "Struktur-Invalidierung", "Level": package["invalidation"], "Einheit": currency},
-        {"Regel": "Technisches Ziel (optional)", "Level": package.get("target"), "Einheit": currency}]))
-    st.caption("Einstieg erst nach neuem 5-Minuten-Schluss innerhalb der Entry-Grenzen. Invalidierung bei 1m-Low auf/unter dem Strukturlevel. Levels werden aus dem erkannten Setup übernommen und sind hier nicht frei änderbar.")
-    st.caption("Diese Invalidierung gehört zum erkannten Chartsetup. Der allgemeine Analyse-Stop wird dadurch nicht verändert.")
-    crv = package.get("crv")
-    st.caption("CRV zum optionalen Ziel: " + (f"{crv:.2f}R" if crv is not None else "nicht bewertbar") +
-               " · separat beurteilen; verändert die Setup-Erkennung nicht.")
-    with st.expander("Warum ist das ein Chartsetup?", expanded=False):
+    if package.get("entry") is not None:
+        st.table(pd.DataFrame([
+            {"Regel": "Entry-Auslöser", "Level": package["entry"]},
+            {"Regel": "Oberste Entry-Grenze", "Level": package["max_entry"]},
+            {"Regel": "Struktur-Invalidierung", "Level": package["invalidation"]},
+            {"Regel": "Technisches Ziel (optional)", "Level": package.get("target")}]))
+        st.caption("Einheit: " + currency + ". Feste Setup-Levels; hier nicht frei änderbar. Die Setup-Invalidierung ändert nicht den allgemeinen Analyse-Stop.")
+        crv = package.get("crv")
+        st.caption("CRV dieser Setupidee: " + (f"{crv:.2f}R" if crv is not None else "nicht bewertbar") + " · separat, kein Freigabekriterium.")
+    with st.expander("Chartstruktur und geprüfte Bedingungen", expanded=False):
         for check in package.get("checks", []):
             st.write("✓ " + check)
-        st.caption(package.get("stop_source") or "")
         chart = package.get("chart") or []
         if chart:
             import plotly.graph_objects as go
             frame = pd.DataFrame(chart)
-            fig = go.Figure(go.Candlestick(x=frame.date, open=frame.Open, high=frame.High,
-                                          low=frame.Low, close=frame.Close, name="Abgeschlossene Tageskerzen"))
-            for label, field, color in [("Entry", "entry", "#2e7d32"),
-                                         ("Entry maximal", "max_entry", "#ef6c00"),
-                                         ("Invalidierung", "invalidation", "#c62828")]:
-                fig.add_hline(y=package[field], line_color=color, line_dash="dot", annotation_text=label)
-            fig.update_layout(height=350, margin=dict(l=10, r=10, t=10, b=10), xaxis_rangeslider_visible=False,
-                              yaxis_title=currency, showlegend=False)
+            fig = go.Figure(go.Candlestick(x=frame.date, open=frame.Open, high=frame.High, low=frame.Low, close=frame.Close))
+            for label, field, color in [("Entry", "entry", "#2e7d32"), ("Entry maximal", "max_entry", "#ef6c00"), ("Invalidierung", "invalidation", "#c62828")]:
+                if package.get(field) is not None:
+                    fig.add_hline(y=package[field], line_dash="dot", line_color=color, annotation_text=label)
+            fig.update_layout(height=350, margin=dict(l=10,r=10,t=10,b=10), xaxis_rangeslider_visible=False, yaxis_title=currency, showlegend=False)
             st.plotly_chart(fig, use_container_width=True, key=prefix + "_chart")
         st.json(package.get("evidence") or {})
-    st.caption("Dies ist eine eng definierte, noch nicht auf Profitabilität validierte Chart-Erkennung. Andere Muster werden derzeit nicht übernommen. Die allgemeine Analyse-Ampel wird dadurch nicht geändert.")
+    st.caption("Start-Heuristiken für Chartstrukturen; noch keine Prüfung auf Profitabilität. Die allgemeine Analyse-Ampel wird nicht verändert.")
+    if not ok:
+        st.info("Noch keine aktive Einstiegsüberwachung: " + reason)
+        return
+    st.caption("Überwachung: neuer vollständiger 5-Minuten-Schluss im Entryband; Invalidierung bei 1m-Low auf/unter dem Strukturlevel. Nur nach Anlage begonnene Kerzengruppen zählen.")
     with st.form(prefix + "_form"):
         note = st.text_input("Eigene Notiz (optional)", key=prefix + "_note", max_chars=500)
-        reviewed = st.checkbox("Erkanntes Chartsetup und abgeleitete Regeln angesehen", key=prefix + "_reviewed")
-        save = st.form_submit_button("Chartsetup im Wächter verfolgen", type="primary")
+        reviewed = st.checkbox("Chartstruktur und feste Regeln angesehen", key=prefix + "_reviewed")
+        save = st.form_submit_button("Bestätigungsbereites Setup verfolgen", type="primary")
     if save:
         try:
             if not reviewed:
-                raise ValueError("Bitte Chartstruktur und Regeln vor der Übernahme ansehen.")
+                raise ValueError("Bitte Chartstruktur und feste Regeln ansehen.")
             source = deepcopy(basis)
-            source["watch_setup"] = deepcopy(package)
-            idea = watch.make_idea(ticker=package["ticker"], entry=package["entry"],
-                invalidation=package["invalidation"], max_entry=package["max_entry"], mode=package["mode"],
-                expires_at=package["valid_until"], target=package.get("target"), currency=package.get("currency"),
-                source=source, note=note)
+            idea = watch.make_idea(ticker=package["ticker"], entry=package["entry"], invalidation=package["invalidation"],
+                max_entry=package["max_entry"], mode=package["mode"], expires_at=package["valid_until"],
+                target=package.get("target"), currency=package.get("currency"), source=source, note=note)
             storage = manager or create_storage_manager(st_module=st, app_dir=Path(__file__).resolve().parents[1])
             watch.add_idea(storage, idea)
-            st.success(package["ticker"] + ": erkanntes Chartsetup im Trade-Wächter gespeichert.")
+            st.success(package["ticker"] + ": geprüftes Chartsetup im Trade-Wächter gespeichert.")
             if storage.degraded:
-                st.warning("Nur lokaler Ersatzspeicher verfügbar; geräteübergreifende Speicherung derzeit nicht bestätigt.")
+                st.warning("Nur lokaler Ersatzspeicher verfügbar; Synchronisierung derzeit nicht bestätigt.")
         except (ValueError, RuntimeError) as exc:
             st.error(str(exc))
 
@@ -99,28 +98,40 @@ def capture_analysis(st, result, *, hard_gate=False, key="watch_analysis"):
 
 
 def render_capture(st, frame, *, key="watch_screener"):
-    """Capture from already analyzed screener rows, including restored snapshots."""
     from modules.risk_calculator import risk_basis_from_row
+    from modules.watch_setups import validate, evidence_valid, diagnostic_tables
     if not isinstance(frame, pd.DataFrame) or frame.empty or "Ticker" not in frame:
         return
-    with st.expander("👁️ Trade-Idee verfolgen", expanded=False):
-        from modules.watch_setups import validate
+    stocks, counts, patterns = diagnostic_tables(frame, now=watch.utc())
+    by_phase = stocks["Phase"].value_counts()
+    st.caption("Chartsetups · " + " · ".join(f"{phase}: {count}" for phase,count in by_phase.items()))
+    with st.expander("👁️ Chartsetups & Trade-Wächter", expanded=False):
+        with st.expander("Diagnose: Warum fehlen bestätigungsbereite Setups?", expanded=False):
+            st.caption("Hauptgrund je Aktie; die Anzahl summiert sich zur Zahl der angezeigten Aktien.")
+            st.dataframe(counts.sort_values("Aktien", ascending=False), hide_index=True, use_container_width=True)
+            st.dataframe(stocks, hide_index=True, use_container_width=True)
+            if not patterns.empty:
+                st.caption("Einzelne Musterprüfungen: mehrere Zeilen je Aktie, keine zusätzliche Aktienanzahl.")
+                st.dataframe(patterns, hide_index=True, use_container_width=True)
         rows = frame.to_dict("records")
-        eligible = [row for row in rows if validate(row.get("__watch_setup"), now=watch.utc(), ticker=row.get("Ticker"))[0]]
-        if not eligible:
-            st.info("Kein überwachbares Chartsetup vorhanden.")
-            if not any(isinstance(row.get("__watch_setup"), dict) for row in rows):
-                st.caption("Dieser Scan enthält noch keine konkrete Chartsetup-Prüfung. Gewünschte Aktien einmal neu scannen.")
-            else:
-                with st.expander("Warum wurde kein Setup freigegeben?", expanded=False):
-                    st.dataframe(pd.DataFrame([{"Ticker": row.get("Ticker"), "Grund": validate(row.get("__watch_setup"), now=watch.utc(), ticker=row.get("Ticker"))[1]} for row in rows]), hide_index=True, use_container_width=True)
+        visible = [row for row in rows if evidence_valid(row.get("__watch_setup")) and
+                   row["__watch_setup"].get("phase", "ready" if row["__watch_setup"].get("eligible") else "none") not in {"none", "blocked"}]
+        if not visible:
+            st.info("Kein überwachbares Chartsetup vorhanden. Die Diagnose zeigt die Gründe je Aktie.")
             return
-        index = st.selectbox("Erkanntes Chartsetup", range(len(eligible)),
-            format_func=lambda i: str(eligible[i]["Ticker"]) + " · " + eligible[i]["__watch_setup"]["label"], key=key + "_row")
-        row = eligible[index]
+        ready = sum(validate(row["__watch_setup"], now=watch.utc(), ticker=row.get("Ticker"))[0] for row in visible)
+        st.caption(f"{ready} bestätigungsbereit. Andere Entwicklungsstände dienen der Beobachtung und lassen sich nicht aktivieren.")
+        def stage_name(row):
+            p = row["__watch_setup"]
+            if p.get("eligible") and not validate(p, now=watch.utc(), ticker=row.get("Ticker"))[0]:
+                return "Chartbeleg abgelaufen / gesperrt"
+            return p.get("phase_label", "Bestätigungsbereit")
+        index = st.selectbox("Chartsetup / Entwicklungsstand", range(len(visible)),
+            format_func=lambda i: str(visible[i]["Ticker"]) + " · " + stage_name(visible[i]) + " · " + visible[i]["__watch_setup"]["label"], key=key + "_row")
+        row = visible[index]
         basis = risk_basis_from_row(row)
         if basis is None:
-            st.info("Die Analysebasis dieses Scans fehlt. Aktie einmal neu scannen.")
+            st.info("Gemeinsame Analysebasis fehlt; Aktie einmal neu scannen.")
             return
         basis["watch_setup"] = row["__watch_setup"]
         capture_form(st, basis, key=key)
@@ -162,7 +173,7 @@ def render_monitor(st, *, manager=None, provider_factory=None):
     st.caption("Gezielte Überwachung gespeicherter Long-Ideen · keine neue Vollanalyse · keine Brokerorders")
     st.info("Automatische Prüfungen laufen nur, solange diese Seite geöffnet und die Sitzung verbunden ist. Keine Hintergrundüberwachung bei geschlossenem Browser. Yahoo liefert keine garantierten Echtzeit-/Tickdaten.")
     st.caption("Geprüft werden ausschließlich die gespeicherten Kursregeln. Nachrichten, Earnings und die ursprüngliche technische Bewertung werden nicht erneut analysiert; das Ziel dient hier als Referenz.")
-    st.caption("Neue Ideen ausschließlich über ein erkanntes Chartsetup im Screener oder in der Sofortanalyse übernehmen. Keine freie Eingabe von Kurslevels.")
+    st.caption("Nur bestätigungsbereite Chartsetups aus Screener oder Sofortanalyse übernehmen. Entstehende Setups bleiben dort sichtbar; freie Level-Eingabe entfällt.")
     a, b = st.columns(2)
     auto = a.toggle("Automatisch prüfen (solange geöffnet)", value=False, key="watch_auto")
     interval = b.selectbox("Prüfintervall", [60, 120, 30], format_func=lambda x: f"{x} Sekunden", key="watch_interval")
@@ -196,10 +207,10 @@ def render_monitor(st, *, manager=None, provider_factory=None):
         if manager.degraded:
             st.warning("Speicherverbindung eingeschränkt; lokaler Ersatzstand. Geräteübergreifende Synchronisierung nicht bestätigt.")
         if not ideas:
-            st.info("Noch kein Chartsetup übernommen. Im Screener oder in der Sofortanalyse „Trade-Idee verfolgen“ öffnen. Ohne erkannten Strukturbeleg gibt es keine Übernahme.")
+            st.info("Noch kein bestätigungsbereites Setup übernommen. Im Screener oder in der Sofortanalyse Chartsetups prüfen.")
             return
         if any(i.get("setup_blocked") and not i.get("archived") for i in ideas):
-            st.warning("Ältere frei angelegte oder veränderte Ideen bleiben als Verlauf erhalten, werden aber nicht mehr überwacht. Für einen neuen Wächterlauf ist ein neu erkanntes Chartsetup erforderlich.")
+            st.warning("Alte frei angelegte oder veränderte Ideen bleiben im Verlauf, werden aber nicht mehr überwacht. Neues Chartsetup erforderlich.")
         show_archive = st.checkbox("Archiv anzeigen", key="watch_archive_show")
         visible = [i for i in ideas if show_archive or not i.get("archived")]
         if not visible:
@@ -212,7 +223,7 @@ def render_monitor(st, *, manager=None, provider_factory=None):
         st.write(selected.get("note") or "Keine zusätzliche Begründung hinterlegt.")
         source = selected.get("source") or {}
         package = source.get("watch_setup") or {}
-        st.caption(f"Chartsetup-Basis {package.get('basis_date') or 'nicht nachgewiesen'} · Setup-Invalidierung: {package.get('stop_source') or 'nicht aus Chartstruktur abgeleitet'}")
+        st.caption("Chartbasis " + str(package.get("basis_date") or "nicht nachgewiesen") + " · " + str(package.get("stop_source") or "Keine geprüfte Setup-Invalidierung"))
         controls = st.columns(2)
         pause = controls[0].button("Überwachung pausieren", key="watch_pause", disabled=not watch.active(selected))
         archive = controls[1].button("Idee archivieren", key="watch_archive", disabled=bool(selected.get("archived")))

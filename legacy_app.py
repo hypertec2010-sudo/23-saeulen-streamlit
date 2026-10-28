@@ -21852,7 +21852,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                 # v30.21an: CRV-Entscheidung kompakt und direkt lesbar.
                                 # Die lange CRV-Basis bleibt in Diagnose/Details, damit die
                                 # Haupttabelle trotz mehr Transparenz nicht breiter wird als nötig.
-                                "Chartsetup", "Analyse-Stop", "CRV jetzt", "CRV Entry", "CRV-Einordnung", "Freiraum", "CRV-Ziel", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
+                                "Chartsetup", "Chartsetup-Phase", "Analyse-Stop", "CRV jetzt", "CRV Entry", "CRV-Einordnung", "Freiraum", "CRV-Ziel", "Entry-Abstand", "Setup-Alert", "Warnhinweis", "Änderung", "Warum geändert?",
                             ]
                             from modules.environment_context import attach_environment_columns
                             _env_radar_v3021bp, _, _env_meta_v3021bp, _, _ = _v303d_load_rotation_snapshot()
@@ -22558,7 +22558,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     _compact_cols_v3021l = [
                                         "Ampel", "Umfeldrisiko", "Ticker", "Name", "Umfeld-Grund", ("Setup-Stärke" if "Setup-Stärke" in _desktop_live_display_v304a.columns else "Live-Score"), "Priorität",
                                         "Decision-Confidence", "Kurs", "Volatilität",
-                                        "Chartsetup", "Analyse-Stop", "CRV jetzt", "CRV Entry", "CRV-Einordnung", "Freiraum", "CRV-Ziel",
+                                        "Chartsetup", "Chartsetup-Phase", "Analyse-Stop", "CRV jetzt", "CRV Entry", "CRV-Einordnung", "Freiraum", "CRV-Ziel",
                                         "Entry-Abstand", "Plan-Status", "Kerntrigger", "Status", "Harvest-Ampel",
                                     ]
                                     _compact_cols_v3021l = [c for c in _compact_cols_v3021l if c in _desktop_live_display_v304a.columns]
@@ -28508,10 +28508,10 @@ sheet_log_triggered = False
 if result is not None:
     ticker = result["ticker"]
     with st.expander("👁️ Trade-Idee verfolgen", expanded=False):
-        from modules.trade_watch_ui import capture_analysis as _capture_single_watch_by
-        _watch_decision_by = build_professional_radar_decision_v18(result)
-        _watch_hard_gate_by = _live_module.classify_entry_hard_gate_v3021az(_watch_decision_by.get("gate_reasons", ""))["hard"]
-        _capture_single_watch_by(st, result, hard_gate=_watch_hard_gate_by, key="watch_analysis")
+        from modules.trade_watch_ui import capture_analysis as _capture_single_watch_bz
+        _watch_decision_bz = build_professional_radar_decision_v18(result)
+        _watch_hard_gate_bz = _live_module.classify_entry_hard_gate_v3021az(_watch_decision_bz.get("gate_reasons", ""))["hard"]
+        _capture_single_watch_bz(st, result, hard_gate=_watch_hard_gate_bz, key="watch_analysis")
     csv_filename = f"capital_hill_single_{ticker}_{_v305b_berlin_now().strftime('%Y%m%d_%H%M%S')}.csv"
     csv_payload = single_export_df.to_csv(index=False).encode("utf-8-sig")
     csv_b64 = base64.b64encode(csv_payload).decode("utf-8")

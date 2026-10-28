@@ -132,8 +132,6 @@ def load_ideas(manager):
     for idea in ideas:
         ok, reason = idea_setup(idea)
         if not ok:
-            # Keep old records and their history. They never become evidence of
-            # a chart setup merely because this version was installed.
             idea["setup_blocked"] = reason
         else:
             idea.pop("setup_blocked", None)

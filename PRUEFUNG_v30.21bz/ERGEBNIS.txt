@@ -1,0 +1,37 @@
+CHSM v30.21bz – Prüfung vom 28.10.2026
+452 Tests unter Python 3.12 bestanden.
+92 gezielte Tests: 45 für Muster/Phasen/Diagnose/Übernahme und 47 für
+Minuten-Wächter, Providergrenzen, Speicherung und Streamlit-Oberfläche.
+Deployment-Struktur, Syntax und deterministische Regressionstests bestanden.
+
+Nachweise:
+- Ganze synthetische Tages-OHLCV für 20/40/60T-Konsolidierungen, bestätigte
+  Unterstützung, höheres Tief und Retest nach Ausbruch; Erkennung nicht gemockt.
+- Vorbereitung ohne vollständigen rechten Pivotflügel bleibt nicht aktivierbar.
+- Höheres Tief muss über unmittelbar vorangegangenem bestätigten Pivot liegen;
+  ein früheres tieferes Tief darf keine zwischenzeitliche Verschlechterung kaschieren.
+- Auslöser und ATR-Puffer werden an der Bestätigungsstruktur verankert und
+  laufen nicht einfach mit späteren Tageshochs nach oben.
+- Daten-/Trend-/Earnings-/Gate-Sperren, alte Signale, Überdehnung und Invalidierung
+  bleiben von bestätigungsbereiten Setups getrennt. Keine freie Level-Eingabe.
+- Hauptgrundzählung für 100 synthetische Zeilen summiert sich exakt zu 100;
+  Musterprüfungen zählen separat mehrfach je Aktie.
+- Tatsächliche Live-History-Bereinigung und persistenter Snapshot-Roundtrip
+  behalten den Strukturbeleg. Formular-Reruns verlieren die Bestätigung nicht.
+- Unveränderte by-Belege sind kompatibel; bx-Freiformideen werden nicht aktiviert.
+- Unverwendete ältere OHLCV führen nicht zu zusätzlichen Ablehnungsfiltern.
+
+Grenzen:
+Keine tatsächliche Auswertung der ca. 100 Nutzer-Aktien lag vor. Die Diagnose
+liefert deren Verteilung erst nach einem neuen Scan. Keine Rendite, Trefferquote,
+Gewinnerwartung oder aktuelle Yahoo-Lieferung ist durch diese Tests nachgewiesen.
+Mustergrenzen sind Start-Heuristiken und keine optimierte Handelsstrategie.
+Keine erneute Python-3.11-Prüfung. NumPy/Pandas-DeprecationWarnings siehe Log;
+keine fehlgeschlagenen Prüfungen. Automatische Überwachung braucht weiterhin
+eine geöffnete, verbundene Wächter-Seite.
+
+Paketbasis:
+Lokal verfügbar war bx. Die bereits in by vereinbarten Struktur-/Übernahme-
+Anforderungen sind in dieser Fassung enthalten und durch neue Tests abgesichert.
+Paketbau kontrolliert Vollständigkeit aller geänderten ursprünglichen bi-Dateien,
+exakte Byte-Gleichheit der Austauschdateien und Anwendung auf den bi-Originalstand.

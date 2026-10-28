@@ -1,0 +1,147 @@
+CHSM v30.21bz – breitere Chartsetup-Erkennung und Ablehnungsübersicht
+Kumulativer Patch ab v30.21bi, geeignet für bx und by. Diese Anleitung ersetzt
+frühere Wächter-Anweisungen, insbesondere die freie Level-Eingabe aus bx.
+
+Installation:
+1. Projekt sichern, ZIP entpacken und alle Dateien aus DATEILISTE.txt unter
+   denselben relativen Projektpfaden ersetzen/ergänzen. Ordner nicht löschen.
+2. Neue modules/watch_setups.py sowie modules/trade_watch.py,
+   modules/trade_watch_ui.py, modules/live_monitor.py, legacy_app.py,
+   verify_deployment.py und VERSION.txt besonders beachten.
+3. App neu starten; Version v30.21bz kontrollieren.
+4. Die interessanten Aktien neu scannen. Ein selektiver Neuscan reicht; ein
+   kompletter Scan liefert die Ablehnungsverteilung für die ganze Watchlist.
+   Alte Scans besitzen keine neuen Musterprüfungen und können nicht ohne
+   Kurshistorie nachträglich klassifiziert werden.
+
+Wo die Ergebnisse stehen:
+- Haupttabelle: „Chartsetup“ und „Chartsetup-Phase“.
+- Oberhalb/innerhalb „Chartsetups & Trade-Wächter“: Zahl der Aktien je Phase.
+- „Diagnose: Warum fehlen bestätigungsbereite Setups?“ zeigt Hauptgründe mit
+  Aktienanzahl und danach Einzelgründe je Ticker. Hauptgrundzählung summiert
+  sich zur Zahl der angezeigten Aktien; bei Filtern ist das nur die Teilansicht.
+- Einzelne Musterprüfungen sind eine gesonderte Tabelle mit mehreren Zeilen je
+  Aktie. Ihre Zeilen sind keine zusätzliche Aktienanzahl.
+- Konkrete Codes unterscheiden Datenmangel, veraltete Tagesdaten, fehlenden
+  Trend, Earnings, technisches Gate, unbestätigte Pivots, zu breite Range,
+  fehlenden Retest, bereits erreichten oder verpassten Entry und Strukturbruch.
+- Ohne aktuelle Daten zu den ca. 100 vom Nutzer geprüften Aktien wird keine
+  Aussage erfunden, welche Ursache dort tatsächlich wie häufig auftritt.
+
+Entwicklungsstände:
+- Setup entsteht: nachvollziehbare Vorbereitung, aber noch kein vollständiger
+  Struktur-/Nähebeleg. Chart und fehlende Bedingung sind sichtbar, kein Aktivieren.
+- Bestätigungsbereit: Struktur und feste Levels liegen vor; der Auslöser ist
+  noch nicht überschritten. Übernahme in die aktive Minutenüberwachung möglich.
+- Auslöser bereits erreicht: Tages-/Analysebasis liegt schon am/über Auslöser.
+  Das ist KEIN Nachweis eines neuen 5-Minuten-Triggers und kein verspäteter Kaufalarm.
+- Entry verpasst / überdehnt: Kurs oberhalb des abgeleiteten Entrybandes.
+- Struktur ungültig: belegter Bruch der relevanten Struktur.
+- Prüfung gesperrt / Kein Chartsetup: gemeinsame Daten-/Trend-/Gate-Sperre bzw.
+  keine passende geprüfte Formation. Nicht mit einem Verkaufssignal verwechseln.
+- Aktive Überwachung ausschließlich für bestätigungsbereite Setups. Andere
+  Stände bleiben in Screener/Sofortanalyse zur Beobachtung, ohne freie Level-Eingabe.
+
+Musterfamilien und zusätzliche Abdeckung:
+1. Konsolidierung vor Ausbruch:
+   20, 40 oder 60 abgeschlossene Tageskerzen. Zwei strikte Pivot-Hochs und
+   -Tiefs, je drei Bestätigungskerzen davor/danach, mindestens sechs Kerzen
+   zwischen Tests. Obere Tests innerhalb 1 %, untere innerhalb 1,5 %.
+   Range-Breite weiter 2–12 %, kein beliebig aufgeweiteter Qualitätsfilter.
+   Verlauf innerhalb der getesteten Grenzen mit 1 % oberer / 1,5 % unterer
+   Toleranz. Die Basis endet VOR der neuesten abgeschlossenen Tageskerze;
+   diese kann damit als noch wartend, bereits ausgelöst oder verpasst gelten.
+   Bei noch nicht vollständig getesteten Grenzen kann „Setup entsteht“ erscheinen.
+2. Unterstützungs-Pullback:
+   Zwei bestätigte Pivot-Tiefs in den letzten 60 Tagen innerhalb 1,5 % und
+   mindestens sechs Kerzen auseinander; jüngster Test 3–10 Kerzen alt.
+   Rücksetzer von einem Hoch der vorherigen bis zu 15 Kerzen um 3–12 %.
+3. Trend-Pullback mit höherem Tief (neu):
+   Jüngster bestätigter 3/3-Pivot mindestens 0,5 % über seinem unmittelbar
+   vorherigen bestätigten Pivot. Abstand 6–30 Kerzen, jüngster Pivot 3–10
+   Kerzen alt; Rücksetzer 3–12 %. Ein noch unvollständiger rechter Pivotflügel
+   erscheint als Vorbereitung und wird nicht zu bestätigter Struktur hochgestuft.
+   Ein dazwischenliegendes höheres Pivot-Tief darf nicht übersprungen werden,
+   um aus einem späteren tieferen Tief künstlich ein höheres Tief zu machen.
+4. Retest nach Ausbruch (neu):
+   Ausbruch in den letzten bis zu 15 Tagen über einen in der vorherigen
+   20T-Basis zweimal getesteten Widerstand, Tagesschluss über Level plus Puffer,
+   mindestens durchschnittliches Basisvolumen. Die Basis ist 2–12 % breit.
+   Rücktest innerhalb 1,5 % des alten Widerstands als bestätigtes 3/3-Tief;
+   kein nachfolgender Schluss mehr als 1,5 % unter dem alten Widerstand.
+   Ohne bestätigten Rücktest nur Vorbereitung; ein Fehlausbruch bleibt ungültig.
+
+Gemeinsame Bedingungen und feste Levels:
+- Mindestens 60 abgeschlossene Tages-OHLCV, ausgewertet werden die jüngsten
+  bis zu 65. Das reicht für MA50-Steilheit und die 60T-Basis; ältere, nicht
+  verwendete OHLCV sollen keine zusätzlichen Ablehnungen verursachen.
+- Letzte abgeschlossene Sitzung muss vorhanden sein. Keine Duplikate, Zukunfts-
+  oder Wochenhistorie als Tagesstruktur; ungültiges OHLCV/Null-Volumen im
+  verwendeten Fenster sperrt die Prüfung. Größere Tageslücken werden ausgewiesen.
+- Kurs über/auf einer gegenüber fünf Kerzen zuvor stabilen oder steigenden MA50.
+  Range: MA20 über/auf MA50; Pullbacks: dies muss vor dem Rücksetzer vorliegen.
+  Damit kann auch eine längere stabile Basis geprüft werden; ein Abwärtstrend
+  wird nicht allein durch einen Musternamen zum Long-Setup.
+- Aktive technische Einstiegsgates, bekannte Earnings in weniger als sieben
+  Tagen und bestehende Positionen verhindern einen neuen Wächter-Einstieg.
+- Laufende Tageskerzen erzeugen keine Formation. Ihr Low kann eine bereits
+  aus abgeschlossenen Daten abgeleitete Invalidierung aber defensiv brechen.
+- Auslöser: Widerstand bzw. Hoch der drei rechten Pivot-Bestätigungskerzen
+  plus max(0,1 % Level, 0,1 ATR). Pivot-Auslöser wandern nicht mit späteren
+  Tageshochs nach oben. ATR/Puffer werden am Abschluss der Struktur verankert.
+- Struktur-Invalidierung unter der bestätigten Unterstützung bzw. dem höheren
+  Tief/Rücktesttief mit max(0,6 % Unterstützung, 0,25 ATR) Puffer; höchstens
+  12 % unter dem Auslöser. Kein ATR-Ersatz wird zu Chartbestätigung umbenannt.
+- Entry maximal = Auslöser + min(0,5 ATR, 1 % Auslöser).
+- Nähe vor Aktivierung: Range höchstens 3 % unter Widerstand; Pullback/Retest
+  höchstens 2 ATR über Unterstützung und Auslöser höchstens 5 % über Kurs.
+  Weiter entfernte Vorbereitungen können als „Setup entsteht“ sichtbar bleiben.
+- Feste Bestätigung im Wächter: neuer vollständiger 5-Minuten-Schluss im Entryband.
+  Minutenalter, Lückenprüfung und Invalidierungsvorrang bleiben erhalten.
+- Gültig bis Ende der auf die Tagesbasis folgenden Börsensitzung; danach neue
+  Chartprüfung. US-Kalender 2026–2027, Xetra-Fenster 09:00–17:30 ohne vollständigen
+  Xetra-Feiertagskalender wie bisher. Kein Vor-/Nachhandel.
+
+Übernahme, Bestand und Abgrenzung:
+- Im Strukturreview stehen Chart, Herkunft, feste Entry-/Invalidierungslevels
+  und optionales Ziel/CRV. Nur Notiz und Bestätigung werden eingegeben.
+- Freie bx-Ideen bleiben lesbar und archivierbar, aber ohne Providerabfragen
+  oder neue Einstiegssignale. Unveränderte, gültige by-Belege bleiben kompatibel.
+- Belegbindung an Ticker, Levels und Gültigkeit wird vor Speicherung und im
+  Wächter geprüft. Formularbestätigung bleibt bei bloßem Zeit-Rerun erhalten;
+  echte Strukturänderungen erzeugen eine neue Bestätigung.
+- Standard-Analyse-Stop, technische Ampel, Scores und Rangfolge werden nicht
+  geändert. Eine konkrete Setup-Invalidierung ist separat vom allgemeinen
+  Analyse-Stop. CRV und Umfeld bleiben eigenständige Informationen und erzeugen
+  oder entfernen für sich kein Muster.
+- Dieses Modul ist kein vollständiges Rocketcandle-System. Die Mustergrenzen
+  sind Start-Heuristiken und nicht auf Profitabilität kalibriert.
+- Automatische Minutenüberwachung nur auf geöffneter Wächter-Seite bei aktiver
+  Verbindung. Kein Hintergrunddienst, keine Brokerorders, kein garantierter
+  Echtzeitfeed. Nachrichten/Earnings werden dort nicht erneut geladen.
+- Lokaler Cloud-Speicher ist kein dauerhafter Supabase-Ersatz. Bei Störungen gibt
+  es Hinweise. Möglichst nur eine aktive Wächter-Seite; parallele Namespace-
+  Schreibvorgänge besitzen weiterhin keinen transaktionalen Merge.
+
+Praxiskontrolle nach Installation:
+1. Watchlist neu scannen, Chartsetup-Phasen und Diagnose öffnen.
+2. Prüfen, ob viele Werte am selben Datenstand/Trend/Gate scheitern oder ob
+   unterschiedliche Strukturbedingungen fehlen. Nicht bloß Treffer zählen.
+3. Entstehendes Setup ansehen: kein Aktivierungsformular darf vorhanden sein.
+4. Bestätigungsbereites Setup ansehen/übernehmen: Levels sind fest und begründet.
+5. Bereits ausgelöste/verpasste Muster dürfen nicht als frische Einstiegsidee
+   übernommen werden. Alt-Ideen bleiben erkennbar gesperrt.
+6. Bestehende Standard-Risikorechnung und Ampeln gegen vorherigen Stand vergleichen.
+
+Prüfung und Grenzen:
+- Ganze synthetische Tages-OHLCV für alle Muster und 20/40/60T-Basen; Ablehnung
+  unbestätigter Strukturen und Datenfehler; feste Levels, sämtliche Phasen,
+  100-Zeilen-Ablehnungszählung, echte History-Bereinigung und Snapshots geprüft.
+- Streamlit-AppTest für schreibgeschützte Strukturansicht, nicht aktivierbare
+  Vorbereitung/alte Trigger, Übernahme aus Scan/Sofortanalyse und Rerun-Stabilität.
+- Gesamtergebnis/Logs unter PRUEFUNG_v30.21bz. Python 3.12 geprüft; keine erneute
+  Python-3.11-Prüfung in dieser Sitzung. Keine aktuelle Provider-Lieferung und
+  keine Gewinnerwartung oder tatsächliche Trefferzahl der Nutzer-Watchlist belegt.
+- Die lokal verfügbare Basis war bx. Die in by vereinbarten Struktur-/Übernahme-
+  Regeln wurden in dieser vollständigen Fassung eingearbeitet und die Kompatibilität
+  unveränderter by-Belege separat getestet; kein Zugriff auf fremde Dateien nötig.

@@ -1,0 +1,22 @@
+Python 3.12, 01.11.2026.
+Gesamtlauf: 556 passed, 1 deselected, 577 warnings in 62.24s (0:01:02)
+Abschluss nach Ergänzung der Ziel-/Stopabstände: 42 passed, 1 warning in 2.99s
+Diese gezielten Tests sind eine Teilmenge, nicht zur Gesamtzahl addieren.
+Syntax der finalen Änderungen und regression_check.py bestanden.
+
+Bekannte Ausnahme wie zuvor:
+tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+.github/workflows/quality.yml fehlt im Original-Upload. Vollständiger Deployment-
+Strukturcheck bleibt dadurch nicht bestätigbar. Keine CI-Datei ergänzt.
+Kein neuer Python-3.11- oder Live-Provider-Test. Warnungen überwiegend Zeitoperationen.
+
+Acht neue Audit-Tests, zusammen mit 34 vorhandenen Radar-Stiltests geprüft:
+Vorschau ohne CRV-/Aufnahmefreigabe, vollständiger Earnings-/Setup-CRV-Kontext,
+Diagnosefehler ohne Leck privater Fehlermeldungen, 35 erfolgreiche Light-Werte mit
+unveränderter Top-15-Auswahl und genau 35 Historien-/15 Analyseaufrufen,
+20 zusätzliche Vorschau-Muster außerhalb dieser Auswahl als synthetischer Nachweis,
+alte Scans als unbekannt, getrennte/disjunkte primäre Vollanalysegründe,
+getrennte Radar-/Setup-CRV und Prozentabstände, reale Kartenwarnung sowie realer
+Diagnosebereich. Synthetische Tests belegen keine verpassten realen Gewinntrades.
+
+Ziel-, Score-, Horizont- und Wächter-Quellen sind gegenüber v30.21cd unverändert.

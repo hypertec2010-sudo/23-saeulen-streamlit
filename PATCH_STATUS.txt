@@ -1,4 +1,4 @@
-Version v30.21cd
-Basis v30.21cc
-Fertig: Radar-Karten und Filter für Handelsstil, Zeithorizont und separate Einstiegsreife.
-Offen: direkte Chartsetup-Prüfung/Übernahme im Radar, historische Ergebnisauswertung.
+Version v30.21ce
+Basis v30.21cd
+Fertig: komplette Vorscan-Musterdiagnose, Vergleich zur Top-15-Auswahl, getrennte Radar-/Setup-CRV-Diagnose, Kartenwarnung bei niedrigem Radar-CRV.
+Offen: Bewertung eines neuen realen Diagnose-Scans, etwaige spätere Anpassung der Auswahl, historische Ergebnisauswertung.

@@ -1,0 +1,8 @@
+..........................................                               [100%]
+=============================== warnings summary ===============================
+tests/test_radar_trade_style.py::test_daily_volatility_requires_actual_usable_daily_history[future]
+  /workspace/scratch/9183e491429f/current_ce/tests/test_radar_trade_style.py:68: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if kind=='future':f.index=f.index+pd.Timedelta(days=10)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+42 passed, 1 warning in 2.99s

@@ -69,6 +69,10 @@ def render_result_card(st, row, membership="Neu im erfassten Bestand"):
     st.markdown(f"**{row.get('rank_at_discovery', '-')}. {ticker} \u00b7 {_md(row['name'])}**")
     st.markdown(f"**{_md(row['status'])}** \u00b7 Qualit\u00e4tsnote **{_md(row['grade'])}** \u00b7 {_md(membership)}")
     render_style(st, row)
+    from .watch_quality import MIN_ENTRY_RR
+    rr = radar.number(row.get("crv"))
+    if rr is not None and rr < MIN_ENTRY_RR:
+        st.warning(f"Radar-CRV {_fmt(rr)} unter {_fmt(MIN_ENTRY_RR, 1)}R: geringer Zielspielraum auf dieser Analysebasis. Die Qualitätsnote ist keine Trade-Freigabe; Setup-CRV separat prüfen.")
     st.write("Auff\u00e4llig: " + row.get("why", ""))
     if row.get("gates"):
         st.warning("Sperre: " + "; ".join(row["gates"]))
@@ -306,6 +310,8 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
     if payload["errors"]:
         st.warning("Nicht auswertbar: " + ", ".join(e["ticker"] for e in payload["errors"]))
         _render_error_diagnostics(st, payload["errors"], title="Abfragefehler im Detail", expanded=False)
+    from .radar_setup_audit import render_audit
+    render_audit(st, payload)
     mtf_missing = sum(not r.get("mtf_available") for r in rows)
     wave_missing = sum(not r.get("wave_available") for r in rows)
     coverage_missing = sum(r.get("coverage") is None for r in rows)

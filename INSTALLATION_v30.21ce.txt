@@ -1,0 +1,63 @@
+CHSM v30.21ce – Radar-Diagnose für Vorauswahl, Chartmuster und CRV
+
+BASIS: vollständig installierte v30.21cd. Ergänzungspatch, kein Gesamtprojekt.
+Projekt sichern. Dateien unter denselben Pfaden in den Projektordner kopieren,
+vorhandene Dateien ersetzen. modules/radar_setup_audit.py ist NEU und erforderlich.
+App neu starten, Version v30.21ce prüfen. Keine neuen Abhängigkeiten/Migration.
+
+BEDIENUNG
+Die gewünschte Radar-Kandidatenliste einmal neu scannen. Unter den allgemeinen
+Ergebnissen den Bereich "Warum so wenige Trade-Kandidaten?" aufklappen.
+Er zeigt zwei getrennte Tabellen:
+1. Gesamter erfolgreicher Light-Vorscan, nicht nur die früher gespeicherten Top 30:
+   Rang, Auswahl zur Vollanalyse, Light-Score, Muster-Vorschau/Grund, MA20-Abstand
+   und 20-Tage-Rendite. Bestätigungsbereite Vorschau-Muster außerhalb der ausgewählten
+   Vollanalysen werden gezählt und als Tickerliste angezeigt.
+2. Erfolgreiche Vollanalysen: Sperren, Musterphase/Grund, Radar-CRV, Setup-CRV am
+   oberen Entry-Rand und dessen Begründung. Analysepreis, Analyse-Stop, Radar-Ziel
+   und Ziel-/Stopabstände in Prozent helfen, ein kleines CRV zu erklären.
+Die Karten zeigen zusätzlich einen Hinweis, wenn das Radar-CRV unter der gemeinsamen
+Vergleichsschwelle (derzeit 1,5R) liegt. Eine Qualitätsnote A ist keine Trade-Freigabe.
+
+WAS DIE CODEPRÜFUNG ERGAB
+Die Light-Vorauswahl gewichtet Trend, Momentum, Kurslage, Volumen und je Profil
+weitere technische Merkmale. Sie prüfte bisher keine konkreten Wächter-Chartmuster
+und kein CRV. Nur die ausgewählten Werte erhalten danach die volle CHSM-Analyse.
+Daher ist die Trefferzahl der Vollanalyse keine Aussage über alle Werte der Liste.
+
+Die technische Zielbestimmung verwendet das nächstgelegene geeignete Ziel aus den
+technischen Kandidaten. Im Breakout-Modus werden Triggerhindernisse anders behandelt.
+Ein weiteres Ziel bleibt ein alternatives Szenario und wird nicht automatisch zum
+Hauptziel gemacht. Ein kleines CRV kann daher durch nahes Ziel oder weiten Stop
+entstehen; der Patch verschiebt weder Ziel noch Stop, um bessere Treffer zu erzeugen.
+Aus den bisherigen Chat-Ausschnitten ist nicht bewiesen, dass der konkrete
+140-Werte-Scan gute Trades übersehen hat oder ein Fehler bei WDAY vorliegt.
+
+GRENZEN DER NEUEN DIAGNOSE
+Die Chart-Vorschau verwendet nur bereits geladene Kurs-/Volumendaten und die bestehende
+Mustererkennung. Earnings, Bestände, zusätzliche Analyse-Gates, technische Ziele und
+Setup-CRV sind dort nicht vollständig geprüft. Eine positive Vorschau ist KEINE
+Wächter-Freigabe und kein Beweis für einen verpassten profitablen Trade.
+Nicht unterstützte Märkte, unvollständige oder veraltete Daten werden als solche
+begründet. Die vorhandene Mustererkennung unterstützt US-Aktien und .DE.
+
+In der Vollanalyse werden Chartdiagnose und feste Setup-CRV-Regeln getrennt vom
+Radar-CRV beschrieben. Radar- und Wächter-Levels können voneinander abweichen.
+Bei mehreren Hindernissen weist die primäre Diagnose zunächst auf eine Vollanalyse-
+Sperre, dann fehlende Bestätigungsreife und anschließend fehlendes/kleines Setup-CRV.
+Die übrigen Gründe bleiben in den Spalten sichtbar. Fehlerfälle stehen weiterhin
+im bisherigen Fehlerbereich, nicht in der Tabelle erfolgreicher Vollanalysen.
+
+Diagnosen sind gespeicherte Scanbeobachtungen, keine aktuelle Einstiegsfreigabe.
+Ein vollständiger, neuer Scan ist für die neue Metadatenbasis erforderlich; alte
+Scans ohne Auditdaten bleiben ausdrücklich unbekannt und können auf 30 Vorscan-
+Zeilen begrenzt sein. Die App-Version gehört bereits zum Radar-Speicherschlüssel.
+Watchlists und vorhandene Wächter-Ideen/Positionen brauchen keinen Neuscan.
+
+KEINE KRITERIENÄNDERUNG
+Keine geänderten Scores, Reihenfolgen, Noten, Auswahlgrenzen, Chartschwellen oder
+CRV-Freigaberegeln. Die Produktionsgrenze von maximal 15 Vollanalysen bleibt bestehen.
+Keine zusätzlichen Providerabfragen: Musterprüfung lokal auf denselben geladenen
+Historien. Zusätzliche lokale Rechenzeit und mehr Diagnose-Metadaten sind möglich.
+Filter/Anzeige starten keine Scans oder Orders. Keine neue direkte Radar-Übernahme
+in den Wächter. Fehler der Zusatzdiagnose verwerfen keine ansonsten gültige Analyse.

@@ -266,6 +266,7 @@ def trade_plan_reasons(rr):
 
 def build_candidate(result, *, ticker, style, decide, entry_package, analyzed_at=None):
     from .radar_trade_style import daily_evidence
+    from .radar_setup_audit import chart_audit
     if not isinstance(result, Mapping):
         raise ValueError("Keine strukturierte Analyse")
     actual = text(result.get("ticker"), ticker).upper()
@@ -333,6 +334,7 @@ def build_candidate(result, *, ticker, style, decide, entry_package, analyzed_at
         "decision": decision, "rr_package": rr,
         "analysis_note": _first(result, "Analyse_Hinweis", "Analyse_Datenmodus"),
         "trade_style_evidence": daily_evidence(result, asof=now),
+        "chart_audit": chart_audit(result, now=now, full_context=True),
     })
 
 
@@ -711,7 +713,10 @@ def run_two_stage_scan(*, universe, style, entries, analyze, decide, entry_packa
     for index, ticker in enumerate(symbols):
         try:
             frame = history_loader(ticker)
-            light_rows.append(build_light_candidate(frame, ticker=ticker, style=style))
+            light = build_light_candidate(frame, ticker=ticker, style=style)
+            from .radar_setup_audit import chart_audit
+            light["chart_preview"] = chart_audit({"ticker":ticker,"df":frame,"price":light["price"]}, now=clock(), full_context=False)
+            light_rows.append(light)
         except Exception as exc:
             info = safe_scan_error(exc)
             light_errors.append({"ticker": ticker, "stage": "Radar-Light", **info})
@@ -769,7 +774,7 @@ def run_two_stage_scan(*, universe, style, entries, analyze, decide, entry_packa
     full["light_processed"] = len(light_rows)
     full["light_errors"] = light_errors
     full["preselected_symbols"] = selected
-    full["preselection"] = ranked_light[: min(30, len(ranked_light))]
+    full["preselection"] = ranked_light
     full["provider_strategy"] = "radar-light -> full-analysis"
     return full
 

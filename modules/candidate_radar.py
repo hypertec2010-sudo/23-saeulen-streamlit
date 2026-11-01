@@ -265,6 +265,7 @@ def trade_plan_reasons(rr):
 
 
 def build_candidate(result, *, ticker, style, decide, entry_package, analyzed_at=None):
+    from .radar_trade_style import daily_evidence
     if not isinstance(result, Mapping):
         raise ValueError("Keine strukturierte Analyse")
     actual = text(result.get("ticker"), ticker).upper()
@@ -331,6 +332,7 @@ def build_candidate(result, *, ticker, style, decide, entry_package, analyzed_at
         "quote_date": quote_date(result), "analyzed_at": now.isoformat(),
         "decision": decision, "rr_package": rr,
         "analysis_note": _first(result, "Analyse_Hinweis", "Analyse_Datenmodus"),
+        "trade_style_evidence": daily_evidence(result, asof=now),
     })
 
 

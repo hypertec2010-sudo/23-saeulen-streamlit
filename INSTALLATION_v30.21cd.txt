@@ -1,0 +1,57 @@
+CHSM v30.21cd – Handelsstil und Einstiegsreife im Kandidaten-Radar
+
+BASIS: vollständig installierte v30.21cc. Ergänzungspatch, kein Gesamtprojekt.
+Projekt sichern. Dateien aus diesem ZIP unter denselben Pfaden in den Projektordner
+kopieren, vorhandene Dateien ersetzen. modules/radar_trade_style.py ist NEU und
+muss mit übernommen werden. App neu starten, Version v30.21cd prüfen.
+Keine neuen Abhängigkeiten oder Speichermigration.
+
+BEDIENUNG
+Im Kandidaten-Radar eine Kandidatenliste bewusst scannen. Auf den Karten erscheinen
+Handelsstil, grober Planungshorizont und separate Einstiegsreife. Ein zusätzlicher
+Handelsstil-Filter grenzt die Ansicht ein. Die Scan-Detailtabelle enthält diese
+Angaben ebenfalls. Auf jeder Karte erklärt ein geschlossener Detailbereich die
+Grundlage und Schwellen.
+
+DIE EINORDNUNG
+Kurzfristiger Trade: wenige Tage als Planungsorientierung.
+Swing: mehrere Tage bis Wochen als Planungsorientierung.
+Beobachtung: zentrales Setup noch nicht valide.
+Zeithorizont offen: Zeitzuordnung aus den gelieferten Daten nicht belastbar.
+Intraday wird nicht automatisch vergeben: Ein Tageschart oder eine 5m-Bestätigung
+belegen keinen Intraday-Handelsstil.
+
+Transparentes, noch nicht empirisch validiertes Startmodell:
+Aus den letzten 20 brauchbaren vergangenen Tagesbalken der bereits geladenen
+Historie wird eine 14-Balken-True-Range-Mittelung gewonnen. Der möglicherweise noch
+laufende heutige Balken wird konservativ ausgeschlossen. Ziel- und Analyse-Stop-
+Abstand werden relativ zum Analysepreis in ATR angegeben.
+- Kurzfristig: Zielabstand <=2 ATR UND Stopabstand <=1,5 ATR.
+- Sonst Swing: Zielabstand <=6 ATR UND Stopabstand <=3 ATR.
+- Sonst bleibt die Zeitzuordnung offen.
+Nur bekannte technische Zielquellen, plausible Stop < Preis < Ziel und eine
+zeitlich vergleichbare Tagesbasis werden genutzt. Bei fehlenden/ungültigen Daten,
+Intraday-/Wochenhistorie oder unbekannter/Analysten-/R-Zielherkunft wird keine
+entsprechende Zuordnung erfunden. Das voreingestellte Analyseprofil "Swing" wird
+nicht einfach als Klassifikation übernommen.
+ATR misst Schwankungsbreite, NICHT die Zielerreichungszeit. Die Angaben sind keine
+Haltedauerprognose, Gewinnwahrscheinlichkeit, Kaufempfehlung oder Einstiegsfreigabe.
+Abstände zum Analysepreis sind keine nachträglich bestätigten Ausführungskurse und
+keine neu abgeleiteten Wächter-Level.
+
+EINSTIEGSREIFE
+Der Radar-Status bleibt unabhängig: frische Einstiegsprüfung nötig, Bestätigung
+abwarten, Beobachtung, kein belastbarer Plan, gesperrt oder historisch/neu prüfen.
+Ein positives Stil-Label hebt keine Sperre auf. Ein Radar-Label ersetzt weder die
+konkrete Wächter-Chartprüfung noch die dortige Übernahmefreigabe.
+
+BESTAND / DATENABRUF
+Keine zusätzlichen Providerabfragen, kein neuer Scan durch Filter oder Anzeige.
+Für neue Datengrundlagen die gewünschte Radar-Liste einmal bewusst scannen.
+Die App-Version gehört bereits zum Radar-Speicherschlüssel: Nach Versionswechsel
+kann daher ein neuer Radar-Scan erforderlich sein. Ältere gültige Daten ohne neue
+Metadaten erhalten keine erfundene Zeitzuordnung. Watchlists und bestehende
+Wächter-Ideen/Positionen müssen nicht neu gescannt werden.
+Noten, Rankings, Scores, CRV, Entry-/Stop-/Zielwerte und Übernahme-Sperren bleiben
+unverändert. Keine automatische Watchlist-/Positionsanlage oder Brokerorder.
+Die bisherige Übergabe an Sofortanalyse/Watchlist bleibt bestehen.

@@ -1,5 +1,4 @@
-Version v30.21cc
-Basis v30.21cb
-Fertig: manuelle Positionsbestätigung, Ziel-/Invalidierungskontakte, manuelle Schließung.
-Vorher enthalten: feste Chartsetups, kompakte Ansicht, Qualitätsbegründung, 1,5R-Übernahmeprüfung.
-Offen: historische Ergebnisauswertung, Teilverkäufe, Journal-Abgleich.
+Version v30.21cd
+Basis v30.21cc
+Fertig: Radar-Karten und Filter für Handelsstil, Zeithorizont und separate Einstiegsreife.
+Offen: direkte Chartsetup-Prüfung/Übernahme im Radar, historische Ergebnisauswertung.

@@ -1,0 +1,20 @@
+Python 3.12, 01.11.2026.
+Gesamtlauf: 547 passed, 1 deselected, 577 warnings in 92.67s (0:01:32)
+Abschließender gezielter Radar-Test: 34 bestanden, 1 DeprecationWarning.
+Dieser enthält nach dem Gesamtlauf auch den zusätzlichen europäischen Zeitbasisfall
+und die letzte Angleichung an das vorhandene Radar-Kursdatum. Die Testzahlen dürfen
+nicht addiert werden. Syntax der finalen Änderungen und regression_check.py bestanden.
+
+Bekannte Ausnahme wie in cb/cc:
+tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Grund: .github/workflows/quality.yml fehlt im Original-Upload. Vollständiger
+Deployment-Strukturcheck daher weiterhin nicht bestätigbar. Keine CI-Datei ergänzt.
+Kein neuer Python-3.11- oder Live-Provider-Test. Warnungen betreffen überwiegend
+NumPy-/Pandas-Zeitoperationen.
+
+Nachweise: ungerundete Schwellen, Ziel-/Stopabstände, fehlende/unplausible Volatilität,
+Zielherkunft einschließlich tatsächlicher Quellen aus dem Produktivcode,
+Intraday-/Wochen-/kurze/ungültige/zukünftige Daten, laufender Tagesbalken, Ignorieren
+des vorausgewählten Horizonts, Erhalt von Scores/CRV/Quellen, Sperren und historische
+Snapshots, alte Belege ohne Metadaten, echte Radar-Karte, kompletter Filter ohne neue
+Scans/Watchlist-Schreibvorgänge sowie europäische Tageszeitstempel.

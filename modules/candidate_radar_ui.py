@@ -64,9 +64,11 @@ def _select(st, label, options, key, default=None):
 
 
 def render_result_card(st, row, membership="Neu im erfassten Bestand"):
+    from .radar_trade_style import render_style
     ticker = _md(row["ticker"])
     st.markdown(f"**{row.get('rank_at_discovery', '-')}. {ticker} \u00b7 {_md(row['name'])}**")
     st.markdown(f"**{_md(row['status'])}** \u00b7 Qualit\u00e4tsnote **{_md(row['grade'])}** \u00b7 {_md(membership)}")
+    render_style(st, row)
     st.write("Auff\u00e4llig: " + row.get("why", ""))
     if row.get("gates"):
         st.warning("Sperre: " + "; ".join(row["gates"]))
@@ -339,6 +341,7 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
             st.write(f"{error['ticker']}: {error['reason']}")
         for note in payload["resolution"]:
             st.write(f"{note['input']}: {note['action']} \u2014 {note['detail']}")
+        from .radar_trade_style import describe
         table = [{
             "Rang": r.get("rank_at_discovery"), "Ticker": r["ticker"], "Name": r["name"],
             "Status": r["status"], "Note": r["grade"], "Score": r["score"], "CRV": r["crv"],
@@ -346,6 +349,8 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
             "Abdeckung": r["coverage"], "Sperren": "; ".join(r["gates"]),
             "Trade-Plan": "; ".join(r.get("trade_plan_reasons", [])),
             "Entry-Zone": r["entry_zone"], "Naechster Schritt": r["next_step"],
+            "Handelsstil": describe(r)["style"], "Zeithorizont": describe(r)["horizon"],
+            "Einstiegsreife": describe(r)["readiness"],
         } for r in rows]
         try:
             st.dataframe(table, use_container_width=True, hide_index=True)
@@ -361,6 +366,11 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
     labels = ["Alle Ergebnisse"] + [v for v in (radar.READY, radar.NEAR, radar.NO_PLAN, radar.WATCH, radar.BLOCKED, radar.HISTORY) if any(r["status"] == v for r in eligible_view)]
     status_filter = _select(st, "Ergebnisgruppe", labels, "radar_v3021_filter")
     filtered = [r for r in eligible_view if status_filter == "Alle Ergebnisse" or r["status"] == status_filter]
+    from .radar_trade_style import describe
+    styles = sorted({describe(r)["style"] for r in filtered})
+    style_filter = _select(st, "Handelsstil", ["Alle Handelsstile"] + styles, "radar_v3021_trade_style")
+    if style_filter != "Alle Handelsstile":
+        filtered = [r for r in filtered if describe(r)["style"] == style_filter]
     st.write(f"**{len(filtered)} Treffer im Filter \u00b7 {min(limit, len(filtered))} Karten sichtbar**. "
              f"Bereits erfasst/vorgemerkt im Scan: {sum(r['ticker'] in watched | held | pending for r in rows)}.")
     if not filtered:

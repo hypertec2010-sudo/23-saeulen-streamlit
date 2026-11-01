@@ -43,7 +43,7 @@ def data_notes(frame):
     for row in frame.to_dict("records"):
         ticker = str(row.get("Ticker") or "–")
         health = str(row.get("Daten") or "Datenzustand unbekannt")
-        if health.startswith("Aktuelle 1m-Daten"):
+        if health.startswith(("Aktuelle 1m-Daten", "Position geschlossen · keine weitere Kursprüfung")):
             continue
         text = ticker + ": " + health
         if health.startswith(("Noch nicht geprüft", "Wartet auf erste")):
@@ -70,7 +70,7 @@ class CompactWatcherView:
         if isinstance(display.get("column_config"), dict):
             display["column_config"] = {key: val for key, val in display["column_config"].items() if key in MAIN_COLUMNS}
         shown = self._st.dataframe(compact, *args, **display)
-        self._st.caption("Entry-Bereich = Auslöser bis oberste Einstiegsgrenze. Das Ziel ist das gespeicherte Kursniveau; ein leeres Ziel bedeutet: kein Ziel hinterlegt.")
+        self._st.caption("Entry-Bereich = Auslöser bis oberste Einstiegsgrenze. Zielkontakte werden nach manueller Positionsbestätigung erfasst. Ein leeres Ziel bedeutet: kein Ziel hinterlegt. Ein Kurshinweis bestätigt keinen Verkauf.")
         alerts, pending = data_notes(data)
         if alerts:
             text = " · ".join(alerts[:3])

@@ -1,0 +1,79 @@
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_watch_position.py: 37 warnings
+tests/test_trade_watch.py: 27 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/trade_watch.py:258: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    closed = bars.loc[bars.index + pd.Timedelta(minutes=1, seconds=10) <= now]
+
+tests/test_watch_position.py: 37 warnings
+tests/test_trade_watch.py: 27 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/trade_watch.py:259: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    last_expected = min(latest, (now - pd.Timedelta(minutes=1, seconds=10)).floor("min"))
+
+tests/test_watch_position.py: 74 warnings
+tests/test_trade_watch.py: 20 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/trade_watch.py:275: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if t < start or len(group) != n or group.index[0] != t or group.index[-1] != t + pd.Timedelta(minutes=n - 1):
+
+tests/test_watch_position.py: 74 warnings
+tests/test_trade_watch.py: 20 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/trade_watch.py:277: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    end = t + pd.Timedelta(minutes=n)
+
+tests/test_watch_position.py: 74 warnings
+tests/test_trade_watch.py: 20 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/trade_watch.py:278: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if end > previous and end <= now - pd.Timedelta(seconds=10):
+
+tests/test_watch_position.py: 37 warnings
+tests/test_trade_watch.py: 26 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/trade_watch.py:306: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    out["last_bar_end"] = (closed.index[-1] + pd.Timedelta(minutes=1)).isoformat()
+
+tests/test_watch_position.py: 18 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/watch_position.py:187: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    closed = bars.loc[bars.index + pd.Timedelta(minutes=1, seconds=10) <= now]
+
+tests/test_watch_position.py: 18 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/watch_position.py:188: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    expected_end = (now-pd.Timedelta(minutes=1, seconds=10)).floor("min")
+
+tests/test_watch_position.py: 28 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/watch_position.py:194: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    end = t + pd.Timedelta(minutes=1)
+
+tests/test_watch_position.py: 18 warnings
+  /workspace/scratch/9183e491429f/current_cc/modules/watch_position.py:210: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    p["last_bar_end"] = max(previous, closed.index[-1]+pd.Timedelta(minutes=1)).isoformat()
+
+tests/test_watch_position.py::test_failed_evidence_never_records_exit[future]
+  /workspace/scratch/9183e491429f/current_cc/tests/test_watch_position.py:150: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if kind=='future':frame.index=frame.index+pd.Timedelta(days=1)
+
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close5-5]
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close15-15]
+  /workspace/scratch/9183e491429f/current_cc/tests/test_trade_watch.py:66: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    end = pd.Timestamp(ARM) + pd.Timedelta(minutes=n)
+
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close5-5]
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close15-15]
+  /workspace/scratch/9183e491429f/current_cc/tests/test_trade_watch.py:68: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    early = w.evaluate(i, frame, now=end + pd.Timedelta(seconds=9))
+
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close5-5]
+tests/test_trade_watch.py::test_closed_bar_uses_full_interval_and_publication_buffer[close15-15]
+  /workspace/scratch/9183e491429f/current_cc/tests/test_trade_watch.py:70: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    final = w.evaluate(early, frame, now=end + pd.Timedelta(seconds=11))
+
+tests/test_trade_watch.py::test_same_minute_invalidation_beats_entry_and_gaps_do_not_improve_signal
+tests/test_trade_watch.py::test_invalidation_after_confirmation_retains_both_events_in_order
+  /workspace/scratch/9183e491429f/current_cc/modules/trade_watch.py:282: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    stop_times = [t + pd.Timedelta(minutes=1) for t, row in recent.iterrows()
+
+tests/test_trade_watch.py::test_bad_market_data_never_changes_a_technical_state[future]
+  /workspace/scratch/9183e491429f/current_cc/tests/test_trade_watch.py:130: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    if kind == "future": frame.index += pd.Timedelta(hours=2)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+88 passed, 565 warnings in 4.10s

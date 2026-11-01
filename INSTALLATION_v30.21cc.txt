@@ -1,0 +1,63 @@
+CHSM v30.21cc – Manuelle Positionen und Ziel-/Invalidierungsüberwachung
+
+BASIS: Vollständig installierte v30.21cb. Dies ist ein Ergänzungspatch.
+1. Projekt und gespeicherte Wächter-Daten sichern.
+2. ZIP-Inhalt unter denselben Pfaden in den Projektordner kopieren.
+   modules/watch_position.py ist NEU und erforderlich. Vorhandene Dateien ersetzen.
+3. App neu starten. Angezeigte Version: v30.21cc.
+Keine neuen Abhängigkeiten, kein Neuscan und keine manuelle Speichermigration nötig.
+Bestehende Ideen bleiben Ideen, bis eine tatsächliche Ausführung bestätigt wird.
+
+BEDIENUNG
+1. Nach bestätigtem Einstiegstrigger und aktueller fehlerfreier Kursprüfung die
+   Idee auswählen. Der Abschnitt "Ausgeführten Einstieg bestätigen" ist verfügbar.
+2. Tatsächlichen Ausführungskurs beim Broker eintragen, Ausführung bestätigen
+   und "Position als eröffnet bestätigen" klicken. Das erteilt KEINE Brokerorder.
+3. Ab der nächsten vollständig nach Bestätigung begonnenen Minute werden Ziel
+   und Invalidierung auf Basis abgeschlossener 1m-Highs/Lows überwacht. Der
+   vollständige Minuten-Nachweis benötigt zusätzlich 10 Sekunden Datenpuffer.
+4. Hinweise erscheinen im Status, beim ausgewählten Trade und im Verlauf.
+   Toasts weisen bei der Prüfung auf neu gespeicherte Kontakte hin.
+5. Nach tatsächlichem vollständigem Ausstieg den Ausstiegskurs eintragen und
+   "Position als geschlossen bestätigen" wählen. Erst dann endet die Überwachung.
+   Danach ist Archivieren möglich. Ein Ziel-/Stopkontakt schließt nichts automatisch.
+
+ZEITEN UND DATENLÜCKEN
+Keine rückwirkende Erfassung früherer Käufe. Die Bestätigung startet die Überwachung
+AB JETZT; auch der bereits angebrochene Bestätigungsminute werden keine Kontakte
+zugeordnet. Ein Kurskontakt vor diesem Zeitpunkt wird nicht als Positionssignal
+übernommen. Wer bereits länger investiert ist, hat hier keinen vollständigen
+historischen Exitnachweis. Der Einstieg kann außerhalb des geplanten Bandes erfasst
+werden; dann erscheint ein Hinweis, die festen Planlevels bleiben unverändert.
+
+Bei Ziel und Invalidierung in derselben Minute bleibt die Reihenfolge unbekannt.
+Die App protokolliert beide Kontakte und die Mehrdeutigkeit, keine simulierte
+Ausführung/Reihenfolge. Bekannte Kontakte in getrennten Minuten bleiben datiert.
+Nachweiszeit = Minutenende, nicht exakter Tick-/Orderzeitpunkt. Verspätet gelieferte
+Nachweise werden im Verlauf als historisch bezeichnet. Permanente Hinweise behalten
+ihre Nachweiszeit; eine solche Meldung kann bereits älter sein.
+
+Fehlende Minuten markieren die Position dauerhaft mit Datenlücke. Vorhandene
+spätere Nachweise werden weiter erfasst, fehlende Kontakte aber nicht erfunden.
+Ein 5-Tage-Datenfenster kann bei längeren Unterbrechungen unvollständig sein.
+Ungültige/future/naive Daten oder Abruffehler erzeugen keine neuen Kontaktnachweise.
+Fehlende/veränderte Chartbelege sperren die Überwachung wie bisher.
+
+LEBENSZYKLUS
+Eine offene Position läuft über das Ablaufdatum der ursprünglichen Einstiegsidee
+hinaus, nach unveränderten Ziel-/Invalidierungslevels. Pausieren und Archivieren
+sind bei offenen Positionen gesperrt. Geschlossene Positionen werden nicht mehr
+abgefragt, können archiviert und nicht auf derselben Idee erneut eröffnet werden.
+Eine neue Überwachungsphase benötigt ein neues geprüftes Setup.
+Die manuelle Kursrendite nach Schließung ist brutto, ohne Gebühren/Steuern.
+Keine Stückzahl-/Teilverkaufsverwaltung oder Synchronisierung mit dem Handelsjournal.
+
+TECHNIK / GRENZEN
+Keine Vollanalyse, keine neuen Datenanbieter, keine Brokerorders. Wie bisher eine
+leichte 1m-Historienabfrage je aktivem Ticker pro Prüflauf; mehrere Positionen/Ideen
+zum selben Ticker teilen diese Antwort. Bestehende Poll-Pausen gelten weiterhin.
+Nur bei offener Wächter-Seite und verbundener Sitzung; keine Hintergrund-/Push-
+Garantie und keine garantierten Echtzeitdaten. Reguläre Handelsfenster wie bisher.
+Die 1,5R-Regel für neue Setup-Übernahmen bleibt unverändert. Es entstehen keine
+Positionen durch Signale allein. Frühere App-Versionen kennen den Positionsstatus
+nicht; bei offenen Positionen nicht auf einen älteren Wächter zurückwechseln.

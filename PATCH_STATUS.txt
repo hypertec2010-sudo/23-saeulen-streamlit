@@ -1,4 +1,5 @@
-Version: v30.21cb
-Basis: hochgeladenes Archiv.zip, v30.21ca
-Fertig: lesbare Regeln, Strukturbegründung, CRV-Übernahmeprüfung mindestens 1,5R am oberen Entry.
-Offen: Positionsstatus, Zielüberwachung, historische Ergebnisauswertung.
+Version v30.21cc
+Basis v30.21cb
+Fertig: manuelle Positionsbestätigung, Ziel-/Invalidierungskontakte, manuelle Schließung.
+Vorher enthalten: feste Chartsetups, kompakte Ansicht, Qualitätsbegründung, 1,5R-Übernahmeprüfung.
+Offen: historische Ergebnisauswertung, Teilverkäufe, Journal-Abgleich.

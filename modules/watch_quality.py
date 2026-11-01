@@ -102,10 +102,10 @@ def render_rules(st, idea, *, shown_time):
     from modules.watch_setups import idea_setup
     st.markdown("**Gespeicherte Handelsidee / Regeln**")
     st.table(pd.DataFrame(rule_rows(idea)))
-    st.caption("Gültig bis: " + shown_time(idea.get("expires_at")) + " · Kurszeit: " + shown_time(idea.get("quote_at")))
+    st.caption("Einstiegsidee gültig bis: " + shown_time(idea.get("expires_at")) + " · Kurszeit: " + shown_time(idea.get("quote_at")))
     ok, reason = idea_setup(idea)
     if not ok:
         st.warning("Chartbeleg / Regelzuordnung: " + reason)
-    st.caption("Status und Kurs entsprechen dem gespeicherten Stand. Ablauf und Datenzustand in der Übersicht beachten. Ein gespeicherter Trigger ist kein erneutes Einstiegssignal. Das Ziel wird bisher als Referenz angezeigt; kein automatisches Ziel-erreicht-Signal und keine Brokerorder.")
+    st.caption("Status und Kurs entsprechen dem gespeicherten Stand. Ablauf und Datenzustand in der Übersicht beachten. Ein gespeicherter Trigger ist kein erneutes Einstiegssignal. Zielkontakte werden erst nach manueller Positionsbestätigung überwacht. Keine Brokerorder.")
     render_quality(st, idea, (idea.get("source") or {}).get("watch_setup"))
     st.caption("Diese CRV-Prüfung gilt für neue Übernahmen. Bereits gespeicherte Ideen, Levels und deren Überwachung bleiben unverändert.")

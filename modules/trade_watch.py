@@ -73,6 +73,9 @@ def in_session(timestamp, market):
 
 def active(idea):
     from modules.watch_setups import idea_setup
+    from modules.watch_position import is_open
+    if idea.get("position"):
+        return is_open(idea) and not idea.get("archived") and not idea.get("paused") and idea_setup(idea)[0]
     return (not idea.get("archived") and not idea.get("paused") and idea.get("state") not in TERMINAL
             and idea_setup(idea)[0])
 
@@ -158,11 +161,12 @@ def add_idea(manager, idea):
     if not ok:
         raise ValueError("Keine neue Übernahme: " + reason)
     ideas = load_ideas(manager)
-    if sum(not i.get("archived") and not i.get("setup_blocked") and i.get("state") not in TERMINAL for i in ideas) >= MAX_ACTIVE:
+    running = [i for i in ideas if not i.get("archived") and not i.get("setup_blocked")
+               and (i.get("position") or {}).get("status") != "closed" and i.get("state") not in TERMINAL]
+    if len(running) >= MAX_ACTIVE:
         raise ValueError(f"Höchstens {MAX_ACTIVE} laufende Ideen; zuerst eine Idee archivieren.")
     fields = ("ticker", "entry", "invalidation", "max_entry", "mode", "target")
-    if any(not i.get("archived") and not i.get("setup_blocked") and i.get("state") not in TERMINAL and
-           all(i.get(k) == idea.get(k) for k in fields) for i in ideas):
+    if any(all(i.get(k) == idea.get(k) for k in fields) for i in running):
         raise ValueError("Diese Handelsidee wird bereits verfolgt.")
     ideas.append(idea)
     save_ideas(manager, ideas)
@@ -209,6 +213,9 @@ def evaluate(idea, frame, *, now=None, fetched_at=None, fetch_error=""):
     Closed-bar confirmation requires every 1m constituent and a 10s publication
     buffer. A historical trigger is logged, never emitted as a fresh entry.
     """
+    if idea.get("position"):
+        from modules.watch_position import evaluate as evaluate_position
+        return evaluate_position(idea, frame, now=now, fetched_at=fetched_at, fetch_error=fetch_error)
     out = deepcopy(idea)
     now = utc(now)
     from modules.watch_setups import idea_setup
@@ -305,6 +312,7 @@ def evaluate(idea, frame, *, now=None, fetched_at=None, fetch_error=""):
 def poll(ideas, provider, *, now=None, force=False):
     """One lightweight 1m history per active ticker; no info, benchmark or analyzer."""
     from modules.provider_manager import history_refresh_scope, MarketDataRateLimitError
+    from modules.watch_position import is_open
     current = utc(now)
     result = deepcopy(ideas)
     responses = {}
@@ -313,7 +321,7 @@ def poll(ideas, provider, *, now=None, force=False):
     for pos, idea in enumerate(result):
         if not active(idea):
             continue
-        if current >= utc(idea["expires_at"]):
+        if not is_open(idea) and current >= utc(idea["expires_at"]):
             result[pos] = evaluate(idea, None, now=current)
             continue
         if not in_session(current, idea["market"]):

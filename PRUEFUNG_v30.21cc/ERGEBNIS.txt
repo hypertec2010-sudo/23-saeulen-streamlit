@@ -1,0 +1,22 @@
+Python 3.12, 01.11.2026.
+Gesamttest: 514 passed, 1 deselected, 576 warnings in 160.98s (0:02:40)
+Ausgenommen wie bereits in cb:
+tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Grund: .github/workflows/quality.yml fehlt im gelieferten Original-Archiv.
+Diese CI-Datei wird durch den Positionspatch nicht neu erstellt. Ein vollständiger
+Deployment-Strukturcheck ist dadurch weiterhin nicht bestätigbar.
+
+Python-Syntaxprüfung aller 146 Python-Dateien und regression_check.py bestanden.
+Nach abschließender Anzeigeanpassung für geschlossene Positionen: 88 gezielte Tests
+bestanden (Teilmenge des Gesamttests), siehe abschluss312.log.
+Keine neue Python-3.11-, Live-Provider- oder Broker-Prüfung.
+Warnungen betreffen überwiegend NumPy-/Pandas-Zeitoperationen.
+
+30 neue Tests: manuelle Eröffnung ohne Source-/Leveländerung, Schutz gegen fehlende
+Bestätigung/stale Daten/fehlenden Beleg, ungültige Ausführungskurse, Ziel/Stop jeweils
+einmalig, Minuten vor Bestätigung, laufende Minute und 10s-Puffer, mehrdeutige gleiche
+Minute, unterschiedliche Nachweiszeiten, Datenlücken, verspätete Nachweise, alte
+Providerstände ohne Cursor-Rückschritt, Ablauf der Einstiegsidee bei offener Position,
+manuelle Schließung und Ende weiterer Abfragen, Abruffehler/ungültige Daten, Speicherung
+über neue Sitzungen, tatsächliche Streamlit-Formulare und kompakte Übersicht,
+geteilte Providerabfrage, UI-Prüfung nach Ablauf der Einstiegsidee.

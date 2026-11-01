@@ -142,6 +142,7 @@ def render_capture(st, frame, *, key="watch_screener"):
 
 
 def table_rows(ideas, *, now=None):
+    from modules.watch_position import status_label
     current = watch.utc(now)
     rows = []
     for idea in ideas:
@@ -150,11 +151,13 @@ def table_rows(ideas, *, now=None):
         state = "Archiviert" if idea.get("archived") else "Pausiert" if idea.get("paused") else watch.LABELS.get(idea["state"], idea["state"])
         if idea.get("setup_blocked"):
             state = "Kein geprüftes Chartsetup · gesperrt"
-        elif current >= watch.utc(idea["expires_at"]) and idea["state"] not in watch.TERMINAL:
+        elif not idea.get("position") and current >= watch.utc(idea["expires_at"]) and idea["state"] not in watch.TERMINAL:
             state = "Abgelaufen"
+        if not idea.get("setup_blocked"):
+            state = status_label(idea) or state
         quote = watch.utc(idea["quote_at"]) if idea.get("quote_at") else None
         health = str(idea.get("health") or "Noch nicht geprüft")
-        if quote is not None and current - quote > timedelta(minutes=3) and idea["state"] not in watch.TERMINAL:
+        if (idea.get("position") or {}).get("status") != "closed" and quote is not None and current - quote > timedelta(minutes=3) and idea["state"] not in watch.TERMINAL:
             health = "Kursdaten veraltet · " + health
         rows.append({"Ticker": idea["ticker"], "Chartsetup": ((idea.get("source") or {}).get("watch_setup") or {}).get("label") or "Nicht nachgewiesen", "Status": state, "Daten": health,
                      "Kurs": price, "Einheit": idea.get("currency") or "–", "Entry": idea["entry"],
@@ -171,12 +174,13 @@ def table_rows(ideas, *, now=None):
 
 def render_monitor(st, *, manager=None, provider_factory=None):
     from modules.provider_manager import get_market_data_provider
+    from modules.watch_position import is_open, render_position
     manager = manager or create_storage_manager(st_module=st, app_dir=Path(__file__).resolve().parents[1])
     provider_factory = provider_factory or get_market_data_provider
     st.title("👁️ Trade-Wächter")
     st.caption("Gezielte Überwachung gespeicherter Long-Ideen · keine neue Vollanalyse · keine Brokerorders")
     st.info("Automatische Prüfungen laufen nur, solange diese Seite geöffnet und die Sitzung verbunden ist. Keine Hintergrundüberwachung bei geschlossenem Browser. Yahoo liefert keine garantierten Echtzeit-/Tickdaten.")
-    st.caption("Geprüft werden ausschließlich die gespeicherten Kursregeln. Nachrichten, Earnings und die ursprüngliche technische Bewertung werden nicht erneut analysiert; das Ziel dient hier als Referenz.")
+    st.caption("Geprüft werden die gespeicherten Kursregeln. Nach manuell bestätigter Ausführung werden auch Ziel-/Invalidierungskontakte erfasst. Nachrichten, Earnings und die ursprüngliche Bewertung werden nicht erneut analysiert.")
     st.caption("Nur bestätigungsbereite Chartsetups aus Screener oder Sofortanalyse übernehmen. Entstehende Setups bleiben dort sichtbar; freie Level-Eingabe entfällt.")
     a, b = st.columns(2)
     auto = a.toggle("Automatisch prüfen (solange geöffnet)", value=False, key="watch_auto")
@@ -193,7 +197,7 @@ def render_monitor(st, *, manager=None, provider_factory=None):
         if manual or auto:
             try:
                 now = watch.utc()
-                needs_quotes = any(watch.active(i) and now < watch.utc(i["expires_at"]) and
+                needs_quotes = any(watch.active(i) and (is_open(i) or now < watch.utc(i["expires_at"])) and
                                    watch.in_session(now, i["market"]) for i in ideas)
                 updated = watch.poll(ideas, provider_factory() if needs_quotes else None, force=manual)
                 if updated != ideas:
@@ -201,6 +205,13 @@ def render_monitor(st, *, manager=None, provider_factory=None):
                     prior = {i["id"]: i for i in ideas}
                     for item in updated:
                         before = prior.get(item["id"], {})
+                        pos, old_pos = item.get("position") or {}, before.get("position") or {}
+                        if pos.get("ambiguous_at") and pos.get("ambiguous_at") != old_pos.get("ambiguous_at"):
+                            st.toast(f"{item['ticker']}: Ziel und Invalidierung erreicht – Reihenfolge unklar. Nachweiszeit im Verlauf prüfen.")
+                        else:
+                            for field, text in [("stop_at", "Invalidierung erreicht"), ("target_at", "Ziel erreicht")]:
+                                if pos.get(field) and pos.get(field) != old_pos.get(field):
+                                    st.toast(f"{item['ticker']}: {text} – Nachweiszeit und geplanten Ausstieg prüfen. Keine Brokerorder.")
                         if item["state"] == "triggered" and item.get("triggered_at") != before.get("triggered_at"):
                             st.toast(f"{item['ticker']}: Einstiegstrigger gespeichert – Details prüfen.")
                         elif item["state"] == "invalidated" and before.get("state") != "invalidated":
@@ -224,13 +235,14 @@ def render_monitor(st, *, manager=None, provider_factory=None):
         selected_id = st.selectbox("Idee / Verlauf", [i["id"] for i in visible],
                                   format_func=lambda value: next(i["ticker"] + " · " + shown_time(i["created_at"]) for i in visible if i["id"] == value), key="watch_detail")
         selected = next(i for i in ideas if i["id"] == selected_id)
+        render_position(st, selected, ideas=ideas, manager=manager, shown_time=shown_time)
         st.write(selected.get("note") or "Keine zusätzliche Begründung hinterlegt.")
         source = selected.get("source") or {}
         package = source.get("watch_setup") or {}
         st.caption("Chartbasis " + str(package.get("basis_date") or "nicht nachgewiesen") + " · " + str(package.get("stop_source") or "Keine geprüfte Setup-Invalidierung"))
         controls = st.columns(2)
-        pause = controls[0].button("Überwachung pausieren", key="watch_pause", disabled=not watch.active(selected))
-        archive = controls[1].button("Idee archivieren", key="watch_archive", disabled=bool(selected.get("archived")))
+        pause = controls[0].button("Überwachung pausieren", key="watch_pause", disabled=is_open(selected) or not watch.active(selected))
+        archive = controls[1].button("Idee archivieren", key="watch_archive", disabled=is_open(selected) or bool(selected.get("archived")))
         if pause or archive:
             selected["paused" if pause else "archived"] = True
             watch.event(selected, "pause" if pause else "archive", watch.utc(), "Überwachung pausiert; für einen Neustart neue Idee anlegen." if pause else "Idee archiviert.")

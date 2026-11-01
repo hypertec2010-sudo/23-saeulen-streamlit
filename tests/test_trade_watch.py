@@ -16,7 +16,7 @@ NOW = "2026-10-27T14:10:11Z"
 
 def idea(**changes):
     args = dict(ticker="HALO", entry=100, invalidation=95, max_entry=102,
-                target=110, mode="close5", expires_at="2026-10-30T20:00Z", now=ARM,
+                target=115, mode="close5", expires_at="2026-10-30T20:00Z", now=ARM,
                 source={"stop_quality": "proxy", "fingerprint": "original"})
     args.update(changes)
     from modules.watch_setups import sealed, POLICY, VERSION
@@ -202,7 +202,9 @@ def manager_at(path, user="first"):
     return StorageManager(user_id=user, local_backend=LocalJsonBackend(path))
 
 
-def test_storage_survives_new_session_is_user_scoped_and_rejects_duplicates(tmp_path):
+def test_storage_survives_new_session_is_user_scoped_and_rejects_duplicates(tmp_path, monkeypatch):
+    real = w.utc
+    monkeypatch.setattr(w, "utc", lambda value=None: real(value if value is not None else NOW))
     first = manager_at(tmp_path)
     w.add_idea(first, idea())
     assert w.load_ideas(manager_at(tmp_path))[0]["source"]["fingerprint"] == "original"
@@ -214,7 +216,9 @@ def test_storage_survives_new_session_is_user_scoped_and_rejects_duplicates(tmp_
         w.add_idea(first, idea(ticker="LAST"))
 
 
-def test_corrupt_or_failed_storage_is_never_overwritten(tmp_path):
+def test_corrupt_or_failed_storage_is_never_overwritten(tmp_path, monkeypatch):
+    real = w.utc
+    monkeypatch.setattr(w, "utc", lambda value=None: real(value if value is not None else NOW))
     manager = manager_at(tmp_path)
     manager.save_namespace(w.NAMESPACE, {"bad": "format"})
     with pytest.raises(RuntimeError, match="Speicherformat"):

@@ -87,6 +87,8 @@ render_compact_monitor(st,renderer=lambda page: render_monitor(page,manager=m,pr
     assert "Provider-Abruf" in app.dataframe[1].value.columns
     assert app.warning and any("veraltet" in x.value for x in app.warning)
     assert any(e.label=="Datenzeiten & technische Details" for e in app.expander)
+    assert any("Einstiegsbestätigung" in str(t.value) for t in app.table)
+    assert any(e.label=="Technische Details der gespeicherten Handelsidee" and not e.proto.expanded for e in app.expander)
     app.selectbox(key="watch_detail").select(ideas[1]["id"]).run()
     app.button(key="watch_archive").click().run()
     restored=watch.load_ideas(manager)

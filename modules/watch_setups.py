@@ -416,9 +416,13 @@ def diagnostic_tables(frame, *, now=None):
                     phase, code, reason = "blocked", "invalid_evidence", "Beleg unvollständig."
             for a in p.get("attempts", []):
                 pattern_rows.append({"Ticker": str(row.get("Ticker") or "–"), "Muster": a["label"], "Phase": PHASES[a["phase"]], "Grund": a["reason"], "Code": a["reason_code"]})
+        admission_note = "Kein bestätigungsbereites Chartsetup"
+        if phase == "ready":
+            from modules.watch_quality import admission
+            admission_note = admission(p)[1]
         stock_rows.append({"Ticker": str(row.get("Ticker") or "–"), "Phase": PHASES.get(phase, phase),
-                           "Code": code, "Grund": reason})
-    stocks = pd.DataFrame(stock_rows, columns=["Ticker", "Phase", "Code", "Grund"])
+                           "Code": code, "Grund": reason, "Übernahmeprüfung": admission_note})
+    stocks = pd.DataFrame(stock_rows, columns=["Ticker", "Phase", "Code", "Grund", "Übernahmeprüfung"])
     patterns = pd.DataFrame(pattern_rows, columns=["Ticker", "Muster", "Phase", "Grund", "Code"])
     counts = stocks.groupby(["Phase", "Code", "Grund"], dropna=False).size().reset_index(name="Aktien") if not stocks.empty else pd.DataFrame()
     return stocks, counts, patterns

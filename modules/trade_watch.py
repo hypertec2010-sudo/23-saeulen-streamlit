@@ -106,6 +106,10 @@ def make_idea(*, ticker, entry, invalidation, mode, expires_at, max_entry,
     ok, reason = idea_setup(idea, now=now)
     if not ok:
         raise ValueError(reason)
+    from modules.watch_quality import admission
+    ok, reason = admission(idea)
+    if not ok:
+        raise ValueError("Keine neue Übernahme: " + reason)
     return idea
 
 
@@ -149,6 +153,10 @@ def add_idea(manager, idea):
     ok, reason = idea_setup(idea, now=utc())
     if not ok:
         raise ValueError(reason)
+    from modules.watch_quality import admission
+    ok, reason = admission(idea)
+    if not ok:
+        raise ValueError("Keine neue Übernahme: " + reason)
     ideas = load_ideas(manager)
     if sum(not i.get("archived") and not i.get("setup_blocked") and i.get("state") not in TERMINAL for i in ideas) >= MAX_ACTIVE:
         raise ValueError(f"Höchstens {MAX_ACTIVE} laufende Ideen; zuerst eine Idee archivieren.")

@@ -1,0 +1,25 @@
+Python 3.12, lokaler Testlauf am 01.11.2026.
+Unveränderter Upload: 460 bestanden, 3 Fehler.
+Zwei vorhandene Speichertests verwendeten inzwischen abgelaufene Festdaten.
+Diese Tests frieren jetzt die Uhr auf ihren Szenariozeitpunkt ein.
+Die Engine-Testfixture verwendet ein Ziel von 115 statt 110, um die neue
+1,5R-Regel bei oberem Entry 102 und Invalidierung 95 zu erfüllen.
+
+Nach Änderung: 484 bestanden, 1 bewusst ausgenommen, 160 Warnungen.
+Ausgenommen: tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Grund: .github/workflows/quality.yml fehlt bereits im Original-Upload.
+Diese CI-Datei wurde für den Wächter-Patch nicht erfunden/ersetzt.
+Der komplette Deployment-Strukturcheck ist dadurch nicht bestätigbar.
+Die restlichen Tests inklusive Source Guards wurden ausgeführt.
+
+Abschließender UI-/Qualitätstest nach letzter Darstellungsänderung:
+33 bestanden, 9 Warnungen. Teilmenge der obigen Tests, nicht zusätzlich zu addieren.
+Python-Syntaxprüfung und regression_check.py bestanden.
+Warnungen betreffen überwiegend vorhandene NumPy-/Pandas-Zeitoperationen.
+Kein neuer Test unter Python 3.11 und kein Live-Provider-/Broker-Test.
+
+Gezielte Nachweise: Grenzwert 1,5R inklusive/unmittelbar darunter, fehlende und
+ungültige Ziele/Levels, Prüfung des oberen Entry-Randes ohne Rundung, ignoriertes
+Analyse-CRV, Erhalt erkannter Muster trotz niedrigen CRVs, Sperre auch beim direkten
+Speicherzugang, unveränderte historische Überwachung, fehlende/abweichende
+Chartbelege, deutsche Regelkarte, geschlossenes JSON-Detailfeld, weitere Bedienung.

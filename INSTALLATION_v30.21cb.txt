@@ -1,0 +1,46 @@
+CHSM v30.21cb – Setup-Qualität, CRV-Übernahmeprüfung und lesbare Regeln
+
+BASIS: Der hier hochgeladene vollständige Stand v30.21ca (Archiv.zip).
+Dies ist ein Ergänzungspatch, kein vollständiger Projektordner.
+
+INSTALLATION
+1. Aktuellen Projektordner sichern.
+2. Inhalt dieses ZIPs in den Projektordner kopieren, gleiche Unterpfade verwenden.
+   Vorhandene Dateien ersetzen. modules/watch_quality.py ist NEU und erforderlich.
+3. App neu starten. Version v30.21cb prüfen.
+Kein pauschaler Neuscan erforderlich. Abgelaufene Chartbelege benötigen wie bisher
+neue Analysen; gespeicherte aktuelle Belege werden bei der Übernahme neu geprüft.
+Keine neuen Abhängigkeiten oder Speicher-Migration erforderlich.
+
+NEU
+- Qualitätsbegründung aus dem gespeicherten, auf Integrität geprüften Chartbeleg:
+  Muster, ursprüngliche Phase, Basisdatum, erfüllte Strukturbedingungen und
+  vorhandene Angaben zu Range-Breite/Rücksetztiefe. Details sind aufklappbar.
+- Kein pauschaler Qualitäts-Score und keine behauptete Gewinnwahrscheinlichkeit.
+  Nicht umfassend geprüfte Faktoren wie Liquidität/Spread und Markt-/Branchenstärke
+  sind ausdrücklich benannt. Das ist noch keine neue Volumen-/Liquiditätsprüfung.
+- CRV aus festen Setup-Regeln; alte Analyse-CRV-/Stop-/Zielwerte unter source
+  können diese Rechnung nicht überschreiben.
+- Neue Übernahmen verlangen mindestens 1,5R am OBEREN erlaubten Entry-Rand.
+  Formel: (Ziel - oberer Entry) / (oberer Entry - Invalidierung).
+  Das Ziel muss über der gesamten Entry-Zone liegen. Ohne Ziel ist keine neue
+  Übernahme möglich. Die Schwelle wird vor Rundung geprüft, in Erstellung UND
+  Aufnahme in den Speicher. Eine vorhandene Chartfreigabe bleibt ebenfalls nötig.
+- 1,5R ist eine transparente Startregel, keine empirisch optimierte Schwelle.
+  Kosten, Spread und Slippage werden hier noch nicht abgezogen.
+  Die gemeinsame Einstellung befindet sich in watch_quality.MIN_ENTRY_RR.
+- Chartmuster bleiben auch mit unzureichendem CRV erkennbar. Die Übernahmeprüfung
+  erscheint im Übernahmeformular und zusätzlich in der Einzelaktien-Diagnose.
+- Gespeicherte Handelsidee / Regeln zeigt deutsche Bezeichnungen und feste Levels.
+  Die interne Datenstruktur steht nur im geschlossenen technischen Detailbereich.
+
+BESTAND / GRENZEN
+Bestehende Ideen und Kurslevels werden nicht verändert. Auch eine bestehende Idee,
+die die neue CRV-Regel verfehlt, läuft nach den bisherigen Kursregeln weiter, sofern
+der bestehende Chartbeleg und die übrigen bisherigen Bedingungen gültig sind.
+Die aktuelle CRV-Einordnung ist für solche Bestände ein Hinweis für neue Übernahmen.
+Analyse-Ampel, Trading-Score, Analyse-Stop und kompakte Übersicht bleiben unverändert.
+Keine neue Kauf-/Positionsverwaltung, kein Ziel-erreicht-Signal und keine Brokerorder.
+Ziel bleibt Referenz. Automatische Checks laufen weiterhin nur bei offener,
+verbundener Wächter-Seite; keine garantierten Tick-/Echtzeitdaten.
+Historische Ergebnisauswertung und Positions-/Zielüberwachung sind spätere Schritte.

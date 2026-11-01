@@ -47,8 +47,8 @@ def capture_form(st, basis=None, *, key="watch_setup", manager=None):
             {"Regel": "Struktur-Invalidierung", "Level": package["invalidation"]},
             {"Regel": "Technisches Ziel (optional)", "Level": package.get("target")}]))
         st.caption("Einheit: " + currency + ". Feste Setup-Levels; hier nicht frei änderbar. Die Setup-Invalidierung ändert nicht den allgemeinen Analyse-Stop.")
-        crv = package.get("crv")
-        st.caption("CRV dieser Setupidee: " + (f"{crv:.2f}R" if crv is not None else "nicht bewertbar") + " · separat, kein Freigabekriterium.")
+    from modules.watch_quality import render_quality
+    quality = render_quality(st, package, package)
     with st.expander("Chartstruktur und geprüfte Bedingungen", expanded=False):
         for check in package.get("checks", []):
             st.write("✓ " + check)
@@ -62,10 +62,14 @@ def capture_form(st, basis=None, *, key="watch_setup", manager=None):
                     fig.add_hline(y=package[field], line_dash="dot", line_color=color, annotation_text=label)
             fig.update_layout(height=350, margin=dict(l=10,r=10,t=10,b=10), xaxis_rangeslider_visible=False, yaxis_title=currency, showlegend=False)
             st.plotly_chart(fig, use_container_width=True, key=prefix + "_chart")
+    with st.expander("Technische Details zum Chartbeleg", expanded=False):
         st.json(package.get("evidence") or {})
     st.caption("Start-Heuristiken für Chartstrukturen; noch keine Prüfung auf Profitabilität. Die allgemeine Analyse-Ampel wird nicht verändert.")
     if not ok:
         st.info("Noch keine aktive Einstiegsüberwachung: " + reason)
+        return
+    if not quality["allowed"]:
+        st.info("Chartsetup erkannt, aber keine neue Übernahme: " + quality["reason"])
         return
     st.caption("Überwachung: neuer vollständiger 5-Minuten-Schluss im Entryband; Invalidierung bei 1m-Low auf/unter dem Strukturlevel. Nur nach Anlage begonnene Kerzengruppen zählen.")
     with st.form(prefix + "_form"):
@@ -240,7 +244,9 @@ def render_monitor(st, *, manager=None, provider_factory=None):
         if selected.get("events"):
             history = [{"Zeit (Berlin)": shown_time(e["at"]), "Ereignis": e["kind"], "Details": e["text"]} for e in reversed(selected["events"])]
             st.dataframe(pd.DataFrame(history), hide_index=True, use_container_width=True)
-        with st.expander("Gespeicherte Handelsidee / Regeln", expanded=False):
+        from modules.watch_quality import render_rules
+        render_rules(st, selected, shown_time=shown_time)
+        with st.expander("Technische Details der gespeicherten Handelsidee", expanded=False):
             st.json(selected)
             st.caption("Invalidierung: jede nach Anlage begonnene 1m-Kerze mit Low auf/unter dem Level. Treffen Entry und Invalidierung dieselbe Minute, hat Invalidierung Vorrang. 5-/15m-Bestätigung: vollständig gelieferte Minutenkerzen plus 10 Sekunden Puffer. Historische Signale werden protokolliert, nicht als frischer Einstieg ausgegeben. Eine Überwachungslücke benötigt eine neu angelegte Idee.")
 

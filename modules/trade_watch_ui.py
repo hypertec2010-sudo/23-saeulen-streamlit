@@ -33,7 +33,8 @@ def capture_form(st, basis=None, *, key="watch_setup", manager=None):
         return
     phase = package.get("phase", "ready" if package.get("eligible") else "none")
     ok, reason = validate(package, now=watch.utc(), ticker=basis.get("ticker"))
-    phase_name = "Chartbeleg nicht aktuell / gesperrt" if phase == "ready" and not ok else PHASES.get(phase, phase)
+    from modules.watch_quality import entry_label, admission
+    phase_name = entry_label(package, now=watch.utc(), ticker=basis.get("ticker"))
     st.markdown("**" + phase_name + " · " + package["label"] + " · " + package["ticker"] + "**")
     st.write(package.get("reason") or reason)
     st.caption("Abgeschlossene Tagesbasis: " + (package.get("basis_date") or "nicht verfügbar") +
@@ -45,8 +46,10 @@ def capture_form(st, basis=None, *, key="watch_setup", manager=None):
             {"Regel": "Entry-Auslöser", "Level": package["entry"]},
             {"Regel": "Oberste Entry-Grenze", "Level": package["max_entry"]},
             {"Regel": "Struktur-Invalidierung", "Level": package["invalidation"]},
-            {"Regel": "Technisches Ziel (optional)", "Level": package.get("target")}]))
+            {"Regel": "Mustergebundenes Ziel", "Level": package.get("target")}]))
         st.caption("Einheit: " + currency + ". Feste Setup-Levels; hier nicht frei änderbar. Die Setup-Invalidierung ändert nicht den allgemeinen Analyse-Stop.")
+        st.caption("Zielbasis: " + str(package.get("target_source") or "Alter allgemeiner Analysebezug; neu scannen") +
+                   " · " + str(package.get("target_basis_date") or "nicht dokumentiert") + ". Musterziele sind Planungsreferenzen, keine Zusicherung einer Zielerreichung.")
     from modules.watch_quality import render_quality
     quality = render_quality(st, package, package)
     with st.expander("Chartstruktur und geprüfte Bedingungen", expanded=False):
@@ -68,8 +71,9 @@ def capture_form(st, basis=None, *, key="watch_setup", manager=None):
     if not ok:
         st.info("Noch keine aktive Einstiegsüberwachung: " + reason)
         return
-    if not quality["allowed"]:
-        st.info("Chartsetup erkannt, aber keine neue Übernahme: " + quality["reason"])
+    allowed, admission_reason = admission(package)
+    if not allowed:
+        st.info("Chartsetup erkannt, aber keine neue Übernahme: " + admission_reason)
         return
     st.caption("Überwachung: neuer vollständiger 5-Minuten-Schluss im Entryband; Invalidierung bei 1m-Low auf/unter dem Strukturlevel. Nur nach Anlage begonnene Kerzengruppen zählen.")
     with st.form(prefix + "_form"):
@@ -123,13 +127,14 @@ def render_capture(st, frame, *, key="watch_screener"):
         if not visible:
             st.info("Kein überwachbares Chartsetup vorhanden. Die Diagnose zeigt die Gründe je Aktie.")
             return
-        ready = sum(validate(row["__watch_setup"], now=watch.utc(), ticker=row.get("Ticker"))[0] for row in visible)
-        st.caption(f"{ready} bestätigungsbereit. Andere Entwicklungsstände dienen der Beobachtung und lassen sich nicht aktivieren.")
+        from modules.watch_quality import admission, entry_label
+        ready = sum(validate(row["__watch_setup"], now=watch.utc(), ticker=row.get("Ticker"))[0] and admission(row["__watch_setup"])[0] for row in visible)
+        st.caption(f"{ready} übernahmebereit nach Struktur- und Zielprüfung. Andere Muster dienen der Beobachtung.")
         def stage_name(row):
             p = row["__watch_setup"]
             if p.get("eligible") and not validate(p, now=watch.utc(), ticker=row.get("Ticker"))[0]:
                 return "Chartbeleg abgelaufen / gesperrt"
-            return p.get("phase_label", "Bestätigungsbereit")
+            return entry_label(p, now=watch.utc(), ticker=row.get("Ticker"))
         index = st.selectbox("Chartsetup / Entwicklungsstand", range(len(visible)),
             format_func=lambda i: str(visible[i]["Ticker"]) + " · " + stage_name(visible[i]) + " · " + visible[i]["__watch_setup"]["label"], key=key + "_row")
         row = visible[index]

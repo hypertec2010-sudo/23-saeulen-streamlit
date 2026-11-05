@@ -1,0 +1,77 @@
+CHSM v30.21cg – Zusammengehörige Musterziele statt fremder Analyseziele
+
+BASIS: vollständig installierte v30.21cf. Ergänzungspatch, kein Gesamtprojekt.
+Projekt und Wächter-Daten sichern. ZIP-Inhalt unter denselben Pfaden in den
+Projektordner kopieren, vorhandene Dateien ersetzen. modules/watch_plans.py ist
+NEU und erforderlich. Alle mitgelieferten Module gemeinsam aktualisieren.
+App neu starten und v30.21cg kontrollieren. Keine neuen Produkt-Abhängigkeiten.
+
+NEUE ANALYSE ERFORDERLICH
+Betroffene Aktien oder die gewünschte Radar-Liste einmal bewusst neu analysieren.
+Alte Belege ohne die neue Musterziel-Version können keine neue Übernahme erzeugen.
+Gespeicherte Ideen/Positionen werden weiter nach ihren unveränderten Levels geprüft;
+keine automatische Migration oder Umrechnung bereits akzeptierter Handelsregeln.
+Für neue Ideen die bestehenden alten Belege nicht manuell umschreiben.
+
+BELEGTE URSACHE
+Entry und Invalidierung wurden bereits aus dem Wächter-Muster abgeleitet, das Ziel
+kam aber aus technical_target_1 der allgemeinen Analyse mit anderer Setup-Logik.
+Außerdem erfolgte die Wahl zwischen Varianten bisher allein nach Entwicklungsphase.
+Damit konnte ein formal bestätigtes Muster ohne sinnvollen Zielspielraum dominieren.
+
+MUSTERGEBUNDENE ZIELREGELN
+Die allgemeine Analyse-Zielvariable wird im Wächter-Detektor nicht mehr übernommen.
+- Pullback / höheres Tief: Hoch der 15-Kerzen-Basis VOR dem Rücksetzertief.
+- Ausbruch mit Rücktest: Hoch des Ausbruchsimpulses VOR dem Rücktesttief.
+- Range-Ausbruch: nächster bereits bestätigter Pivot-Widerstand oberhalb des Entry,
+  aus der zum Bestätigungszeitpunkt verfügbaren Historie. Wenn keiner vorhanden ist,
+  einfache Range-Höhenprojektion als ausdrücklich begrenzte Planungsreferenz.
+  Diese Projektion allein liefert bei weitem Range-Stop häufig kein ausreichendes
+  CRV. Es wird kein weiter entferntes Kursniveau hinzugefügt, um das zu ändern.
+Ein näherer bestätigter Pivot-Widerstand zwischen Entry und Musterziel wird nicht
+übersprungen. Zielquelle, Referenzniveau und Bezugsdatum sind gespeichert und sichtbar.
+Ein Projektionsniveau ist keine bestätigte Markt-Widerstandszone oder Kursprognose.
+
+Die Zielreferenz wird am Muster-Bestätigungszeitpunkt festgehalten; spätere Kerzen
+ziehen Entry, Stop oder Ziel nicht nach oben. Hat die anschließende Bewegung das
+Ziel bereits erreicht oder liegt es vor dem Entry, gilt dieses Muster als verpasst.
+Neue laufende Tageshoch-/Kursnachweise können ebenfalls nur defensiv sperren.
+Eine gebrochene Invalidierung bleibt vorrangig. Eine weitere Bewegung oberhalb
+des abgearbeiteten Ziels benötigt eine eigene neue Struktur, keinen Zielaufschlag.
+
+AUSWAHL UND ANZEIGE
+Unter den erkannten Varianten wird zuerst ein strukturell bereiter Plan mit erfüllter
+bestehender CRV-Prüfung bevorzugt. Danach folgen Strukturphase und CRV zur festen
+Entry-Obergrenze als deterministische Reihenfolge. Das ist keine Gewinnprognose.
+Auch die interne Auswahl unter mehreren Pullback-/Retest-Belegen nutzt diese Ordnung.
+Die Diagnosetabelle zeigt pro Variante Entry, Invalidierung, Musterziel, Zielherkunft,
+CRV am oberen Entry und Planbegründung.
+
+"Struktur bestätigt" ist von "Übernahmebereit · Bestätigung abwarten" getrennt.
+Bei unzureichendem Spielraum lautet die Überschrift "Chartmuster bestätigt ·
+Tradeplan ungeeignet". Die Kursregel-Tabelle benennt das "Mustergebundene Ziel".
+Für entstehende Muster ohne feste Levels wird das fehlende CRV als Entwicklungsstand
+beschrieben, nicht als pauschaler Datenfehler. Ein übernahmebereiter Plan wartet
+weiterhin auf eine NEUE Intraday-Bestätigung und eröffnet keine Position automatisch.
+
+TXN-PRÜFFALL
+Gelieferte Werte: Support 294,70001220703125, Rücksetztiefe 5,408242315644137 %,
+Bestätigungshoch 317,20001220703125, Entry 318,3179, Invalidierung 291,9052,
+Entry-Obergrenze 321,5011, früheres allgemeines Ziel 318,7398 USD.
+Daraus berechnetes Hoch der Rücksetzerbasis: 311,54935633019795 USD.
+Das Bestätigungshoch und der geplante Entry liegen bereits darüber. Dieser Pullback
+zu seinem Vorhoch darf keine neue Einstiegsbereitschaft erhalten.
+Der Regressionstest prüft diese GEOMETRIE aus den gelieferten Metadaten; die
+vollständige originale TXN-OHLCV-Historie lag nicht vor. Es wird kein vollständiger
+historischer TXN-Replay/Backtest behauptet. Falls andere Muster auf derselben Aktie
+existieren, werden diese weiterhin eigenständig geprüft.
+
+GRENZEN / BESTAND
+1,5R bleibt unverändert die Mindestregel am OBEREN Entry-Rand. Kein Ziel wird aus
+1,5R zurückgerechnet und kein Stop zum Bestehen der Prüfung enger gesetzt.
+Die Regeln bleiben unvalidierte Startheuristiken für Planungsreferenzen. Die
+Korrektur kann zunächst weniger Freigaben ergeben und belegt keine Profitabilität.
+Keine zusätzlichen Providerabfragen; Verarbeitung auf den vorhandenen Kursdaten.
+Allgemeine Analyseziele, Scores, Ampeln, Analyse-Stops, Radar-Light-Ranking und
+bestehende Positionen/Orders werden nicht neu berechnet oder verändert.
+London bleibt zurückgestellt. Kein Brokerhandel oder Hintergrundversprechen.

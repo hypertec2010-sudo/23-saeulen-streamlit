@@ -15,13 +15,13 @@ from modules.watch_results import trade_results,summarize,render_results
 from modules.chart_ma_table import moving_average_rows,render_moving_averages
 from modules.storage.manager import StorageManager
 from modules.storage.local_backend import LocalJsonBackend
-from test_watch_setups import range_result,NOW
+from test_watch_setups import range_result,qualifying_result,NOW
 from test_watch_position import opened,CHECK,minutes
 from modules.watch_position import close_position
 
 
 def snapshot():
-    x=range_result();x.update(valid_trade_setup=True,confidence_info={'coverage':1.},trigger_status='aktiv')
+    x=qualifying_result();x.update(valid_trade_setup=True,confidence_info={'coverage':1.},trigger_status='aktiv')
     row=r.build_candidate(x,ticker='HALO',style='Charttechnik',
         decide=lambda *_:dict(grade='A',score=88,top_chance_rank=80,bucket='Jetzt prüfbar'),
         entry_package=lambda *_:dict(crv=2.,price=99.2,stop=95.,tp1=110.,entry_zone='100–101',entry_distance_pct=0.),

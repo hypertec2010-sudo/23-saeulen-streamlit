@@ -14,11 +14,12 @@ import pandas as pd
 
 from modules.trade_watch import utc, number, market_for, session_bounds
 from modules.structural_trade_plan import confirmed_support_stop
+from modules.watch_plans import bind_plan, candidate_rank
 
 POLICY = "chart_watch_v30.21bz"
 PREVIOUS_POLICY = "chart_watch_v30.21by"
 VERSION = 1
-PHASES = {"ready": "Bestätigungsbereit", "forming": "Setup entsteht",
+PHASES = {"ready": "Struktur bestätigt", "forming": "Setup entsteht",
           "triggered": "Auslöser bereits erreicht", "missed": "Entry verpasst / überdehnt",
           "invalid": "Struktur ungültig", "blocked": "Prüfung gesperrt", "none": "Kein Chartsetup"}
 RANK = {"ready": 7, "triggered": 6, "missed": 5, "invalid": 4, "forming": 3, "none": 1, "blocked": 0}
@@ -182,6 +183,20 @@ def range_candidate(data, length, atr, price):
                 "Zwei strikte 3/3-Pivot-Hochs und -Tiefs; mindestens 6 Kerzen Abstand",
                 "Oberkante innerhalb 1 %, Unterkante innerhalb 1,5 % getestet"])
     out["window"] = length
+    history = data.iloc[:-1]
+    projection = resistance+(resistance-support)
+    overhead = [(float(value),history.index[pos].date()) for pos,value in pivots(history.High,high=True)
+                if float(value)>out["entry"]]
+    if overhead:
+        objective, target_date = min(overhead, key=lambda p:p[0])
+        target_source = "Nächster bestätigter Pivot-Widerstand oberhalb der Range"
+    else:
+        objective, target_date = projection, base.index[-1].date()
+        target_source = "Einfache Projektion der bestätigten Range-Höhe; kein bestätigtes höheres Kursziel"
+    out["evidence"]["range_projection"] = projection
+    out = bind_plan(out, history, objective=objective,
+                    source=target_source, basis_date=target_date,
+                    observed_high=float(data.High.iloc[-1]))
     return out
 
 
@@ -232,9 +247,14 @@ def pullback_candidate(data, atr, price, *, higher=False):
                     "Höheres Tief über einem früheren bestätigten Pivot" if higher else
                     "Unterstützung durch zwei getrennte Pivot-Tests innerhalb 1,5 % bestätigt",
                     "Auslöser über Hoch der drei rechten Bestätigungskerzen"])
+        out = bind_plan(out, data.iloc[:len(data)-len(recent)+pivot+4], objective=peak,
+            source="Hoch der 15-Kerzen-Basis vor dem Pullback", basis_date=before.High.idxmax().date(),
+            observed_high=float(recent.iloc[pivot+1:].High.max()))
+        out["evidence"] = {**out["evidence"], "pre_pullback_high":peak,
+                           "pre_pullback_high_date":before.High.idxmax().date().isoformat()}
         checked.append(out)
     if checked:
-        return max(checked, key=lambda a: RANK[a["phase"]])
+        return max(checked, key=candidate_rank)
     if higher and found:
         # An uncompleted right flank is visible preparation, never eligible.
         for i in range(max(3, len(recent) - 3), len(recent)):
@@ -284,17 +304,23 @@ def retest_candidate(data, atr, price):
                 continue
             high = float(data.iloc[pivot + 1:pivot + 4].High.max())
             anchored_atr = atr_value(data.iloc[:pivot+4])
-            checked.append(levels(kind, high, support, anchored_atr, price,
+            out = levels(kind, high, support, anchored_atr, price,
                 near=price <= support + 2 * anchored_atr and high / price <= 1.05,
                 evidence=dict(old_resistance=resistance, retest_support=support,
                     breakout_date=data.index[i].date().isoformat(), retest_date=data.index[pivot].date().isoformat()),
                 checks=["Alter Widerstand durch zwei getrennte 3/3-Pivot-Hochs bestätigt",
                         "Tagesschluss-Ausbruch mit mindestens durchschnittlichem Basisvolumen",
                         "Rücktest innerhalb 1,5 % des Ausbruchsniveaus, als 3/3-Tief bestätigt",
-                        "Kein nachfolgender Tagesschluss mehr als 1,5 % unter altem Widerstand"]))
+                        "Kein nachfolgender Tagesschluss mehr als 1,5 % unter altem Widerstand"])
+            impulse = data.iloc[i:pivot+1]
+            objective = float(impulse.High.max())
+            out = bind_plan(out, data.iloc[:pivot+4], objective=objective,
+                source="Hoch des Ausbruchsimpulses vor dem Rücktest", basis_date=impulse.High.idxmax().date(),
+                observed_high=float(data.iloc[pivot+1:].High.max()))
+            checked.append(out)
         if not any(a.get("entry") is not None for a in checked):
             checked.append(attempt(kind, "retest_pending", "Ausbruch erkannt; bestätigter Rücktest fehlt noch.", "forming"))
-    return max(checked, key=lambda a: RANK[a["phase"]]) if checked else attempt(kind, "breakout_missing", "Kein bestätigter Ausbruch mit prüfbarem Rücktest.")
+    return max(checked, key=candidate_rank) if checked else attempt(kind, "breakout_missing", "Kein bestätigter Ausbruch mit prüfbarem Rücktest.")
 
 
 def detect(result, *, now=None, hard_gate=False):
@@ -368,22 +394,35 @@ def detect(result, *, now=None, hard_gate=False):
         quote = number(r.get("price"))
         running = df.loc[[expected < d <= today for d in dates]]
         running_low = number(pd.to_numeric(running.Low, errors="coerce").min()) if not running.empty else None
+        running_high = number(pd.to_numeric(running.High, errors="coerce").max()) if not running.empty else None
         for pos, candidate in enumerate(attempts):
             stop, cap, entry = (candidate.get(k) for k in ("invalidation", "max_entry", "entry"))
             if stop is None or candidate["phase"] in {"none", "blocked", "invalid"}:
                 continue
             if (quote is not None and quote <= stop) or (running_low is not None and running_low <= stop):
                 attempts[pos] = {**candidate, "phase": "invalid", "reason_code": "live_invalidation", "reason": "Neuerer Analysepreis/laufendes Tagestief hat Invalidierung erreicht."}
+            elif candidate.get("target") is not None and ((quote is not None and quote >= candidate["target"]) or
+                    (running_high is not None and running_high >= candidate["target"])):
+                attempts[pos] = {**candidate, "phase":"missed", "reason_code":"pattern_target_consumed",
+                                 "reason":"Musterziel laut neuerem Analysepreis/laufendem Tageshoch bereits erreicht."}
             elif quote is not None and quote > cap:
                 attempts[pos] = {**candidate, "phase": "missed", "reason_code": "live_chase", "reason": "Neuerer Analysepreis oberhalb der Entry-Grenze."}
             elif quote is not None and quote >= entry and candidate["phase"] == "ready":
                 attempts[pos] = {**candidate, "phase": "triggered", "reason_code": "live_trigger_crossed", "reason": "Auslöser bereits erreicht; 5-Minuten-Bestätigung nicht geprüft."}
-        selected = max(attempts, key=lambda a: RANK[a["phase"]])
+        from modules.watch_quality import assess
+        for candidate in attempts:
+            candidate_report = assess(candidate)
+            candidate.update(plan_allowed=candidate["phase"]=="ready" and candidate_report["allowed"],
+                             rr_cap=candidate_report["rr_cap"], plan_reason=candidate_report["reason"])
+        selected = max(attempts, key=candidate_rank)
         stop, cap, entry = (selected.get(k) for k in ("invalidation", "max_entry", "entry"))
         phase = selected["phase"]
-        target = number(r.get("technical_target_1"))
-        target = target if target is not None and entry is not None and target > entry else None
-        return sealed({**base, **selected, "eligible": phase == "ready", "phase_label": PHASES[phase],
+        target = number(selected.get("target"))
+        report = assess(selected)
+        phase_label = PHASES[phase]
+        if phase == "ready":
+            phase_label = "Übernahmebereit · Bestätigung abwarten" if report["allowed"] else "Chartmuster bestätigt · Tradeplan ungeeignet"
+        return sealed({**base, **selected, "eligible": phase == "ready", "phase_label": phase_label,
             "label": selected["label"] if phase != "none" else "Kein Chartsetup",
             "attempts": attempts, "mode": "close5", "target": target, "atr": round(selected.get("atr_reference", atr), 6), "price_reference": price,
             "currency": str(r.get("ccy") or r.get("currency") or (r.get("info") or {}).get("currency") or ""),
@@ -415,7 +454,9 @@ def diagnostic_tables(frame, *, now=None):
                 except (KeyError, ValueError, TypeError):
                     phase, code, reason = "blocked", "invalid_evidence", "Beleg unvollständig."
             for a in p.get("attempts", []):
-                pattern_rows.append({"Ticker": str(row.get("Ticker") or "–"), "Muster": a["label"], "Phase": PHASES[a["phase"]], "Grund": a["reason"], "Code": a["reason_code"]})
+                pattern_rows.append({"Ticker": str(row.get("Ticker") or "–"), "Muster": a["label"], "Phase": PHASES[a["phase"]], "Grund": a["reason"], "Code": a["reason_code"],
+                    "Entry":a.get("entry"), "Invalidierung":a.get("invalidation"), "Musterziel":a.get("target"),
+                    "Zielherkunft":a.get("target_source"), "CRV oberer Entry":a.get("rr_cap"), "Planprüfung":a.get("plan_reason")})
         admission_note = "Kein bestätigungsbereites Chartsetup"
         if phase == "ready":
             from modules.watch_quality import admission
@@ -423,6 +464,6 @@ def diagnostic_tables(frame, *, now=None):
         stock_rows.append({"Ticker": str(row.get("Ticker") or "–"), "Phase": PHASES.get(phase, phase),
                            "Code": code, "Grund": reason, "Übernahmeprüfung": admission_note})
     stocks = pd.DataFrame(stock_rows, columns=["Ticker", "Phase", "Code", "Grund", "Übernahmeprüfung"])
-    patterns = pd.DataFrame(pattern_rows, columns=["Ticker", "Muster", "Phase", "Grund", "Code"])
+    patterns = pd.DataFrame(pattern_rows, columns=["Ticker", "Muster", "Phase", "Grund", "Code", "Entry", "Invalidierung", "Musterziel", "Zielherkunft", "CRV oberer Entry", "Planprüfung"])
     counts = stocks.groupby(["Phase", "Code", "Grund"], dropna=False).size().reset_index(name="Aktien") if not stocks.empty else pd.DataFrame()
     return stocks, counts, patterns

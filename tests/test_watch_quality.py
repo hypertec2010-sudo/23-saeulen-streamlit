@@ -7,7 +7,7 @@ import pytest
 from modules import trade_watch as w
 from modules import watch_quality as q
 from modules import watch_setups as s
-from test_watch_setups import range_result, NOW
+from test_watch_setups import range_result, qualifying_result, NOW
 from test_trade_watch import idea, breakout, NOW as ENGINE_NOW
 
 
@@ -57,7 +57,7 @@ def test_low_rr_does_not_erase_a_valid_detected_chart_pattern():
     assert p['eligible'] and s.validate(p, now=NOW)[0]
     assert not q.assess(p)['allowed']
     stocks, _, _ = s.diagnostic_tables(pd.DataFrame([{'Ticker':'HALO','__watch_setup':p}]), now=NOW)
-    assert stocks.iloc[0]['Phase'] == 'Bestätigungsbereit'
+    assert stocks.iloc[0]['Phase'] == 'Struktur bestätigt'
     assert 'Entry' in stocks.iloc[0]['Übernahmeprüfung']
 
 
@@ -102,12 +102,12 @@ def test_rule_card_uses_top_level_values_and_plain_german():
     assert 'close5' not in str(rows)
 
 
-@pytest.mark.parametrize('target,has_form', [(110.,True),(100.5,False),(None,False)])
+@pytest.mark.parametrize('target,has_form', [(110.,True),(100.5,True),(None,True)])
 def test_capture_ui_explains_admission_without_inputs_or_provider(target, has_form, monkeypatch):
     from streamlit.testing.v1 import AppTest
     real = w.utc
     monkeypatch.setattr(w,'utc',lambda value=None: real(value if value is not None else NOW))
-    r=range_result();r['technical_target_1']=target
+    r=qualifying_result();r['technical_target_1']=target
     p=s.detect(r, now=NOW)
     script=f'''
 import streamlit as st

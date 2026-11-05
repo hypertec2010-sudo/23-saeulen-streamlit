@@ -1,0 +1,6 @@
+Version v30.21cg auf Basis v30.21cf.
+Fertig: mustergebundene Ziele, Prüfung abgearbeiteter Musterziele, Planbewertung vor
+Variantenwahl, klare Trennung Struktur/Tradeplan und Legacy-Neuaufnahme-Sperre.
+Vorhanden bleiben: Radar-Übernahme, manuelle Positionen/Zielkontakte, Auswertung und MA200.
+Offen: empirische Validierung, historische Backtests, London, Teilverkäufe/Journal-Abgleich.
+Keine Zusage einer höheren Trefferzahl oder Profitabilität.

@@ -30,8 +30,8 @@ def range_result(length=20, *, end="2026-10-27"):
     return dict(ticker="HALO", df=df, price=99.2, ccy="USD", technical_target_1=110., days_earn=30, has_upcoming_earnings=True)
 
 
-def higher_result(pending=False):
-    r = range_result(); df = r["df"]
+def higher_result(pending=False, *, end="2026-10-27"):
+    r = range_result(end=end); df = r["df"]
     df.loc[df.index[-30:], ["Open","High","Low","Close"]] = [102.,103.,101.5,102.5]
     df.loc[df.index[110], "Low"] = 97.
     df.loc[df.index[116], "High"] = 107.5
@@ -45,6 +45,15 @@ def higher_result(pending=False):
 def support_result():
     r = higher_result()
     r["df"].loc[r["df"].index[110], "Low"] = 100.6
+    return r
+
+
+def qualifying_result(*, end="2026-10-27"):
+    """Confirmed higher low with remaining room to its OWN pre-pullback high."""
+    r = higher_result(end=end)
+    df = r["df"]
+    df.loc[df.index[121:], ["Open","High","Low","Close"]] = [101.,101.4,100.8,101.1]
+    r["price"] = 101.1
     return r
 
 
@@ -203,7 +212,7 @@ def test_old_unused_ohlcv_does_not_add_an_unrelated_rejection_gate():
 
 
 def test_integrity_free_input_and_stage_checks_are_enforced_by_the_watcher():
-    p = s.detect(range_result(),now=NOW)
+    p = s.detect(qualifying_result(),now=NOW)
     args = dict(ticker="HALO", entry=p["entry"], invalidation=p["invalidation"], max_entry=p["max_entry"],
                 target=p["target"], mode=p["mode"], expires_at=p["valid_until"], source={"watch_setup":p}, now=NOW)
     i = w.make_idea(**args); assert w.active(i)
@@ -290,8 +299,8 @@ def test_single_analysis_form_survives_clock_rerender(tmp_path,monkeypatch):
     script='''
 import streamlit as st
 from modules.trade_watch_ui import capture_analysis
-from test_watch_setups import range_result
-capture_analysis(st,range_result(),key='single')
+from test_watch_setups import qualifying_result
+capture_analysis(st,qualifying_result(),key='single')
 '''
     app=AppTest.from_string(script).run(timeout=20)
     assert not app.exception and app.checkbox

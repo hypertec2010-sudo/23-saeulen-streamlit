@@ -32,8 +32,23 @@ def assess(levels):
 
 
 def admission(levels):
+    from modules.watch_plans import new_plan_check
+    if not new_plan_check(levels):
+        return False, "Alter Beleg ohne mustergebundenen Zielplan; Aktie neu scannen."
     report = assess(levels)
     return report["allowed"], report["reason"]
+
+
+def entry_label(package, *, now=None, ticker=None):
+    from modules.watch_setups import validate, PHASES
+    ok, _ = validate(package, now=now, ticker=ticker)
+    phase = package.get("phase", "ready" if package.get("eligible") else "none")
+    if phase != "ready":
+        return PHASES.get(phase, phase)
+    if not ok:
+        return "Chartbeleg abgelaufen / gesperrt"
+    allowed, reason = admission(package)
+    return "Übernahmebereit · Bestätigung abwarten" if allowed else "Chartmuster bestätigt · Tradeplan ungeeignet"
 
 
 def quality_rows(package):
@@ -44,9 +59,11 @@ def quality_rows(package):
     rows = [{"Prüfung": "Chartbeleg", "Befund": "Unveränderter gespeicherter Beleg" if verified else "Nicht nachgewiesen"}]
     if verified:
         rows += [{"Prüfung": "Chartsetup", "Befund": KINDS.get(p.get("kind"), p.get("label") or "Nicht benannt")},
-                 {"Prüfung": "Setup-Phase bei Erkennung", "Befund": PHASES.get(p.get("phase"), "Nicht dokumentiert")},
+                 {"Prüfung": "Strukturphase bei Erkennung", "Befund": PHASES.get(p.get("phase"), "Nicht dokumentiert")},
                  {"Prüfung": "Abgeschlossene Chartbasis", "Befund": p.get("basis_date") or "Nicht dokumentiert"}]
         rows += [{"Prüfung": "Strukturbedingung", "Befund": str(check)} for check in p.get("checks", [])]
+        rows += [{"Prüfung":"Musterziel", "Befund":str(p.get("target_source") or "Alter allgemeiner Analysebezug; neu prüfen")},
+                 {"Prüfung":"Zielbasis", "Befund":str(p.get("target_basis_date") or "Nicht dokumentiert")}]
         evidence = p.get("evidence") or {}
         for field, label in (("width_pct", "Breite der Konsolidierung"),
                              ("pullback_depth_pct", "Tiefe des Rücksetzers")):
@@ -71,7 +88,10 @@ def render_quality(st, levels, package):
         {"Prüfung": "CRV am oberen Entry-Rand", "Befund": rr(report["rr_cap"])},
         {"Prüfung": "Mindest-CRV für neue Übernahmen", "Befund": rr(report["minimum"])},
     ]))
-    (st.success if report["allowed"] else st.warning)(report["reason"])
+    if number(levels.get("entry")) is None and (package or {}).get("phase") == "forming":
+        st.info("Setup entsteht; feste Kursregeln und ein prüfbares CRV liegen noch nicht vor.")
+    else:
+        (st.success if report["allowed"] else st.warning)(report["reason"])
     st.caption("Brutto-CRV aus festen Regeln: (Ziel − Einstieg) / (Einstieg − Invalidierung). Kosten, Spread und Slippage fehlen. 1,5R ist eine Startregel, keine empirisch bestätigte optimale Schwelle. Strukturqualität ist keine Gewinnwahrscheinlichkeit.")
     return report
 

@@ -1,0 +1,28 @@
+Testlauf 05.11.2026, Python 3.12.
+Gesamtlauf: 601 passed, 1 deselected in 64.18s (0:01:04)
+Gezielte Kompatibilitätsprüfung mit Pandas 3.0.2: 83 passed in 4.54s
+Teilmenge nicht addieren. Vollständige Syntaxprüfung und regression_check.py bestanden.
+Gesamtlauf: Streamlit 1.56.0, Pandas 2.2.3, NumPy 2.3.5. Keine neuen Produkt-Abhängigkeiten.
+Kein neuer Python-3.11-, Live-Provider- oder Broker-Test.
+
+Bekannte Ausnahme wie zuvor:
+tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+.github/workflows/quality.yml fehlt im gelieferten Basisprojekt. Ein vollständiger
+Deployment-Strukturcheck ist deshalb weiterhin nicht bestätigt. Keine CI-Datei ergänzt.
+
+16 neue parametrisierte Fälle: TXN-Geometrie, tatsächlich durchlaufener synthetischer
+Pullback-Detektor mit abgearbeitetem Vorhoch, vollständige Unabhängigkeit des neuen
+Musterziels vom allgemeinen Analyseziel für drei Musterklassen, keine künstliche
+1,5R-Herstellung aus der Range-Projektion, reales älteres Widerstandsziel, kein
+Überspringen eines näheren Widerstands, brauchbarer Pullback mit eigenem Vorhoch,
+Widerstands-Kappung und Zielkontakt, Invalidierungspriorität, Auswahl eines anderen
+bereiten Plans statt erstem schlechten Plan, Weiterüberwachung alter eingefrorener
+Regeln bei Ablehnung NEUER alter Belege, echte Formulare für geeignete/ungeeignete
+Pläne und stabile Levels bei späteren Kerzen.
+
+Die bestehenden Erkennungsfixtures bleiben für reine Musterprüfungen erhalten.
+Übernahme-/Speichertests verwenden jetzt zusätzlich einen synthetischen höheren
+Tief-Pullback mit tatsächlich ausreichendem Raum zum EIGENEN Vorhoch. Die feste
+Regel-Engine-Fixture ist mit der neuen Planversion gekennzeichnet. Tests, die früher
+das allgemeine Ziel zur Freigabe verwendeten, prüfen nun dessen Unabhängigkeit.
+Weder CRV-Schwellen noch Intraday-Ausführungsregeln wurden hierfür gelockert.

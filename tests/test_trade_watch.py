@@ -20,9 +20,10 @@ def idea(**changes):
                 source={"stop_quality": "proxy", "fingerprint": "original"})
     args.update(changes)
     from modules.watch_setups import sealed, POLICY, VERSION
+    from modules.watch_plans import PLAN_POLICY
     package=sealed(dict(version=VERSION,policy=POLICY,eligible=True,phase='ready',ticker=args['ticker'].upper(),
         entry=args['entry'],invalidation=args['invalidation'],max_entry=args['max_entry'],target=args['target'],mode=args['mode'],
-        detected_at=args['now'],valid_until=args['expires_at'],label='Regel-Engine-Testfixture'))
+        detected_at=args['now'],valid_until=args['expires_at'],label='Regel-Engine-Testfixture',plan_policy=PLAN_POLICY))
     args['source']={**args['source'],'watch_setup':package}
     return w.make_idea(**args)
 
@@ -304,11 +305,11 @@ def test_capture_from_persisted_screener_basis_needs_no_analysis(tmp_path,monkey
     from streamlit.testing.v1 import AppTest
     from modules.risk_calculator import RISK_BASIS_VERSION
     from modules.watch_setups import detect,form_id
-    from test_watch_setups import range_result
+    from test_watch_setups import qualifying_result
     real=w.utc;monkeypatch.setattr(w,'utc',lambda value=None:real(value if value is not None else NOW))
     monkeypatch.setenv('APP_STORAGE_BACKEND','local');monkeypatch.setenv('APP_STORAGE_LOCAL_DIR',str(tmp_path));monkeypatch.setenv('APP_USER_ID','capture')
     basis=dict(version=RISK_BASIS_VERSION,ticker='HALO',price=99.2,zone_high=100.,stop=95.,target=110.,fingerprint='persisted',currency='USD',stop_quality='proxy',data_date='26.10.2026')
-    package=detect(range_result(end='2026-10-26'),now=NOW)
+    package=detect(qualifying_result(end='2026-10-26'),now=NOW)
     assert package['eligible'],package
     prefix='watch_screener_'+form_id(package)
     script=f'''

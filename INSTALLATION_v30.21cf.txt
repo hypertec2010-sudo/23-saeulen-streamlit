@@ -1,0 +1,81 @@
+CHSM v30.21cf – Radar-Übernahme, Wächter-Auswertung und MA200 am Chart
+
+BASIS: v30.21ce aus dem neu hochgeladenen Archiv(1).zip.
+Ergänzungspatch, kein vollständiger Projektordner. London bleibt zurückgestellt.
+
+INSTALLATION
+1. Projekt und gespeicherte Wächter-Daten sichern.
+2. ZIP-Inhalt unter gleichen Unterpfaden in den Projektordner kopieren.
+   Vorhandene Dateien ersetzen. NEU und erforderlich:
+   modules/radar_watch_handoff.py
+   modules/watch_results.py
+   modules/chart_ma_table.py
+   Auch legacy_app.py und die übrigen Patchdateien gemeinsam aktualisieren.
+3. App neu starten. Version v30.21cf kontrollieren.
+Keine neuen Produkt-Abhängigkeiten oder manuelle Speichermigration erforderlich.
+
+RADAR DIREKT IN DEN WÄCHTER
+Für diese Funktion die gewünschte Radar-Liste einmal neu scannen. Die Vollanalyse
+speichert zusätzlich ihren unveränderten, auf Integrität prüfbaren Chartbeleg mit
+festen Levels und Gültigkeit. Alte Scans ohne Beleg werden nicht frei geschaltet.
+Kandidaten wie bisher im Radar bewusst auswählen. Den neuen Bereich
+"Geprüftes Radar-Setup im Trade-Wächter verfolgen" öffnen und den Kandidaten wählen.
+Chartstruktur und feste Regeln prüfen, Checkbox setzen und Übernahme bestätigen.
+Die Übernahme startet keine neue Vollanalyse und eröffnet keine Position.
+Ein neuer Intraday-Trigger wird weiterhin erst im Wächter geprüft.
+
+Übernahme nur bei frischem Scan, aktuellem passenden Chartbeleg, bestätigungsbereitem
+Muster, passendem Ticker und erfüllter bestehender Setup-CRV-Regel am oberen Entry.
+Radar-Sperren, veraltete Kurse, vorhandene Positionen und fehlender Bestandsabgleich
+sperren die Übernahme. Vorschau-Muster aus Radar-Light sind keine Vollanalysebelege.
+Feste Levels und Herkunft bleiben gespeichert, die vorhandene Duplikat-/Limitprüfung
+bleibt aktiv. Der vorhandene explizite Übernahme-Dialog wird verwendet.
+Bei einer geänderten Kandidatenauswahl kann kein alter Widget-Wert übernommen werden.
+
+AUSWERTUNG ABGESCHLOSSENER WÄCHTER-TRADES
+Im Trade-Wächter "Auswertung abgeschlossener Wächter-Trades" öffnen.
+Ausgewertet werden ausschließlich manuell als vollständig geschlossen bestätigte
+Positionen mit gültigen Ein-/Ausstiegskursen und Bestätigungszeiten. Ziel- oder
+Stopkontakte ohne bestätigte tatsächliche Schließung erzeugen keine Ergebnisse.
+Archivierte Abschlüsse bleiben berücksichtigt. Ungültige/doppelte Datensätze werden
+mit Hinweis ausgenommen. Ohne auswertbare Abschlüsse erscheint ein Hinweis.
+
+Angezeigt werden Anzahl, Gewinne/Verluste/neutrale Abschlüsse, Trefferquote,
+durchschnittliche Kursrendite und R-Ergebnis sowie Aufteilung nach Chartmuster
+und Einzelabschlüsse. Ergebnisse werden aus Ausführungskursen neu berechnet;
+ein gespeichertes return_pct wird nicht blind übernommen.
+R = (Ausführung Ausstieg - Ausführung Einstieg) / (Ausführung Einstieg - feste
+Invalidierung). R nur bei verifiziertem Beleg und positivem anfänglichen Risiko.
+Fehlender Beleg bedeutet kein erfundenes R; Muster ohne Beleg werden separat benannt.
+Durchschnitte sind gleichgewichtete Trade-Werte, keine Depot-/Gesamtrendite.
+Alle Ergebnisse sind brutto ohne Gebühren, Steuern oder Währungseffekte und beruhen
+auf deinen manuellen Ausführungsbestätigungen, nicht auf Broker-Verifikation.
+Zeitdifferenzen sind Abstände der Bestätigungen, keine garantierte tatsächliche
+Haltedauer. Kleine selbst gewählte Stichproben belegen keine Muster-Profitabilität.
+
+Ein optionaler Verlaufsfilter verlangt einen verifizierten Beleg, keine bekannte
+Positions-Datenlücke oder unklare Ziel-/Stop-Reihenfolge, mindestens eine verarbeitete
+volle Positionsminute und eine höchstens drei Minuten vor Ausstiegsbestätigung
+liegende Prüfung. Auch dies ist kein lückenloser Ticknachweis. Fehlende oder alte
+Positionsprüfungen werden sichtbar, statt als vollständiger Verlauf zu gelten.
+Ohne Filter bleiben tatsächliche gültige Abschlüsse mit solchen Hinweisen enthalten.
+Keine simulierten historischen Kurse/Fills, kein Backtest und kein Journal-Abgleich.
+
+MA200 IN DER CHARTANALYSE
+In "Technische Chartdetails" steht jetzt vor MA-Cross eine Tabelle
+"Gleitende Durchschnitte · Tagesbasis" mit MA20, MA50 und MA200, Wert,
+prozentualem Kursabstand und Lage des Kurses zur Linie.
+MA200 = einfacher Durchschnitt der letzten 200 gültigen Tages-Schlusskurse der
+vollständigen Analysehistorie. Der sichtbare Chartausschnitt begrenzt diese Basis
+nicht. Bei zu wenig Historie oder unbrauchbaren Daten steht ausdrücklich
+"Nicht verfügbar"; kein Ersatz durch eine kürzere Linie. Die aktuelle Tageskerze
+kann noch laufen. Berechnung rein für die Darstellung, ohne Score-/Stop-/Gatewirkung.
+MA200 bleibt außerdem in der bisherigen Trading-Case-Indikatorentabelle erhalten.
+Wenn der offene Analyse-Stand die vollständige Tageshistorie enthält, genügt ein
+Neurendern/Öffnen der Details; es ist kein pauschaler Watchlist-Neuscan erforderlich.
+
+BESTAND
+Bestehende Ideen und Positionen bleiben erhalten. Keine automatischen Käufe,
+Verkäufe oder Brokerorders. London und weitere bislang nicht unterstützte Märkte
+werden durch diesen Patch nicht frei geschaltet. Wächter-Prüfungen laufen weiterhin
+nur bei geöffneter Seite/verbundener Sitzung; keine garantierten Echtzeitdaten.

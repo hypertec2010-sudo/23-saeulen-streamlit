@@ -391,6 +391,9 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
     if select_key in st.session_state:
         st.session_state[select_key] = [t for t in st.session_state[select_key] if t in all_tickers]
     selected = st.multiselect("Kandidaten bewusst ausw\u00e4hlen (alle Treffer des Filters)", all_tickers, default=[], key=select_key)
+    from .radar_watch_handoff import render_handoff
+    render_handoff(st, payload, selected, storage=storage, holdings_known=not positions_failed and not wl_failed,
+                   held=held, now=clock(), max_scan_hours=max_age)
     st.markdown("### Auswahl weiterverwenden")
     options = {}
     for c in catalog:

@@ -1,0 +1,23 @@
+Python 3.12.14, Testlauf am 04.11.2026.
+Gesamtlauf: 585 passed, 1 deselected in 62.22s (0:01:02)
+Testumgebung: Streamlit 1.56.0, Pandas 2.2.3, NumPy 2.3.5, Plotly 6.3.1, pytest 8.4.2.
+Zusätzliche Kompatibilitätsprüfung der 29 neuen Tests mit Pandas 3.0.2:
+29 passed, 0 failed, exit_code=0, pandas=3.0.2
+Diese Teilmenge nicht zur Gesamtzahl addieren. Syntaxprüfung und
+regression_check.py bestanden. Kein neuer Python-3.11-, Broker-/Live-Provider-Test.
+Produkt-Abhängigkeiten wurden nicht geändert.
+
+Bekannte Ausnahme wie in vorherigen Patches:
+tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+.github/workflows/quality.yml fehlt im gelieferten vollständigen Projekt-Archiv.
+Daher kein bestätigter vollständiger Deployment-Strukturcheck. Keine CI-Datei ergänzt.
+
+Nachweise: versiegelter Chartbeleg über JSON-Roundtrip, identische Levels und Quelle,
+keine Vollanalyse bei Übernahme, Ablehnung alter/abgelaufener/manipulierter Belege,
+Ticker-/Profilabweichung, Sperren, schlechte Setup-CRV, fehlende/erkannte Bestände,
+keine Freigabe durch Light-Vorschau, echter Streamlit-Übernahmedialog mit Speicherung
+und Duplikatsperre, Bereinigung einer alten Kandidatenauswahl, manuelle Abschlüsse,
+Archiv-Erhalt, R-/Prozentrechnung, ignorierte falsche Cache-Rendite, Datenlücken,
+fehlende/veraltete Positionsprüfung, ungültige Zeiten/Kurse/Dubletten, echter
+Ergebnisfilter und MA200 aus 200 vollen Tageskursen, fehlende/fehlerhafte Historie,
+keine falsche Tageslinie aus Stundenbalken und tatsächlicher UI-Aufruf am Chart.

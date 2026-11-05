@@ -20,6 +20,7 @@ def chart_audit(result, *, now, full_context):
         report = assess(package)
         out.update(rr_entry=report["rr_entry"], rr_cap=report["rr_cap"], rr_reason=report["reason"],
                    rr_allowed=report["allowed"])
+        out["watch_setup"] = package
     # A light scan lacks earnings and other full-context gates and a verified
     # target. It can never arm an idea or claim CRV/admission approval.
     return out

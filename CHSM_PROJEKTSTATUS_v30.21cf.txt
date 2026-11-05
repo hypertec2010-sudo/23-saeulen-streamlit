@@ -1,0 +1,8 @@
+Aktueller Stand: v30.21cf auf Basis des hochgeladenen v30.21ce-Projekts.
+Fertig: direkte explizite Radar-Übernahme geprüfter Chartsetups ohne Vollanalyse,
+Auswertung manuell abgeschlossener Wächter-Positionen nach Muster, MA200-Tabelle
+in der technischen Chartanalyse. Bereits vorhanden: Chartmuster-/CRV-Prüfung,
+Radar-Diagnose, Handelsstil, manuelle Positionserfassung, Ziel-/Stopkontakte.
+Zurückgestellt: London/weitere Handelsplätze.
+Weiterhin offen: historische Backtests, Teilverkäufe, Handelsjournal-Abgleich und
+empirische Validierung der Muster/Schwellen. Keine automatische Broker-Ausführung.

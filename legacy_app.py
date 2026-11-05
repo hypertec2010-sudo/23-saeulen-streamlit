@@ -29509,6 +29509,8 @@ if result is not None:
                     result["ma_cross_pkg"] = _ma_cross_pkg_v3021aq
             except Exception:
                 _ma_cross_pkg_v3021aq = {"available": False, "pairs": {}, "summary": "MA-Cross nicht berechenbar."}
+        from modules.chart_ma_table import render_moving_averages
+        render_moving_averages(st, result)
         st.markdown("##### MA-Cross / Trendbestätigung")
         _ma_cross_pairs_v3021aq = _ma_cross_pkg_v3021aq.get("pairs", {}) or {}
         _ma_cross_rows_v3021aq = [

@@ -221,6 +221,8 @@ def render_monitor(st, *, manager=None, provider_factory=None):
                 st.error("Prüfung/Speicherung fehlgeschlagen: " + str(exc))
         if manager.degraded:
             st.warning("Speicherverbindung eingeschränkt; lokaler Ersatzstand. Geräteübergreifende Synchronisierung nicht bestätigt.")
+        from modules.watch_results import render_results
+        render_results(st, ideas, now=watch.utc())
         if not ideas:
             st.info("Noch kein bestätigungsbereites Setup übernommen. Im Screener oder in der Sofortanalyse Chartsetups prüfen.")
             return

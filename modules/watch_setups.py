@@ -330,6 +330,12 @@ def retest_candidate(data, atr, price):
 
 
 def detect(result, *, now=None, hard_gate=False):
+    """Evaluate the watcher's own chart plan, independently of analysis gates.
+
+    hard_gate is retained only for compatibility with existing callers. General
+    analysis gates (including chase relative to another entry) are not watcher
+    vetoes. Data, own trend/structure/entry rules and earnings remain below.
+    """
     r = result or {}
     current = utc(now)
     ticker = str(r.get("ticker") or r.get("Ticker") or "").upper().strip()
@@ -369,8 +375,6 @@ def detect(result, *, now=None, hard_gate=False):
         if any((b - a).days > 5 for a, b in zip(data.index.date[:-1], data.index.date[1:])):
             return blocked("daily_gap", "Größere Lücke in der Tageshistorie.")
         base.update(basis_date=expected.isoformat(), valid_until=next_expiry(expected, market).isoformat())
-        if hard_gate:
-            return blocked("entry_gate", "Aktives technisches Einstiegsgate.")
         if number(r.get("buy_in")) not in (None, 0):
             return blocked("held_position", "Bestehende Position statt neuer Einstiegsidee.")
         earn = number(r.get("days_earn"))

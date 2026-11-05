@@ -1,8 +1,6 @@
-Basis v30.21cg; Hashes der ersetzten bestehenden Dateien (neue Datei separat):
-0a70297ff6c4d66f7168247bf0cb29357eaa629533574d7727e073b86a962625  VERSION.txt
-NEU  modules/watch_bull_flag.py
-5c42be3f2086a2d83247c80c81b1ede06681fcc78a04b4a5f80243b07b83991a  modules/watch_setups.py
-095dabf14cd8aab8cbc493d6f972dda04d2158bc0a97a9b0910e65a8a04def29  modules/watch_quality.py
-a1840cec1512de86f24ae79833f6c9a9f8d59ec145476595201bcd42c0960385  modules/trade_watch.py
-f7050c371abe97c0bfabb94ecd08c113cd3e654683464d9c4a80e92ab83087d2  modules/trade_watch_ui.py
-NEU  tests/test_bull_flag_ch.py
+Basis v30.21ch; ersetzte Dateien:
+379e1f9d0b358ac32ab1751c968e91767f2d59c6cc05391aefb68427d9e43de8  VERSION.txt
+a06fbbd4e0073577185990185461eb4315c99084cf8b718cdac37004bc8eddac  modules/watch_setups.py
+e3edb74d7d690b8336b7475166fd6f4bc7b5fc64f56f0d65cbeae540a5caacc9  modules/trade_watch_ui.py
+92d4ade9f05298c08b9eda2f0ee63735b0a3f47e00f1dd15199987c8826ce0d8  tests/test_watch_setups.py
+NEU  tests/test_watch_independence_ci.py

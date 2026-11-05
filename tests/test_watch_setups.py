@@ -148,7 +148,7 @@ def test_the_pullback_trigger_does_not_move_up_with_later_bars():
 
 @pytest.mark.parametrize("change,code", [("missing","daily_data_missing"),("short","daily_short"),("stale","daily_stale"),
     ("volume","daily_invalid"),("ohlc","daily_invalid"),("duplicate","daily_duplicate"),("future","daily_future"),
-    ("gap","daily_gap"),("trend","trend_missing"),("gate","entry_gate"),("earnings","earnings"),("held","held_position")])
+    ("gap","daily_gap"),("trend","trend_missing"),("earnings","earnings"),("held","held_position")])
 def test_shared_blockers_have_specific_codes_instead_of_just_no_pattern(change,code):
     r = range_result(); df = r["df"]; gate = False
     if change == "missing": r.pop("df")
@@ -160,7 +160,6 @@ def test_shared_blockers_have_specific_codes_instead_of_just_no_pattern(change,c
     if change == "future": df.index = df.index + pd.Timedelta(days=10)
     if change == "gap": df.index = pd.date_range(end="2026-10-27",periods=len(df),freq="7D")
     if change == "trend": df["Close"] = np.linspace(110,90,len(df)); df["Open"] = df.Close; df["High"] = df.Close+1; df["Low"] = df.Close-1
-    if change == "gate": gate = True
     if change == "earnings": r["days_earn"] = 2
     if change == "held": r["buy_in"] = 95.
     p = s.detect(r,now=NOW,hard_gate=gate)

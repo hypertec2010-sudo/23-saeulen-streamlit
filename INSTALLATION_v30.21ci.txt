@@ -1,0 +1,47 @@
+CHSM v30.21ci – Eigenständige Chartsetup-Prüfung im Trade-Wächter
+
+Basis: vollständig installierte v30.21ch. Ergänzungspatch, kein Gesamtprojekt.
+Projekt und gespeicherte Wächter-Daten sichern. Den gesamten ZIP-Inhalt unter
+denselben Pfaden in den Projektordner kopieren; vorhandene Dateien ersetzen.
+App neu starten und Version v30.21ci kontrollieren. Keine neuen Abhängigkeiten.
+Danach betroffene Watchlisten neu scannen: alte gespeicherte Scan-Ergebnisse mit
+entry_gate werden nicht rückwirkend umgeschrieben. Bestehende Handelsideen und
+Positionen behalten ihre festen Regeln; keine Migration und kein Brokerauftrag.
+
+ÄNDERUNG
+Der Trade-Wächter übernimmt das pauschale Einstiegsgate der allgemeinen Analyse
+nicht mehr. Deren Distribution-/FOMO-/Abstands-Bewertung bleibt in der allgemeinen
+Analyse wirksam, verhindert aber keine Suche nach einem eigenen Wächter-Muster.
+Dies gilt gleichermaßen für Screener und Sofortanalyse sowie die Musterdiagnose.
+Der frühere hard_gate-Parameter des Detektors bleibt aus Kompatibilitätsgründen
+annehmbar, hat in dieser eigenen Chartsetup-Prüfung jedoch keine Sperrwirkung.
+Die Darstellung im Screener erläutert die getrennte Prüfung.
+
+WEITERHIN VERBINDLICH
+- Vollständige, gültige und ausreichend frische Tagesdaten, unterstützter Markt.
+- Kurs mindestens auf MA50; MA50 gegenüber fünf Kerzen zuvor nicht fallend.
+- Jeweilige Musterstruktur samt eigener fester Invalidierung, Entry-Obergrenze
+  und begründetem Musterziel; kein Hinterherlaufen über die eigene Entry-Grenze.
+- Mindest-CRV 1,5R am oberen Entry-Rand; kein zusätzlich herbeigerechnetes Ziel.
+- Bekannte bevorstehende Earnings innerhalb von sieben Tagen blockieren weiter.
+  Unbekannte Earnings sind damit nicht als ausgeschlossen bestätigt.
+- Keine neue Idee für bereits als Bestand erfasste Positionen.
+- Neuer gültiger Intraday-Schluss nach Scharfschaltung; Frische-/Lückenprüfung.
+- Bei Bullflaggen zusätzliche verbindliche 5-Minuten-Volumenbestätigung.
+- Unveränderte Regeln für gespeicherte Ideen und Positionsausstiege.
+
+WARUM
+Der gelieferte Scan zeigte 23 Aktien mit entry_gate. Dort endete die Prüfung vor
+der Mustersuche; auch die Bullflagge wurde gar nicht ausgewertet. Der pauschale
+Gate-Wert verriet nicht, welcher allgemeine Analysegrund je Aktie auslöste.
+Ein Abstand zu einem anderen Analyse-Einstieg ist kein Beleg dafür, dass ein
+eigenständig erkanntes neues Chartsetup ebenfalls überdehnt ist. Dies prüft der
+Wächter jetzt ausschließlich anhand seiner eigenen Struktur und Preisgrenzen.
+Allgemeine Scores, Status und Gates außerhalb des Wächters werden nicht geändert.
+
+GRENZEN
+Die Änderung beseitigt diese vorgelagerte Sammelsperre. Sie garantiert weder
+geeignete Treffer noch eine positive Handelsleistung. Tests prüfen synthetische
+Regelfälle, keine empirische Strategieperformance und keine aktuellen Livekurse.
+London bleibt zurückgestellt. Überwachung weiterhin bei geöffneter verbundener
+App; keine zusätzliche Hintergrundüberwachung oder automatische Orderausführung.

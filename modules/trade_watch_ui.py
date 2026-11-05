@@ -116,6 +116,7 @@ def render_capture(st, frame, *, key="watch_screener"):
     by_phase = stocks["Phase"].value_counts()
     st.caption("Chartsetups · " + " · ".join(f"{phase}: {count}" for phase,count in by_phase.items()))
     with st.expander("👁️ Chartsetups & Trade-Wächter", expanded=False):
+        st.caption("Eigene Chartsetup-Prüfung mit Daten-, Trend-, Entry-/Ziel- und Earnings-Regeln; allgemeine Analyse-Gates sperren diese Prüfung nicht.")
         with st.expander("Diagnose: Warum fehlen bestätigungsbereite Setups?", expanded=False):
             st.caption("Hauptgrund je Aktie; die Anzahl summiert sich zur Zahl der angezeigten Aktien.")
             st.dataframe(counts.sort_values("Aktien", ascending=False), hide_index=True, use_container_width=True)

@@ -1,0 +1,15 @@
+CHSM v30.21ci, 05.11.2026; Basis v30.21ch.
+
+Trade-Wächter jetzt eigenständig gegenüber dem allgemeinen Analyse-Einstiegsgate.
+Eigene Daten-, Chart-, Trend-, Entry-/Ziel-, CRV- und Earnings-Regeln bleiben aktiv.
+Beide vorhandenen Aufrufwege nutzen denselben geänderten Detektor. hard_gate
+bleibt als kompatibles, im Wächter wirkungsloses Eingabeargument bestehen.
+Keine Änderung am allgemeinen Radar-/Analyse-Gate oder den allgemeinen Scores.
+Neue Scans erforderlich, damit vorher durch entry_gate übersprungene Aktien
+vollständig nach Mustern geprüft werden. Gespeicherte Ideen/Positionen unverändert.
+
+Vorhanden: cf Radar-Übernahme und Positionsauswertung/MA200; cg mustergebundene
+Ziele und getrennte Struktur-/Plan-Eignung; ch Bullflagge samt Volumenbestätigung
+und transparente Erklärung der Range-Modellsperre. Mindest-CRV weiterhin 1,5R.
+London bleibt zurückgestellt. Keine empirisch validierte Trefferquote zugesichert.
+Prüfergebnisse und bekannte CI-Ausnahme liegen im Ordner PRUEFUNG_v30.21ci.

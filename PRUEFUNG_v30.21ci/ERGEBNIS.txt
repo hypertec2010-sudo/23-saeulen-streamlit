@@ -1,0 +1,19 @@
+CHSM v30.21ci – 05.11.2026
+Python 3.12, pytest 8.4.2, Pandas 2.2.3, NumPy 2.3.5, Streamlit 1.56.0.
+Vollsuite: 631 bestanden, 1 explizit ausgenommen.
+Befehl: python3 -m pytest -q --deselect=tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Die erwartete .github/workflows/quality.yml fehlt bereits im Ausgangsprojekt.
+Diese bekannte Ausnahme ist kein bestandener Deployment-/CI-Nachweis.
+
+Pandas 3.0.2: 152 gezielte Tests bestanden (Teilmenge der Vollsuite).
+Befehl: python3 -m pytest -q tests/test_watch_independence_ci.py tests/test_watch_setups.py tests/test_bull_flag_ch.py tests/test_trade_watch.py tests/test_watch_position.py
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH; unverändertes Protokoll enthält
+Streamlit-Warnungen beim Start ohne normale App-Sitzung.
+
+Neue Fälle: identische vollständige Musterbelege und Zulassung mit/ohne allgemeines
+Gate bei Range, höherem Tief und Bullflagge; weiterhin Sperre bei Earnings,
+fehlenden Daten, fallendem Trend und bestehendem Bestand; weiterhin keine
+Übernahme bei unzureichendem CRV oder überschrittenem eigenem Entryband.
+Vorhandene Wächter-, Invalidierungs- und Positionsausstiegsprüfungen laufen mit.
+Syntax, Auslieferungshashes, ZIP-CRC und unveränderte allgemeine Analyse geprüft.
+Keine realhistorische Erfolgsstatistik, keine aktuelle Provider-/Brokerprüfung.

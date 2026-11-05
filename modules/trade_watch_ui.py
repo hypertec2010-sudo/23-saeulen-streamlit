@@ -76,6 +76,8 @@ def capture_form(st, basis=None, *, key="watch_setup", manager=None):
         st.info("Chartsetup erkannt, aber keine neue Übernahme: " + admission_reason)
         return
     st.caption("Überwachung: neuer vollständiger 5-Minuten-Schluss im Entryband; Invalidierung bei 1m-Low auf/unter dem Strukturlevel. Nur nach Anlage begonnene Kerzengruppen zählen.")
+    if package.get("entry_volume_rule"):
+        st.caption("Bullflagge: zusätzlich mindestens 1,3× 5m-Volumen relativ zu den 20 vorherigen vollständigen 5m-Gruppen. Fehlende oder unzureichende Volumendaten sperren neue Einstiegstrigger.")
     with st.form(prefix + "_form"):
         note = st.text_input("Eigene Notiz (optional)", key=prefix + "_note", max_chars=500)
         reviewed = st.checkbox("Chartstruktur und feste Regeln angesehen", key=prefix + "_reviewed")

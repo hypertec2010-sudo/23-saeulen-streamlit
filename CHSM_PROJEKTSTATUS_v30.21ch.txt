@@ -1,0 +1,22 @@
+CHSM Projektstand: v30.21ch, 05.11.2026
+Basis: v30.21cg (auf v30.21cf installiert).
+
+Umgesetzt: zusätzliche Bullflaggen-Heuristik; mustergebundenes Projektionsziel
+mit Begrenzung durch näheren bestätigten Widerstand; feste Flaggen-Invalidierung;
+zusätzliche neue 5-Minuten-Volumenbestätigung; klare Range-Modellsperre.
+Exportierte Tagesbelege enthalten nun auch Volumen zur späteren Nachprüfung.
+
+Unverändert: allgemeine Analyseziele und Analyse-Stop, Mindest-CRV 1,5R,
+bestehende Handelsideen/Positionen, Radar-Light-Ranking, Provider-Abfrageumfang.
+London bleibt zurückgestellt. Keine neue Produkt-Abhängigkeit, kein Brokerhandel.
+Protokollversion und vorhandene Musterziel-Version bleiben kompatibel; neue
+Bullflaggen-Belege tragen ihre zusätzliche verbindliche Volumenregel selbst.
+
+Vorhanden aus cf/cg: direkte Radar-Übernahme nach geeigneter Setup-Prüfung,
+Auswertung manuell abgeschlossener Positionen, MA200-Tabelle, mustergebundene
+Ziele, getrennte Struktur- und Tradeplan-Eignung, nach Geometrie geordnete Auswahl.
+
+Grenzen: synthetische Regeltests, kein Profitabilitäts-/Trefferquotenbacktest und
+kein Live-Provider-/Broker-Test. Originale vollständige TXN-Kurshistorie lag nicht
+vor. Leere Listen müssen anhand frischer Diagnosefälle bewertet werden.
+Installation und genaue Startregeln: INSTALLATION_v30.21ch.txt.

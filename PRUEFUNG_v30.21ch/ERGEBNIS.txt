@@ -1,0 +1,26 @@
+CHSM v30.21ch – Prüfstand 05.11.2026
+Python 3.12; pytest 8.4.2; Pandas 2.2.3 / NumPy 2.3.5; Streamlit 1.56.0.
+Vollsuite: 623 bestanden, 1 explizit ausgenommen.
+Ausnahme: tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Die erwartete .github/workflows/quality.yml fehlt bereits im gelieferten Projekt.
+Diese eine Prüfung wurde nicht als bestanden gewertet; kein Deployment-CI-Nachweis.
+
+Vollsuite-Befehl im Projektverzeichnis mit den vorhandenen Test-Abhängigkeiten:
+python3 -m pytest -q --deselect=tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+
+Pandas 3.0.2: 99 gezielte Prüfungen bestanden (Teilmenge, nicht zusätzlich zur
+Vollsuite gezählt). Neue Bullflaggenfälle, Wächter-Engine und Positionsausstiege.
+python3 -m pytest -q tests/test_bull_flag_ch.py tests/test_trade_watch.py tests/test_watch_position.py
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH. Streamlit-Bare-Mode-Warnungen
+beim Skriptstart sind im unveränderten Protokoll enthalten.
+
+Geprüft: eigenständige feste Mast-/Flaggen-Geometrie, Volumenausweitung und
+-kontraktion, fehlendes Volumen, tiefe/weite Flaggen, nähere Widerstände,
+bereits gelaufener Ausbruch, jüngster Invalidierungsbruch, exakte Intraday-
+Volumenschwelle, kein Einbezug des Signal-/Zukunftsvolumens in den Mittelwert,
+20 vorherige vollständige Gruppen, neue Bestätigung nach Scharfschaltung,
+Frische und Invalidierungsvorrang, alte Muster ohne neue Volumenpflicht,
+manipulierte Belege sowie unveränderte bestehende Positionsausstiege.
+
+Syntax der geänderten Python-Dateien, ZIP-CRC und Auslieferungshashes geprüft.
+Keine realhistorische Erfolgsstatistik, kein Live-Provider-/Broker-Replay.

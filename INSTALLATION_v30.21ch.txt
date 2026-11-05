@@ -1,0 +1,74 @@
+CHSM v30.21ch – Bullflaggen-Heuristik und transparente Range-Sperre
+
+BASIS: vollständig installierte v30.21cg. Ergänzungspatch, kein Gesamtprojekt.
+1. Projekt und Wächter-Daten sichern.
+2. ZIP-Inhalt unter denselben Pfaden in den Projektordner kopieren; Dateien ersetzen.
+   modules/watch_bull_flag.py ist NEU und zwingend erforderlich. Alle mitgelieferten
+   Module gemeinsam aktualisieren. Keine zusätzlichen Produkt-Abhängigkeiten.
+3. App neu starten und Version v30.21ch kontrollieren.
+4. Betroffene Aktien oder die gewünschte Radar-Liste einmal neu analysieren.
+   Vorhandene gespeicherte Belege enthalten keine nachträglich erzeugte Bullflagge.
+   Gespeicherte Ideen und Positionen behalten ihre bisherigen festen Regeln.
+
+WAS SICH ÄNDERT
+Ein zusätzliches Tagesmuster sucht einen starken, volumenbegleiteten Impuls mit
+anschließender enger Konsolidierung. Der Auslöser liegt oberhalb von Flaggen-
+UND Impulshoch. Die Invalidierung liegt unter der Flaggenunterkante. Das Ziel
+ist eine einfache Flaggenmast-Projektion vom Ausbruch; ein näherer bestätigter
+Pivot-Widerstand begrenzt dieses Ziel. Projektion bedeutet keine Kursprognose.
+Mindest-CRV 1,5R am oberen Entry-Rand bleibt erforderlich. Kein Zielaufschlag
+oder engerer Stop wird zum Bestehen dieser Prüfung konstruiert.
+
+TRANSPARENTE STARTREGELN DER BULLFLAGGE
+- Impuls: 3–10 Tageskerzen; Schlusskursanstieg 5–25 %, Höhe mindestens 3 ATR
+  der davorliegenden Historie. Hoch auf letzter Impulskerze; Schluss nahe Hoch;
+  mindestens 60 % der Schlusskursänderungen innerhalb des Impulses positiv.
+- Volumen des Impulses mindestens 1,3-mal die vorherige 20-Tage-Basis.
+  Starttag mindestens 1,5-mal diese Basis, direkt davor unter 1,3-mal.
+  Diese Verankerung verhindert ein beliebiges Verlängern des Flaggenmasts.
+- Flagge: 3–10 abgeschlossene Tage, Rücknahme höchstens halbe Masthöhe und
+  höchstens 8 % vom Impulshoch, kein fortgesetzter deutlicher Anstieg.
+- Flaggenvolumen und mittlere True Range höchstens 70 % des Impulses.
+- Feste Levels werden ohne die jüngste Auswertungskerze bestimmt. Die jüngste
+  Kerze kann das Muster bestätigen, als bereits ausgelöst/verpasst markieren
+  oder invalidieren; sie hebt die Levels nicht nachträglich an.
+- Die allgemeinen Trend-, Daten-, Handelsplatz- und sonstigen Zulassungssperren
+  des Detektors gelten weiterhin. US und Xetra; London bleibt zurückgestellt.
+
+NEUE INTRADAY-BESTÄTIGUNG IM WÄCHTER
+Bei NEUEN Bullflaggen-Ideen reicht ein neuer 5-Minuten-Schluss im Entryband
+allein nicht aus. Zusätzlich benötigt dessen Volumen mindestens das 1,3-Fache
+des Durchschnitts der 20 vorherigen vollständigen 5-Minuten-Gruppen. Dafür wird
+die bereits abgerufene Minutenhistorie genutzt, auch vor dem Scharfschalten.
+Signalblock und zukünftige Blöcke gehen nicht in die Vergleichsbasis ein.
+Fehlt ausreichendes Volumen, erscheint "Wartet auf Ausbruchsvolumen"; kein Trigger.
+Die Regel wird im gespeicherten Setup-Beleg mitgeführt und gegen Änderungen
+abgesichert. Fehlende/ungültige Volumendaten blockieren diese neue Bestätigung,
+verhindern aber keine Prüfung auf Invalidierung oder bestehende Positionsausstiege.
+Alte Muster und gespeicherte Ideen erhalten keine zusätzliche Volumenregel.
+Vorhandene Regeln zu Frische, neuem Schluss nach Scharfschaltung, Lücken,
+Verzögerung und Invalidierungsvorrang bleiben bestehen.
+
+RANGE-MODELLKONFLIKT
+Die einfache Range-Höhenprojektion mit Stop unter der gesamten Range erreicht
+schon vor Puffern höchstens 1R. Sie kann die bestehende 1,5R-Regel grundsätzlich
+nicht erfüllen. Die Anzeige nennt dies jetzt ausdrücklich als modellbedingte
+Sperre. Eine Range mit eigenständig belegtem höherem Widerstandsziel wird
+weiterhin anhand ihrer tatsächlichen Geometrie geprüft. "Struktur bestätigt"
+bleibt von einem für die Übernahme geeigneten Tradeplan getrennt.
+
+EINORDNUNG UND GRENZEN
+Die Idee aus Impuls, Konsolidierung, Volumenkontraktion/-ausweitung und einer
+Masthöhen-Projektion orientiert sich am allgemeinen Flaggenkonzept:
+https://chartschool.stockcharts.com/table-of-contents/chart-analysis/chart-patterns/flag-pennant
+Unsere Tagesdauern, Schwellenwerte und die Intraday-Vergleichsregel sind eigene,
+noch nicht empirisch optimierte Startparameter. Der Detektor prüft eine kurze
+enge Konsolidierung, keine vollständig visuell vermessene parallele Flagge.
+Die Volumenbasis verwendet die letzten vollständigen Gruppen ohne saisonale
+Tageszeitkorrektur; sie ist keine umfassende Liquiditäts- oder Spreadprüfung.
+Tests prüfen die Regeln und Sicherheitsgrenzen anhand synthetischer Fälle,
+nicht die Trefferquote oder Profitabilität mit realen historischen Trades.
+Mehr erkannte oder geeignete Chancen sind nicht garantiert. Für den konkreten
+Grund einer weiterhin leeren Liste wird ein frischer Diagnoseexport benötigt.
+Überwachung erfolgt weiterhin bei geöffneter, verbundener App; keine automatische
+Orderausführung oder neu eingerichtete Hintergrundüberwachung.

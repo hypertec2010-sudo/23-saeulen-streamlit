@@ -26,7 +26,8 @@ RANK = {"ready": 7, "triggered": 6, "missed": 5, "invalid": 4, "forming": 3, "no
 KINDS = {"range_breakout": "Konsolidierung vor Ausbruch",
          "support_pullback": "Pullback an bestätigter Unterstützung",
          "higher_low_pullback": "Trend-Pullback mit höherem Tief",
-         "breakout_retest": "Retest nach bestätigtem Ausbruch"}
+         "breakout_retest": "Retest nach bestätigtem Ausbruch",
+         "bull_flag": "Kurze Bullflagge nach Volumenimpuls"}
 
 
 def fingerprint(package):
@@ -61,6 +62,10 @@ def validate(package, *, now=None, ticker=None):
             return False, "Setupdaten verändert; neue Analyse erforderlich."
         if package.get("eligible") is not True or package.get("phase", "ready") != "ready":
             return False, str(package.get("reason") or "Kein bestätigungsbereites Chartsetup.")
+        if package.get("kind")=="bull_flag":
+            from modules.watch_bull_flag import ENTRY_VOLUME_RULE
+            if package.get("entry_volume_rule")!=ENTRY_VOLUME_RULE or package.get("mode")!="close5":
+                return False,"Bullflaggen-Beleg ohne gültige 5m-Volumenbestätigung; neu scannen."
         entry, stop, cap = (number(package.get(k)) for k in ("entry", "invalidation", "max_entry"))
         if not all(x is not None for x in (entry, stop, cap)) or not 0 < stop < entry <= cap:
             return False, "Abgeleitete Setup-Levels sind ungültig."
@@ -193,6 +198,7 @@ def range_candidate(data, length, atr, price):
     else:
         objective, target_date = projection, base.index[-1].date()
         target_source = "Einfache Projektion der bestätigten Range-Höhe; kein bestätigtes höheres Kursziel"
+        out["model_rr_ceiling"] = 1.0
     out["evidence"]["range_projection"] = projection
     out = bind_plan(out, history, objective=objective,
                     source=target_source, basis_date=target_date,
@@ -390,6 +396,8 @@ def detect(result, *, now=None, hard_gate=False):
             for kind in ("support_pullback", "higher_low_pullback"):
                 attempts.append(attempt(kind, "pullback_trend", "Vor Rücksetzer fehlt MA20 über/auf MA50."))
         attempts.append(retest_candidate(data, atr, price))
+        from modules.watch_bull_flag import bull_flag_candidate
+        attempts.append(bull_flag_candidate(data,atr,price))
         # A newer analysis quote/running daily low is defensive evidence only.
         quote = number(r.get("price"))
         running = df.loc[[expected < d <= today for d in dates]]
@@ -426,10 +434,10 @@ def detect(result, *, now=None, hard_gate=False):
             "label": selected["label"] if phase != "none" else "Kein Chartsetup",
             "attempts": attempts, "mode": "close5", "target": target, "atr": round(selected.get("atr_reference", atr), 6), "price_reference": price,
             "currency": str(r.get("ccy") or r.get("currency") or (r.get("info") or {}).get("currency") or ""),
-            "stop_source": "Bestätigte Setup-Struktur mit max(0,6 %, 0,25 ATR) Puffer",
-            "stop_quality": "confirmed_setup_structure" if stop is not None else "unconfirmed",
+            "stop_source": "Flaggenunterkante mit max(0,6 %, 0,25 ATR) Puffer" if selected["kind"]=="bull_flag" else "Bestätigte Setup-Struktur mit max(0,6 %, 0,25 ATR) Puffer",
+            "stop_quality": ("flag_boundary" if selected["kind"]=="bull_flag" else "confirmed_setup_structure") if stop is not None else "unconfirmed",
             "crv": (target - entry) / (entry - stop) if target is not None and stop is not None and entry > stop else None,
-            "chart": [dict(date=idx.date().isoformat(), **{k: float(row[k]) for k in required[:4]})
+            "chart": [dict(date=idx.date().isoformat(), **{k: float(row[k]) for k in required})
                       for idx, row in data.tail(65).iterrows()] if phase != "none" else []})
     except (ValueError, TypeError, KeyError, IndexError, OverflowError) as exc:
         return blocked("unreadable", "Chartprüfung nicht möglich: " + str(exc)[:180])

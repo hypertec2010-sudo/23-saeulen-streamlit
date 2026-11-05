@@ -26,6 +26,9 @@ def assess(levels):
     if target <= cap:
         return {**result, "reason": "Ziel liegt auf/unter der oberen Entry-Grenze; kein positiver Zielspielraum im gesamten Entryband."}
     if result["rr_cap"] < MIN_ENTRY_RR:
+        ceiling=number(levels.get("model_rr_ceiling"))
+        if ceiling is not None and ceiling<MIN_ENTRY_RR:
+            return {**result,"reason":f"Modellbedingte Sperre: einfache Range-Projektion bei Stop unter der gesamten Range erlaubt vor Puffern höchstens {ceiling:g}R; Mindestregel für das Entry-CRV von {MIN_ENTRY_RR:g}R damit grundsätzlich nicht erfüllbar."}
         return {**result, "reason": f"CRV am oberen Entry-Rand unter {MIN_ENTRY_RR:.1f}R."}
     return {**result, "allowed": True,
             "reason": f"CRV im gesamten Entryband mindestens {MIN_ENTRY_RR:.1f}R."}
@@ -70,7 +73,8 @@ def quality_rows(package):
             value = number(evidence.get(field))
             if value is not None:
                 rows.append({"Prüfung": label, "Befund": f"{value:.2f} %".replace(".", ",")})
-    rows += [{"Prüfung": "Ausbruchsvolumen / Liquidität / Spread", "Befund": "Keine umfassende Qualitätsfreigabe vorhanden"},
+    rows += [{"Prüfung": "Intraday-Ausbruchsvolumen", "Befund": "Bei Bullflaggen zusätzlich im Wächter erforderlich" if p.get("entry_volume_rule") else "Keine zusätzliche Volumenregel im Wächter"},
+             {"Prüfung": "Liquidität / Spread", "Befund": "Keine umfassende Qualitätsfreigabe vorhanden"},
              {"Prüfung": "Markt- und Branchenstärke", "Befund": "Nicht Bestandteil dieser Qualitätsprüfung"}]
     return rows
 
@@ -106,6 +110,8 @@ def rule_rows(idea):
     mode = {"close5": "Neuer vollständiger 5-Minuten-Schluss im Entry-Bereich",
             "close15": "Neuer vollständiger 15-Minuten-Schluss im Entry-Bereich",
             "contact": "Kurskontakt in einer 1-Minuten-Momentaufnahme"}
+    if ((idea.get("source") or {}).get("watch_setup") or {}).get("entry_volume_rule"):
+        mode["close5"] += " plus 1,3× Volumen gegenüber 20 vorherigen vollständigen 5m-Gruppen"
     state = "Archiviert" if idea.get("archived") else "Pausiert" if idea.get("paused") else LABELS.get(idea.get("state"), "Unbekannt")
     return [{"Regel": "Aktie", "Wert": str(idea.get("ticker") or "–")},
             {"Regel": "Gespeicherter Status", "Wert": state},

@@ -23,6 +23,7 @@ LABELS = {
     "overextended": "Oberhalb der Entry-Grenze",
     "triggered": "Trigger bestätigt · gespeichert",
     "invalidated": "Invalidiert", "expired": "Abgelaufen",
+    "volume_wait": "Wartet auf Ausbruchsvolumen",
 }
 TERMINAL = {"invalidated", "expired"}
 
@@ -190,6 +191,8 @@ def clean_minutes(frame, now, market):
     valid &= out["Low"] <= out[["Open", "Close", "High"]].min(axis=1)
     if not valid.all():
         raise ValueError("Ungültige OHLC-Kerzen; keine neue Triggerfreigabe.")
+    if "Volume" in frame and isinstance(frame["Volume"],pd.Series):
+        out["Volume"] = pd.to_numeric(frame["Volume"],errors="coerce").to_numpy()
     if any(t > now for t in out.index):
         raise ValueError("Kerzenzeit liegt in der Zukunft.")
     out = out.loc[[in_session(t, market) for t in out.index]].sort_index()
@@ -240,6 +243,7 @@ def evaluate(idea, frame, *, now=None, fetched_at=None, fetch_error=""):
     except ValueError as exc:
         out["health"] = str(exc)
         return out
+    volume_history = bars
     arm = utc(out["armed_at"])
     start = arm.ceil("min")
     bars = bars.loc[bars.index >= start]
@@ -282,13 +286,27 @@ def evaluate(idea, frame, *, now=None, fetched_at=None, fetch_error=""):
     stop_times = [t + pd.Timedelta(minutes=1) for t, row in recent.iterrows()
                   if float(row["Low"]) <= out["invalidation"]]
     first_stop = min(stop_times) if stop_times else None
+    volume_rule = ((out.get("source") or {}).get("watch_setup") or {}).get("entry_volume_rule")
+    last_volume=out.get("last_entry_volume") or {}
+    volume_status=last_volume.get("detail", "") if volume_rule is not None and last_volume.get("confirmed") is False else ""
     for end, close in candidates:
         if first_stop is not None and first_stop <= end:
             break
         if out["entry"] <= close <= out["max_entry"] and out["state"] != "triggered":
+            if volume_rule is not None:
+                from modules.watch_bull_flag import entry_volume_check
+                confirmed,volume_detail=entry_volume_check(volume_history,end,volume_rule)
+                out["last_entry_volume"]={"bar_end":end.isoformat(),"confirmed":confirmed,"detail":volume_detail}
+                if not confirmed:
+                    if fresh and now-end<=timedelta(minutes=3) and not out.get("gap"):
+                        volume_status=volume_detail
+                        event(out,"volume_wait",end,volume_detail)
+                    continue
+                volume_status=""
             if fresh and now - end <= timedelta(minutes=3) and not out.get("gap"):
                 out.update(state="triggered", triggered_at=end.isoformat())
-                event(out, "trigger", end, f"{n}m-Schluss {close:.4f} innerhalb der Entry-Grenzen.")
+                volume_text=" "+out["last_entry_volume"]["detail"] if volume_rule is not None else ""
+                event(out, "trigger", end, f"{n}m-Schluss {close:.4f} innerhalb der Entry-Grenzen."+volume_text)
             else:
                 event(out, "historical", end, "Vergangenes Schluss-Signal; keine frische Freigabe.")
     if first_stop is not None:
@@ -304,6 +322,9 @@ def evaluate(idea, frame, *, now=None, fetched_at=None, fetch_error=""):
             out["state"] = "near" if abs(price / out["entry"] - 1) <= .005 else "waiting"
     if not closed.empty:
         out["last_bar_end"] = (closed.index[-1] + pd.Timedelta(minutes=1)).isoformat()
+    if (fresh and not out.get("gap") and volume_status and out["state"] not in TERMINAL and out["state"]!="triggered"
+            and out["entry"]<=price<=out["max_entry"]):
+        out.update(state="volume_wait",health="Volumenbestätigung fehlt · "+volume_status)
     if out.get("gap") and out["state"] not in TERMINAL:
         out["health"] = "Überwachungslücke · für neue Trigger archivieren und neu anlegen"
     return out

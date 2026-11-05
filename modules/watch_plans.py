@@ -23,8 +23,18 @@ def bind_plan(candidate, history, *, objective, source, basis_date, consumed=Fal
     if obstacles:
         out["target_source"] = "Näherer bestätigter Pivot-Widerstand vor dem Musterziel"
         out["target_obstacle"] = min(obstacles)
+    cap = number(out.get("max_entry"))
+    if out.get("phase") not in {"none","blocked","invalid"}:
+        if out["target"] <= entry:
+            out.update(phase="unsuitable",reason_code="target_not_above_entry",
+                       reason="Musterziel liegt bereits auf/unter dem geplanten Entry. Dieser Tradeplan hat ab seinem Auslöser keinen positiven Zielspielraum; kein verpasster Einstieg. Ein neues Ausbruchssetup benötigt einen eigenen Zielbeleg.")
+            return out
+        if cap is not None and out["target"] <= cap:
+            out.update(phase="unsuitable",reason_code="target_inside_entry_band",
+                       reason="Musterziel liegt innerhalb des Entrybands oder auf dessen Obergrenze. Kein positiver Zielspielraum im gesamten Entryband; Tradeplan ungeeignet.")
+            return out
     observed = number(observed_high)
-    spent = consumed or entry >= target or (observed is not None and observed >= out["target"])
+    spent = consumed or (observed is not None and observed >= out["target"])
     if out.get("phase") not in {"none","blocked","invalid"} and spent:
         out.update(phase="missed",reason_code="pattern_target_consumed",
                    reason="Bewegungsziel dieses Musters bereits abgearbeitet oder vor dem geplanten Entry; neue Struktur erforderlich.")

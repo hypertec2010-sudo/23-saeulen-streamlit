@@ -27,7 +27,7 @@ def test_supplied_txn_levels_have_already_exceeded_their_pullback_reference():
         entry=entry,invalidation=stop,max_entry=cap,reason_code='ready',reason='Structure ready',evidence={})
     out=bind_plan(candidate,highs(),objective=previous_high,source='Vorhoch',basis_date='2026-10-30',observed_high=confirmation)
     assert previous_high==pytest.approx(311.54935633019795)
-    assert out['phase']=='missed' and out['reason_code']=='pattern_target_consumed'
+    assert out['phase']=='unsuitable' and out['reason_code']=='target_not_above_entry'
     assert out['target']<entry and not q.assess(out)['allowed']
     assert (out['entry'],out['invalidation'],out['max_entry'])==(entry,stop,cap)
     assert candidate['phase']=='ready'
@@ -37,7 +37,7 @@ def test_actual_pullback_detector_rejects_a_bounce_past_the_previous_high():
     r=higher_result();df=r['df']
     df.loc[df.index[122],'High']=109.
     a=s.pullback_candidate(df,3.,102.5,higher=True)
-    assert a['phase']=='missed' and a['reason_code']=='pattern_target_consumed'
+    assert a['phase']=='unsuitable' and a['reason_code']=='target_not_above_entry'
     assert a['evidence']['pre_pullback_high']==107.5
     assert a['target']==107.5
 

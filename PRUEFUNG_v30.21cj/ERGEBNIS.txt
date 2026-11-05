@@ -1,0 +1,20 @@
+CHSM v30.21cj – 05.11.2026
+Python 3.12, pytest 8.4.2, Pandas 2.2.3, NumPy 2.3.5, Streamlit 1.56.0.
+Vollsuite: 639 bestanden, 1 explizit ausgenommen.
+Befehl: python3 -m pytest -q --deselect=tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Die erwartete .github/workflows/quality.yml fehlt bereits im Ausgangsprojekt.
+Diese bekannte Ausnahme ist kein bestandener Deployment-/CI-Nachweis.
+
+Pandas 3.0.2: 167 gezielte Tests bestanden (Teilmenge der Vollsuite).
+Befehl: python3 -m pytest -q tests/test_watch_geometry_cj.py tests/test_watch_plans_cg.py tests/test_watch_setups.py tests/test_watch_quality.py tests/test_trade_watch.py tests/test_watch_position.py
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH; Protokoll enthält Streamlit-
+Warnungen beim Start ohne normale App-Sitzung.
+
+Neue Fälle: gelieferte MA-Geometrie ohne erfundene MA-Kurshistorie; Ziel exakt
+am Entry bzw. oberen Entry-Rand, Ziel dazwischen; gültiges später erreichtes
+Ziel; Invalidierungsvorrang; defensive Quotes überschreiben ungeeignete Pläne
+nicht; verständliche Musterdiagnose; geeignete eigenständige Ausbruchsvariante
+wird bei Auswahl gegenüber ungeeignetem Pullback bevorzugt. Frühere TXN-
+Geometrie erhält ebenfalls die präzisere Kategorie.
+Syntax, ZIP-CRC und Auslieferungshashes geprüft. Alle übrigen Python-Quelldateien
+gegenüber ci unverändert. Keine empirische Strategieperformance oder Liveprüfung.

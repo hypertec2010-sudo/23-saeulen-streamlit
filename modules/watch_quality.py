@@ -23,6 +23,8 @@ def assess(levels):
         return {**result, "reason": "Kein technisches Ziel hinterlegt; CRV nicht prüfbar."}
     result.update(rr_entry=(target - entry) / (entry - stop),
                   rr_cap=(target - cap) / (cap - stop))
+    if target <= entry:
+        return {**result, "reason": "Ziel liegt auf/unter dem Entry-Auslöser; bereits dort kein positiver Zielspielraum."}
     if target <= cap:
         return {**result, "reason": "Ziel liegt auf/unter der oberen Entry-Grenze; kein positiver Zielspielraum im gesamten Entryband."}
     if result["rr_cap"] < MIN_ENTRY_RR:

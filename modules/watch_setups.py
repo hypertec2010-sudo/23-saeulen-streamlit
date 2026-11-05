@@ -21,8 +21,8 @@ PREVIOUS_POLICY = "chart_watch_v30.21by"
 VERSION = 1
 PHASES = {"ready": "Struktur bestätigt", "forming": "Setup entsteht",
           "triggered": "Auslöser bereits erreicht", "missed": "Entry verpasst / überdehnt",
-          "invalid": "Struktur ungültig", "blocked": "Prüfung gesperrt", "none": "Kein Chartsetup"}
-RANK = {"ready": 7, "triggered": 6, "missed": 5, "invalid": 4, "forming": 3, "none": 1, "blocked": 0}
+          "unsuitable": "Tradeplan ungeeignet", "invalid": "Struktur ungültig", "blocked": "Prüfung gesperrt", "none": "Kein Chartsetup"}
+RANK = {"ready": 7, "triggered": 6, "missed": 5, "unsuitable": 5, "invalid": 4, "forming": 3, "none": 1, "blocked": 0}
 KINDS = {"range_breakout": "Konsolidierung vor Ausbruch",
          "support_pullback": "Pullback an bestätigter Unterstützung",
          "higher_low_pullback": "Trend-Pullback mit höherem Tief",
@@ -413,6 +413,10 @@ def detect(result, *, now=None, hard_gate=False):
                 continue
             if (quote is not None and quote <= stop) or (running_low is not None and running_low <= stop):
                 attempts[pos] = {**candidate, "phase": "invalid", "reason_code": "live_invalidation", "reason": "Neuerer Analysepreis/laufendes Tagestief hat Invalidierung erreicht."}
+            elif candidate["phase"] == "unsuitable":
+                # A structurally impossible reward plan is not a missed entry;
+                # only a real invalidation above may supersede this diagnosis.
+                continue
             elif candidate.get("target") is not None and ((quote is not None and quote >= candidate["target"]) or
                     (running_high is not None and running_high >= candidate["target"])):
                 attempts[pos] = {**candidate, "phase":"missed", "reason_code":"pattern_target_consumed",

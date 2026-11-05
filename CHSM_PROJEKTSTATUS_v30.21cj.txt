@@ -1,0 +1,16 @@
+CHSM v30.21cj – 05.11.2026; Basis v30.21ci.
+
+Neue Phase unsuitable (Tradeplan ungeeignet) trennt Ziel auf/unter Entry bzw.
+innerhalb des Entrybands von einem ursprünglich positiv liegenden, später
+erreichten Musterziel. Invalidierungsvorrang bleibt bestehen. Frische Livekurse
+können diese Diagnose nicht mehr in vermeintliches Ziel-Erreichen umbenennen.
+MA-Geometrie und frühere TXN-Geometrie fallen in die neue Kategorie.
+Die Diagnosetabellen und bestehende Musteranzeigen nutzen dieselbe Phase.
+Es entsteht dadurch kein neuer Trade und keine veränderte Levels-Konstruktion.
+
+Bestand: cf Radar-Übernahme, Positionsauswertung und MA200; cg Musterziele;
+ch Bullflagge/Volumenbestätigung; ci eigenständige Chartprüfung ohne allgemeines
+Analyse-Einstiegsgate. Mindest-CRV 1,5R, Earnings- und eigene Chart-Regeln aktiv.
+London zurückgestellt. Bestehende Ideen/Positionen unverändert.
+Noch offen: empirische Prüfung der Strategiequalität und möglicher früherer
+Pullback-/weiterer Fortsetzungsregeln anhand realhistorischer Kursverläufe.

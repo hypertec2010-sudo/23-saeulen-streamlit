@@ -1,0 +1,48 @@
+CHSM v30.21cj – Ungeeigneter Tradeplan und erreichtes Ziel getrennt
+
+BASIS: vollständig installierte v30.21ci. Ergänzungspatch, kein Gesamtprojekt.
+Projekt und Wächter-Daten sichern. ZIP-Inhalt unter denselben Pfaden in den
+Projektordner kopieren und vorhandene Dateien ersetzen. App neu starten und
+Version v30.21cj kontrollieren. Keine zusätzlichen Produkt-Abhängigkeiten.
+Gewünschte Aktien / Radar-Liste neu analysieren. Gespeicherte alte Scan-Belege
+werden nicht rückwirkend umklassifiziert; bestehende Ideen/Positionen behalten
+ihre akzeptierten festen Regeln. Keine automatische Migration oder Order.
+
+NEUE EINORDNUNG
+- Ziel auf/unter dem Entry-Auslöser: Tradeplan ungeeignet; Code
+  target_not_above_entry. Schon am Auslöser fehlt positiver Zielspielraum.
+- Ziel oberhalb des Auslösers, aber innerhalb des Entrybands / auf Obergrenze:
+  Tradeplan ungeeignet; Code target_inside_entry_band. Kein positiver Spielraum
+  im gesamten zulässigen Entryband.
+- Ziel oberhalb des Entrybands, anschließend erreicht: weiterhin Entry verpasst /
+  überdehnt mit pattern_target_consumed. Erst hier war das Ziel als positiver
+  Planungsraum vorhanden. Andere bestehende Einstiegs-/CRV-Prüfungen gelten weiter.
+- Eine tatsächlich gebrochene Invalidierung hat weiterhin Vorrang. Neue Quotes
+  oder laufende Tageshochs überschreiben die Diagnose eines schon ursprünglich
+  ungeeigneten Plans nicht mehr mit der Meldung "Ziel bereits erreicht".
+
+MA-FALL
+Gelieferte Levels: Entry 662,6072, oberer Entry 668,9429, Invalidierung 601,37,
+Musterziel 633,29 USD. Brutto-CRV gerundet -0,48R bzw. -0,53R.
+Diese Geometrie ist schon bei ihrer Konstruktion ungeeignet, kein belegter
+verpasster Einstieg. Der neue Test prüft die gelieferten Levels; die originale
+vollständige MA-Kurshistorie lag nicht vor. Kein historischer MA-Replay behauptet.
+
+STRATEGISCHE GRENZE
+Der Pullback-Detektor wartet weiterhin auf ein bestätigtes Tief mit drei rechten
+Tageskerzen und setzt den Trigger über deren Hoch. Das Ziel bleibt das Hoch vor
+dem Rücksetzer. Eine schnelle Erholung kann diesen Plan bis dahin unbrauchbar
+machen. Dieser Patch erklärt das korrekt; er ändert diese Eintrittsregel nicht
+und verspricht keine höhere Trefferzahl.
+Die bestehende eigenständige Range-Ausbruchs- und Ausbruch/Rücktest-Erkennung
+wird weiter separat geprüft. Ein geeigneter bereiter Alternativplan hat bei der
+Auswahl weiterhin Vorrang vor einem ungeeigneten Pullback. Es wird kein neues
+Ausbruchssetup durch bloßes Anheben des alten Pullback-Ziels erzeugt.
+Eine frühere Pullback-Bestätigung oder ein zusätzliches Fortsetzungsmodell wäre
+eine weitere Strategieänderung und ist hier nicht implementiert oder validiert.
+
+UNVERÄNDERT
+Mindest-CRV 1,5R, bestehende Ziele/Stops, allgemeine Analyse, Daten-/Trend- und
+Earnings-Regeln sowie die Entkopplung vom allgemeinen Analyse-Gate aus ci.
+Die Bullflaggen-Volumenbestätigung bleibt bestehen; London bleibt zurückgestellt.
+Keine Aussage zur Profitabilität; keine neue Hintergrund- oder Brokerausführung.

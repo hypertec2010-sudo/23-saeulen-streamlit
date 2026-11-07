@@ -1,0 +1,56 @@
+CHSM v30.21cl – Support-Kurz direkt in der Screener-Übersicht
+
+BASIS: vollständig installierte v30.21ck. Ergänzungspatch, kein Gesamtprojekt.
+Projekt und Wächter-Daten sichern. ZIP-Inhalt unter denselben Pfaden in den
+Projektordner kopieren; vorhandene Dateien ersetzen. Auch legacy_app.py ersetzen:
+dort wird die sichtbare Spaltenauswahl der kompakten Übersicht festgelegt.
+App neu starten und Version v30.21cl kontrollieren. Keine neuen Abhängigkeiten.
+
+ANZEIGE
+Die neue Spalte "Support-Kurz" steht in der kompakten Desktop-Tabelle direkt
+neben dem Kurs. In der mobilen Übersicht erscheint dieselbe Aussage als
+"Support" auf der Aktienkarte. Bei vielen sichtbaren Spalten kann weiterhin
+horizontaler Tabellen-Scroll nötig sein. Die ausführliche Übersicht aus ck bleibt.
+
+Beispiele (nur Formatbeispiele, keine aktuellen Aktienkurse):
+- Support 99,50–101,00 USD · 2,4 % darunter
+- In Zone 99,50–101,00 USD · Reaktion offen
+- Zone 99,50–101,00 USD gebrochen
+- Unter Zone ... · Schluss offen
+- Zone ... · Retest offen
+Alte Historie bekommt einen Stand-Hinweis. Fehlende Daten werden als nicht
+berechenbar bezeichnet. Ohne Support-Beleg lautet die Aussage "Neu scannen".
+Eine alte historische Zone wird nicht als neue Kauf- oder Bodenfreigabe ausgegeben.
+
+KORREKTUR DER DATENÜBERNAHME
+In ck wurde der Support-Datensatz zwar berechnet, konnte bei der bestehenden
+Bereinigung interner Live-Hilfsfelder aber wieder entfernt werden. __support_map
+bleibt nun ausdrücklich erhalten. Tests prüfen den echten Weg durch die
+Statusaufbereitung und die JSON-Speicherung/Wiederherstellung eines Scans.
+Die Kurzfassung wird aus demselben erhaltenen Support-Beleg abgeleitet.
+Alte gespeicherte Ergebnisse, deren Beleg bereits fehlt, können nicht rückwirkend
+rekonstruiert werden: gewünschte Werte einmal neu scannen.
+
+MUSTERBESTAND – CODEPRÜFUNG, KEINE NEUEN DETEKTOREN IN DIESEM PATCH
+Bullenflagge: allgemeine kurze Bullflagge im Trade-Wächter vorhanden. Unabhängig
+davon gibt es im Spezialmuster-Kontext einen weich bewerteten High-Tight-Flag-
+Hinweis; das ist kein vollständiger allgemeiner Bullflaggen-Detektor.
+Bärenflagge: kein eigenständiger Detektor gefunden.
+Schulter-Kopf-Schulter: kein eigenständiger Detektor gefunden.
+Inverse Schulter-Kopf-Schulter: kein eigenständiger Detektor gefunden.
+Doppelboden: vereinfachter weicher "Double Bottom / Higher Low"-Hinweis im
+Spezialmuster-Kontext. Er vergleicht Tiefs zweier Abschnitte und zusätzliche
+Kontextsignale; keine vollständige W-Struktur mit eigenständig geprüfter Nackenlinie.
+Doppeltop: kein eigenständiger Detektor gefunden.
+
+Die vorhandenen Spezialmuster-Hinweise sind keine vollständig gleichwertige
+Erkennung aller sechs klassischen Muster. Diese zusätzlichen Detektoren sind
+ein eigener künftiger Funktionsumfang und werden hier nicht als implementiert
+oder getestet ausgegeben. Die Auflistung beschreibt vorhandenen Code, keine
+Aussage über die Profitabilität der jeweiligen Muster.
+
+UNVERÄNDERT
+Unterstützungs-Erkennungsregeln aus ck, Trendampeln, Scores, Gates, Analyse-Stop,
+Ziele, CRV, Radar-Ranking und Trade-Wächter-Regeln. Keine zusätzlichen Provider-
+Abfragen oder automatischen Handelsaktionen. Bestehende Ideen/Positionen behalten
+ihre Regeln. London bleibt zurückgestellt.

@@ -1,7 +1,6 @@
-Basis v30.21cj:
-37efb22dbe29721a66fc357155ccec9429b6d4e799e35d1ebe4004acb75e3b08  VERSION.txt
-NEU  modules/support_map.py
-71923aebc4913c8a5ebf0bd6ebcc6528167f123621022a53feedfd290a86c093  modules/chart_ma_table.py
-2c05ca49020275e2e0c5dd3dc8967c79d032e29321a3d77e6fe4e39c295db4b7  modules/live_monitor.py
-bf5deaed664c801bd88dab3d0a060456c79bebb87ddb821daaec2986ea8b75bc  modules/trade_watch_ui.py
-NEU  tests/test_support_map_ck.py
+Basis v30.21ck:
+84e3b6aaa4df0aae9ac165ea68a30deeb0f78eb2e7565710d640b80203d1dfa9  VERSION.txt
+57b0c57675fdeb652960e722dbceb75ba9d63da231111eddbac6734e90c190c7  legacy_app.py
+1faf4df4cbb30ad99e633a8aaabbdb5418b5c64ee269b0e0678329cbcb4bcbe0  modules/live_monitor.py
+05fc6a374563f4892559b8988092976d4ca621ab197b066c4b04c41a9735bb08  modules/support_map.py
+NEU  tests/test_support_brief_cl.py

@@ -127,6 +127,52 @@ STATES={'below_price':'Unterhalb des Kurses · Reaktion offen',
         'reclaimed':'Zurückerobert · neuer Tief-Retest fehlt'}
 
 
+def support_brief(package):
+    """Compact wording from the same snapshot; never infer a buy signal."""
+    p=package
+    if not isinstance(p,dict) or p.get('policy')!=POLICY:
+        return 'Neu scannen'
+    if not p.get('available'):
+        return 'Nicht berechenbar'
+    price=number(p.get('price'))
+    if price is None or price<=0 or not isinstance(p.get('zones'),list):
+        return 'Daten unvollständig · neu scannen'
+    zones=[]
+    for z in p['zones']:
+        if not isinstance(z,dict):return 'Daten unvollständig · neu scannen'
+        low,high,dist=(number(z.get(k)) for k in ('low','high','distance_pct'))
+        if low is None or high is None or dist is None or not 0<low<=high or z.get('state') not in STATES:
+            return 'Daten unvollständig · neu scannen'
+        zones.append({**z,'low':low,'high':high,'distance_pct':dist})
+    below=[z for z in zones if z['low']<=price]
+    z=min(below,key=lambda z:abs(z['distance_pct'])) if below else min(zones,key=lambda z:z['distance_pct']) if zones else None
+    if z is None:
+        text='Keine bestätigte Tiefzone darunter'
+    else:
+        fmt=lambda v:(f'{v:.4f}' if abs(v)<1 else f'{v:.2f}').replace('.',',')
+        band=fmt(z['low'])+'–'+fmt(z['high'])
+        currency=str(p.get('currency') or '').strip()
+        band+=(' '+currency) if currency else ''
+        distance=f"{abs(z['distance_pct']):.1f}".replace('.',',')+' %'
+        state=z['state']
+        if state=='in_zone':text='In Zone '+band+' · Reaktion offen'
+        elif state=='broken':text='Zone '+band+' gebrochen'
+        elif state=='intraday_below':text='Unter Zone '+band+' · Schluss offen'
+        elif state=='intraday_reclaim':text='Über Zone '+band+' · Schluss offen'
+        elif state=='reclaimed':text='Zone '+band+' · '+distance+' darunter · Retest offen'
+        else:text='Support '+band+' · '+distance+' darunter'
+        if z.get('older'):text+=' · älter'
+    if p.get('stale'):text+=' · Stand '+str(p.get('basis_date') or 'unbekannt')
+    return text
+
+
+def attach_support_briefs(frame):
+    if not isinstance(frame,pd.DataFrame):return frame
+    out=frame.copy()
+    out['Support-Kurz']=[support_brief(r.get('__support_map')) for r in out.to_dict('records')]
+    return out
+
+
 def selected_zones(package):
     zones=(package or {}).get('zones') or []
     below=sorted([z for z in zones if z['high']>=package['price']>=z['low'] or z['high']<package['price']],

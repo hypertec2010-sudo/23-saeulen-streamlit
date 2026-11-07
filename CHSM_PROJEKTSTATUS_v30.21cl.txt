@@ -1,0 +1,15 @@
+CHSM v30.21cl, 07.11.2026; Basis v30.21ck.
+
+Neu: Support-Kurz direkt neben Kurs in der kompakten Screener-Tabelle; dieselbe
+Aussage in den mobilen Aktienkarten. Support-Beleg überlebt jetzt die tatsächliche
+Bereinigung und JSON-Speicherung der Live-Ergebnisse. Fehlende alte Belege müssen
+durch neuen Scan erzeugt werden; sie werden nicht aus Preisnähe erfunden.
+Keine Änderung der Support-Detektion oder operativen Handelsbewertung.
+
+Musteraudit: Bullflagge im Wächter; unabhängig davon weiche High-Tight-Flag- und
+vereinfachte Double-Bottom/Higher-Low-Hinweise. Eigenständige Bärenflaggen-, SKS-,
+inverse-SKS- und Doppeltop-Detektoren fehlen. Keine neuen Muster in diesem Patch.
+
+Bestehende cf–ck-Funktionen bleiben erhalten. Produktions-Wächter erhält keine
+aus dem explorativen Ausbruchsvergleich abgeleitete neue Strategie. London bleibt
+zurückgestellt. Unterstützungsnähe erzeugt kein Kaufsignal und keine grüne Ampel.

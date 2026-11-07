@@ -1,0 +1,21 @@
+CHSM v30.21ck, 07.11.2026; Basis v30.21cj.
+
+Neu: unabhängige historische Unterstützungsübersicht auf bestätigten Tiefpunkten
+über bis zu 520 vorhandene Tageskerzen. Mehrfachtests, Alter, Abstand und Bruch- /
+Rückeroberungsstatus sichtbar. Einzelne Tiefs getrennt. Screener-Tabelle auch bei
+roten Werten; in der Chartanalyse vor der MA-Tabelle mit eigener Kursgrafik.
+Keine zusätzlichen Providerabfragen und keine Signal-/Score-/Stop-Veränderungen.
+Neue Screener-Felder entstehen erst nach einem neuen Scan. Bestehende Ideen und
+Positionen bleiben unverändert. London ist weiterhin zurückgestellt.
+
+Produktive Basis: cf Radar-Übernahme, Positionsergebnisse und MA200; cg eigene
+Musterziele; ch Bullflagge mit Intraday-Volumenprüfung; ci unabhängige Chartprüfung
+ohne allgemeines Einstiegsgate; cj korrekte Trennung ungeeigneter Zielgeometrie
+von einem ursprünglich geeigneten, später erreichten Ziel.
+
+Die separate explorative Ausbruchsprüfung vom 06.11.2026 ist kein App-Bestandteil.
+Keine daraus abgeleitete neue Einstiegsstrategie wurde produktiv übernommen.
+Unterstützungsnähe ist eine Beobachtungsinformation und verändert die rote Ampel
+nicht. Startheuristiken sind keine empirischen Boden-/Gewinnwahrscheinlichkeiten.
+Provider-Finalität der Tageskerzen und Quote-Zeitstempel bleiben ungeprüft;
+Datenalter und bekannte Kalenderbasis werden angezeigt.

@@ -2250,7 +2250,10 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _risk_basis_bv = build_analysis_risk_basis(r, generated_at=get_current_berlin_time().isoformat())
     from modules.watch_setups import detect as _detect_watch_setup_bz
     _watch_setup_bz = _detect_watch_setup_bz(r, hard_gate=entry_hard_gate)
+    from modules.support_map import build_support_map
+    _support_map_ck = build_support_map(r)
     return {
+        "__support_map": _support_map_ck,
         **_package_fields_v3020,
         "__env_sector": str(r.get("sector") or r.get("sector_label") or (r.get("info") or {}).get("sector") or ""),
         "__env_industry": str(r.get("industry") or r.get("industry_label") or (r.get("info") or {}).get("industry") or ""),

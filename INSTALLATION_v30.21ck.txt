@@ -1,0 +1,82 @@
+CHSM v30.21ck – Historische Unterstützungszonen auch bei roten Trendwerten
+
+BASIS: vollständig installierte v30.21cj. Ergänzungspatch, kein Gesamtprojekt.
+Projekt und Wächter-Daten sichern. ZIP-Inhalt unter denselben Pfaden in den
+Projektordner kopieren; vorhandene Dateien ersetzen. modules/support_map.py
+ist NEU und erforderlich. Alle mitgelieferten Module gemeinsam aktualisieren.
+App neu starten und Version v30.21ck kontrollieren. Keine neuen Abhängigkeiten.
+
+WO DIE ÜBERSICHT STEHT
+1. Live-Screener / analysierte Watchlist:
+   "🧱 Unterstützungszonen · auch bei roten Werten" aufklappen.
+   Zeigt nächste mehrfach getestete Tiefzone, Abstand zur Zonenkante, Anzahl
+   getrennter Tests, Zustand und Datenbasis neben dem bisherigen Trendstatus.
+   Die gewünschte Liste oder einzelne gewünschte Werte einmal neu scannen.
+   Alte Scan-Ergebnisse ohne diesen Zusatz werden nicht rückwirkend berechnet.
+2. Sofortanalyse / Chartanalyse:
+   "Historische Unterstützungszonen" direkt vor der MA20/50/200-Tabelle.
+   Tabelle plus aufklappbarer Kursverlauf mit markierten Zonen und Kursreferenz.
+   Unterhalb des Kurses höchstens drei nahe Zonen plus gegebenenfalls eine
+   weitere ausgeprägte Zone. Oberhalb die nächste unterschrittene Tiefzone.
+   Einzelne bestätigte Tiefs erscheinen getrennt, ausdrücklich nicht als
+   mehrfach bestätigte Unterstützung.
+
+WAS GEPRÜFT WIRD
+Vorhandene Tages-OHLC-Historie, höchstens 520 abgeschlossene Kursdaten nach dem
+bekannten Börsenkalender. Mindestens 60 Tageskerzen; keine laufende Tageskerze
+für die Pivot-Bestätigung. Datenformat, OHLC-Plausibilität, eindeutige Daten,
+grobe Lücken und Tagesfrequenz werden geprüft. Keine neuen Providerabfragen.
+Ist eine letzte erwartete Tageskerze nicht vorhanden, bleibt die Übersicht
+explizit historisch/veraltet. Provider-Finalität und Aktualität des Analysequotes
+werden nicht separat verifiziert; ein alter Intraday-Cache kann auch nach
+Börsenschluss unvollständige Werte enthalten. Die Übersicht erteilt keine Freigabe.
+
+Zonen entstehen ausschließlich aus strikten Tief-Pivots mit drei abgeschlossenen
+Nachbarkerzen links und rechts. Anders als beim bisherigen allgemeinen Chart-
+Overlay werden Hoch- und Tief-Pivots nicht zusammen als Unterstützungsbeleg gezählt.
+Die gesamte Spannweite einer Preisgruppe darf höchstens 1,5 % vom niedrigsten
+Pivot betragen; keine unbegrenzt weiterlaufenden Ketten benachbarter Levels.
+Mehrere Tief-Pivots mit weniger als sechs Handelskerzen Abstand zählen als ein Test.
+Eine Zone benötigt mindestens zwei getrennte Tests. "Ausgeprägt" bedeutet
+mindestens drei Tests mit mindestens 20 Handelskerzen Abstand zwischen erstem
+und letztem Test. Tests älter als 126 Handelskerzen werden sichtbar gekennzeichnet.
+Die Zonenbreite erhält einen transparenten Volatilitätspuffer: min(0,5 % des
+Mittelniveaus, max(0,2 %, 0,1 ATR14)). ATR14 ist hier ein einfacher True-Range-
+Mittelwert. Das sind Startheuristiken, keine validierten Abprallwahrscheinlichkeiten.
+
+ZUSTÄNDE
+- Unterhalb des Kurses: mögliche historische Unterstützungszone; Reaktion offen.
+- Kurs in Zone: Testbereich erreicht, Bodenbildung noch nicht bestätigt.
+- Aktuell unterschritten: Quote darunter, letzter abgeschlossener Schluss noch
+  nicht darunter; Schlussbestätigung fehlt.
+- Gebrochen per Tagesschluss: Quote und letzter abgeschlossener Schluss unter
+  der Unterkante. Nur möglicher Widerstand, keine weiterhin intakte Unterstützung.
+- Aktuell über Zone: Quote über Oberkante, letzter Schluss noch unter Unterkante;
+  Schlussbestätigung einer Rückeroberung fehlt.
+- Zurückerobert: nach jüngstem bestätigten Tief-Test gab es einen Schluss unter
+  der Zone und anschließend wieder Kurse darüber. Ein neuer bestätigter Tief-
+  Retest fehlt. Neue bestätigte Tief-Tests nach einem Bruch können dies ändern.
+
+Abstand: nächstliegende Zonenkante, 0 % innerhalb. Negative Werte bedeuten eine
+Zone unterhalb des Referenzkurses; positive eine Zone darüber. Unterhalb keine
+Zone bedeutet nur: in dieser verwendeten Historie nicht mehrfach belegt.
+Fehlende/ungültige Daten erscheinen als "Nicht berechenbar", nicht als Beweis,
+dass unterhalb des Kurses keine Unterstützung existiert.
+
+ABGRENZUNG
+Der bestehende Hauptchart kann weitere allgemeine Pivot-/Widerstandszonen auf
+anderer Historienbasis zeigen. Die neue eigene Grafik visualisiert ausschließlich
+die hier dokumentierten Tiefzonen. Sie zählt gleitende Durchschnitte nicht als
+zusätzliche historische Tests. Keine neue Wochen-/Volumenprofil-Erkennung.
+US und Xetra mit vorhandener Kalenderprüfung; London bleibt zurückgestellt.
+
+Trendampel, Scores, Gates, Analyse-Stop, Ziele, CRV, Radar-Ranking und gespeicherte
+Trade-Wächter-Regeln bleiben unverändert. Eine Aktie kann rot bleiben und nahe
+an einer historischen Tiefzone liegen. Keine automatische Kauf- oder Bodenfreigabe.
+Keine historische Validierung der Reaktionsqualität oder Profitabilität behauptet.
+
+FACHLICHE EINORDNUNG
+Unterstützung/Widerstand und möglicher Rollenwechsel nach einem Bruch:
+https://www.fidelity.com/learning-center/trading-investing/technical-analysis/support-and-resistance?print=true-0
+Die numerischen Detektionsregeln dieses Patches sind eigene, nicht aus der Quelle
+übernommene oder von ihr empirisch bestätigte Parameter.

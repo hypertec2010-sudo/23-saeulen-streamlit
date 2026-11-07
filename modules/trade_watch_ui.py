@@ -112,6 +112,8 @@ def render_capture(st, frame, *, key="watch_screener"):
     from modules.watch_setups import validate, evidence_valid, diagnostic_tables
     if not isinstance(frame, pd.DataFrame) or frame.empty or "Ticker" not in frame:
         return
+    from modules.support_map import render_screener_supports
+    render_screener_supports(st, frame)
     stocks, counts, patterns = diagnostic_tables(frame, now=watch.utc())
     by_phase = stocks["Phase"].value_counts()
     st.caption("Chartsetups · " + " · ".join(f"{phase}: {count}" for phase,count in by_phase.items()))

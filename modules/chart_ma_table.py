@@ -26,6 +26,8 @@ def moving_average_rows(result):
 
 
 def render_moving_averages(st, result):
+    from modules.support_map import build_support_map, render_support_map
+    render_support_map(st, build_support_map(result))
     st.markdown("**Gleitende Durchschnitte · Tagesbasis**")
     st.table(pd.DataFrame(moving_average_rows(result)))
     st.caption("Einfache Durchschnitte der vollständigen Analysehistorie, unabhängig vom sichtbaren Chartausschnitt. Der letzte Tagesbalken kann noch laufen. Fehlende Historie wird nicht durch kürzere Durchschnitte ersetzt.")

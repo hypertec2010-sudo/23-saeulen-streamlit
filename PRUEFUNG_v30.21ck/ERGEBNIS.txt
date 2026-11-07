@@ -1,0 +1,27 @@
+CHSM v30.21ck – 07.11.2026
+Python 3.12, pytest 8.4.2, Pandas 2.2.3, NumPy 2.3.5, Streamlit 1.56.0.
+Vollsuite: 667 bestanden, 1 explizit ausgenommen.
+Befehl: python3 -m pytest -q --deselect=tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Die erwartete .github/workflows/quality.yml fehlt bereits im Ausgangsprojekt.
+Diese bekannte Ausnahme ist kein bestandener Deployment-/CI-Nachweis.
+
+Pandas 3.0.2: 66 gezielte Tests bestanden (Teilmenge der Vollsuite).
+Befehl: python3 -m pytest -q tests/test_support_map_ck.py tests/test_watch_extensions_cf.py tests/test_watch_independence_ci.py
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH; Protokoll enthält Streamlit-
+Warnungen beim Start ohne normale App-Sitzung.
+
+28 neue Fälle: bestätigte Mehrfach-Tiefs und Datumsbelege; kein Ketten-Clustering;
+nahe Pivots nicht doppelt gezählt; ausreichende Testzahl und Zeitspanne;
+unterschiedliche Zustände für Tagesbruch, Quote darunter, Kurs in der Zone,
+Rückeroberung und bestätigten neuen Tief-Retest; alte Zonen gekennzeichnet;
+laufende/future Kerzen; fehlende, zu kurze, ungeordnete, doppelte und ungültige
+OHLC-Daten; Lücken und falsche Frequenz; unsupported Kalender; explizite
+Staleness; Einzeltief getrennt; unveränderte Eingabe; JSON-Serialisierung;
+gleiche Levels in Screener und Detail; rote Statusanzeige bleibt erhalten;
+Plotly-Zonen; echter Streamlit-AppTest für beide Ansichten; fehlende Daten
+werden nicht als erwiesene Abwesenheit einer Unterstützung ausgegeben.
+
+Syntax, ZIP-CRC und Auslieferungshashes geprüft. Alle übrigen Python-Dateien
+gegenüber cj unverändert, insbesondere Score-/CRV-/Stop-/Trade-Wächter-Logik.
+Synthetische Funktionstests; kein Nachweis einer realen Abprallwahrscheinlichkeit,
+kein Live-Provider-/Broker-Test und kein historischer Profitabilitätsbacktest.

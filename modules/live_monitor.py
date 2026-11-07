@@ -2252,7 +2252,11 @@ def _v212_monitor_status_from_decision(result, decision, style_name="Ausgewogen"
     _watch_setup_bz = _detect_watch_setup_bz(r, hard_gate=entry_hard_gate)
     from modules.support_map import build_support_map, support_brief
     _support_map_ck = build_support_map(r)
+    from modules.chart_patterns import build_chart_patterns, patterns_brief
+    _chart_patterns_cm = build_chart_patterns(r,daily_context=_support_map_ck)
     return {
+        "__chart_patterns": _chart_patterns_cm,
+        "Chartmuster-Kurz": patterns_brief(_chart_patterns_cm),
         "__support_map": _support_map_ck,
         "Support-Kurz": support_brief(_support_map_ck),
         **_package_fields_v3020,
@@ -3227,11 +3231,13 @@ def apply_live_watchlist_status_history_v220(live_df, *, watchlist_name="", styl
                           if str(c).startswith("__")
                           and not str(c).startswith("__pkg_")
                           and not str(c).startswith("__diag_")
-                          and str(c) not in {"__env_sector", "__env_industry", "__env_stock", "__risk_basis", "__watch_setup", "__support_map"}]:
+                          and str(c) not in {"__env_sector", "__env_industry", "__env_stock", "__risk_basis", "__watch_setup", "__support_map", "__chart_patterns"}]:
         if _internal_col in enriched.columns:
             enriched = enriched.drop(columns=[_internal_col])
     from modules.support_map import attach_support_briefs
     enriched = attach_support_briefs(enriched)
+    from modules.chart_patterns import attach_pattern_briefs
+    enriched = attach_pattern_briefs(enriched)
     # Signal-Stabilität und Bestätigungen direkt neben Status platzieren, falls Pandas sie ans Ende gesetzt hat.
     if "Signal-Stabilität" in enriched.columns:
         col_vals = enriched.pop("Signal-Stabilität")

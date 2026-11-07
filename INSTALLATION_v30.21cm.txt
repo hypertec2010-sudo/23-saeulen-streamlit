@@ -1,0 +1,127 @@
+CHSM v30.21cm – sechs eigenständige Tages-Chartmuster
+
+BASIS: vollständig installierte v30.21cl. Ergänzungspatch, kein Gesamtprojekt.
+Projekt und Wächter-Daten sichern. ZIP-Inhalt unter denselben Pfaden in den
+Projektordner kopieren; vorhandene Dateien ersetzen. Die beiden neuen Module
+modules/chart_patterns.py und modules/chart_pattern_ui.py sind erforderlich.
+Auch legacy_app.py gemeinsam ersetzen (sichtbare Desktop-/Mobil-Spalten).
+App neu starten und v30.21cm kontrollieren. Keine neuen Produkt-Abhängigkeiten.
+Gewünschte Aktien / Watchlisten neu scannen; alte gespeicherte Ergebnisse
+ohne Musterbeleg können die neuen Felder nicht rückwirkend erzeugen.
+
+WO DIE MUSTER STEHEN
+- Kompakte Screener-Übersicht: neue Spalte "Chartmuster-Kurz" direkt nach
+  "Support-Kurz". Zeigt höchstens zwei aktuelle Hinweise; die vollständige
+  Übersicht enthält alle sechs Prüfungen. Keine Kauf-/Short-Freigabe.
+- Mobile Aktienkarte: "Chartmuster" mit derselben Kurzfassung.
+- Screener unter "Chartmuster · alle analysierten Werte": sechs Zeilen je Aktie
+  mit Richtung, Zustand, Bezugslinie, Grund und Tagesbasis.
+- Sofortanalyse / Chartanalyse, vor der Unterstützungs- und MA-Tabelle:
+  "Chartmuster · unabhängig vom Trade-Wächter" aufklappen. Dort alle sechs
+  Prüfungen sowie auswählbare Levels und ein Kerzenchart mit Strukturpunkten,
+  Nacken-/Flaggenlinie, Invalidierung und Projektionsreferenz.
+
+UMFANG
+Bullenflagge, Bärenflagge, Schulter-Kopf-Schulter, inverse SKS, Doppelboden,
+Doppeltop. Jeweils Entsteht / Bestätigt / Verworfen. Hinzu kommen explizit
+"Kein Beleg" bei keiner passenden Struktur und "Nicht prüfbar" bei fehlenden
+Daten. Kein Beleg ist kein Beweis, dass visuell keinerlei Muster vorhanden ist.
+
+EIGENSTÄNDIGKEIT
+Die neuen Muster hängen nicht von MA50, allgemeinem Einstiegsgate, Earnings,
+Bestandsposition, Grade, Trade-Wächter, dessen Zielplan oder Mindest-CRV ab.
+Es gelten ausschließlich die eigenen Tagesdaten-, Struktur- und hier beschriebenen
+Bestätigungsregeln. Allgemeine Analyse-Stop-/Zielwerte werden nicht übernommen.
+Ampeln, Scores, Radar-Ranking, bestehende weiche Spezialmuster und Handelsregeln
+bleiben unverändert. Eine bestätigte bärische Formation ist kein automatischer
+Short-Auftrag; eine bestätigte bullische Formation keine Kauf-/Wächter-Freigabe.
+Die vorhandene Wächter-Bullflagge bleibt ein anderer, unveränderter Regelbaustein.
+
+DATEN UND ZEIT
+Vorhandene OHLC-Historie, höchstens 260 abgeschlossene Tageskerzen; mindestens
+60 Tage. Keine zusätzlichen Providerabfragen. Die gemeinsame Prüfung aus der
+Unterstützungsübersicht prüft Format, Lücken und OHLC-Plausibilität nach bekanntem
+US-/Xetra-Kalender; London bleibt zurückgestellt. Laufende Tageskerzen zählen
+nicht als Bestätigung. Provider-Finalität ist nicht separat verifiziert.
+Alte Tagesdaten bleiben ausdrücklich historisch gekennzeichnet.
+Der neuere Analysequote allein bestätigt oder verwirft kein Tagesmuster.
+
+REVERSAL-REGELN (EIGENE STARTPARAMETER)
+- Strikte Hoch-/Tief-Pivots: drei abgeschlossene Nachbarn auf jeder Seite.
+  Doppelte Hoch-und-Tief-Pivots auf derselben Außenkerze werden nicht geordnet
+  interpretiert. Aufeinanderfolgende gleichartige Pivots werden auf das extremere
+  Niveau reduziert. Die benötigte letzte Struktur ist erst drei Tage später belegbar.
+- Vorherige Bewegung: mindestens 3 % über 20 Handelstage in der Richtung,
+  die das Muster umkehren soll. Kein übergeordneter MA50-Kauf-/Trendfilter.
+- Doppelboden/-top: Tief–Hoch–Tief bzw. Hoch–Tief–Hoch; äußere Extreme höchstens
+  3 % auseinander; Abstand 10–90 Handelskerzen. Gegenbewegung 3–35 % der
+  durchschnittlichen Extremhöhe. Nackenlinie ist das Zwischenhoch/-tief.
+- SKS / inverse SKS: fünf abwechselnde Pivots; äußere Schultern höchstens 3 %
+  auseinander, Kopf mindestens max(1 %, 0,4 ATR14) ausgeprägter. Gesamtdauer
+  15–140 Handelskerzen, mindestens 3 Kerzen zwischen Strukturpunkten; Verhältnis
+  linker/rechter Kopfabstand 0,4–2,5. Nackenpunkte höchstens 12 % Preisunterschied;
+  eine geneigte Nackenlinie ist zulässig. Kopf-/Nackenhöhe 3–35 % der Schulterhöhe.
+- Nur Muster mit letztem Strukturpunkt innerhalb der jüngsten 35 Handelstage.
+- Bezugslinienbruch: Schlusskurs über/unter der jeweils zeitlich geltenden
+  Nackenlinie, mit festem Puffer max(0,1 % der Linienreferenz, 0,1 ATR14) am
+  Zeitpunkt des vollständigen Strukturbelegs. Keine rückdatierte Bestätigung.
+- Invalidierung: bei SKS über/unter rechter Schulter samt Puffer; bei Doppel-
+  formen über/unter beiden äußeren Extremen samt Puffer. Tagesschluss entscheidet.
+- Nach bestätigtem Bruch: Schluss zurück über/unter die Bezugslinie mit Puffer
+  verwirft den Bruch als Fehlausbruch. Eine normale Bewegung innerhalb des Puffers
+  ist dadurch allein noch kein verworfener Bruch.
+
+FLAGGEN-REGELN (EIGENE STARTPARAMETER)
+- Spiegelbildliche bullische/bärische Erkennung ohne Long-Trendgate.
+- 3–10 Impulstage: 4–25 % gerichtete Schlussbewegung, Höhe mindestens 2,5 ATR14
+  der VORHERIGEN Historie; Impulsextrem am letzten Impulstag und mindestens
+  60 % der internen Schlussänderungen in Impulsrichtung.
+- 3–10 Konsolidierungstage; Rücknahme 5–50 % der Masthöhe, höchstens 10 % des
+  Impulsextrems. Flagge überschreitet das Impulsextrem nicht deutlich (0,5 % Puffer).
+- Regressionsränder ungefähr parallel und gegenläufig/flach: gerichtete Steigung
+  höchstens 0,1 % des Impulsextrems pro Tag, Rand-Steigungsdifferenz höchstens
+  max(0,15 ATR14, 0,015 Masthöhen) pro Tag. Mittlere Kerzenbreite höchstens
+  80 % der Impulskerzenbreite. Keine allgemeine Pennant-Erkennung.
+- Ausbruchsgrenze: obere/untere angepasste Flaggenlinie, die alle relevanten
+  Hoch-/Tiefpunkte dieser Flagge einschließt. Eine bereits geschlossene
+  Überschreitung der früher belegbaren Linie wird nicht in eine später breiter
+  gezeichnete Flagge aufgenommen. Ein früherer Bruch kann nicht weggeschoben werden.
+- Invalidierung jenseits der entgegengesetzten Flaggenkante mit Puffer.
+  Ohne rechtzeitigen Bruch verfällt die Flagge nach höchstens ihrer eigenen Länge
+  (maximal zehn Handelstage). Bei bereits bestätigter Flagge greift stattdessen
+  die Invalidierungs-/Fehlausbruchsprüfung weiter.
+
+VOLUMEN
+Flaggen: Impulsmittel mindestens 1,2× der 20 Tage davor, Flaggenmittel höchstens
+80 % des Impulsmittels; zusätzlicher Bruchtag mindestens 1,2× des vorherigen
+20-Tage-Mittels. Doppelboden und inverse SKS benötigen ebenfalls diesen
+Bruchtags-Volumenbeleg. Fehlendes/ungültiges Volumen lässt diese Formationen
+entstehen, bestätigt sie aber nicht. Bärische SKS und Doppeltop können kursbasiert
+bestätigt werden; fehlender Volumenbeleg ist dort ausdrücklich als ungeprüft
+gekennzeichnet. Kein Signal-/Zukunftstag fließt in seinen eigenen Vergleich ein.
+
+BELEG UND PROJEKTIONSREFERENZ
+Strukturpunkte und Daten, frühester vollständiger Strukturbeleg, Bestätigung,
+Bezugslinie und feste Invalidierung sind gespeichert. Lag ein erster Bruch schon
+vor vollständigem Pivot-Beleg, wird dies genannt; es wird kein damals rechtzeitig
+beobachtbarer Einstieg behauptet. Eine neue Tagesbestätigung wird nie vordatiert.
+Projektionsreferenz = Nackenlinie plus/minus gemessene Formationshöhe bzw.
+Flaggenlinie plus/minus Masthöhe. Sie wird bei Bestätigung fixiert, nicht aus einem
+Wunsch-CRV errechnet. Kein verbindliches Kursziel oder Handelsplan. Eine spätere
+Berührung nach Invalidierung wird nicht als Mustererfolg gezählt. Ein vorheriger
+Docht der Bestätigungskerze wird nicht als spätere Zielberührung ausgegeben.
+
+GRENZEN
+Die sechs Detektoren sind regelbasierte Näherungen klassischer Formen. Alle
+numerischen Grenzen sind unvalidierte Startheuristiken und können visuelle
+Formationen übersehen oder Fehlinterpretationen liefern. Keine Gewinn-/Treffer-
+wahrscheinlichkeit, keine empirische Reaktionsqualität, kein Profitabilitätsnachweis.
+Die Tests prüfen synthetische Geometrien und Daten-/Zeitgrenzen, keine umfassende
+Marktvalidierung. Eine höhere Zahl von brauchbaren Wächter-Trades ist nicht zugesagt.
+
+FACHLICHER KONTEXT (NUMERISCHE REGELN OBEN SIND EIGENE FESTLEGUNGEN)
+https://chartschool.stockcharts.com/table-of-contents/chart-analysis/chart-patterns/head-and-shoulders-top
+https://chartschool.stockcharts.com/table-of-contents/chart-analysis/chart-patterns/head-and-shoulders-bottom
+https://chartschool.stockcharts.com/table-of-contents/chart-analysis/chart-patterns/double-top-reversal
+https://chartschool.stockcharts.com/table-of-contents/chart-analysis/chart-patterns/double-bottom-reversal
+https://chartschool.stockcharts.com/table-of-contents/chart-analysis/chart-patterns/flag-pennant

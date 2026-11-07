@@ -1,0 +1,23 @@
+CHSM v30.21cm – 07.11.2026
+Python 3.12, pytest 8.4.2, Pandas 2.2.3, NumPy 2.3.5, Streamlit 1.56.0.
+Vollsuite: 729 bestanden, 1 explizit ausgenommen.
+Befehl: python3 -m pytest -q --deselect=tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Die erwartete .github/workflows/quality.yml fehlt bereits im Ausgangsprojekt.
+Diese bekannte Ausnahme ist kein bestandener Deployment-/CI-Nachweis.
+
+Pandas 3.0.2: 94 gezielte Tests bestanden (Teilmenge der Vollsuite).
+Befehl: python3 -m pytest -q tests/test_chart_patterns_cm.py tests/test_support_map_ck.py tests/test_support_brief_cl.py tests/test_environment_history_roundtrip.py
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH; Streamlit-Warnungen beim Start
+ohne normale App-Sitzung bleiben im unveränderten Protokoll sichtbar.
+
+49 neue Prüfungen: alle sechs Muster in entstehender/bestätigter/verworfener
+Form; gespiegelte Richtungen; fehlendes und schwaches Volumen; Fehlausbruch;
+Bestätigungszeitpunkt nach Pivotbeleg; keine Bestätigung durch laufende Kerze
+oder aktuellen Einzelkurs; keine spätere Zielberührung nach Invalidierung;
+feste Flaggenlinien trotz nachfolgendem Ausbruch; Streamlit-Ansichten;
+Desktop/Mobil-Einbindung; reale Historien-Aufbereitung und JSON-Rundlauf.
+Weitere bisherige Support-, Historien- und Wächter-Prüfungen laufen mit.
+
+Syntax, ZIP-CRC und Auslieferungshashes geprüft. Übrige Python-Dateien gegenüber
+cl unverändert. Synthetische Tests prüfen die implementierten Regeln, keine
+empirische Erkennungsquote oder Profitabilität auf einem Marktuniversum.

@@ -27,7 +27,11 @@ def moving_average_rows(result):
 
 def render_moving_averages(st, result):
     from modules.support_map import build_support_map, render_support_map
-    render_support_map(st, build_support_map(result))
+    from modules.chart_patterns import build_chart_patterns
+    from modules.chart_pattern_ui import render_chart_patterns
+    support = build_support_map(result)
+    render_chart_patterns(st,build_chart_patterns(result,daily_context=support),key='analysis_patterns')
+    render_support_map(st, support)
     st.markdown("**Gleitende Durchschnitte · Tagesbasis**")
     st.table(pd.DataFrame(moving_average_rows(result)))
     st.caption("Einfache Durchschnitte der vollständigen Analysehistorie, unabhängig vom sichtbaren Chartausschnitt. Der letzte Tagesbalken kann noch laufen. Fehlende Historie wird nicht durch kürzere Durchschnitte ersetzt.")

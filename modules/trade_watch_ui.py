@@ -114,6 +114,8 @@ def render_capture(st, frame, *, key="watch_screener"):
         return
     from modules.support_map import render_screener_supports
     render_screener_supports(st, frame)
+    from modules.chart_pattern_ui import render_screener_patterns
+    render_screener_patterns(st, frame)
     stocks, counts, patterns = diagnostic_tables(frame, now=watch.utc())
     by_phase = stocks["Phase"].value_counts()
     st.caption("Chartsetups · " + " · ".join(f"{phase}: {count}" for phase,count in by_phase.items()))

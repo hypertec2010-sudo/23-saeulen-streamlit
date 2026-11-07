@@ -22332,6 +22332,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         _crv_v2842 = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV jetzt") or _mobile_row_v2842.get("CRV")))
                                         _analysis_stop_bv = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Analyse-Stop")))
                                         _support_brief_cl = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Support-Kurz") or "Neu scannen"))
+                                        _patterns_brief_cm = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Chartmuster-Kurz") or "Neu scannen"))
                                         _crv_context_v3021bt = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV-Einordnung")))
                                         _crv_entry_v3021an = html.escape(_v243_clean_cell(_mobile_row_v2842.get("CRV Entry")))
                                         _crv_clearance_v3021an = html.escape(_v243_clean_cell(_mobile_row_v2842.get("Freiraum")))
@@ -22362,6 +22363,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                               <div class="v2842-mobile-grid">
                                                 <div><span class="v2842-mobile-label">Kurs</span>{_price_v2842}</div>
                                                 <div><span class="v2842-mobile-label">Support</span>{_support_brief_cl}</div>
+                                                <div><span class="v2842-mobile-label">Chartmuster</span>{_patterns_brief_cm}</div>
                                                 <div><span class="v2842-mobile-label">Volatilität</span>{_vol_v2842}</div>
                                                 <div><span class="v2842-mobile-label">Datenqualität</span>{_dq_v2845d}</div>
                                                 <div><span class="v2842-mobile-label">Relative Stärke</span>{_rs_v2847}</div>
@@ -22559,7 +22561,7 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                     # untouched and expose the four user-facing CRV fields here.
                                     _compact_cols_v3021l = [
                                         "Ampel", "Umfeldrisiko", "Ticker", "Name", "Umfeld-Grund", ("Setup-Stärke" if "Setup-Stärke" in _desktop_live_display_v304a.columns else "Live-Score"), "Priorität",
-                                        "Decision-Confidence", "Kurs", "Support-Kurz", "Volatilität",
+                                        "Decision-Confidence", "Kurs", "Support-Kurz", "Chartmuster-Kurz", "Volatilität",
                                         "Chartsetup", "Chartsetup-Phase", "Analyse-Stop", "CRV jetzt", "CRV Entry", "CRV-Einordnung", "Freiraum", "CRV-Ziel",
                                         "Entry-Abstand", "Plan-Status", "Kerntrigger", "Status", "Harvest-Ampel",
                                     ]
@@ -22657,6 +22659,8 @@ div[data-testid="stExpander"] div[data-testid="stButton"] > button p {
                                         column_config={
                                             "Setup-Stärke": st.column_config.TextColumn(
                                                 "Setup-Stärke", help="Gewichtete Komponenten vor Freigabe-Abzügen; kann Standardwerte enthalten. Die Ampel zeigt die separate Handelsfreigabe."),
+                                            "Chartmuster-Kurz": st.column_config.TextColumn(
+                                                "Chartmuster-Kurz", help="Eigenständige Tagesmuster. Bestätigt bedeutet Bezugslinienbruch nach diesen Musterregeln; keine Kauf-/Short- oder Trade-Wächter-Freigabe."),
                                             "🔄": st.column_config.CheckboxColumn(
                                                 "🔄",
                                                 help="Werte zum gezielten Neu-Scannen oder Verschieben auswählen.",

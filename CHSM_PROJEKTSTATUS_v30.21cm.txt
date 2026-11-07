@@ -1,0 +1,20 @@
+CHSM v30.21cm, 07.11.2026; Basis v30.21cl.
+
+Neu: eigenständiges Tages-Chartmustermodul für Bull-/Bärenflagge, SKS/inverse SKS,
+Doppelboden/Doppeltop. Eigene Struktur- und Bezugslinienprüfung; bestätigt erst
+mit Tagesbruch und je nach Muster Volumenbeleg. Verworfen bei Invalidierung,
+Fehlausbruch oder unbestätigtem Flaggen-Ablauf. Fehlende Daten separat markiert.
+Alle sechs Prüfungen in Screener- und Chartanalyse-Übersicht; kurze Desktop-/Mobil-
+Spalte; auswählbare Belegpunkte, Levels und Kerzenchart. Neue Scans erforderlich.
+Muster-Snapshots überleben Live-Aufbereitung und JSON-Speicherung.
+
+Keine Kopplung an Trade-Wächter, Grade, CRV, MA50 oder Earnings. Kein automatischer
+Handelsauftrag. Bestehende operative Scores, Ampeln, Analyse-Stops/-Ziele und
+Wächter-Regeln bleiben unverändert; Musterbestätigung ist keine Handelsfreigabe.
+US/Xetra-Kalender; London weiterhin zurückgestellt. Keine neue Providerabfrage.
+
+cf–cl-Funktionen bleiben erhalten, insbesondere Support-Kurz und historische
+Unterstützungszonen. Alte weiche Spezialmuster bleiben eine getrennte Berechnung.
+Die explorative Ausbruchsreferenz ist weiterhin kein produktiver Wächter-Baustein.
+Die neue Erkennung ist synthetisch getestet, aber nicht marktweit empirisch
+validiert. Numerische Kriterien und Einschränkungen in INSTALLATION_v30.21cm.txt.

@@ -1,0 +1,24 @@
+CHSM v30.21cn – 08.11.2026
+Python 3.12, pytest 8.4.2, Pandas 2.2.3, NumPy 2.3.5, Streamlit 1.56.0.
+Vollsuite: 741 bestanden, 1 explizit ausgenommen.
+Befehl: python3 -m pytest -q --deselect=tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Die erwartete .github/workflows/quality.yml fehlt bereits im Ausgangsprojekt.
+Diese bekannte Ausnahme ist kein bestandener Deployment-/CI-Nachweis.
+
+Gezielte neue Tests abschließend: 13 bestanden. Der letzte zusätzliche
+Gesamtansichts-Test wurde separat nach Beginn der Vollsuite ergänzt und geprüft.
+Befehl: python3 -m pytest -q tests/test_radar_patterns_cn.py
+Pandas 3.0.2: alle 13 Radar-Muster- plus 49 Detektor-Tests bestanden (62).
+Befehl: python3 -m pytest -q tests/test_radar_patterns_cn.py tests/test_chart_patterns_cm.py
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH. Normale Streamlit-Warnungen
+beim Start ohne App-Sitzung bleiben im unveränderten Protokoll sichtbar.
+
+Geprüft: gesamte Liste mit 22 Werten trotz Vollanalyse-Limit 1; genau ein
+History-Loader-Aufruf je Ticker; keine Vollanalyse/Grade-/Gate-Funktion;
+alle sechs tatsächlichen synthetischen Muster; Filter/verworfene/fehlende
+Daten; Abruffehler versus sofortiger Rate-Limit-Abbruch; Provider-Quarantäne;
+JSON-Speicherung mit Eigentümerprüfung; echte Streamlit-Detailansicht mit
+Übergabe und gesperrter historischer Auswahl; Gesamt-Radar-Ansicht routet
+Chartmuster ohne allgemeine Filter oder Positionsabfragen.
+Kein empirischer Nachweis von Trefferquote oder Profitabilität.
+Syntax, ZIP-CRC und Hashes geprüft. Übrige Python-Dateien gegenüber cm unverändert.

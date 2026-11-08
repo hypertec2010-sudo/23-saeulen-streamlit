@@ -139,7 +139,10 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
         st.write("Qualit\u00e4t ist nicht Einstiegsfreigabe. Sperren bleiben unabh\u00e4ngig von der Note wirksam. "
                  "CRV-Zielherkunft wird beschrieben, keine Ziel- oder Stopformel ge\u00e4ndert. "
                  "Nicht gelieferte MTF-/Wellenpr\u00fcfungen gelten als nicht berechnet.")
-        st.write("Provider-Schutz: Die komplette Liste wird zuerst nur mit OHLCV/Kurstechnik vorsortiert. "
+        if style == "Chartmuster":
+            st.write("Chartmuster: jede Aktie wird direkt auf alle sechs Tagesmuster geprüft. Kein Grade-, MA50- oder Earnings-Gate; keine Vollanalyse. Die Erkennungsregeln sind noch nicht empirisch validiert.")
+        else:
+            st.write("Provider-Schutz: Die komplette Liste wird zuerst nur mit OHLCV/Kurstechnik vorsortiert. "
                  "Maximal 15 technisch auffällige Werte erhalten danach die volle CHSM-Analyse mit Zusatzdaten. "
                  "Der Vorscan ist nur Ressourcenauswahl und verändert keine produktiven Scores, Gates oder CRV-Regeln.")
         st.write("Kursdaten d\u00fcrfen f\u00fcr die Kategorie 'Im Live-Screener pr\u00fcfen' h\u00f6chstens "
@@ -150,10 +153,13 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
         st.code(", ".join(entries) or "Keine Eingaben")
         for note in universe_notes(universe):
             st.write(f"{note['input']}: {note['action']} \u2014 {note['detail']}")
-    st.write(
-        f"**Radar-Light: {len(entries)} Listeneinträge** · anschließend maximal 15 Vollanalysen · "
-        f"Anzeigelimit {limit} begrenzt nur die Karten."
-    )
+    if style == "Chartmuster":
+        st.caption("Chartmuster: alle Listeneinträge auf sechs Tagesmuster prüfen; keine Vorauswahl und keine Vollanalyse.")
+    else:
+        st.write(
+            f"**Radar-Light: {len(entries)} Listeneinträge** · anschließend maximal 15 Vollanalysen · "
+            f"Anzeigelimit {limit} begrenzt nur die Karten."
+        )
     key = radar.request_key(universe, style, entries, model_version)
     owner = radar.text(getattr(storage, "user_id", None), "no-user")
     session_key = "radar_v3021_result_" + owner + "_" + key
@@ -178,9 +184,9 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
             bar.progress(done / total)
             status_line.write(f"{done}/{total} gepr\u00fcft \u00b7 {ticker}")
         try:
-            with st.spinner("Radar-Light vorsortiert; danach laufen nur die besten Kandidaten durch die Vollanalyse ..."):
+            with st.spinner("Sechs Chartmuster je Listeneintrag werden geprüft ..." if style == "Chartmuster" else "Radar-Light vorsortiert; danach laufen nur die besten Kandidaten durch die Vollanalyse ..."):
                 fresh = scan(universe=universe, style=style, entries=entries, source="manual", progress=progress)
-            if not radar.snapshot_valid(fresh, key) or not fresh.get("rows"):
+            if not radar.snapshot_valid(fresh, key) or (not fresh.get("rows") and style != "Chartmuster"):
                 raise ValueError("Vollst\u00e4ndiger Radar-Scan fehlt")
             payload = fresh
             st.session_state[session_key] = fresh
@@ -278,6 +284,10 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
         st.caption(freshness_text)
     else:
         st.warning(freshness_text + " Historische Ideen bleiben lesbar, aber nicht als aktueller Einstieg bezeichnet.")
+    if payload.get("provider_strategy") == "whole-universe-patterns":
+        from .radar_patterns import render_pattern_radar
+        render_pattern_radar(st, payload, fresh=fresh, limit=limit, navigate=_navigate)
+        return
     wl_rows, wl_failed = _records(watchlists_loader)
     catalog, catalog_failed = _records(catalog_loader)
     try:

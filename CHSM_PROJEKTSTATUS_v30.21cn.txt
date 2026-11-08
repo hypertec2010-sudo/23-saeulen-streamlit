@@ -1,0 +1,10 @@
+CHSM v30.21cn, 08.11.2026. Basis v30.21cm.
+Neu: Kandidaten-Radar Suchprofil Chartmuster. Alle Listeneinträge werden ohne
+Score-Vorauswahl auf die sechs bereits vorhandenen Tagesmuster geprüft.
+Keine Vollanalysen, kein Grade-/MA50-/CRV-/Earnings-Gate. Filtern nach Richtung,
+Status und Muster; gesamte Trefferliste, begrenzte Detailkarten und vollständige
+Prüfdiagnose. Explizite Abruffehler, historische Daten und Nicht-prüfbar-Zustände.
+Eigener nutzerbezogener Scan-Speicherschlüssel. Übergabe frischer Musterwerte
+zur bewusst zu startenden Sofortanalyse. Provider-Quarantäne/Rate-Limit-Abbruch
+bleiben aktiv. Bestehende Profile, Detektoren und Trade-Wächter unverändert.
+London weiterhin zurückgestellt. Keine empirisch validierte Muster-Trefferquote.

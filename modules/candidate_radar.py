@@ -32,7 +32,7 @@ WATCH = "Beobachten"
 NO_PLAN = "Beobachten / noch kein Trade-Plan"
 BLOCKED = "Gesperrt / Daten fehlen"
 HISTORY = "Historischer Scan"
-STYLES = ("Leader", "Charttechnik", "Turnaround", "Ausgewogen")
+STYLES = ("Leader", "Charttechnik", "Turnaround", "Ausgewogen", "Chartmuster")
 EMPTY = {"", "-", "--", "n/a", "nan", "none", "null", "unbekannt", "unknown", "nat", "<na>"}
 
 
@@ -700,6 +700,12 @@ def run_two_stage_scan(*, universe, style, entries, analyze, decide, entry_packa
             "light_requested": len(symbols), "light_processed": 0,
             "light_errors": [], "preselected_symbols": [],
         }
+
+    if style == "Chartmuster":
+        from .radar_patterns import scan_patterns
+        return scan_patterns(symbols=symbols, resolution=resolution, universe=universe,
+            entries=entries, model_version=model_version, source=source, start=start,
+            history_loader=history_loader, clock=clock, progress=progress)
 
     light_rows, light_errors = [], []
     aborted = False

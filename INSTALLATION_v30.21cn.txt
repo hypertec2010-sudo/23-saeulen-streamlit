@@ -1,0 +1,56 @@
+CHSM v30.21cn – Kandidaten-Radar: Suchprofil Chartmuster
+08.11.2026. BASIS: vollständig installierte v30.21cm.
+Ergänzungspatch, kein Gesamtprojekt.
+
+INSTALLATION
+Projekt und Daten sichern. Alle Dateien unter denselben relativen Pfaden in den
+Projektordner kopieren, vorhandene Dateien ersetzen. Das neue Modul
+modules/radar_patterns.py muss mitkopiert werden. Keine neue Abhängigkeit.
+App neu starten, Version v30.21cn kontrollieren.
+
+BEDIENUNG
+Kandidaten-Radar öffnen, Kandidatenliste wählen, Suchprofil "Chartmuster" wählen,
+"Kandidatenliste jetzt scannen" anklicken. Ein neuer eigener Scan ist notwendig;
+alte Leader-/Charttechnik-Ergebnisse werden nicht nachträglich umgedeutet.
+Die komplette gewählte Liste (maximal 500 Ticker) wird direkt auf alle sechs
+Tagesmuster geprüft: Bull-/Bärenflagge, SKS/inverse SKS, Doppelboden/Doppeltop.
+Es gibt für dieses Profil keine technische Score-Vorauswahl und keine auf
+15 Finalisten begrenzte Vollanalyse. Kein Grade-/MA50-/Earnings-/CRV-Gate.
+Die vorhandenen Tagesdaten aus je einer üblichen Radar-Light-Abfrage pro Ticker
+reichen; keine zusätzliche Kursabfrage allein für die Mustererkennung, keine
+Firmen-/Analysten-/Fundamentaldaten-Vollanalyse. Provider-Caches bleiben wirksam.
+Feste Kandidatenlisten sind kein vollständiger oder laufend gepflegter Markt.
+
+ERGEBNIS
+Tabelle: sämtliche entstehenden/bestätigten Muster, bullisch und bärisch getrennt
+gekennzeichnet. Filter nach Status, Richtung und Formation. Bestätigte vor
+entstehenden Mustern, dann alphabetisch; keine Rendite- oder Erfolgsrangliste.
+Ein Ticker kann mehrere Muster liefern. Kartenlimit begrenzt nur Detailkarten,
+nicht die Tabelle, Prüfung oder Auswahl. Jede Detailkarte bietet den bisherigen
+Musterbeleg mit Levels, Strukturpunkten und Kerzenchart.
+Prüfdiagnose enthält alle sechs Zustände je erfolgreich geladenem Ticker,
+auch Kein Beleg, Verworfen und Nicht prüfbar. Abruffehler separat.
+Kein Treffer ist ein gültiges speicherbares Ergebnis; keine erzwungenen Chancen.
+
+Nur frische Scans mit aktueller Tagesbasis können in die Sofortanalyse übernommen
+werden. Das öffnet vorbereitete Ticker; startet keine Analyse und keinen Auftrag.
+Dann bewusst frisch analysieren. Kein automatischer Trade-Wächter-Eintrag.
+Historische Scans bleiben lesbar und ausdrücklich historisch gekennzeichnet.
+Scan-Frische ist keine Zusicherung von Echtzeitkursen oder Provider-Finalität.
+
+METHODIK UND GRENZEN
+Detektoren unverändert aus v30.21cm, einschließlich abgeschlossener Tagesbasis,
+Pivot-Bestätigung, Volumen- und Fehlausbruchsregeln. Keine Lockerung von Kriterien,
+keine erfundenen Ziele. Heuristiken synthetisch getestet, keine empirisch belegte
+Erkennungsquote, Prognosegüte oder Profitabilität. Musterbestätigung ist keine
+Kauf-/Short-Freigabe. Operative Stops, Scores, Ampeln und Wächter-Regeln unverändert.
+US und Xetra; London bleibt zurückgestellt und ist explizit nicht prüfbar.
+Bestehende Suchprofile behalten ihre bisherige zweistufige Auswahl und Analyse.
+
+PROVIDER UND SPEICHERUNG
+Bestehende Quarantäne wird vor der ersten Abfrage geprüft. Bei bestätigtem
+Rate-Limit sofortiger Abbruch; der unvollständige Lauf ersetzt keinen alten Scan.
+Andere einzelne Abruffehler verhindern die Prüfung weiterer Ticker nicht.
+Vollständig durchlaufene Ergebnisse einschließlich Einzelfehlern werden im
+vorhandenen nutzerbezogenen Radar-Speicher gesichert. Neues Profil hat eigenen
+Suchschlüssel; Snapshot-Eigentümerprüfung bleibt unverändert.

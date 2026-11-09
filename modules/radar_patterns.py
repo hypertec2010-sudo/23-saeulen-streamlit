@@ -57,7 +57,7 @@ def pattern_hits(payload, *, phase='Alle', direction='Alle', kind='Alle'):
 
 
 def render_pattern_radar(st, payload, *, fresh, limit, navigate):
-    from .chart_pattern_ui import render_chart_patterns
+    from .chart_pattern_ui import render_chart_patterns, pattern_detail
     rows=payload.get('rows') or []
     all_hits=pattern_hits(payload)
     blocked=sum(not (r.get('chart_patterns') or {}).get('available') for r in rows)
@@ -74,17 +74,24 @@ def render_pattern_radar(st, payload, *, fresh, limit, navigate):
     table=[dict(Ticker=h['ticker'],Muster=h['pattern']['name'],Richtung='Bullisch' if h['pattern']['direction']==1 else 'Bärisch',
         Status=PHASES[h['pattern']['phase']],Tagesbasis=h['evidence'].get('basis_date'),
         Datenstand='Historisch' if h['evidence'].get('stale') or not fresh else 'Aktuell',
-        Bezugslinie=h['pattern'].get('boundary_now'),Begründung=h['pattern'].get('reason')) for h in hits]
+        Bezugslinie=h['pattern'].get('boundary_now'),
+        Bestätigungsschwelle=pattern_detail(h['evidence'],h['pattern'])['threshold'],
+        Nächster_Prüfschritt=pattern_detail(h['evidence'],h['pattern'])['action'],
+        Begründung=h['pattern'].get('reason')) for h in hits]
     if table:st.dataframe(table,use_container_width=True,hide_index=True)
     else:st.info('Keine entstehenden oder bestätigten Muster für diese Filter. Die Prüfdiagnose zeigt auch verworfene Muster und fehlende Daten.')
     # Cards are limited; table, selection and diagnostics always cover the entire pool.
     shown=[]
     for h in hits:
         if h['ticker'] not in shown:shown.append(h['ticker'])
-    for ticker in shown[:limit]:
+    detail_ticker=st.selectbox('Details einer Trefferaktie öffnen', ['Kartenauswahl']+shown,
+        key='radar_patterns_detail_ticker')
+    detail_tickers=shown[:limit] if detail_ticker=='Kartenauswahl' else [detail_ticker]
+    for ticker in detail_tickers:
         st.write('**'+ticker+'**')
         render_chart_patterns(st,next(h['evidence'] for h in hits if h['ticker']==ticker),key='radar_pattern_'+ticker)
     eligible=sorted({h['ticker'] for h in hits if fresh and not h['evidence'].get('stale')})
+    st.caption('Gewünschte Treffer auswählen und zur frischen Sofortanalyse öffnen. Die Übergabe startet keine Analyse; anschließend bewusst neu prüfen.')
     chosen=st.multiselect('Zur frischen Sofortanalyse übernehmen',eligible,key='radar_patterns_selection')
     if st.button('Auswahl in Sofortanalyse öffnen',disabled=not chosen,key='radar_patterns_open'):
         navigate(st,chosen)

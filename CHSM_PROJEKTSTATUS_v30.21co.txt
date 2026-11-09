@@ -1,0 +1,9 @@
+CHSM v30.21co, 08.11.2026. Basis v30.21cn.
+Erweiterte Musteransicht: verständlicher Aufbau, nächster Prüfschritt,
+Bestätigungsschwelle/gerichteter Abstand/Tagesschluss, Struktur-/Volumenmerkmale,
+Invalidierungsdatum und Text-/JSON-Prüfnotiz. Größerer Chart mit Musterfokus,
+Zeitausschnittwahl, Punktbeschriftungen, ausblendbaren Referenzen, Zoom, PNG-
+Export und temporären Zeichenwerkzeugen. Radar: Details jeder Trefferaktie
+jenseits Kartenlimit; Schwelle/Prüfschritt in Trefferliste.
+Erkennungslogik, Handelsregeln, Ampeln, Scores und Stops unverändert. Keine
+empirisch validierte Trefferquote. London bleibt zurückgestellt.

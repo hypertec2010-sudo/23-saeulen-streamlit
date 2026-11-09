@@ -1,0 +1,23 @@
+CHSM v30.21co – 08.11.2026
+Python 3.12, pytest 8.4.2, Pandas 2.2.3, NumPy 2.3.5, Streamlit 1.56.0.
+Vollsuite: 753 bestanden, 1 explizit ausgenommen.
+Befehl: python3 -m pytest -q --deselect=tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Die erwartete .github/workflows/quality.yml fehlt bereits im Ausgangsprojekt.
+Diese bekannte Ausnahme ist kein bestandener Deployment-/CI-Nachweis.
+
+Gezielte Tests abschließend: 73 bestanden, davon 11 neue Detailprüfungen.
+Befehl: python3 -m pytest -q tests/test_pattern_details_co.py tests/test_chart_patterns_cm.py tests/test_radar_patterns_cn.py
+Dieselben 73 Fälle unter Pandas 3.0.2 erfolgreich.
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH. Normale Streamlit-Warnungen
+beim Start ohne App-Sitzung bleiben im unveränderten Protokoll sichtbar.
+
+Geprüft: Bestätigungsschwelle mit richtungsabhängigem Puffer und Abstand für
+alle sechs Muster, unveränderte Belege, historische/invalidierte/verbrauchte
+Belege und Bruch vor Pivotkenntnis, fehlendes Volumen trotz Kursbruch,
+Chartfokus und Zeitfenster, Höhe/Beschriftungen/Referenzschalter, echte
+Streamlit-Ansicht für Auswahl jenseits Kartenlimit und Export-Steuerelemente.
+Die bisherigen Muster-, Radar-, Speicher- und Wächterprüfungen laufen mit.
+Die Chartkonfiguration und Streamlit-Ansichten wurden geprüft; kein gesonderter
+Screenshot-Abgleich im Browser (kein installierter Headless-Chromium vorhanden).
+Keine empirische Prüfung von Muster-Trefferquote oder Profitabilität.
+Syntax, ZIP-CRC und Hashes geprüft. Übrige Python-Dateien gegenüber cn unverändert.

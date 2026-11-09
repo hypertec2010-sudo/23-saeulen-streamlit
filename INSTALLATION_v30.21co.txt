@@ -1,0 +1,57 @@
+CHSM v30.21co – Musteransicht: Details, Prüfschritte und lesbarer Chart
+08.11.2026. BASIS: vollständig installierte v30.21cn.
+Ergänzungspatch, kein Gesamtprojekt.
+
+INSTALLATION
+Projekt/Daten sichern. ZIP-Inhalt unter denselben Pfaden in den Projektordner
+kopieren, vorhandene Dateien ersetzen. App neu starten, Version kontrollieren.
+Keine neuen Abhängigkeiten, kein neuer Scan allein für diese Anzeige notwendig:
+die Ansicht verwendet gespeicherte Musterbelege. Ältere Tagesdaten müssen für
+aktuelle Entscheidungen weiterhin bewusst frisch analysiert werden.
+
+WO
+Kandidaten-Radar > Suchprofil Chartmuster > neue Details-Auswahl für jede
+Trefferaktie, auch jenseits des Kartenlimits. Aktive Muster stehen in den Details
+vor verworfenen, bestätigte vor entstehenden. Die Trefferliste enthält nun auch
+Bestätigungsschwelle und nächsten Prüfschritt. Bisherige Mehrfachauswahl zur
+frischen Sofortanalyse bleibt erhalten und startet keine Analyse automatisch.
+Dieselbe erweiterte Detailansicht steht in Sofortanalyse > Chartanalyse sowie
+bei den Musterkarten des Radars. Ausklappen: Chartmuster unabhängig vom Wächter.
+
+DETAILS
+- Musterabhängige Erklärung von Aufbau und bullischer/bärischer Bedeutung.
+- Klarer nächster Prüfschritt für Entsteht / Bestätigt / Verworfen / Historisch.
+- Tagesschluss, Nacken-/Flaggenlinie, Bestätigungsschwelle inklusive Puffer,
+  gerichteter prozentualer Abstand zur Schwelle, Invalidierung und Projektion.
+- Schwelle = Linie + Puffer bullisch; Linie - Puffer bärisch. Kein Entrypreis.
+  Abstand negativ bedeutet bereits jenseits, nicht automatisch bestätigt.
+- Bei überschrittener Schwelle und fehlendem Beleg wird gerade dieser fehlende
+  Beleg erklärt; keine fälschliche Aufforderung, den ersten Kursbruch abzuwarten.
+- Datum der Strukturkenntnis, Bestätigung und ggf. Invalidierung; Volumenbefund.
+- Musteraufbau/Volumen mit den tatsächlich vorhandenen Merkmalen: Strukturspanne,
+  Vorlauftrend oder Impuls-/Flaggendauer und Volumenverhältnisse.
+- Bereits berührte Projektion und Bruch vor vollständigem Pivotbeleg explizit.
+- Prüfnote als lesbarer Text oder strukturierter JSON-Beleg herunterladbar,
+  einschließlich aller Strukturpunkte. Export ist kein ausführbarer Tradeplan.
+
+CHART
+680 statt 400 Pixel Höhe. Standard Musterfokus mit Vorlauf, alternativ 60/120
+Tageskerzen oder gesamter gespeicherter Chartbeleg (höchstens 180 Kerzen).
+Gespeicherter Beleg ist nicht die komplette Providerhistorie.
+Beschriftete Strukturpunkte, deutliche Struktur-/Nacken-/Flaggenlinien;
+Kurswerte direkt an Invalidierung/Projektion. Nicht-Handelstage erzeugen keine
+leeren Lücken. Beschriftungen und Referenzlinien getrennt ausblendbar.
+Mausrad-Zoom, Ziehen zum Verschieben, Werkzeugleiste für Zoom/Reset/PNG-Export,
+Linien/Rechtecke/Entfernen eigener Zeichnungen. Doppelklick setzt zurück.
+Zeichnungen verändern keine Regeln und werden nicht gespeichert. Standard-
+Plotly-Werkzeugbezeichnungen können abhängig von dessen Version englisch sein.
+Bei gedrängter Preisskala Referenzlinien ausblenden und Ausschnitt wählen.
+
+GRENZEN
+Anzeige-/Bedienungsänderung. Keine Änderung der Mustererkennung, Eingangsfilter,
+Scores, Stops, Ziele oder Trade-Wächter-Aufnahmeregeln. Keine automatische Kauf-,
+Verkaufs-, Short- oder Wächter-Aktion. Musterinvalidierung ist kein persönlicher
+Stop; Projektion ist ein geometrischer Bezug, kein geprüfter Handelsplan.
+Die Schwelle bei schrägen Linien gilt nur zur gespeicherten Tageskerze, nicht
+unverändert für den nächsten Tag. Abstände beziehen sich auf den abgeschlossenen
+Tagesschluss, nicht auf Echtzeitkurse. Keine empirisch validierte Trefferquote.

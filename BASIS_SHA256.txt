@@ -1,7 +1,6 @@
-Basis v30.21cm:
-64e63c9eb0430f4e3e2a89090b15d1f940c8f015939d2a6ff4b80deef82e99ec  VERSION.txt
+Basis v30.21cn:
+fa73761287204afc1872e9bd076771ac0d674d7a208c5c35799bbb7bb1d526ef  VERSION.txt
 3e26374f177e63252a5a18e1e983885d41ef98ce2579cb739f5a5a8bed69e6fe  legacy_app.py
-8700e3808be85f394613656257b4e08354bd30e92863769218eadfdddd0b3db0  modules/candidate_radar.py
-7632f5354afc4b85797b08a2d8ac817888739fefa4ffc0062e65c83258dd9357  modules/candidate_radar_ui.py
-NEU  modules/radar_patterns.py
-NEU  tests/test_radar_patterns_cn.py
+bce23f323e0cf56cc3ddfcbfd136825e0138b9d5ca815b6e3115bde21758da9f  modules/chart_pattern_ui.py
+10f93a592f5cf5be9118164e590b0ad8c7adaea20d497e644e926fce30fda2c8  modules/radar_patterns.py
+NEU  tests/test_pattern_details_co.py

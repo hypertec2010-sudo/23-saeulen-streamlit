@@ -1,0 +1,107 @@
+CHSM v30.21cp – Muster-Wächter für vorgemerkte Formationen
+09.11.2026. BASIS: vollständig installierte v30.21co.
+Ergänzungspatch, kein Gesamtprojekt. Keine neue Produkt-Abhängigkeit.
+
+INSTALLATION
+Projekt/Daten sichern. Alle Dateien unter denselben Pfaden in den Projektordner
+kopieren, vorhandene Dateien ersetzen. Die neuen Module modules/pattern_watch.py
+und modules/pattern_watch_ui.py müssen mitkopiert werden. Ebenso die gemeinsam
+geänderten chart_patterns.py, radar_patterns.py, candidate_radar_ui.py und
+legacy_app.py. App neu starten und v30.21cp kontrollieren.
+Bestehende frische Radar-Chartmusterbelege können übernommen werden. Ein alter
+oder historischer Beleg braucht zuerst frische Tagesdaten.
+
+1. VORMERKEN
+Kandidaten-Radar > Suchprofil Chartmuster > frischen Scan öffnen.
+Unter der bisherigen Übergabe zur Sofortanalyse steht nun:
+"Formationen für den Muster-Wächter vormerken".
+Konkrete Muster auswählen, Beobachtungsdauer 7/14/30 Kalendertage wählen und
+"Ausgewählte Muster beobachten" anklicken. Eine Aktie kann mehrere Muster haben.
+Ein identischer Strukturbeleg wird nicht doppelt angelegt. Ein archivierter
+Beleg kann bewusst neu vorgemerkt werden; das ersetzt keinen neuen Setupnachweis.
+Nur entstehende/bestätigte, aktuelle und noch nicht verbrauchte Muster zulässig.
+Maximal 30 aktive Aktien und 100 aktive Muster zum Provider-Schutz.
+
+2. WIEDERFINDEN OHNE NEUEN RADAR
+Oben auf der Kandidaten-Radar-Seite steht immer der aufklappbare
+"Muster-Wächter · vorgemerkte Formationen" – auch ohne neuen Scan und unabhängig
+vom aktuell gewählten Radar-Suchprofil. Benutzerbezogene eigene Speicherung in
+pattern_watch_v1. Bestehende Radar-, Watchlist-, Positions- und Trade-Wächter-
+Daten werden nicht beschrieben oder verändert.
+"Nur vorgemerkte Aktien jetzt aktualisieren" lädt nur diese Werte. Pro Aktie
+werden die Daten im Lauf geteilt, auch bei mehreren Formationen.
+Keine neue Radar-Suche, keine vollständige CHSM-Analyse, keine Noten-/Grade-,
+Fundamental-, Earnings- oder CRV-Freigabe. Keine Brokerorder.
+
+3. ZUSTÄNDE UND LEVELS
+- Entsteht: ursprüngliche Struktur besteht, Tagesbestätigung fehlt.
+- Nahe an der Schwelle: höchstens 1 % gerichteter Abstand vor der Schwelle.
+  Diese Nähe ist eine Anzeigeheuristik, keine erprobte Entryregel.
+- Schwelle intraday überschritten: frische abgeschlossene 1m-Kerze jenseits
+  der gespeicherten Bezugslinie samt Puffer; ausdrücklich KEINE Tagesbestätigung.
+- Tagesmuster bestätigt: abgeschlossene Tagesdaten erfüllen die ursprünglichen
+  Kurs-, Volumen- und Strukturregeln. Kein automatischer ausführbarer Tradeplan.
+- Muster verworfen: Tagesinvalidierung/Fehlausbruch oder Flaggen-Ablauf gemäß
+  dem bestehenden Detektor. Neue Struktur separat vormerken.
+- Beobachtung abgelaufen: gespeicherte 7/14/30 Tage abgelaufen.
+- Beleg überholt / Datenbasis geändert: ursprüngliche Punkte fehlen oder
+  historische OHLC-Kurse wurden verändert (z.B. Split/Adjustierung/Korrektur).
+  Feste Regeln werden niemals stillschweigend auf eine andere Kursbasis umgelegt.
+- Nicht aktuell prüfbar: Fehler/zu alte Tagesbasis; letzter Zustand ist historisch,
+  keine aktuelle Bestätigung. Aktuelle Kurs-/Abstandsfelder werden zurückgehalten.
+
+Tabelle zeigt Richtung im Musterbeleg, Kurs und Kursbasis/-zeit, Schwelle,
+gerichteten Abstand, Überschreitung in %, Restspielraum zur geometrischen
+Projektion, Tagesbasis, letzte erfolgreiche Prüfung und Datenhinweis.
+Auch nach Tagesbestätigung werden frische Minutenpreise für Abstand und
+Projektionsraum genutzt, solange die Formation aktiv ist. Kontakt mit der
+Projektion wird gesondert markiert; diese ist kein garantiertes oder zwingend
+noch offenes Ziel. Intraday-Invalidierung ist ein Warnhinweis, kein behaupteter
+abgeschlossener Tagesbruch.
+Details: vergrößerter Musterchart, ursprünglicher Beleg, Zustandsverlauf,
+Pause/Fortsetzen, Archiv und "Diese Aktie frisch in der Sofortanalyse prüfen".
+Letzteres öffnet nur den Ticker, startet weder Analyse noch Trade automatisch.
+
+4. AUTOMATIK UND DATEN
+Optional "Muster automatisch prüfen (solange geöffnet)" aktivieren.
+Intervalle: 1, 5 (Standard) oder 15 Minuten. Keine Hintergrundüberwachung bei
+gewechselter/geschlossener Radar-Seite, getrennter Sitzung oder geschlossenem
+Browser; keine Push-, E-Mail- oder Messenger-Nachrichten. Zustandswechsel
+erscheinen in der App und im Verlauf. Manuell auch außerhalb Börsenzeiten prüfbar.
+Automatik im bekannten regulären Handelsfenster und bis 60 Minuten nach Schluss.
+Die bestehende Tagesbasis-Prüfung berücksichtigt einen Puffer von 30 Minuten
+nach Börsenschluss; unmittelbar zum Schluss wird keine Finalität versprochen.
+Der bestehende US-/Xetra-Kalender gilt; Xetra-Intraday-Fenster konservativ ohne
+vollständigen Feiertagskalender. London bleibt zurückgestellt.
+
+Je Aktie reguläre 3y-Tageshistorie (normaler Provider-Cache, derzeit bis 15 Minuten)
+und im regulären Handelsfenster zusätzlich eine gezielte 1m-Abfrage mit
+Refresh-Kontext. Auto-Adjustierung für Tages- und Minutenpreise gleich gewählt.
+Minutenkerze muss zoniert, OHLC-plausibel, regulär, mindestens 70 Sekunden alt
+und nach Kerzenende höchstens fünf Minuten alt sein. Kein Tick-/Echtzeitversprechen.
+Nachts/Wochenende keine automatische neue Kursabfrage; manuell Tagesbasis prüfbar.
+Provider-Quarantäne vor jeder Serie; erster bestätigter Rate-Limit-Fehler stoppt
+weitere neue Ticker-Abfragen. Automatik je Idee frühestens nach 60 Sekunden.
+Keine automatische Retry-Schleife gegen Provider-Limits.
+
+5. FESTE FORMATION STATT NEUDETEKTION
+Gespeichert: Ticker, Musterart, Strukturpunkte, Kenntnisdatum, feste Invalidierung,
+Nacken-/Flaggenlinie mit ursprünglicher Steigung, Bestätigungspuffer, Volumen-
+regel und ursprünglicher Beleg. Bei Aktualisierung wird ausschließlich diese
+Formation fortgeschrieben. Neue Muster ersetzen den Beleg nicht.
+Schräge Linien werden anhand der neuen Tageskerzen fortgeführt; Intraday wird
+auf die nächste Sitzung projiziert. Der Puffer bleibt bei Anlage fest.
+Die bestehenden Detektoren bleiben unverändert; nur deren gemeinsame Bewertung
+akzeptiert optional den eingefrorenen Puffer für diese Überwachung.
+Bei durchlaufenen Tagesdaten wird auch ein zwischenzeitlicher Fehlausbruch
+nachgeprüft. Ein nachträglich bemerkter Zustand ist kein Beweis einer damals
+rechtzeitig gesehenen oder ausgeführten Order. Ereignisse protokollieren den
+Zeitpunkt der Beobachtung, zusätzlich steht das Tages-Bestätigungsdatum im Beleg.
+
+6. GRENZEN
+Muster-Wächter ist die Beobachtung vor einer frischen Einstiegsprüfung und bleibt
+getrennt vom bestehenden Trade-Wächter. Keine Lockerung dessen Aufnahmeregeln.
+Keine Änderung an produktiven Scores, Ampeln, Risiko-Stops oder Analysezielen.
+Geometrische Projektionen sind keine validierten Kursziele, Muster keine
+Gewinnwahrscheinlichkeiten. Tests prüfen Regeln/Integration synthetisch und
+belegen keine empirische Trefferquote oder Profitabilität.

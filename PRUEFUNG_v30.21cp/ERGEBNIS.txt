@@ -1,0 +1,27 @@
+CHSM v30.21cp – 09.11.2026
+Python 3.12, pytest 8.4.2, Pandas 2.2.3, NumPy 2.3.5, Streamlit 1.56.0.
+Vollsuite: 785 bestanden, 1 explizit ausgenommen.
+Befehl: python3 -m pytest -q --deselect=tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Die erwartete .github/workflows/quality.yml fehlt bereits im Ausgangsprojekt.
+Diese bekannte Ausnahme ist kein bestandener Deployment-/CI-Nachweis.
+
+Neue gezielte Prüfungen abschließend: 32 bestanden.
+Befehl: python3 -m pytest -q tests/test_pattern_watch_cp.py
+Pandas 3.0.2: 105 gezielte Fälle erfolgreich (32 neu + 73 bisherige).
+Befehl: python3 -m pytest -q tests/test_pattern_watch_cp.py tests/test_chart_patterns_cm.py tests/test_radar_patterns_cn.py tests/test_pattern_details_co.py
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH. Normale Streamlit-Warnungen
+beim Start ohne App-Sitzung bleiben im unveränderten Protokoll sichtbar.
+
+Geprüft: Vormerken aller sechs Muster; unveränderte feste Regeln und
+Reproduzierbarkeit auf gleicher Tagesbasis; Schließen eines neuen Tages
+bestätigt dieselbe Formation; fehlendes Volumen verhindert Tagesbestätigung;
+Intraday-Bruch/Nähe getrennt von Tagesregeln; veraltete, zukünftige oder
+zonenlose Minutenkurse verworfen; Intraday-Invalidierung vs. Tagesbruch;
+Kursrevision macht ursprünglichen Beleg überholt; Pause/Archiv/Ablauf;
+Ablauf ohne Providerzugriff; Originalidentität unabhängig von Chartindex-
+Verschiebung; tickergleiche Datenabfragen gebündelt; Quarantäne/Limit/Throttle;
+nachbörslicher Tagesabschluss; aktuelle Abstände auch nach Bestätigung;
+Speicherung mit Eigentümerprüfung; echte Streamlit-Aufnahme, Listendarstellung,
+Pause, Archivierung und Übergabe ohne Radar-Aufruf.
+Keine empirische Prüfung von Muster-Trefferquote oder Profitabilität.
+Syntax, ZIP-CRC und Hashes geprüft. Übrige Python-Dateien gegenüber co unverändert.

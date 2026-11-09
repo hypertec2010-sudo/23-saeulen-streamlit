@@ -1,0 +1,12 @@
+CHSM v30.21cp, 09.11.2026. Basis v30.21co.
+Neu: nutzerbezogener Muster-Wächter oben im Kandidaten-Radar. Konkrete frische
+entstehende/bestätigte Formationen vormerken, nur vorgemerkte Werte aktualisieren,
+optionale Automatik bei geöffneter Seite. Mehrere Formationen pro Aktie,
+gebündelte Kursabfragen, feste ursprüngliche Regeln statt stiller Neudetektion.
+Intraday-Nähe/Bruch getrennt von Tagesbestätigung. Aktueller Abstand und Raum zur
+Projektion auch nach Bestätigung. Pause/Archiv, Ablauf, Zustandsverlauf und
+Übergabe zur frischen Sofortanalyse; keine automatische Analyse oder Order.
+Geänderte OHLC-Basis verlangt neuen Beleg. Provider-Quarantäne/Rate-Limit-Schutz;
+keine Hintergrund- oder Pushüberwachung. Tagesbestätigung frühestens 30 Minuten
+nach Schluss. Bestehender Trade-Wächter, Scores/Stops/Noten unverändert.
+London bleibt zurückgestellt; keine empirisch validierte Muster-Trefferquote.

@@ -109,9 +109,11 @@ def _navigate(st, tickers):
 
 def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_loader,
                            positions_loader, queue_watchlist, model_version=radar.RADAR_VERSION,
-                           clock=radar.utcnow):
+                           clock=radar.utcnow, pattern_provider_factory=None):
     st.subheader("Kandidaten-Radar \u00b7 Ideen entdecken")
     st.caption(f"Radar {radar.RADAR_VERSION} \u00b7 Beobachtungsidee \u2192 Watchlist \u2192 frischer Live-Scan \u2192 Paketplanung")
+    from .pattern_watch_ui import render_watcher
+    render_watcher(st,manager=storage,provider_factory=pattern_provider_factory,navigate=_navigate)
     maps = get_universe_map()
     c1, c2, c3 = st.columns([1.5, 1, 1])
     with c1:
@@ -286,7 +288,7 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
         st.warning(freshness_text + " Historische Ideen bleiben lesbar, aber nicht als aktueller Einstieg bezeichnet.")
     if payload.get("provider_strategy") == "whole-universe-patterns":
         from .radar_patterns import render_pattern_radar
-        render_pattern_radar(st, payload, fresh=fresh, limit=limit, navigate=_navigate)
+        render_pattern_radar(st, payload, fresh=fresh, limit=limit, navigate=_navigate, manager=storage)
         return
     wl_rows, wl_failed = _records(watchlists_loader)
     catalog, catalog_failed = _records(catalog_loader)

@@ -56,10 +56,10 @@ def _point(data,i,key,role):
 
 
 def _evaluate(kind,data,*,end,known,anchor,value,slope,height,invalidation,points,
-              volume_required=False,volume_base=True,extra=None,expiry=None):
+              volume_required=False,volume_base=True,extra=None,expiry=None,fixed_buffer=None):
     out=_empty(kind,phase='forming',reason='Struktur vorhanden; Tagesbruch der Bezugslinie fehlt.')
     direction=out['direction'];n=len(data['Close'])
-    buffer=max(abs(value)*.001,data['ATR'][known]*.1)
+    buffer=fixed_buffer if fixed_buffer is not None else max(abs(value)*.001,data['ATR'][known]*.1)
     line=lambda i:value+slope*(i-anchor)
     out.update(end_index=end,structure_known_at=data['date'][known],known_index=known,
                boundary_now=line(n-1),invalidation=invalidation,points=points,

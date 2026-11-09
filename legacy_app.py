@@ -26581,6 +26581,7 @@ if workspace_mode:
             st.stop()
         render_candidate_radar(
             st, storage=_storage_v280, scan=_v3021_run_radar_scan,
+            pattern_provider_factory=lambda: _market_provider_v2845a,
             catalog_loader=_v303a_load_watchlist_catalog, watchlists_loader=load_watchlists_df,
             positions_loader=_v245_load_all_positions, queue_watchlist=queue_entries_to_watchlist_v228,
             model_version=APP_VERSION,

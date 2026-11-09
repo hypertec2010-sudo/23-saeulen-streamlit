@@ -56,7 +56,7 @@ def pattern_hits(payload, *, phase='Alle', direction='Alle', kind='Alle'):
     return sorted(hits,key=lambda h:(h['pattern']['phase']!='confirmed',h['ticker'],h['pattern']['kind']))
 
 
-def render_pattern_radar(st, payload, *, fresh, limit, navigate):
+def render_pattern_radar(st, payload, *, fresh, limit, navigate, manager=None):
     from .chart_pattern_ui import render_chart_patterns, pattern_detail
     rows=payload.get('rows') or []
     all_hits=pattern_hits(payload)
@@ -95,6 +95,8 @@ def render_pattern_radar(st, payload, *, fresh, limit, navigate):
     chosen=st.multiselect('Zur frischen Sofortanalyse übernehmen',eligible,key='radar_patterns_selection')
     if st.button('Auswahl in Sofortanalyse öffnen',disabled=not chosen,key='radar_patterns_open'):
         navigate(st,chosen)
+    from .pattern_watch_ui import render_capture
+    render_capture(st,payload,hits,manager=manager,fresh=fresh)
     with st.expander('Prüfdiagnose · gesamte Kandidatenliste'):
         diagnostic=[]
         for r in rows:

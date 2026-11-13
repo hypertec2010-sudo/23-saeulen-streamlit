@@ -1,0 +1,14 @@
+CHSM v30.21cq, 13.11.2026
+Python 3.12, Pandas 2.2.3, pytest 8.4.2, Streamlit 1.56.0.
+87 bestehende gezielte Radar-/Wächtertests bestanden:
+python3 -m pytest -q tests/test_radar_setup_audit.py tests/test_radar_trade_style.py tests/test_radar_patterns_cn.py tests/test_pattern_watch_cp.py
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH.
+Zusätzlich isolierte Komplettlisten-Prüfung aller fünf Profile mit synthetischer
+Historie, Provider/Entscheidungen injiziert: jeweils 65 unterschiedliche .DE-
+Ticker, valide Snapshots. Vier alte Profile mit absichtlich gesetztem Limit 2
+Vollanalysen, Musterprofil ohne Vollanalyse. Echte Streamlit-Auswahl geprüft:
+neue Liste auswählbar, Auswahl löst keinen Scan aus.
+Reproduzierbares Skript beigefügt; PYTHONPATH um Projekt und tests ergänzen.
+Keine erneute Vollsuite für diese Katalogergänzung. Keine Live-Providerprüfung
+aller 65 Symbole, keine Trefferquoten-/Liquiditäts- oder Profitabilitätsprüfung.
+Syntax, SHA256 und ZIP-CRC geprüft; übrige Python-Dateien gegenüber cp unverändert.

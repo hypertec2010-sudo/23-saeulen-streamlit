@@ -8,7 +8,8 @@ import hashlib
 import json
 import re
 
-CATALOG_VERSION = "2026-09-21-r1"
+CATALOG_VERSION = "2026-11-13-r2"
+GERMANY_SELECTION_DATE = "2026-11-13"
 REVIEWED_AT = "2026-09-21"
 ALIASES = {"SQ": "XYZ", "JFROG": "FROG"}
 INACTIVE = {
@@ -144,9 +145,12 @@ def _seed_universes():
         "EWW", "EIDO", "TUR", "EPOL", "ARGT", "NU", "MELI", "TSM", "BABA", "PDD",
         "JD", "BIDU", "SE", "GRAB", "TCOM", "NIO", "LI", "XPEV", "VALE", "PBR"
     ]
+    # German-company selection; not an index replication or live listing guarantee.
+    deutschland_universe = ['ADS.DE', 'ALV.DE', 'BAS.DE', 'BAYN.DE', 'BEI.DE', 'BMW.DE', 'CBK.DE', 'CON.DE', 'DB1.DE', 'DBK.DE', 'DHL.DE', 'DTE.DE', 'DTG.DE', 'ENR.DE', 'EOAN.DE', 'FME.DE', 'FRE.DE', 'HEI.DE', 'HEN3.DE', 'HNR1.DE', 'IFX.DE', 'MBG.DE', 'MRK.DE', 'MTX.DE', 'MUV2.DE', 'PAH3.DE', 'P911.DE', 'PUM.DE', 'RHM.DE', 'RWE.DE', 'SAP.DE', 'SIE.DE', 'SHL.DE', 'SY1.DE', 'VNA.DE', 'VOW3.DE', 'ZAL.DE', 'AFX.DE', 'AIXA.DE', 'BC8.DE', 'BOSS.DE', 'COK.DE', 'DEQ.DE', 'DUE.DE', 'EVD.DE', 'EVT.DE', 'EVK.DE', 'FPE3.DE', 'G1A.DE', 'G24.DE', 'GXI.DE', 'HAG.DE', 'HFG.DE', 'JUN3.DE', 'KRN.DE', 'LHA.DE', 'NEM.DE', 'NDX1.DE', 'R3NK.DE', 'S92.DE', 'SIX2.DE', 'SRT3.DE', 'SZG.DE', 'TKA.DE', 'WAF.DE']
     return {
         "US Tech": (us_tech_universe, "US Tech Fokus", "Breites Tech- und Plattformuniversum mit rund 95 vordefinierten Werten."),
         "US Basisliste": (us_basis_universe, "US Basisliste", "Große US-Standardwerte als breiter Startscreen für neue Ideen."),
+        "Deutschland · Aktienauswahl": (deutschland_universe, "Deutschland · Aktienauswahl", "Feste Auswahl deutscher Unternehmen mit Xetra-Tickern (.DE), einschließlich Standard- und Nebenwerten; keine vollständige oder automatisch gepflegte Indexliste."),
         "Europa Qualität & Leader": (europa_quality_universe, "Europa Qualität & Leader", "Breitere Europa-Liste mit Qualitätswerten, Large Caps und führenden Marktpositionen."),
         "Halbleiter": (semiconductor_universe, "Halbleiter", "Breite Halbleiterliste mit Designern, Ausrüstern, Foundries und Spezialwerten."),
         "US Small & Mid Caps": (us_small_mid_caps_universe, "US Small & Mid Caps", "Breiteres US-Universum aus Small- und Mid-Caps mit Fokus auf Liquidität, Wachstum und frühere Radar-Chancen."),

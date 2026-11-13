@@ -1,0 +1,8 @@
+CHSM v30.21cq, 13.11.2026. Basis v30.21cp.
+Neue Kandidatenliste: Deutschland · Aktienauswahl, 65 .DE-Ticker deutscher
+Unternehmen. Standard-/Nebenwerte, keine vollständige Indexabbildung.
+Nutzbar in Leader, Charttechnik, Turnaround, Ausgewogen und Chartmuster.
+Bestehende Listen, Analysen und Muster-/Trade-Wächter bleiben unverändert.
+CATALOG_VERSION 2026-11-13-r2; alte Listen nicht neu überprüft.
+Gezielte Radar-/Wächtertests und isolierte Prüfung aller Profile mit kompletter
+neuer Liste bestanden; Streamlit-Auswahl ohne automatischen Scan geprüft.

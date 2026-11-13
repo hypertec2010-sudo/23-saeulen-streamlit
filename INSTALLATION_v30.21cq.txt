@@ -1,0 +1,32 @@
+CHSM v30.21cq – deutsche Kandidatenliste
+13.11.2026. Basis: vollständig installierte v30.21cp.
+Ergänzungspatch, kein Gesamtprojekt.
+
+Projekt/Daten sichern. VERSION.txt, legacy_app.py und modules/radar_universe.py
+unter denselben Pfaden in den Projektordner kopieren, vorhandene Dateien
+ersetzen. App neu starten und Version v30.21cq kontrollieren.
+
+Kandidaten-Radar > Kandidatenliste > "Deutschland · Aktienauswahl".
+65 deutsche Unternehmen als feste Auswahl mit .DE-Xetra-Tickern; Standard-
+und Nebenwerte. Alle fünf Suchprofile einschließlich Chartmuster nutzbar.
+Auswahl allein startet keine Providerabfrage: bewusst auf Scannen klicken.
+Gefundene frische Muster lassen sich wie bisher im Muster-Wächter vormerken.
+
+Kein vollständiger deutscher Markt, keine automatisch gepflegte DAX-/MDAX-
+Abbildung. Mehrere Unternehmensgruppen können vertreten sein, z.B. Porsche-
+Holding und Porsche AG. Keine ETFs, US-ADRs oder ausländischen Börsenplätze
+in dieser Liste. Keine Kaufempfehlung und kein Liquiditätsversprechen.
+Bestehende Kandidatenlisten, Erkennung, Wächter-Regeln und Scores unverändert.
+
+Katalogversion: 2026-11-13-r2. Datum der neuen Deutschland-Auswahl separat
+GERMANY_SELECTION_DATE; REVIEWED_AT der unveränderten Bestandslisten bleibt
+2026-09-21. Keine Behauptung einer erneuten Gesamtprüfung dieser alten Listen.
+
+Notierungsreferenzen zur Orientierung:
+https://www.cashmarket.deutsche-boerse.com/cash-de/Handel/Handelbare-Werte-Xetra/Downloads/xetra-downloads
+https://www.sap.com/investors/de/stock/basic-data.html
+https://de.finance.yahoo.com/quote/SAP.DE/
+https://de.finance.yahoo.com/quote/RHM.DE/
+Die technischen Prüfungen verwenden synthetische Kursdaten. Keine 65-fache
+Live-Providerabfrage durchgeführt und keine garantierte laufende Lieferbarkeit
+behauptet; echte Symbol-/Providerfehler bleiben im Radar sichtbar.

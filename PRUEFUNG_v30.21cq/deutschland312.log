@@ -1,0 +1,32 @@
+2026-11-13 10:48:41.116 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-13 10:48:41.121 WARNING streamlit.config: 
+Warning: the config option 'server.enableCORS=false' is not compatible with
+'server.enableXsrfProtection=true'.
+As a result, 'server.enableCORS' is being overridden to 'true'.
+
+More information:
+In order to protect against CSRF attacks, we send a cookie with each request.
+To do so, we must specify allowable origins, which places a restriction on
+cross-origin resource sharing.
+
+If cross origin resource sharing is required, please disable server.enableXsrfProtection.
+            
+2026-11-13 10:48:41.122 DEBUG   streamlit.runtime.scriptrunner.script_runner: Running script
+2026-11-13 10:48:41.122 DEBUG   streamlit.runtime.media_file_manager: Disconnecting files for session with ID test session id
+2026-11-13 10:48:41.122 DEBUG   streamlit.runtime.media_file_manager: Sessions still active: dict_keys([])
+2026-11-13 10:48:41.122 DEBUG   streamlit.runtime.media_file_manager: Files: 0; Sessions with files: 0
+2026-11-13 10:48:41.203 DEBUG   streamlit.runtime.media_file_manager: Removing orphaned files...
+2026-11-13 10:48:41.203 DEBUG   streamlit.runtime.media_file_manager: Removing orphaned deferred callables...
+2026-11-13 10:48:41.206 DEBUG   streamlit.runtime.scriptrunner.script_runner: Beginning script thread
+2026-11-13 10:48:41.206 DEBUG   streamlit.runtime.scriptrunner.script_runner: Running script
+2026-11-13 10:48:41.206 DEBUG   streamlit.runtime.media_file_manager: Disconnecting files for session with ID test session id
+2026-11-13 10:48:41.206 DEBUG   streamlit.runtime.media_file_manager: Sessions still active: dict_keys([])
+2026-11-13 10:48:41.206 DEBUG   streamlit.runtime.media_file_manager: Files: 0; Sessions with files: 0
+2026-11-13 10:48:41.212 DEBUG   streamlit.runtime.media_file_manager: Removing orphaned files...
+2026-11-13 10:48:41.212 DEBUG   streamlit.runtime.media_file_manager: Removing orphaned deferred callables...
+Leader: 65 deutsche Ticker verarbeitet, Snapshot gültig, Vollanalysen 2
+Charttechnik: 65 deutsche Ticker verarbeitet, Snapshot gültig, Vollanalysen 2
+Turnaround: 65 deutsche Ticker verarbeitet, Snapshot gültig, Vollanalysen 2
+Ausgewogen: 65 deutsche Ticker verarbeitet, Snapshot gültig, Vollanalysen 2
+Chartmuster: 65 deutsche Ticker verarbeitet, Snapshot gültig, Vollanalysen 0
+Echte Streamlit-Auswahl erfolgreich; Auswahl allein startet keinen Scan.

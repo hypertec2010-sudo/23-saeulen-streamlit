@@ -1,0 +1,11 @@
+CHSM v30.21cr, 17.11.2026. Basis v30.21cq.
+Provider-Last: Info-Cache 15 Minuten, Abschluss-/Analysten-/Earnings-Cache 60
+Minuten; gepufferte Ticker-Fassade und zentrale Drosselung/429-Sperre für diese
+Zusatzdaten. Keine routinemäßigen mehrfachen Info-Aliasse mehr. Zusatzkurs ohne
+direkten Yahoo-HTTP-Bypass oder mehrstufige rohe Intraday-History-Kette; höchstens
+ein geschützter 2m-Fallback, wenn keine geeignete frische Info-Kursangabe besteht.
+Zusatzdaten-Zeiten und Provenienz erhalten, keine Kennzahlen erfunden.
+Globaler Mindestabstand 0,75 Sekunden; Erstscan kann langsamer sein.
+Bestehende Score-/Stop-/Wächterformeln und deutsche Kandidatenliste unverändert.
+Belegte Lastquellen behoben, konkreter Trigger des Nutzer-429 ohne Laufprotokoll
+nicht bewiesen. Keine Zusicherung, externe IP-/Yahoo-Limits ganz zu verhindern.

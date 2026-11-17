@@ -1,0 +1,73 @@
+CHSM v30.21cr – Yahoo-Abfragelast reduzieren
+17.11.2026. Basis: vollständig installierte v30.21cq.
+Ergänzungspatch, kein Gesamtprojekt; keine neue Paket-Abhängigkeit.
+
+INSTALLATION
+Projekt/Daten sichern. VERSION.txt, legacy_app.py, modules/provider_manager.py
+und das neue modules/provider_supplements.py gemeinsam unter denselben Pfaden
+in den Projektordner kopieren. App einmal neu starten. Ein bereits laufendes
+Provider-Singleton erhält die neue Cache-Struktur erst mit dem Prozessneustart.
+Version v30.21cr prüfen. Neustart ist keine Methode, ein aktives Yahoo-Limit zu
+umgehen; bei bestehender Sperre Abfragen pausieren und Erholung abwarten.
+
+FUNDSTELLEN IM BISHERIGEN CODE
+- Normaler Info-Pfad rief routinemäßig fast_info, get_info und info auf.
+  Letztere beiden sind alternative Zugänge, keine drei nötigen Datensätze.
+- Jeder erneute vollständige Lauf konnte annual/quarterly Income, Balance und
+  Cashflow sowie Recommendations/Calendar/Earnings-Dates anfordern. Diese
+  Zugriffe lagen außerhalb der gemeinsamen Drosselung und ihres 429-Schutzes.
+- Zusatzkursfunktion enthielt direkten Yahoo-HTTP-Aufruf, erneute Info-Aliasse
+  und mehrere rohe Intraday-History-Abfragen außerhalb des zentralen Schutzes.
+Diese Codepfade belegen vermeidbare Last. Ohne Protokoll des betroffenen Laufs
+ist nicht bewiesen, welcher Request konkret dessen Yahoo-Limit ausgelöst hat.
+Ein Watchlist-Lauf ist kein einzelner Yahoo-Request.
+
+ÄNDERUNGEN
+1. Zentraler prozessweiter öffentlicher Zusatzdaten-Cache:
+   Info-Daten 15 Minuten; Abschluss-/Analysten-/Calendar-/Earnings-Dates-Daten
+   60 Minuten. Rückgaben werden kopiert, ursprüngliche Abrufzeit bleibt erhalten.
+   Kein Price-Refresh-Token löscht diesen Zusatzdaten-Cache.
+   Höchstens 1000 Cache-Einträge, ältester Eintrag wird bei Überschreitung entfernt.
+   Kein dauerhaftes oder benutzerbezogenes Speichern öffentlicher Finanzdaten.
+2. Normalfall genau ein get_info-Zugang; alternative Info-/Fast-Info-Zugänge
+   nur bei Fehlern, ebenfalls geschützt. Ticker-Fassade erhält die von den
+   Ableitungen verwendeten Daten-/Methoden-Schnittstellen und ihre Werte.
+3. Diese Abschluss-/Analysten-/Earnings-Zugriffe werden gedrosselt und bei
+   Rate-Limit sofort zentral gesperrt. Auch wenn alte Hilfsfunktionen Fehler
+   intern weich abfangen, gibt load_data nach erkanntem 429 keine vermeintlich
+   vollständige neue Analyse aus. Bestehende Abbruch-/Fortsetzungslogik bleibt.
+4. Zusatzkursfunktion verwendet die gemeinsame Info-Basis nur bis 120 Sekunden
+   Abrufalter; ein älterer Info-Cachepreis wird nicht als frisch ausgegeben.
+   Falls eine geeignete PRE-/POST-/REGULAR-Preisangabe vorhanden ist, keine
+   zusätzliche History-Abfrage. Sonst höchstens ein geschützter 2m-prepost-Abruf.
+   Reguläre Vergleichsbasis wird bei möglich aus derselben History abgeleitet.
+   Keine direkte Quote-HTTP-Abfrage und keine Kette 2m/5m/regulär/extended mehr.
+   Fehlen belastbare Werte, bleibt die zusätzliche Kursangabe fehlend bzw.
+   die reguläre Analysebasis wird gemäß bestehender Anzeige verwendet.
+5. Globaler Mindestabstand zwischen geschützten Provider-Operationen erhöht
+   von 0,45 auf 0,75 Sekunden. Einzelne yfinance-Operationen können intern
+   mehrere HTTP-Aufrufe erzeugen; dies ist kein HTTP-Request-Budgetversprechen.
+6. Im Marktdaten-Expander werden die Cache-Zeiten sichtbar erklärt.
+
+FOLGEN UND GRENZEN
+Erster Vollscan kann weiterhin viele Abfragen benötigen und wird absichtlich
+langsamer. Wiederholte Scans profitieren von Wiederverwendung der Zusatzdaten.
+Aktuelle Kursabfragen bleiben separat; vorhandene History-Refresh-Regeln,
+Quarantäne und manuelle Providerdiagnose werden nicht umgangen.
+Es werden keine fehlenden Kennzahlen erfunden, Scores/Tradingformeln/Stops/
+Musterregeln nicht geändert. Zusatzdaten können im Rahmen ihrer Cache-Zeiten
+älter sein; Info-Abrufzeit und älteste genutzte Zusatzdaten-Abrufzeit sind als
+_chsm_info_fetched_at und _chsm_supplemental_oldest_at im Info-Beleg erhalten.
+Die maximale Cachezeit beschreibt Abrufalter, nicht Aktualität des zugrunde
+liegenden Geschäftsberichts. Provider-Kurszeiten können verzögert sein.
+
+Keine garantierte Beseitigung externer Yahoo-Sperren, IP-/Hosting-Limits oder
+internen yfinance-Mehrfachabfragen. Keine Rotations-, Umgehungs- oder aggressiven
+Retry-Mechanismen. Eine aktive 429-Sperre nicht mit Wiederholungen testen.
+Im Muster-/Trade-Wächter Automatik nur bei Bedarf aktivieren; parallel geöffnete
+Sitzungen können zusätzliche Kursabfragen erzeugen. Ein Laufprotokoll mit
+Anzahl der Aktien, Fehlermeldung und Zeitpunkt hilft bei verbleibenden Problemen.
+
+Referenz zur Bibliothek (keine behauptete feste Yahoo-Requestquote):
+https://github.com/ranaroussi/yfinance/blob/main/yfinance/base.py
+https://ranaroussi.github.io/yfinance/reference/api/yfinance.Tickers.html

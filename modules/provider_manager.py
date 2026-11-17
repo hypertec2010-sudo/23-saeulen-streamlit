@@ -274,7 +274,7 @@ class MarketDataProvider:
         self._request_lock = threading.Lock()
         self._last_request_at = 0.0
         self._cooldown_until = 0.0
-        self._min_request_gap = 0.45
+        self._min_request_gap = 0.75
         # v30.21r: a tiny cached health probe. It deliberately runs far less
         # often than normal app reruns so the diagnostic itself cannot create
         # provider pressure.
@@ -291,6 +291,8 @@ class MarketDataProvider:
         self._history_cache_tokens = {}
         self._history_cache_ttl = 15 * 60.0
         self._history_cache_max_items = 600
+        from modules.provider_supplements import SupplementalCache
+        self._supplement_cache = SupplementalCache(self)
         # v30.21s: a confirmed Yahoo rate limit quarantines the provider for
         # 30 minutes. This is intentionally much longer than the old per-request
         # retry sleep and prevents Live-Screener, Radar and Sofortanalyse from
@@ -824,35 +826,13 @@ class MarketDataProvider:
             raise MarketDataError(str(exc)) from exc
 
     def get_info_bundle(self, symbol: str) -> tuple[Any, Dict[str, Any]]:
-        """Return the native ticker object and a merged lightweight info dict.
+        """Return a paced/cached ticker facade and supplemental info dict.
 
-        Keeping the ticker object is important because the existing analysis
-        engine still derives statements/earnings from yfinance in this phase.
+        The facade preserves statement/earnings interfaces and values, caches
+        slow-changing data, and routes these accesses through provider protection.
         """
-        self.ensure_available()
-        ticker = self.get_ticker(symbol)
-        info: Dict[str, Any] = {}
-        for getter in (
-            lambda: getattr(ticker, "fast_info", {}) or {},
-            lambda: ticker.get_info() or {},
-            lambda: ticker.info or {},
-        ):
-            try:
-                self._pace_request()
-                part = getter()
-                if isinstance(part, dict):
-                    for key, value in part.items():
-                        if key not in info or info.get(key) in (None, ""):
-                            info[key] = value
-            except Exception as exc:
-                if _looks_rate_limited(exc):
-                    self._record(symbol, "info", False, f"rate_limit: {exc}")
-                    self.mark_rate_limited(symbol, source="Zusatzdaten")
-                    raise MarketDataRateLimitError(str(exc)) from exc
-                # Non-rate-limit supplemental failures remain soft, as before.
-                continue
-        self._record(symbol, "info", True, f"fields={len(info)}")
-        return ticker, info
+        return self._supplement_cache.bundle(symbol)
+
 
 
 _default_provider: Optional[MarketDataProvider] = None

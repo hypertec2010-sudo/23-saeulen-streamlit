@@ -1,4 +1,6 @@
-Basis v30.21cp:
-1a21f5c2e9f89ffc143a2241acb2bcd18c02efcb4e64a5de3f8480c0bce3636e  VERSION.txt
+Basis v30.21cq:
+c8ee527d099754dd1e434508fe26fca7997abad0bf9639230fa6ff5f0d64d2cc  VERSION.txt
 24dc462e016d68bb77b45bc7faef656a71442217f1662b98846ac2fe96701d7e  legacy_app.py
-f26b922193578b9d39acde59070bde297cf1b27a167d23672188432a4fc49188  modules/radar_universe.py
+b0d46653f9754d2568be7829002185978a4000b113c618f46cdef6a13f951f6c  modules/provider_manager.py
+NEU  modules/provider_supplements.py
+NEU  tests/test_provider_pressure_cr.py

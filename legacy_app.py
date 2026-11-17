@@ -14161,6 +14161,9 @@ def load_data(ticker):
     info = derive_fundamentals_from_statements(t, info)
     info = extract_analyst_data(t, info)
     info = extract_earnings_data(t, info)
+    # Supplemental helpers catch soft errors; a confirmed provider block is fatal.
+    _market_provider_v2845a.ensure_available()
+    info["_chsm_supplemental_oldest_at"] = getattr(t, "supplemental_oldest_at", None)
 
     try:
         info["_fund_fields_loaded"] = int(sum(pd.notna(normalize_missing(info.get(k))) for k in [
@@ -14184,10 +14187,9 @@ def load_extended_market_quote(ticker):
     zur Einordnung von Gap-/Entry-/FOMO-Risiko.
 
     Reihenfolge der Quellen:
-    1) Yahoo quote endpoint (v7 finance quote) für preMarketPrice/postMarketPrice/regularMarketPrice
-    2) yfinance fast_info/info
-    3) Intraday-Historie mit prepost=True
-    4) Schlusskurs/Analysebasis als Fallback
+    1) Zentral gepufferte Info-Kurse, Abruf höchstens 120 Sekunden alt
+    2) Eine zentral geschützte 2m-Historie mit prepost=True, falls nötig
+    3) Schlusskurs/Analysebasis als Fallback; kein Echtzeitversprechen
     """
     out = {
         "regular_price": np.nan,
@@ -14229,44 +14231,12 @@ def load_extended_market_quote(ticker):
 
         q = {}
 
-        # 1) Yahoo quote endpoint ist fuer Pre-/After-Hours oft verlaesslicher als yfinance.info.
-        try:
-            url = "https://query1.finance.yahoo.com/v7/finance/quote"
-            params = {"symbols": ticker_clean, "fields": ",".join([
-                "regularMarketPrice", "regularMarketPreviousClose", "regularMarketOpen",
-                "regularMarketTime", "regularMarketChangePercent", "marketState",
-                "preMarketPrice", "preMarketChangePercent", "preMarketTime",
-                "postMarketPrice", "postMarketChangePercent", "postMarketTime",
-                "currency", "exchange", "shortName", "longName"
-            ])}
-            headers = {"User-Agent": "Mozilla/5.0"}
-            r = requests.get(url, params=params, headers=headers, timeout=8)
-            if r.ok:
-                js = r.json() or {}
-                res = ((js.get("quoteResponse") or {}).get("result") or [])
-                if res:
-                    q = _merge(q, res[0] or {})
-        except Exception:
-            pass
-
-        # 2) yfinance info/fast_info ergaenzen.
-        try:
-            t = yf.Ticker(ticker_clean)
-        except Exception:
-            t = None
-        if t is not None:
-            try:
-                q = _merge(q, getattr(t, "fast_info", {}) or {})
-            except Exception:
-                pass
-            try:
-                q = _merge(q, t.get_info() or {})
-            except Exception:
-                pass
-            try:
-                q = _merge(q, t.info or {})
-            except Exception:
-                pass
+        # Central public-data cache; no raw quote HTTP or repeated info aliases.
+        _market_provider_v2845a.ensure_available()
+        t, cached_info = _market_provider_v2845a.get_info_bundle(ticker_clean)
+        fetched = cached_info.get("_chsm_info_fetched_at")
+        if fetched is not None and 0 <= time.time()-fetched <= 120:
+            q = dict(cached_info)
 
         state = str(q.get("marketState") or "").upper()
         regular = _num(q.get("regularMarketPrice"))
@@ -14283,31 +14253,30 @@ def load_extended_market_quote(ticker):
         if not pd.notna(regular):
             regular = prev_close
 
-        # 3) Intraday mit prepost=True als Fallback / Plausibilisierung.
+        # A single protected intraday fallback only when no usable current quote exists.
         intraday_last = np.nan
         intraday_regular_last = np.nan
         intraday_source = ""
-        try:
-            if t is None:
-                t = yf.Ticker(ticker_clean)
-            # 2m ist oft robuster als 1m bei manchen Tickern; wenn leer, wird 5m versucht.
-            ih = t.history(period="1d", interval="2m", prepost=True, auto_adjust=False)
-            if ih is None or ih.empty:
-                ih = t.history(period="5d", interval="5m", prepost=True, auto_adjust=False)
-            if ih is not None and not ih.empty and "Close" in ih.columns:
-                close_ser = ih["Close"].dropna()
-                if not close_ser.empty:
-                    intraday_last = _num(close_ser.iloc[-1])
-                    intraday_source = "Intraday prepost"
-            rh = t.history(period="1d", interval="2m", prepost=False, auto_adjust=False)
-            if rh is None or rh.empty:
-                rh = t.history(period="5d", interval="5m", prepost=False, auto_adjust=False)
-            if rh is not None and not rh.empty and "Close" in rh.columns:
-                rclose = rh["Close"].dropna()
-                if not rclose.empty:
-                    intraday_regular_last = _num(rclose.iloc[-1])
-        except Exception:
-            pass
+        quote_sufficient = ((state.startswith("PRE") and pd.notna(pre)) or
+                            (state.startswith("POST") and pd.notna(post)) or
+                            (state == "REGULAR" and pd.notna(regular)))
+        if not quote_sufficient:
+            try:
+                from modules.provider_manager import history_refresh_scope
+                from modules.trade_watch import in_session, market_for
+                with history_refresh_scope("extended-quote-"+str(int(time.time()//45))):
+                    ih = _market_provider_v2845a.get_history_light(ticker_clean,period="1d",interval="2m",prepost=True,auto_adjust=False)
+                if ih is not None and not ih.empty and "Close" in ih.columns:
+                    closes=ih["Close"].dropna()
+                    if not closes.empty:
+                        intraday_last=_num(closes.iloc[-1]);intraday_source="Intraday prepost · Providerzeit prüfen"
+                    if isinstance(ih.index,pd.DatetimeIndex) and ih.index.tz is not None:
+                        try:
+                            regular_rows=ih.loc[[in_session(ts,market_for(ticker_clean)) for ts in ih.index],"Close"].dropna()
+                            if not regular_rows.empty:intraday_regular_last=_num(regular_rows.iloc[-1])
+                        except ValueError:pass
+            except Exception:
+                _market_provider_v2845a.ensure_available()
 
         # Vergleichsbasis: offizielle reguläre Basis bevorzugen, sonst regulärer Intraday-Schluss.
         if pd.notna(regular):
@@ -14365,7 +14334,7 @@ def load_extended_market_quote(ticker):
         if source in {"Vorbörse", "Nachbörse", "Letzter außerbörslicher/Intraday-Kurs"}:
             out["note"] = "Außerbörslicher bzw. sehr aktueller Kurs: für Entry-Zonen, Gap-Risiko und FOMO relevant; harte Tages-Signale erst im regulären Handel bestätigen."
         elif source == "Regulärer Handel":
-            out["note"] = "Aktueller regulärer Kurs."
+            out["note"] = "Regulärer Kurs laut Provider; Kurszeit/Verzögerung nicht garantiert."
         elif source == "Letzter Kurs":
             out["note"] = "Letzter verfügbarer Intraday-Kurs; Analysebasis bleibt der reguläre Kurs/Schlusskurs."
         else:
@@ -18368,6 +18337,7 @@ def _render_market_provider_health_v3021r():
         checked_text = "unbekannt"
 
     with st.expander(f"{icon} Marktdaten · {label}", expanded=False):
+        st.caption("Provider-Schutz: Info-Daten bis 15 Minuten, Abschlüsse/Analysten/Earnings bis 60 Minuten zwischengespeichert. Kursabfragen werden separat aktualisiert. Ein großer Erstscan bleibt datenintensiv.")
         c1, c2, c3 = st.columns(3)
         with c1:
             if health.history_ok is True:

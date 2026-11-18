@@ -37,16 +37,14 @@ class SupplementalCache:
         def fetch():
             raw=self.provider.get_ticker(clean)
             info={}
-            # info and get_info are alternative interfaces, never two routine calls.
-            for index,getter in enumerate((lambda:raw.get_info(),lambda:getattr(raw,'info',{}),lambda:dict(getattr(raw,'fast_info',{}) or {}))):
-                try:
-                    if index:self.provider._pace_request()
-                    part=getter()
-                    if isinstance(part,dict):info=dict(part);break
-                except Exception as exc:
-                    if self.provider.is_rate_limit_error(exc):raise
-                    self.provider.ensure_available()
-                    continue
+            # A failed info endpoint does not justify alias retries or lazy
+            # FastInfo expansion: those may create raw internal history calls.
+            try:
+                part=raw.get_info()
+                if isinstance(part,dict):info=dict(part)
+            except Exception as exc:
+                if self.provider.is_rate_limit_error(exc):raise
+                self.provider.ensure_available()
             return raw,info
         stamp,(raw,info)=self.read((clean,'info'),INFO_TTL,fetch)
         cloned=deepcopy(info);cloned['_chsm_info_fetched_at']=stamp

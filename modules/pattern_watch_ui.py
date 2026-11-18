@@ -25,7 +25,20 @@ def render_capture(st,payload,hits,*,manager,fresh):
         except (ValueError,RuntimeError) as exc:st.error(str(exc))
 
 
-def render_watcher(st,*,manager,provider_factory=None,navigate=None):
+def render_optional_watcher(st,*,manager,provider_factory=None,navigate=None):
+    key='pattern_watch_enabled_cs'
+    enabled=st.toggle('Muster-Wächter verwenden',value=False,key=key)
+    previous=bool(st.session_state.get('pattern_watch_enabled_previous_cs'))
+    st.session_state['pattern_watch_enabled_previous_cs']=enabled
+    if not enabled:
+        st.session_state['pattern_watch_auto']=False
+        st.caption('Muster-Wächter ausgeschaltet · keine Wächter-Kursabfragen im normalen Radar-Betrieb.')
+        return
+    if not previous:st.session_state['pattern_watch_auto']=False
+    render_watcher(st,manager=manager,provider_factory=provider_factory,navigate=navigate,enabled_key=key)
+
+
+def render_watcher(st,*,manager,provider_factory=None,navigate=None,enabled_key=None):
     with st.expander('Muster-Wächter · vorgemerkte Formationen',expanded=False):
         st.caption('Nur vorgemerkte Aktien prüfen · kein Radar und keine Vollanalyse · keine Brokerorders.')
         st.info('Automatische Prüfungen laufen nur bei geöffneter Radar-Seite und verbundener Sitzung. Keine Hintergrundüberwachung bei geschlossenem Browser. Minutenkurse sind nicht garantiert in Echtzeit.')
@@ -33,6 +46,8 @@ def render_watcher(st,*,manager,provider_factory=None,navigate=None):
         interval=st.selectbox('Muster-Prüfintervall',[300,60,900],format_func=lambda s:f'{s//60} Minuten',key='pattern_watch_interval')
         st.caption('Automatik im regulären Handelsfenster sowie 60 Minuten nach Schluss für die Tagesbestätigung. Außerhalb manuell prüfbar. Tagesbestätigung frühestens 30 Minuten nach Schluss. Tageshistorie nutzt den Provider-Cache; Minutenkurse werden gezielt aktualisiert.')
         def panel():
+            # Also stop a queued fragment from an earlier enabled run.
+            if enabled_key and not st.session_state.get(enabled_key,False):return
             if callable(getattr(manager,'begin_run',None)):manager.begin_run()
             try:items=watch.load(manager)
             except (ValueError,RuntimeError) as exc:st.warning(str(exc));return

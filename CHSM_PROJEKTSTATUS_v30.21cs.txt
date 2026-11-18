@@ -1,0 +1,9 @@
+CHSM v30.21cs, 18.11.2026. Basis v30.21cr.
+Neuer ausdrücklicher Hauptschalter für Muster-Wächter im Radar, Standard AUS.
+Normalbetrieb ruft dessen Überwachungsansicht/Provider nicht auf; alte Automatik
+wird zurückgesetzt. Erneute Aktivierung startet ohne Automatik, queued Fragment
+prüft Freigabe nochmals. Gespeicherte Beobachtungen bleiben erhalten.
+FastInfo-Dict-Materialisierung und redundanter info-Alias im Info-Fehlerpfad
+entfernt. Bei weichem Info-Fehler keine versteckten FastInfo-History-Aufrufe.
+Keine Änderung an fachlichen Scores/Stops/Muster-/Trade-Wächter-Regeln.
+Rate-Limit-Ursache ohne Laufprotokoll weiterhin nicht rückwirkend bewiesen.

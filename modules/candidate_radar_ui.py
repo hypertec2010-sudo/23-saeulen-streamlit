@@ -112,8 +112,8 @@ def render_candidate_radar(st, *, storage, scan, catalog_loader, watchlists_load
                            clock=radar.utcnow, pattern_provider_factory=None):
     st.subheader("Kandidaten-Radar \u00b7 Ideen entdecken")
     st.caption(f"Radar {radar.RADAR_VERSION} \u00b7 Beobachtungsidee \u2192 Watchlist \u2192 frischer Live-Scan \u2192 Paketplanung")
-    from .pattern_watch_ui import render_watcher
-    render_watcher(st,manager=storage,provider_factory=pattern_provider_factory,navigate=_navigate)
+    from .pattern_watch_ui import render_optional_watcher
+    render_optional_watcher(st,manager=storage,provider_factory=pattern_provider_factory,navigate=_navigate)
     maps = get_universe_map()
     c1, c2, c3 = st.columns([1.5, 1, 1])
     with c1:

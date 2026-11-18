@@ -1,0 +1,26 @@
+CHSM v30.21cs, 18.11.2026
+Python 3.12, Pandas 2.2.3, pytest 8.4.2, Streamlit 1.56.0.
+Vollsuite: 804 bestanden, 1 explizit ausgenommen.
+python3 -m pytest -q --deselect=tests/test_source_guards.py::test_release_contains_ci_and_refresh_guards
+Die erwartete .github/workflows/quality.yml fehlt bereits im Ausgangsprojekt.
+Diese bekannte Ausnahme ist kein bestandener Deployment-/CI-Nachweis.
+
+64 gezielte Fälle abschließend bestanden, davon vier neue:
+python3 -m pytest -q tests/test_idle_watch_cs.py tests/test_provider_pressure_cr.py tests/test_radar_patterns_cn.py tests/test_pattern_watch_cp.py
+Dieselben 64 Fälle unter Pandas 3.0.2 bestanden.
+Regressionsskript: ALLE PRUEFUNGEN ERFOLGREICH.
+
+Neue Nachweise mit tatsächlicher Streamlit-Ansicht:
+- Alter gespeicherter Automatikwert True bei neuer Standardfreigabe AUS: kein
+  Aufruf der Watcher-Ansicht, Provider-Factory oder Speicherfunktion; auch nach
+  erneutem Rendern keine Überwachung. Alter Auto-Wert zurückgesetzt.
+- Bewusstes Einschalten/Abschalten/Wiedereinschalten: Automatik zunächst aus.
+- Eingereihter Fragment-Aufruf mit ausgeschalteter Freigabe: Rückkehr vor
+  Speicher-/Providerzugriff, obwohl alter Auto-Wert noch True ist.
+- Softfehler beim Infozugriff: explizite Zugriffszähler beweisen nur get_info,
+  keinen info-Alias und keine FastInfo-Materialisierung. Fehlende Felder bleiben
+  fehlend. Bestehende 429-, Datenkopie-, Cache- und Wächterprüfungen laufen mit.
+
+Keine belastende Live-Abfrage gegen Yahoo und kein Nachweis der ursprünglichen
+individuellen 429-Ursache. Keine Garantie gegen externe IP-/Providerlimits.
+Syntax, SHA256 und ZIP-CRC geprüft; übrige Python-Dateien gegenüber cr unverändert.

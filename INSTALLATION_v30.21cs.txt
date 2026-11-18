@@ -1,0 +1,50 @@
+CHSM v30.21cs – Muster-Wächter im Normalbetrieb aus; Info-Fallback korrigiert
+18.11.2026. Basis: vollständig installierte v30.21cr.
+Ergänzungspatch, kein Gesamtprojekt. Keine neuen Abhängigkeiten.
+
+INSTALLATION
+Projekt/Daten sichern. ZIP-Inhalt unter denselben Pfaden in den Projektordner
+kopieren, vorhandene Dateien ersetzen. Insbesondere legacy_app.py, beide
+geänderten Radar-/Muster-Wächter-UI-Module und provider_supplements.py gemeinsam
+installieren. App neu starten und v30.21cs kontrollieren.
+Eine bestehende Yahoo-Sperre abwarten; der Neustart garantiert keine Aufhebung.
+
+MUSTER-WÄCHTER
+Im Kandidaten-Radar steht nun ein ausdrücklicher Hauptschalter:
+"Muster-Wächter verwenden". Standard AUS; bestehende alte Automatikwerte allein
+aktivieren die Überwachung nicht. Bei AUS wird die Überwachungsansicht nicht
+aufgerufen: kein Lesen der Musterliste für Überwachung, kein Timer/Fragment,
+kein Aufruf der Provider-Factory und keine Wächter-Kursabfrage.
+Das Ausschalten setzt den alten Muster-Automatikschalter zurück. Auch beim
+bewussten erneuten Einschalten ist die Automatik zunächst AUS. Erst separat
+einschalten oder manuell aktualisieren, falls die Funktion später benötigt wird.
+Ein bereits eingereihter Fragment-Aufruf prüft den Hauptschalter nochmals,
+bevor Speicher oder Provider aufgerufen werden.
+
+Normale Watchlist-/Radar-Scans funktionieren unverändert. Radar-Chartmuster
+werden weiterhin aus den geladenen Tagesdaten ermittelt. Vorgemerkte Formationen
+bleiben gespeichert; der Hauptschalter löscht oder archiviert keine Einträge.
+Die vorhandene Aufnahmefunktion speichert nur auf ausdrücklichen Knopfdruck.
+Der eigenständige Trade-Wächter bleibt auf seiner expliziten eigenen Seite;
+er wird von diesem Patch nicht in den normalen Radar-/Watchlist-Betrieb eingebaut.
+Es gibt weiterhin keinen geschlossenen Browser überdauernden Hintergrunddienst.
+
+INFO-FALLBACK
+In v30.21cr konvertierte der Fehler-Fallback fast_info vollständig in ein Dict.
+Die lazy FastInfo-Klasse kann dabei intern zusätzliche rohe History-Abfragen
+starten. Dieser neue Fehlerpfad ist vollständig entfernt, ebenso der redundante
+info-Alias-Versuch nach fehlgeschlagenem get_info. Normal ein geschützter
+get_info-Zugriff; bei einem weichen Fehler bleiben die Info-Felder fehlend.
+Bestehende Ableitungen aus geschützten Abschluss-/Earnings-Zugriffen bleiben.
+Kein Erfinden von Kennzahlen oder unbemerkte Materialisierung von FastInfo.
+Ein 429 setzt weiterhin sofort die gemeinsame Quarantäne; keine Alias-Retries.
+
+EINORDNUNG
+Wenn der Wächter beim betroffenen Lauf tatsächlich nicht aktualisiert hat,
+erklärt er dessen Rate-Limit nicht. Die Abschaltung sichert den Normalbetrieb
+ab, ist aber kein Beweis für die Ursache eines bereits beobachteten 429.
+Der korrigierte FastInfo-Fehlerfall wurde mit cr eingeführt; die erste Nutzer-
+meldung gab es bereits zuvor. Er konnte die Last verschärfen, erklärt aber
+nicht den Beginn aller Probleme. Yahoo-/IP-/Hosting-Limits bleiben möglich.
+Der Erstscan benötigt weiterhin zahlreiche geschützte Datenoperationen.
+Keine Änderung von Score-, Muster-, Stop- oder Trade-Wächter-Aufnahmeregeln.
